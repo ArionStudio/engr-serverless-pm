@@ -1,0 +1,90 @@
+\documentclass[11pt, a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage{url}
+\usepackage{hyperref}
+\begin{document}
+\title{Research}
+\author{Adrian Rybaczuk}
+\date{29 April 2025}
+\maketitle
+
+\section{Cloud Storage}
+\subsection{Do czego użyjemy}
+\begin{paragraph}
+    Cloud Storage chcemy użyć do przechowywania haseł użytkownika.
+    Użytkownik powinien wybrać docelowy provider, którego chce użyć do przechowywania haseł.
+    Po wybraniu providera, powinien podać dane dostępowe do danego providera.
+    Np. w wypadku S3 powinien podać nazwę bucketa, oraz swoje ID i klucz dostępu.
+    Następnie powinien podać login i hasło dostępu do danych.
+    Na podstawie którego zostanie zapisany na urządzeniu lokalnym plik konfiguracyjny dostępu do danego providera.
+    Program powinien być napisany w sposób który pozwoli dostęp do więcej niż jednego providera lub pozwoli na łatwą implementację nowych providerów.
+\end{paragraph} \\\\
+Aktualnie dostępne providery na rynku to:
+\begin{itemize}
+    \item S3
+    \item Google Cloud 
+    \item Azure Blob Storage
+\end{itemize}
+\href{https://www.digitalocean.com/resources/articles/amazon-s3-alternatives}{Źródło} możemy tu znaleźć inne płatne opcje \\
+
+Opcje open source:
+\begin{itemize}
+    \item minio
+    \item Storj
+    \item SwiftStack
+\end{itemize}
+\href{https://opensourcealternative.to/alternativesto/amazon-s3}{Źródło}
+
+\section{Bezpieczeństwo danych}
+\subsection{Bezpieczeństwo dostępu do danych}
+Poza bezpiecznym przechowywaniem danych dostępowych do providerów, 
+bezpieczeństwo przechowywanych danych \\
+zależy od zewnętrznych providerów.
+\subsection{Web Crypto API}
+Dane: \url{https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API}
+Do projektu zamierzam uzyc Web Crypto API do szyfrowania danych.
+
+\section{Platformy docelowe}
+Platformy są wstępnie posortowane po priorytetach.
+\subsection{Web Addon}
+\subsection{Desktop}
+\subsection{Android}
+\subsection{iOS}
+
+\section{Cechy}
+\subsection{Prostota}
+\subsection{Bezpieczeństwo}
+\subsection{Przenośność}
+
+\section{Podobne projekty}
+
+\subsection{Mopass}
+link: https://phodal.github.io/mopass/
+
+
+\subsection{Amazon KMS and DynamoDB}
+Case: \url{https://towardsaws.com/diy-serverless-password-manager-using-aws-kms-and-amazon-dynamodb-6a8c3798961f}
+Problem z tym jest taki że zyskujemy 2 warstwy pomiędzy aws lambda oraz kms (w tym możemy użyć s3)
+
+
+\section{Funkcjonalności}
+\begin{enumerate}
+    \item Dodawanie haseł
+    \item Generowanie haseł
+    \item Przeglądanie haseł
+    \item Edytowanie haseł
+    \item Usuwanie haseł
+    \item Importowanie haseł \\
+    Przyjmuje plik csv z hasłami
+    \item Eksportowanie haseł \\
+    Exportuje hasla do pliku csv po wybraniu providera, oraz zakresu haseł i wpisania hasla dostepu
+    \item Synchronizacja haseł \\
+    Synchronizacja odbywa się automatycznie, wymaga dostępu do internetu, oraz włączonej funkcji synchronizacji w ustawieniach.
+    \item Wyszukiwanie haseł
+    \item Multifactor authentication
+    Oprocz hasla do repozytorium, bedzie mozliwosc uzycia drugiego czynnika uwierzytelniania TOTP/HOTP
+    \item Przenośność
+    Przy pomocy kodu QR z zaszyfrowanymi danymi dostępu do repozytorium, mozna przeniesc repozytorium na inne urzadzenie 
+\end{enumerate}
+
+\end{document}
