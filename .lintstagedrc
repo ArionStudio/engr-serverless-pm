@@ -1,3 +1,11 @@
 {
-  "*.{js,ts,jsx,tsx}": ["echo 'lint-staged temporarily disabled'"]
+  "*.{js,ts,jsx,tsx}": [
+    "pnpm --filter serverless-pm-extension run lint",
+    "pnpm --filter serverless-pm-extension run format"
+  ],
+  "*.{json,md,yml,yaml}": ["pnpm --filter serverless-pm-extension run format"],
+  "extension/**/*.{js,ts,jsx,tsx}": [
+    "pnpm --filter serverless-pm-extension run build"
+  ],
+  "research/*.tex": ["pnpm --filter serverless-pm-research run build"]
 }
