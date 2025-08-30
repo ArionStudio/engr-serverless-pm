@@ -1,0 +1,3 @@
+pnpm lint-staged
+cd extension && pnpm run build
+cd ../research && pnpm run build

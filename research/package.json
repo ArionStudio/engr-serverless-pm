@@ -1,0 +1,14 @@
+{
+  "name": "serverless-pm-research",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "format": "latexindent Research.tex",
+    "build": "pdflatex Research.tex",
+    "clean": "rm -f *.aux *.log *.out *.toc *.pdf",
+    "prettier": "prettier --write ."
+  },
+  "devDependencies": {
+    "prettier": "^3.6.2"
+  }
+}
