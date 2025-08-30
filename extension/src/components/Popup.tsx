@@ -33,6 +33,7 @@ export function Popup() {
   };
 
   const openOptions = () => {
+    setPasswords([]);
     chrome.runtime.openOptionsPage();
   };
 
