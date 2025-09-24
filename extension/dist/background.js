@@ -1,1 +1,0 @@
-chrome.runtime.onInstalled.addListener(()=>{console.log("SPM Extension installed")});chrome.runtime.onMessage.addListener((e,n,o)=>{console.log("Message received:",e),console.log("Sender:",n),o({status:"received"})});
