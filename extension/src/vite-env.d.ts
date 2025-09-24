@@ -7,5 +7,3 @@ interface ImportMeta {
     accept: (callback?: () => void) => void;
   };
 }
-
-export {};
