@@ -7,10 +7,15 @@
     "install:all": "pnpm install",
     "lint-staged": "lint-staged",
     "commitlint": "commitlint",
-    "extension:dev": "pnpm --filter serverless-pm-extension run dev",
-    "extension:build": "pnpm --filter serverless-pm-extension run build",
-    "extension:test": "pnpm --filter serverless-pm-extension run test",
-    "extension:format": "pnpm --filter serverless-pm-extension run format"
+    "ext:dev": "pnpm --filter serverless-pm-extension run dev",
+    "ext:build": "pnpm --filter serverless-pm-extension run build",
+    "ext:test": "pnpm --filter serverless-pm-extension run test",
+    "ext:lint": "pnpm --filter serverless-pm-extension run lint",
+    "ext:format": "pnpm --filter serverless-pm-extension run format",
+    "res:dev": "pnpm --filter serverless-pm-research run dev",
+    "res:build": "pnpm --filter serverless-pm-research run build",
+    "res:format": "pnpm --filter serverless-pm-research run format",
+    "res:clean": "pnpm --filter serverless-pm-research run clean"
   },
   "devDependencies": {
     "husky": "^9.1.7",

@@ -3,12 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "dev": "latexmk -pdf -pvc Research.tex",
+    "build": "latexmk -pdf Research.tex",
+    "build:watch": "latexmk -pdf -pvc Research.tex",
     "format": "latexindent Research.tex",
-    "build": "pdflatex Research.tex",
-    "clean": "rm -f *.aux *.log *.out *.toc *.pdf",
-    "prettier": "prettier --write ."
-  },
-  "devDependencies": {
-    "prettier": "^3.6.2"
+    "clean": "latexmk -c",
+    "clean:all": "latexmk -C",
+    "preview": "open Research.pdf || xdg-open Research.pdf"
   }
 }
