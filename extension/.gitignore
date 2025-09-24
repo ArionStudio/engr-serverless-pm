@@ -1,0 +1,16 @@
+# Extension build output
+dist/
+
+# Extension specific
+*.crx
+*.zip
+*.pem
+
+# Chrome extension development
+web-ext-artifacts/
+
+# Coverage reports
+coverage/
+
+# TypeScript build info
+*.tsbuildinfo
