@@ -1,23 +1,51 @@
 \documentclass[11pt, a4paper]{article}
 \usepackage[T1]{fontenc}
-\usepackage{url}
+\usepackage{xurl}
 \usepackage{hyperref}
 \begin{document}
-\title{Research}
+\title{Research do projektu: Serverless Password Manager}
 \author{Adrian Rybaczuk}
 \date{29 April 2025}
 \maketitle
 
+\tableofcontents
+
+\newpage
+
+\section{Definicje}
+\subsection{Serverless}
+
+Serverless w naszym projekcie będzie oznaczać dosłownie brak serwera który bedzie zarządzał danymi.
+Jedynym punktem wspólnym który pozwoli na synchronizacje danych przez interenet będzie dostęp do usługi Cloud Storage.
+
+\subsection{Cloud Storage}
+
+Cloud Storage to usługa która dostarczana przez zewnętrznego dostawcę, która pozwala na przechowywanie danych w chmurze.
+Nasza aplikacja wstępnie będzie korzystać z usługi Amazon S3.
+
+\subsection{Web Extension}
+
+Web Extension - rozszerzenie przeglądarki, pozwala na rozszerzenie funkcjonalności przeglądarki. 
+W naszym projekcie będzie to interfejs dostępu do aplikacji.
+
+\subsection{IndexedDB}
+
+IndexedDB to baza danych w przeglądarce, pozwala na przechowywanie danych w ustrukturyzowany sposób.
+Będzie służyć jako lokalna baza danych dla naszej aplikacji.
+
+\newpage
+
 \section{Cloud Storage}
 \subsection{Do czego użyjemy}
 \begin{paragraph}
-    Cloud Storage chcemy użyć do przechowywania haseł użytkownika.
+    Cloud Storage chcemy użyć do przechowywania i synchronizacji haseł użytkownika.
     Użytkownik powinien wybrać docelowy provider, którego chce użyć do przechowywania haseł.
     Po wybraniu providera, powinien podać dane dostępowe do danego providera.
+
     Np. w wypadku S3 powinien podać nazwę bucketa, oraz swoje ID i klucz dostępu.
     Następnie powinien podać login i hasło dostępu do danych.
     Na podstawie którego zostanie zapisany na urządzeniu lokalnym plik konfiguracyjny dostępu do danego providera.
-    Program powinien być napisany w sposób który pozwoli dostęp do więcej niż jednego providera lub pozwoli na łatwą implementację nowych providerów.
+    Aplikacja powinien być napisany w sposób który pozwoli dostęp do więcej niż jednego providera lub pozwoli na łatwą implementację nowych providerów.
 \end{paragraph} \\\\
 Aktualnie dostępne providery na rynku to:
 \begin{itemize}
@@ -35,13 +63,35 @@ Opcje open source:
 \end{itemize}
 \href{https://opensourcealternative.to/alternativesto/amazon-s3}{Źródło}
 
+\newpage
+
 \section{Bezpieczeństwo danych}
+
+\subsection{Punkty dostępu do danych}
+Punkty dostępu do danych to miejsca w których można uzyskać dostęp do przechowywanych przez nas danych.
+W naszym projekcie będą to:
+\begin{itemize}
+    \item Interfejs Web Extension
+    \item IndexedDB
+    \item Cloud Storage
+\end{itemize}
+
 \subsection{Bezpieczeństwo dostępu do danych}
-Poza bezpiecznym przechowywaniem danych dostępowych do providerów, 
-bezpieczeństwo przechowywanych danych \\
-zależy od zewnętrznych providerów.
+
+Dla naszego interfejsu Web Extension będzie docelowym punktem dostępu do danych dla użytkownika. 
+Głównym zabezpieczeniem będzie główne hasło dostępu do danych które będzie szyfrowane i przechowywane w IndexedDB. \\
+\\
+IndexedDB będzie przechowywać dane zaszyfrowane głównym hasłem dostepu. \\
+\\
+Cloud Storage będzie przechowywać dane w chmurze także zaszyfrowane dodatkową warstwą bezpieczeństwa będą klucze dostępu do tych danych.
+Zakładamy tutaj że providery które będą używane zapewniają odpowiednie bezpieczeństwo przechowywanych danych.
+Jednak poza tym założeniem dane wysłane do chmure zawsze będą szyfrowane.
+
+
+
 \subsection{Web Crypto API}
-Dane: \url{https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API}
+Dane: \url{https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API} \\
+
 Do projektu zamierzam uzyc Web Crypto API do szyfrowania danych.
 
 \section{Platformy docelowe}
@@ -59,7 +109,7 @@ Platformy są wstępnie posortowane po priorytetach.
 \section{Podobne projekty}
 
 \subsection{Mopass}
-link: https://phodal.github.io/mopass/
+link: \url{https://phodal.github.io/mopass/}
 
 
 \subsection{Amazon KMS and DynamoDB}
