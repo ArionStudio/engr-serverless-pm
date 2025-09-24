@@ -7,11 +7,8 @@
     "dev": "vite build --watch",
     "build": "tsc -b && vite build && cp public/manifest.json dist/ && cp public/icon.svg dist/",
     "test": "vitest",
-    "test:ui": "vitest --ui",
-    "test:run": "vitest run",
     "lint": "eslint .",
-    "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format": "prettier --write ."
   },
   "dependencies": {
     "@radix-ui/react-label": "^2.1.7",
