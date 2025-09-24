@@ -8,6 +8,6 @@ if (rootElement) {
   ReactDOM.createRoot(rootElement).render(
     <React.StrictMode>
       <Popup />
-    </React.StrictMode>
+    </React.StrictMode>,
   );
 }

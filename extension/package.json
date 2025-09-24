@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite build --watch",
-    "build": "tsc -b && vite build && cp public/manifest.json dist/ && cp public/icon.svg dist/",
+    "build": "./build.sh",
     "test": "vitest",
     "lint": "eslint .",
     "format": "prettier --write ."

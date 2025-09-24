@@ -1,11 +1,6 @@
 {
-  "*.{js,ts,jsx,tsx}": [
-    "pnpm --filter serverless-pm-extension run lint",
-    "pnpm --filter serverless-pm-extension run format"
-  ],
-  "*.{json,md,yml,yaml}": ["pnpm --filter serverless-pm-extension run format"],
-  "extension/**/*.{js,ts,jsx,tsx}": [
-    "pnpm --filter serverless-pm-extension run build"
-  ],
-  "research/*.tex": ["pnpm --filter serverless-pm-research run build"]
+  "*.{js,ts,jsx,tsx}": ["pnpm ext:lint", "pnpm ext:format"],
+  "*.{json,md,yml,yaml}": ["pnpm ext:format"],
+  "extension/**/*.{js,ts,jsx,tsx}": ["pnpm ext:build"],
+  "research/*.tex": ["pnpm res:build"]
 }

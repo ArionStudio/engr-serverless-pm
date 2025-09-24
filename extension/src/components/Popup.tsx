@@ -25,7 +25,7 @@ export function Popup() {
   const filteredPasswords = passwords.filter(
     (entry) =>
       entry.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      entry.username.toLowerCase().includes(searchTerm.toLowerCase())
+      entry.username.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   const handleCopyPassword = (password: string) => {
