@@ -1,6 +1,6 @@
-# Note: See docs/aws/s3-cognito-extension/README.md for usage and design details.
 AWSTemplateFormatVersion: "2010-09-09"
 Description: Private S3 + Cognito Identity Pool for browser extension (temporary creds, strict CORS)
+
 Parameters:
   BucketName:
     Type: String
@@ -8,29 +8,6 @@ Parameters:
   ExtensionOrigins:
     Type: CommaDelimitedList
     Description: Comma-separated list of allowed CORS origins (e.g., chrome-extension://id,https://your.site)
-  DevMode:
-    Type: String
-    AllowedValues: ["true", "false"]
-    Default: "false"
-    Description: Use development CORS origins instead of production origins
-  DevExtensionOrigins:
-    Type: CommaDelimitedList
-    Default: ""
-    Description: Dev CORS origins (e.g., chrome-extension://devid,http://localhost:3000)
-  EnableAccessLogging:
-    Type: String
-    AllowedValues: ["true", "false"]
-    Default: "false"
-    Description: Enable S3 server access logging (requires LoggingBucketName)
-  LoggingBucketName:
-    Type: String
-    Default: "s3-logging-bucket"
-    Description: Target bucket for access logs (must exist and be in same region)
-  CreateLoggingBucket:
-    Type: String
-    AllowedValues: ["true", "false"]
-    Default: "false"
-    Description: Create the logging bucket specified by LoggingBucketName when enabled
   UseKMS:
     Type: String
     AllowedValues: ["true", "false"]
@@ -65,58 +42,36 @@ Parameters:
     Description: Days after which incomplete multipart uploads are aborted
 
 Conditions:
-  IsLoggingEnabled: !Equals [!Ref EnableAccessLogging, "true"] # Enables S3 server access logging when parameter is 'true'
-  UseKMSCond: !Equals [!Ref UseKMS, "true"] # Toggles default SSE-KMS and related policies when parameter is 'true'
-  IsLifecycleEnabled: !Equals [!Ref LifecycleEnabled, "true"] # Enables lifecycle cleanup rules when parameter is 'true'
-  IsCreateLoggingBucket: !Equals [!Ref CreateLoggingBucket, "true"] # Toggle creating a dedicated logging bucket
-  CreateLoggingBucketCond: !And
-    - !Condition IsLoggingEnabled
-    - !Condition IsCreateLoggingBucket
-  IsDevMode: !Equals [!Ref DevMode, "true"] # Switch to dev CORS origins when enabled
+  UseKMSCond: !Equals [!Ref UseKMS, "true"]
+  IsLifecycleEnabled: !Equals [!Ref LifecycleEnabled, "true"]
 
 Resources:
+  # S3 data bucket
   DataBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Ref BucketName # Name of the S3 bucket to create (must be globally unique)
+      BucketName: !Ref BucketName
       PublicAccessBlockConfiguration:
-        BlockPublicAcls: true # Prevent new public ACLs from being set on objects
-        IgnorePublicAcls: true # Ignore any existing public ACLs on objects
-        BlockPublicPolicy: true # Block bucket policies that grant public access
-        RestrictPublicBuckets: true # Restrict access to only AWS principals when bucket has public policies
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerPreferred
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
-              SSEAlgorithm: !If [UseKMSCond, "aws:kms", "AES256"] # Default encryption algorithm for objects at rest
-              KMSMasterKeyID: !If [
-                  UseKMSCond,
-                  !Ref KMSKeyArn,
-                  !Ref "AWS::NoValue",
-                ] # KMS CMK ARN used when SSEAlgorithm is aws:kms
-      VersioningConfiguration:
-        Status: Enabled # Keep multiple versions of objects to protect against deletes/overwrites
-      OwnershipControls:
-        Rules:
-          - ObjectOwnership: BucketOwnerPreferred # Make bucket owner the preferred object owner for new uploads
+              SSEAlgorithm: "AES256"
       CorsConfiguration:
         CorsRules:
-          - AllowedMethods: [GET, PUT, HEAD] # HTTP methods allowed by the browser for cross-origin requests
-            AllowedOrigins: !If [
-                IsDevMode,
-                !Ref DevExtensionOrigins,
-                !Ref ExtensionOrigins,
-              ] # Switch origins in DevMode
-            AllowedHeaders: ["*"] # Request headers the browser can send in cross-origin requests
-            ExposedHeaders: ["ETag", "x-amz-version-id"] # Expose object version ID so clients can use specific versions
-            MaxAge: 300 # Seconds to cache the CORS preflight response in the browser
-      LoggingConfiguration: !If
-        - IsLoggingEnabled
-        - DestinationBucketName: !If
-            - CreateLoggingBucketCond
-            - !Ref LoggingBucket
-            - !Ref LoggingBucketName # Target bucket where access logs are delivered
-          LogFilePrefix: logs/ # Prefix for access log object keys
-        - !Ref "AWS::NoValue"
+          - AllowedMethods: [GET, PUT, HEAD]
+            AllowedOrigins: !Ref ExtensionOrigins
+            AllowedHeaders: ["*"]
+            ExposedHeaders: ["ETag", "x-amz-version-id"]
+            MaxAge: 300
       LifecycleConfiguration: !If
         - IsLifecycleEnabled
         - Rules:
@@ -131,109 +86,13 @@ Resources:
               AbortIncompleteMultipartUpload:
                 DaysAfterInitiation: !Ref AbortIncompleteMultipartUploadDays
         - !Ref "AWS::NoValue"
-  DataBucketPolicy:
+
+  # Always enforce TLS
+  DataBucketPolicyTLS:
     Type: AWS::S3::BucketPolicy
+    DependsOn: DataBucket
     Properties:
       Bucket: !Ref DataBucket
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Sid: DenyNonTLS # Deny any request not using HTTPS (aws:SecureTransport=false)
-            Effect: Deny
-            Principal: "*"
-            Action: "s3:*"
-            Resource:
-              - !Sub "arn:aws:s3:::${BucketName}"
-              - !Sub "arn:aws:s3:::${BucketName}/*"
-            Condition:
-              Bool:
-                aws:SecureTransport: "false" # Matches requests over HTTP instead of HTTPS
-          - Sid: DenyNonKMSEncryptIfRequired # Enforce SSE-KMS for uploads when KMS is enabled
-            Effect: Deny
-            Principal: "*"
-            Action: "s3:PutObject"
-            Resource: !Sub "arn:aws:s3:::${BucketName}/*"
-            Condition:
-              StringNotEqualsIfExists:
-              s3:x-amz-server-side-encryption: !If [
-                  UseKMSCond,
-                  "aws:kms",
-                  !Ref "AWS::NoValue",
-                ] # Require aws:kms encryption header when enabled
-    Condition: UseKMSCond
-
-  S3AccessPolicy:
-    Type: AWS::IAM::ManagedPolicy
-    Properties:
-      ManagedPolicyName: !Sub "${RoleName}-S3Access-${AWS::StackName}" # Deterministic name to ease discovery across stacks
-      Description: Least-privilege S3 access for the bucket and user prefix
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Sid: ListWithinPrefix # Allow listing keys in the permitted prefix only
-            Effect: Allow
-            Action: ["s3:ListBucket"]
-            Resource: !Sub "arn:aws:s3:::${BucketName}"
-            Condition:
-              StringLike:
-                s3:prefix: [!Sub "${UserPrefix}*"] # Restrict list results to keys under the user-scoped prefix
-          - Sid: ListVersionsWithinPrefix # Allow listing object versions within the permitted prefix
-            Effect: Allow
-            Action: ["s3:ListBucketVersions"]
-            Resource: !Sub "arn:aws:s3:::${BucketName}"
-            Condition:
-              StringLike:
-                s3:prefix: [!Sub "${UserPrefix}*"] # Restrict version listings to keys under the user-scoped prefix
-          - Sid: ObjectRW # Read/write/delete objects within the user-scoped prefix
-            Effect: Allow
-            Action:
-              [
-                "s3:GetObject",
-                "s3:GetObjectVersion",
-                "s3:PutObject",
-                "s3:DeleteObject",
-              ]
-            Resource: !Sub "arn:aws:s3:::${BucketName}/${UserPrefix}*"
-          - Sid: KmsDecryptEncryptIfUsed # KMS permissions needed for SSE-KMS when enabled
-            Effect: Allow
-            Action:
-              [
-                "kms:Encrypt",
-                "kms:Decrypt",
-                "kms:GenerateDataKey*",
-                "kms:DescribeKey",
-              ]
-            Resource: !If [UseKMSCond, !Ref KMSKeyArn, !Ref "AWS::NoValue"] # Scope to the specified CMK when KMS is enabled
-            Condition: !If [
-                UseKMSCond,
-                {
-                  StringEquals:
-                    {
-                      "kms:ViaService": !Sub "s3.${AWS::Region}.amazonaws.com",
-                    },
-                },
-                {},
-              ] # Ensure KMS use is via S3 in this Region
-
-  LoggingBucket:
-    Condition: CreateLoggingBucketCond
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Ref LoggingBucketName
-      AccessControl: LogDeliveryWrite
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        IgnorePublicAcls: true
-        BlockPublicPolicy: true
-        RestrictPublicBuckets: true
-      OwnershipControls:
-        Rules:
-          - ObjectOwnership: BucketOwnerPreferred
-  LoggingBucketPolicy:
-    Condition: CreateLoggingBucketCond
-    Type: AWS::S3::BucketPolicy
-    Properties:
-      Bucket: !Ref LoggingBucket
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -242,94 +101,117 @@ Resources:
             Principal: "*"
             Action: "s3:*"
             Resource:
-              - !Sub "arn:aws:s3:::${LoggingBucketName}"
-              - !Sub "arn:aws:s3:::${LoggingBucketName}/*"
+              - !Sub "arn:aws:s3:::${DataBucket}"
+              - !Sub "arn:aws:s3:::${DataBucket}/*"
             Condition:
               Bool:
                 aws:SecureTransport: "false"
-          - Sid: AllowS3LogDeliveryPut
-            Effect: Allow
-            Principal:
-              Service: logging.s3.amazonaws.com
-            Action: "s3:PutObject"
-            Resource: !Sub "arn:aws:s3:::${LoggingBucketName}/logs/*"
-            Condition:
-              StringEquals:
-                s3:x-amz-acl: bucket-owner-full-control
-                aws:SourceAccount: !Ref "AWS::AccountId"
-              ArnLike:
-                aws:SourceArn: !Sub "arn:aws:s3:::${BucketName}"
-          - Sid: DenyPutFromNonLogService
-            Effect: Deny
-            NotPrincipal:
-              Service: logging.s3.amazonaws.com
-            Action: "s3:PutObject"
-            Resource: !Sub "arn:aws:s3:::${LoggingBucketName}/logs/*"
 
+  # IAM policy for the Cognito role
+  S3AccessPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "${RoleName}-S3Access-${AWS::StackName}"
+      Description: Least-privilege S3 access for the bucket and user prefix
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: ListWithinPrefix
+            Effect: Allow
+            Action: ["s3:ListBucket"]
+            Resource: !Sub "arn:aws:s3:::${DataBucket}"
+            Condition:
+              StringLike:
+                s3:prefix: [!Sub "${UserPrefix}*"]
+          - Sid: ListVersionsWithinPrefix
+            Effect: Allow
+            Action: ["s3:ListBucketVersions"]
+            Resource: !Sub "arn:aws:s3:::${DataBucket}"
+            Condition:
+              StringLike:
+                s3:prefix: [!Sub "${UserPrefix}*"]
+          - Sid: ObjectRW
+            Effect: Allow
+            Action:
+              - "s3:GetObject"
+              - "s3:GetObjectVersion"
+              - "s3:PutObject"
+              - "s3:DeleteObject"
+            Resource: !Sub "arn:aws:s3:::${DataBucket}/${UserPrefix}*"
+          - !If
+            - UseKMSCond
+            - Sid: KmsDecryptEncryptIfUsed
+              Effect: Allow
+              Action:
+                - "kms:Encrypt"
+                - "kms:Decrypt"
+                - "kms:GenerateDataKey*"
+                - "kms:DescribeKey"
+              Resource: !Ref KMSKeyArn
+              Condition:
+                StringEquals:
+                  kms:ViaService: !Sub "s3.${AWS::Region}.amazonaws.com"
+            - !Ref "AWS::NoValue"
+
+  # Cognito identity pool + role for unauth identities
   CognitoIdentityPool:
     Type: AWS::Cognito::IdentityPool
     Properties:
-      IdentityPoolName: !Ref IdentityPoolName # Display name for the identity pool
-      AllowUnauthenticatedIdentities: true # Allow guest (unauthenticated) identities to obtain AWS credentials
+      IdentityPoolName: !Ref IdentityPoolName
+      AllowUnauthenticatedIdentities: true
 
   CognitoAuthRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Ref RoleName # Friendly name for the IAM role assumed by unauth identities
+      RoleName: !Ref RoleName
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
           - Effect: Allow
             Principal:
-              Federated: cognito-identity.amazonaws.com # Trust Cognito Identity provider
-            Action: "sts:AssumeRoleWithWebIdentity" # Allow web identity tokens from Cognito to assume this role
+              Federated: cognito-identity.amazonaws.com
+            Action: "sts:AssumeRoleWithWebIdentity"
             Condition:
               StringEquals:
-                cognito-identity.amazonaws.com:aud: !Ref CognitoIdentityPool # Limit to this specific identity pool
+                cognito-identity.amazonaws.com:aud: !Ref CognitoIdentityPool
               ForAnyValue:StringLike:
-                cognito-identity.amazonaws.com:amr: unauthenticated # Only for unauthenticated identities
+                cognito-identity.amazonaws.com:amr: unauthenticated
       ManagedPolicyArns:
-        - !Ref S3AccessPolicy # Attach least-privilege S3 (and optional KMS) managed policy
+        - !Ref S3AccessPolicy
 
   CognitoRoleAttachment:
     Type: AWS::Cognito::IdentityPoolRoleAttachment
     Properties:
       IdentityPoolId: !Ref CognitoIdentityPool
       Roles:
-        unauthenticated: !GetAtt CognitoAuthRole.Arn # Map unauthenticated identities to this role
+        unauthenticated: !GetAtt CognitoAuthRole.Arn
 
 Outputs:
   BucketNameOut:
     Description: S3 bucket name
-    Value: !Ref BucketName # Export the bucket name for clients to use
+    Value: !Ref BucketName
     Export:
       Name: !Sub "${AWS::StackName}-BucketName"
   IdentityPoolIdOut:
     Description: Cognito Identity Pool ID
-    Value: !Ref CognitoIdentityPool # Export the identity pool ID for client configuration
+    Value: !Ref CognitoIdentityPool
     Export:
       Name: !Sub "${AWS::StackName}-IdentityPoolId"
   CognitoRoleArnOut:
     Description: Cognito role ARN
-    Value: !GetAtt CognitoAuthRole.Arn # Export role ARN for integrations and diagnostics
+    Value: !GetAtt CognitoAuthRole.Arn
     Export:
       Name: !Sub "${AWS::StackName}-CognitoRoleArn"
   RegionOut:
     Description: Deployment region
-    Value: !Ref "AWS::Region" # Export the Region for client bootstrap
+    Value: !Ref "AWS::Region"
     Export:
       Name: !Sub "${AWS::StackName}-Region"
   PrefixOut:
     Description: Object key prefix scoped by policy
-    Value: !Ref UserPrefix # Export the enforced prefix used in S3 access controls
+    Value: !Ref UserPrefix
     Export:
       Name: !Sub "${AWS::StackName}-Prefix"
   TemplateVersion:
     Description: Template version
-    Value: "v1"
-  LoggingBucketOut:
-    Condition: CreateLoggingBucketCond
-    Description: Created logging bucket name
-    Value: !Ref LoggingBucket
-    Export:
-      Name: !Sub "${AWS::StackName}-LoggingBucketName"
+    Value: "v4"
