@@ -97,14 +97,14 @@ A CloudFormation template to provision a private S3 bucket and a Cognito Identit
 4. **Monitor Deployment**
 
 ```bash
-aws cloudformation describe-stacks --stack-name spm-ext-s3-cognito
-aws cloudformation describe-stack-events --stack-name spm-ext-s3-cognito
+aws cloudformation describe-stacks --stack-name <stack-name>
+aws cloudformation describe-stack-events --stack-name <stack-name>
 ```
 
 5. **Get Outputs**
    ```bash
    aws cloudformation describe-stacks \
-     --stack-name spm-ext-s3-cognito \
+     --stack-name <stack-name> \
      --query 'Stacks[0].Outputs'
    ```
 

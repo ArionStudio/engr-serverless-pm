@@ -35,36 +35,6 @@ Będzie służyć jako lokalna baza danych dla naszej aplikacji.
 
 \newpage
 
-\section{Cloud Storage}
-\subsection{Do czego użyjemy}
-\begin{paragraph}
-    Cloud Storage chcemy użyć do przechowywania i synchronizacji haseł użytkownika.
-    Użytkownik powinien wybrać docelowy provider, którego chce użyć do przechowywania haseł.
-    Po wybraniu providera, powinien podać dane dostępowe do danego providera.
-
-    Np. w wypadku S3 powinien podać nazwę bucketa, oraz swoje ID i klucz dostępu.
-    Następnie powinien podać login i hasło dostępu do danych.
-    Na podstawie którego zostanie zapisany na urządzeniu lokalnym plik konfiguracyjny dostępu do danego providera.
-    Aplikacja powinien być napisany w sposób który pozwoli dostęp do więcej niż jednego providera lub pozwoli na łatwą implementację nowych providerów.
-\end{paragraph} \\\\
-Aktualnie dostępne providery na rynku to:
-\begin{itemize}
-    \item S3
-    \item Google Cloud 
-    \item Azure Blob Storage
-\end{itemize}
-\href{https://www.digitalocean.com/resources/articles/amazon-s3-alternatives}{Źródło} możemy tu znaleźć inne płatne opcje \\
-
-Opcje open source:
-\begin{itemize}
-    \item minio
-    \item Storj
-    \item SwiftStack
-\end{itemize}
-\href{https://opensourcealternative.to/alternativesto/amazon-s3}{Źródło}
-
-\newpage
-
 \section{Bezpieczeństwo danych}
 
 \subsection{Punkty dostępu do danych}
@@ -79,20 +49,65 @@ W naszym projekcie będą to:
 \subsection{Bezpieczeństwo dostępu do danych}
 
 Dla naszego interfejsu Web Extension będzie docelowym punktem dostępu do danych dla użytkownika. 
-Głównym zabezpieczeniem będzie główne hasło dostępu do danych które będzie szyfrowane i przechowywane w IndexedDB. \\
-\\
-IndexedDB będzie przechowywać dane zaszyfrowane głównym hasłem dostepu. \\
-\\
-Cloud Storage będzie przechowywać dane w chmurze także zaszyfrowane dodatkową warstwą bezpieczeństwa będą klucze dostępu do tych danych.
-Zakładamy tutaj że providery które będą używane zapewniają odpowiednie bezpieczeństwo przechowywanych danych.
-Jednak poza tym założeniem dane wysłane do chmure zawsze będą szyfrowane.
+Głównym zabezpieczeniem będzie główne hasło dostępu do danych które będzie szyfrowane i przechowywane w IndexedDB.\\
+IndexedDB będzie przechowywać dane zaszyfrowane głównym hasłem dostepu.\\
+Cloud Storage będzie przechowywać dane w chmurze także zaszyfrowane. Dodatkową warstwą bezpieczeństwa będą klucze dostępu do tych danych.
+Zakładamy tutaj, że providery które będą używane zapewniają odpowiednie bezpieczeństwo przechowywanych danych.
+Jednak poza tym założeniem dane wysłane do chmury zawsze będą szyfrowane.
 
+\section{Cloud Storage}
+\subsection{Do czego użyjemy}
+Cloud Storage chcemy użyć do przechowywania i synchronizacji haseł użytkownika.
+Użytkownik powinien wybrać docelowego providera, którego chce użyć do przechowywania haseł.
+Po wybraniu providera, powinien podać dane dostępowe do danego providera.
 
+Np. w wypadku S3 powinien podać nazwę bucketa, oraz swoje ID i klucz dostępu.
+Następnie powinien podać login i hasło dostępu do danych.
+Na podstawie którego zostanie zapisany na urządzeniu lokalnym plik konfiguracyjny dostępu do danego providera.
+Aplikacja powinna być napisana w sposób, który pozwoli na dostęp do więcej niż jednego providera lub pozwoli na łatwą implementację nowych providerów.
+
+Aktualnie dostępne providery na rynku to:
+\begin{itemize}
+    \item AWS S3
+    \item Google Cloud 
+    \item Azure Blob Storage
+\end{itemize}
+\href{https://www.digitalocean.com/resources/articles/amazon-s3-alternatives}{Źródło} możemy tu znaleźć inne płatne opcje
+
+Opcje open source:
+\begin{itemize}
+    \item minio
+    \item Storj
+    \item SwiftStack
+\end{itemize}
+\href{https://opensourcealternative.to/alternativesto/amazon-s3}{Źródło}
+
+\subsection{AWS S3}
+
+Po przejrzeniu dostępnych opcji wybrałem AWS S3 jako podstawowy provider.
+Główną przyczyną była łatwość konfiguracji dla użytkownika aplikacji.
+
+By tę konfigurację uprościć jak najbardziej, stworzyłem template CloudFormation do konfiguracji S3.
+Template znajduje się w folderze \texttt{docs/aws/s3-cognito}.
+Zawiera on konfigurację dla:
+\begin{itemize}
+    \item Bucketu S3 
+    \item Identity Pool Cognito
+    \item Role IAM z uprawnieniami do S3
+\end{itemize}
+
+Dokładny opis użycia template znajduje się w pliku \texttt{docs/aws/s3-cognito/README.md}.
+
+Użycie templatki zapewnia poprawną konfigurację bucketu S3 oraz ustawienie odpowiednich zakresów dostępu do niego.
+
+\newpage
 
 \subsection{Web Crypto API}
-Dane: \url{https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API} \\
+Dane: \url{https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API}
 
-Do projektu zamierzam uzyc Web Crypto API do szyfrowania danych.
+Do projektu zamierzam użyć Web Crypto API do szyfrowania danych.
+
+\newpage
 
 \section{Platformy docelowe}
 Platformy są wstępnie posortowane po priorytetach.
@@ -111,11 +126,10 @@ Platformy są wstępnie posortowane po priorytetach.
 \subsection{Mopass}
 link: \url{https://phodal.github.io/mopass/}
 
-
 \subsection{Amazon KMS and DynamoDB}
 Case: \url{https://towardsaws.com/diy-serverless-password-manager-using-aws-kms-and-amazon-dynamodb-6a8c3798961f}
-Problem z tym jest taki że zyskujemy 2 warstwy pomiędzy aws lambda oraz kms (w tym możemy użyć s3)
 
+Problem z tym jest taki, że zyskujemy 2 warstwy pomiędzy AWS Lambda oraz KMS (w tym możemy użyć S3).
 
 \section{Funkcjonalności}
 \begin{enumerate}
@@ -124,17 +138,17 @@ Problem z tym jest taki że zyskujemy 2 warstwy pomiędzy aws lambda oraz kms (w
     \item Przeglądanie haseł
     \item Edytowanie haseł
     \item Usuwanie haseł
-    \item Importowanie haseł \\
+    \item Importowanie haseł\\
     Przyjmuje plik csv z hasłami
-    \item Eksportowanie haseł \\
-    Exportuje hasla do pliku csv po wybraniu providera, oraz zakresu haseł i wpisania hasla dostepu
-    \item Synchronizacja haseł \\
-    Synchronizacja odbywa się automatycznie, wymaga dostępu do internetu, oraz włączonej funkcji synchronizacji w ustawieniach.
+    \item Eksportowanie haseł\\
+    Eksportuje hasła do pliku csv po wybraniu providera, oraz zakresu haseł i wpisania hasła dostępu
+    \item Synchronizacja haseł\\
+    Synchronizacja odbywa się automatycznie, wymaga dostępu do internetu oraz włączonej funkcji synchronizacji w ustawieniach.
     \item Wyszukiwanie haseł
-    \item Multifactor authentication
-    Oprocz hasla do repozytorium, bedzie mozliwosc uzycia drugiego czynnika uwierzytelniania TOTP/HOTP
-    \item Przenośność
-    Przy pomocy kodu QR z zaszyfrowanymi danymi dostępu do repozytorium, mozna przeniesc repozytorium na inne urzadzenie 
+    \item Multifactor authentication\\
+    Oprócz hasła do repozytorium, będzie możliwość użycia drugiego czynnika uwierzytelniania TOTP/HOTP
+    \item Przenośność\\
+    Przy pomocy kodu QR z zaszyfrowanymi danymi dostępu do repozytorium, można przenieść repozytorium na inne urządzenie 
 \end{enumerate}
 
 \end{document}
