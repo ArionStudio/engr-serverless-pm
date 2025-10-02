@@ -43,7 +43,7 @@ A CloudFormation template to provision a private S3 bucket and a Cognito Identit
 
 2. **Upload Template File**
    - In CloudShell, click the **"Actions"** menu → **"Upload file"**
-   - Upload `providers/aws/s3-cognito-extension.yaml`
+   - Upload `providers/aws/s3-cognito.template.yaml`
    - Or use: `curl -O <your-template-url>` if hosted online
 
 3. **Deploy Stack**
@@ -54,7 +54,7 @@ A CloudFormation template to provision a private S3 bucket and a Cognito Identit
    aws cloudformation deploy \
      --region us-east-1 \
      --stack-name <stack-name> \
-     --template-file s3-cognito-extension.yaml \
+     --template-file s3-cognito.template.yaml \
      --capabilities CAPABILITY_NAMED_IAM \
      --parameter-overrides \
        BucketName=<bucket-name> \
@@ -124,7 +124,7 @@ If you prefer using your local AWS CLI instead of CloudShell:
    aws cloudformation deploy \
      --region us-east-1 \
      --stack-name <stack-name> \
-     --template-file providers/aws/s3-cognito-extension.yaml \
+     --template-file providers/aws/s3-cognito.template.yaml \
      --capabilities CAPABILITY_NAMED_IAM \
      --parameter-overrides \
        BucketName=<bucket-name> \
@@ -139,7 +139,7 @@ If you prefer using your local AWS CLI instead of CloudShell:
        AbortIncompleteMultipartUploadDays=7
    ```
 
-   **Note**: Only difference is the template file path (`providers/aws/s3-cognito-extension.yaml` vs `s3-cognito-extension.yaml`)
+   **Note**: Only difference is the template file path (`providers/aws/s3-cognito.template.yaml` vs `s3-cognito.template.yaml`)
 
 ## Notes
 
