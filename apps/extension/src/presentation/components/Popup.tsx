@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/presentation/components/ui/button";
 import { Search, Plus, Copy, Settings } from "lucide-react";
 
 interface PasswordEntry {

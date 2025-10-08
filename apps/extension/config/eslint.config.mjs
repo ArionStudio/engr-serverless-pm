@@ -57,7 +57,10 @@ const eslintConfig = defineConfig([
 
   // Allow shadcn components to export both components and variants
   {
-    files: ["src/components/ui/**/*.{ts,tsx}"],
+    files: [
+      "src/presentation/components/ui/**/*.{ts,tsx}",
+      "src/components/ui/**/*.{ts,tsx}",
+    ],
     rules: {
       "react-refresh/only-export-components": "off",
     },
