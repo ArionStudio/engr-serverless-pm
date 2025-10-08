@@ -5,17 +5,17 @@
   "tsx": true,
   "tailwind": {
     "config": "",
-    "css": "src/presentation/index.css",
+    "css": "src/ui/styles/index.css",
     "baseColor": "neutral",
     "cssVariables": true,
     "prefix": ""
   },
   "iconLibrary": "lucide",
   "aliases": {
-    "components": "@/presentation/components",
-    "utils": "@/presentation/lib/utils",
-    "ui": "@/presentation/components/ui",
-    "lib": "@/presentation/lib",
-    "hooks": "@/presentation/hooks"
+    "components": "@/ui/components",
+    "utils": "@/ui/lib/utils",
+    "ui": "@/ui/components/primitives",
+    "lib": "@/ui/lib",
+    "hooks": "@/ui/hooks"
   }
 }
