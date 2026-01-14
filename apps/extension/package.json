@@ -4,10 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite build --watch",
-    "build": "./build.sh",
+    "dev": "vite --config ./config/vite.config.ts build --watch",
+    "build": "./scripts/build.sh",
     "test": "vitest",
-    "lint": "eslint .",
+    "lint": "eslint --config ./config/eslint.config.mjs .",
     "format": "prettier --write ."
   },
   "dependencies": {

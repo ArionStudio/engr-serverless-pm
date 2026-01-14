@@ -1,13 +1,13 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { Popup } from "./components/Popup";
-import "./index.css";
+import "@/ui/styles/index.css";
+import { Options } from "@/ui/components/options";
 
-const rootElement = document.getElementById("popup");
+const rootElement = document.getElementById("options");
 if (rootElement) {
   ReactDOM.createRoot(rootElement).render(
     <React.StrictMode>
-      <Popup />
+      <Options />
     </React.StrictMode>,
   );
 }
