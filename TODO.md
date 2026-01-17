@@ -1,6 +1,7 @@
 # TODO
 
 ## Status Legend
+
 - [ ] Not started
 - [x] Completed
 - [~] Partial/Placeholder only
@@ -32,17 +33,20 @@
 ## Core Functionality (from Research.tex section "Bezpieczeństwo danych")
 
 ### Crypto Adapter (`src/adapters/crypto/`) - Currently empty placeholder
+
 - [ ] Implement Web Crypto API integration (as specified in Research.tex)
 - [ ] Master password derivation (PBKDF2/Argon2)
 - [ ] AES-256 encryption for password data
 - [ ] Secure key storage
 
 ### Auth Adapter (`src/adapters/auth/`) - Currently empty placeholder
+
 - [ ] AWS Cognito integration
 - [ ] Session management
 - [ ] Temporary credentials handling
 
 ### Storage Adapter (`src/adapters/storage/`) - Currently empty placeholders
+
 - [ ] Implement storage factory pattern
 - [ ] Implement access strategy
 - [ ] AWS S3 provider (primary - as chosen in Research.tex)
@@ -51,6 +55,7 @@
 - [ ] Open source options (MinIO, Storj) - mentioned in Research.tex
 
 ### Core Module (`src/core/`) - Currently empty placeholder
+
 - [ ] Password entry data model
 - [ ] CRUD operations logic
 - [ ] Sync logic between local and cloud
@@ -60,6 +65,7 @@
 ## Extension Features (from Research.tex "Funkcjonalności")
 
 ### Password Management
+
 - [~] View passwords (UI exists with mock data only)
 - [~] Search passwords (UI exists, not connected to real data)
 - [ ] Add passwords
@@ -68,20 +74,24 @@
 - [ ] Password generator
 
 ### Import/Export
+
 - [ ] Import passwords from CSV
 - [ ] Export passwords to CSV (with provider selection and password protection)
 
 ### Sync & Storage
+
 - [ ] Automatic password synchronization (requires internet + enabled in settings)
 - [ ] IndexedDB local caching (as specified in Research.tex)
 - [ ] Cloud provider configuration UI in options page
 
 ### Security Features
+
 - [ ] Master password setup/unlock flow
 - [ ] Multi-factor authentication (TOTP/HOTP) - mentioned in Research.tex
 - [ ] QR code transfer for repository portability - mentioned in Research.tex
 
 ### Browser Integration
+
 - [ ] Autofill functionality (content scripts)
 - [ ] Auto-detect login forms
 
@@ -123,15 +133,29 @@
 ## Notes from Research.tex
 
 ### Security Model (3 access points)
+
 1. **Web Extension Interface** - Main user access, protected by master password
 2. **IndexedDB** - Local encrypted storage
 3. **Cloud Storage** - Remote encrypted storage with access keys
 
 ### Design Principles
+
 - Simplicity (Prostota)
 - Security (Bezpieczeństwo)
 - Portability (Przenośność)
 
 ### Similar Projects Referenced
+
 - Mopass: https://phodal.github.io/mopass/
 - AWS KMS + DynamoDB approach (rejected due to extra Lambda layer)
+
+---
+
+## Future Features
+
+### Safety Report Generator
+
+- User-initiated vault security analysis
+- Reports: weak passwords, reused passwords, old passwords, breached (HaveIBeenPwned API)
+- Generates actionable recommendations
+- Priority: After core features complete
