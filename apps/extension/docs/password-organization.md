@@ -64,7 +64,7 @@ We separate concerns using strict **Visual Semantics**. We do not allow users to
 
 ## 3. Global Library (Static Reference)
 
-The Global Library is a curated collection of predefined tags and folders bundled with the extension as a static JSON file. On first launch, this file is used to seed the user's local IndexedDB.
+The Global Library is a curated collection of predefined tags and folders bundled with the extension as a static JSON file at `src/assets/data/global-library.json`. On first launch, this file is used to seed the user's local IndexedDB.
 
 **Important Note**: The Global Library is **static and bundled**, not dynamically updated from a server. While there is no central admin interface, updates to the library are delivered via extension updates that patch the local IndexedDB. Users can create custom tags/folders that are stored locally but are not fed back to any central repository.
 
@@ -260,7 +260,7 @@ Uses a file-explorer style view with Icons.
 Added icon support. We will use a standard set (e.g., Lucide React) mapped by string names.
 
 ```typescript
-// core/passwords/folder.type.ts
+// core/organization/folder.type.ts
 
 export interface Folder {
   id: string;
@@ -277,7 +277,7 @@ export interface Folder {
 Defines tag groups with visual themes that individual tags inherit.
 
 ```typescript
-// core/passwords/tag-group.type.ts
+// core/organization/tag-group.type.ts
 
 export interface TagGroup {
   id: string; // e.g., "status", "topic"
@@ -293,7 +293,7 @@ export interface TagGroup {
 Inherits visual properties from its group but can override color if needed.
 
 ```typescript
-// core/passwords/tag.type.ts
+// core/organization/tag.type.ts
 
 export type TagColor =
   | "gray"
@@ -319,7 +319,7 @@ export interface Tag {
 Defines the master collection used for suggestions.
 
 ```typescript
-// core/passwords/global-library.type.ts
+// core/organization/global-library.type.ts
 
 export interface GlobalFolderDefinition {
   id: string;
@@ -357,7 +357,7 @@ export interface GlobalLibrary {
 References Global Library items by ID; does not define new ones.
 
 ```typescript
-// core/passwords/templates.type.ts
+// core/organization/templates.type.ts
 
 export interface OrganizationTemplate {
   id: string; // "archetype_dev_v1"

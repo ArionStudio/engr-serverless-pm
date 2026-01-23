@@ -83,11 +83,31 @@ Device B: Settings → Sync → Import Config → Select file → Enter master p
 **File contents (encrypted with master-password-derived key):**
 
 ```typescript
+// core/sync/provider-config.type.ts
+
+interface ProviderConfigBase {
+  region: string;
+}
+
+interface S3ProviderConfig extends ProviderConfigBase {
+  provider: "aws-s3";
+  bucket: string;
+  identityPoolId: string; // Cognito Identity Pool ID
+  prefix: string; // S3 key prefix (e.g., "user/")
+}
+
+// Future providers follow the same pattern:
+// interface GCSProviderConfig extends ProviderConfigBase { ... }
+// interface AzureProviderConfig extends ProviderConfigBase { ... }
+
+type ProviderConfig = S3ProviderConfig; // Union with future providers
+
 interface ExportedConfig {
   version: 1;
   provider: "aws-s3" | "gcs" | "azure-blob";
-  config: ProviderConfig; // bucket, region, credentials
+  config: ProviderConfig;
   exportedAt: number;
+  expiresAt: number; // Optional expiration timestamp
   // Note: vault data NOT included, only connection config
 }
 ```

@@ -248,7 +248,7 @@ export interface SyncSummary {
 
 ---
 
-## 9. Implementation Priority
+## 8. Implementation Priority
 
 1. **Phase 1**: Manual sync button (no auto-sync)
 2. **Phase 2**: Basic diff detection (modified only)

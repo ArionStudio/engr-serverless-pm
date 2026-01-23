@@ -51,7 +51,7 @@ All entry points share the same crypto, storage, and business logic.
 
 ### 1.5 Key Assumptions
 
-- **Crypto library extensibility**: Web Crypto API as default (PBKDF2 + AES-256-GCM). Architecture prepared for trusted external libraries (e.g., Argon2) via crypto port.
+- **Crypto library extensibility**: Web Crypto API as default (PBKDF2 + AES-256-GCM). Architecture prepared for trusted external libraries (e.g., Argon2) via crypto port. Note: WASM-based libraries (like Argon2) must use async instantiation (`WebAssembly.instantiate`) in MV3 service workers — synchronous WASM is disallowed. Libraries must also handle service worker idle termination and re-initialization on wake.
 - **Local-first**: IndexedDB is the primary storage. Works fully offline.
 - **Optional cloud sync**: Users can connect their own S3/GCS/Azure bucket for backup/sync across devices. No central server.
 - **Serverless model**: No backend to maintain. Extension talks directly to local storage and optionally to cloud.
