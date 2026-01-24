@@ -51,7 +51,7 @@ All entry points share the same crypto, storage, and business logic.
 
 ### 1.5 Key Assumptions
 
-- **Crypto library extensibility**: Web Crypto API as default (PBKDF2 + AES-256-GCM). Architecture prepared for trusted external libraries (e.g., Argon2) via crypto port.
+- **Crypto library extensibility**: Web Crypto API as default (PBKDF2 + AES-256-GCM). Architecture prepared for trusted external libraries (e.g., Argon2) via crypto port. Note: WASM-based libraries (like Argon2) must use async instantiation (`WebAssembly.instantiate`) in MV3 service workers — synchronous WASM is disallowed. Libraries must also handle service worker idle termination and re-initialization on wake.
 - **Local-first**: IndexedDB is the primary storage. Works fully offline.
 - **Optional cloud sync**: Users can connect their own S3/GCS/Azure bucket for backup/sync across devices. No central server.
 - **Serverless model**: No backend to maintain. Extension talks directly to local storage and optionally to cloud.
@@ -373,43 +373,401 @@ src/
 
 ---
 
-## 5. Comparison Matrix
+### 4.6 MVC (Model-View-Controller)
 
-Scoring each architecture against our weighted requirements.
+**What It Is**: Classic pattern separating data (Model), presentation (View), and logic (Controller). Controller handles user input and updates Model, which notifies View of changes. Originated in Smalltalk, popularized by web frameworks.
 
-| Requirement                | Weight   | Hexagonal | Colocation | FSD | Clean | Vertical |
-| -------------------------- | -------- | --------- | ---------- | --- | ----- | -------- |
-| Testability                | Critical | **5**     | 2          | 3   | 5     | 2        |
-| Sync provider swappability | Critical | **5**     | 2          | 3   | 5     | 3        |
-| Security isolation         | Critical | **5**     | 2          | 3   | 5     | 2        |
-| Entry point sharing        | High     | **5**     | 4          | 3   | 4     | 3        |
-| Contributor clarity        | High     | **4**     | 3          | 3   | 3     | 3        |
-| Small team fit             | Medium   | 4         | **5**      | 3   | 3     | 4        |
-| Low boilerplate            | Low      | 3         | **5**      | 3   | 2     | 4        |
+**Structure**:
 
-**Weighted Total** (Critical=3x, High=2x, Medium=1x, Low=0.5x):
+```
+src/
+├── models/
+│   ├── password.model.ts
+│   ├── vault.model.ts
+│   └── sync.model.ts
+├── views/
+│   ├── password-list.view.tsx
+│   ├── password-form.view.tsx
+│   └── settings.view.tsx
+├── controllers/
+│   ├── password.controller.ts
+│   ├── vault.controller.ts
+│   └── sync.controller.ts
+└── services/
+    ├── crypto.service.ts
+    └── storage.service.ts
+```
 
-| Architecture  | Score    |
-| ------------- | -------- |
-| **Hexagonal** | **60.5** |
-| Clean         | 56.5     |
-| Colocation    | 40.0     |
-| FSD           | 42.5     |
-| Vertical      | 39.0     |
+**General Pros**:
+
+- Well-understood pattern with decades of documentation
+- Clear separation between data and presentation
+- Easy to reason about data flow
+
+**General Cons**:
+
+- Controller concept doesn't map naturally to React's component model
+- Often leads to "fat controllers" with too much logic
+- Bidirectional data flow can cause update cycles
+
+**SPM Pros**:
+
+- Familiar to developers from backend or traditional web development
+- Models can encapsulate password/vault business rules
+
+**SPM Cons**:
+
+- **Controllers are awkward in React**—hooks and components handle what controllers would do
+- No natural place for crypto abstraction—ends up in services without clear interface
+- Bidirectional updates between Model and View complicate state management
+- Testing controllers requires mocking both Model and View interactions
 
 ---
 
-## 6. Real-World Validation
+### 4.7 MVVM (Model-View-ViewModel)
 
-Major password managers use the same patterns we're considering. Here's what we can learn.
+**What It Is**: Evolved from MVC for data-binding frameworks. ViewModel exposes observable state that View binds to. Model contains business logic, ViewModel transforms it for display. Popular in WPF, Angular, and Vue.
 
-| Project                                                      | Pattern Used                              | What We Learn                                                                              |
-| ------------------------------------------------------------ | ----------------------------------------- | ------------------------------------------------------------------------------------------ |
-| **[Bitwarden](https://github.com/bitwarden/clients)**        | Crypto isolated in `libs/key-management/` | Security-critical code separate from UI = easier audits, single place to review            |
-| **[Notesnook](https://github.com/streetwriters/notesnook)**  | `packages/crypto/` wraps libsodium        | Abstraction layer enables testing without real crypto operations                           |
-| **[Buttercup](https://github.com/buttercup/buttercup-core)** | Datasource classes with common interface  | Easy to add new sync/storage backends (File, WebDAV, Dropbox) without changing vault logic |
+**Structure**:
 
-**Conclusion**: All major password managers use ports/adapters for crypto and storage—regardless of what they call it. This validates our approach.
+```
+src/
+├── models/
+│   ├── password.model.ts
+│   └── vault.model.ts
+├── views/
+│   ├── password-list.view.tsx
+│   └── settings.view.tsx
+├── viewmodels/
+│   ├── password-list.viewmodel.ts    # React hook
+│   ├── password-form.viewmodel.ts
+│   └── settings.viewmodel.ts
+└── services/
+    ├── crypto.service.ts
+    └── storage.service.ts
+```
+
+**General Pros**:
+
+- ViewModel maps naturally to React hooks
+- Clear data transformation layer
+- Good testability for ViewModels (pure logic)
+
+**General Cons**:
+
+- ViewModel can become a dumping ground for logic
+- Services layer still needs its own organization
+- Doesn't address infrastructure abstraction
+
+**SPM Pros**:
+
+- React hooks ARE ViewModels—`usePasswords()` is a ViewModel
+- Easy to test hooks in isolation
+- Familiar pattern for Angular/Vue developers joining project
+
+**SPM Cons**:
+
+- **Doesn't solve crypto/storage abstraction**—services are direct implementations
+- No interface layer for mocking crypto in tests
+- Provider switching requires changes in services AND ViewModels
+- Security code scattered across services without clear boundaries
+
+---
+
+### 4.8 Onion Architecture
+
+**What It Is**: Concentric layers with domain at the center. Dependencies point inward. Very similar to Hexagonal but emphasizes the "onion" visualization: Domain Core → Domain Services → Application Services → Infrastructure. Jeffrey Palermo's refinement of ports/adapters.
+
+**Structure**:
+
+```
+src/
+├── domain/                      # Inner core - no dependencies
+│   ├── entities/
+│   │   ├── password.entity.ts
+│   │   └── vault.entity.ts
+│   └── services/
+│       └── password-validation.service.ts
+├── application/                 # Application services
+│   ├── password.service.ts
+│   └── sync.service.ts
+├── infrastructure/              # Outer layer - external dependencies
+│   ├── crypto/
+│   │   └── web-crypto.ts
+│   ├── storage/
+│   │   └── indexeddb.ts
+│   └── sync/
+│       ├── s3.ts
+│       └── gcs.ts
+└── ui/                          # Presentation
+    ├── components/
+    └── hooks/
+```
+
+**General Pros**:
+
+- Clear dependency direction (always inward)
+- Domain isolation similar to Hexagonal
+- Well-documented pattern
+
+**General Cons**:
+
+- Very similar to Hexagonal—choosing between them is often arbitrary
+- "Domain Services" vs "Application Services" distinction can be confusing
+- More layers than strictly necessary
+
+**SPM Pros**:
+
+- Same benefits as Hexagonal for crypto/storage isolation
+- Domain entities can enforce password validation rules
+- Infrastructure layer is clearly separated
+
+**SPM Cons**:
+
+- **Distinction from Hexagonal is minimal**—adds complexity without clear benefit
+- Domain Services layer often empty in small projects
+- Four named layers vs Hexagonal's simpler core/adapters mental model
+
+---
+
+### 4.9 Modular Monolith
+
+**What It Is**: Application divided into loosely coupled modules, each with its own internal structure. Modules communicate through defined interfaces. Can use any internal architecture per module. Good middle ground between monolith and microservices.
+
+**Structure**:
+
+```
+src/
+├── modules/
+│   ├── passwords/
+│   │   ├── api/                 # Public interface
+│   │   │   └── index.ts
+│   │   ├── internal/            # Private implementation
+│   │   │   ├── password.repository.ts
+│   │   │   └── password.service.ts
+│   │   └── ui/
+│   │       └── password-list.tsx
+│   ├── sync/
+│   │   ├── api/
+│   │   ├── internal/
+│   │   └── providers/
+│   │       ├── s3.provider.ts
+│   │       └── gcs.provider.ts
+│   └── crypto/
+│       ├── api/
+│       └── internal/
+└── shared/
+    └── types/
+```
+
+**General Pros**:
+
+- Clear module boundaries with explicit public APIs
+- Each module can evolve independently
+- Good preparation for future extraction to separate packages
+
+**General Cons**:
+
+- Module boundaries require discipline to maintain
+- Cross-module communication patterns need definition
+- Can lead to duplication if shared code isn't managed well
+
+**SPM Pros**:
+
+- Crypto module has clear public API—easy to audit
+- Sync providers naturally grouped in sync module
+- Modules map to features (passwords, sync, settings)
+
+**SPM Cons**:
+
+- **Doesn't enforce ports/adapters within modules**—crypto module internals could still be hard to test
+- Module communication overhead for small project
+- Less strict than Hexagonal about dependency direction
+
+---
+
+### 4.10 Layered Architecture (N-Tier)
+
+**What It Is**: Traditional horizontal layers where each layer only calls the layer directly below. Typically: Presentation → Business Logic → Data Access → Database. Simple and widely understood.
+
+**Structure**:
+
+```
+src/
+├── presentation/                # UI Layer
+│   ├── components/
+│   └── pages/
+├── business/                    # Business Logic Layer
+│   ├── password.service.ts
+│   ├── vault.service.ts
+│   └── sync.service.ts
+├── data/                        # Data Access Layer
+│   ├── password.repository.ts
+│   ├── indexeddb.client.ts
+│   └── s3.client.ts
+└── shared/
+    └── types/
+```
+
+**General Pros**:
+
+- Simplest layered architecture to understand
+- Clear top-to-bottom flow
+- Easy onboarding for junior developers
+
+**General Cons**:
+
+- Dependencies flow downward—lower layers can't be easily swapped
+- Business layer depends on Data layer interfaces
+- Testing requires mocking entire lower layers
+
+**SPM Pros**:
+
+- Easy to understand and implement
+- Quick to set up for small projects
+
+**SPM Cons**:
+
+- **Wrong dependency direction**—business logic depends on data access, not abstractions
+- Swapping IndexedDB for another storage requires changes in Data AND Business layers
+- Crypto implementation tightly coupled to business logic
+- **Cannot mock crypto for testing** without significant refactoring
+- Security code in business layer mixed with other logic
+
+---
+
+### 4.11 Component-Based Architecture
+
+**What It Is**: React's natural organization pattern. Components are self-contained units with their own state, logic, and rendering. Shared logic extracted to hooks. No enforced layers—components import what they need.
+
+**Structure**:
+
+```
+src/
+├── components/
+│   ├── password-list/
+│   │   ├── password-list.tsx
+│   │   ├── password-list.hooks.ts
+│   │   └── password-list.styles.ts
+│   ├── password-form/
+│   │   ├── password-form.tsx
+│   │   └── password-form.hooks.ts
+│   └── sync-settings/
+│       ├── sync-settings.tsx
+│       └── sync-settings.hooks.ts
+├── hooks/
+│   ├── use-crypto.ts
+│   ├── use-storage.ts
+│   └── use-sync.ts
+├── services/
+│   ├── crypto.ts
+│   └── storage.ts
+└── types/
+```
+
+**General Pros**:
+
+- Natural fit for React development
+- Components are highly reusable
+- Co-location of related code
+- Fast iteration and prototyping
+
+**General Cons**:
+
+- No enforced boundaries—any component can import anything
+- Business logic scattered across component hooks
+- Services become grab-bags of utility functions
+
+**SPM Pros**:
+
+- Fastest to implement initially
+- Components can be developed in isolation
+- Hooks provide some abstraction
+
+**SPM Cons**:
+
+- **Crypto logic scattered across hooks**—`use-crypto.ts` called from multiple components
+- No interface for mocking—tests must use real crypto or mock entire hooks
+- Adding new sync provider requires updating multiple hooks
+- **Security audit requires reviewing entire codebase**—no single crypto location
+- Provider switching requires changes across many files
+
+---
+
+## 5. Comparison Matrix
+
+Scoring each architecture against our weighted requirements (1-5 scale).
+
+| Requirement                | Weight   | Hexagonal | Colocation | FSD | Clean | Vertical | MVC   | MVVM | Onion | Modular | Layered | Component |
+| -------------------------- | -------- | --------- | ---------- | --- | ----- | -------- | ----- | ---- | ----- | ------- | ------- | --------- |
+| Testability                | Critical | **5**     | 2          | 3   | 5     | 2        | 3     | 3    | 5     | 4       | 2       | 2         |
+| Sync provider swappability | Critical | **5**     | 2          | 3   | 5     | 3        | 2     | 2    | 5     | 4       | 2       | 2         |
+| Security isolation         | Critical | **5**     | 2          | 3   | 5     | 2        | 2     | 2    | 5     | 4       | 2       | 2         |
+| Entry point sharing        | High     | **5**     | 4          | 3   | 4     | 3        | 4     | 4    | 5     | 4       | 4       | 3         |
+| Contributor clarity        | High     | 4         | 3          | 3   | 3     | 3        | **5** | 4    | 3     | 4       | **5**   | 4         |
+| Small team fit             | Medium   | 4         | **5**      | 3   | 3     | 4        | 4     | 4    | 3     | 3       | **5**   | **5**     |
+| Low boilerplate            | Low      | 3         | **5**      | 3   | 2     | 4        | 3     | 3    | 2     | 3       | 4       | **5**     |
+
+**Weighted Total** (Critical=3x, High=2x, Medium=1x, Low=0.5x):
+
+| Architecture     | Score    |
+| ---------------- | -------- |
+| **Hexagonal**    | **60.5** |
+| Onion            | 58.0     |
+| Clean            | 56.5     |
+| Modular Monolith | 51.5     |
+| MVVM             | 42.5     |
+| FSD              | 42.5     |
+| MVC              | 42.0     |
+| Colocation       | 40.0     |
+| Layered          | 40.0     |
+| Vertical         | 39.0     |
+| Component-Based  | 38.5     |
+
+---
+
+## 6. Real-World Comparison
+
+| Project                                                   | Pattern             | Core Location                  | Storage Abstraction                                                      | Ports/Interfaces |
+| --------------------------------------------------------- | ------------------- | ------------------------------ | ------------------------------------------------------------------------ | ---------------- |
+| [Bitwarden](https://github.com/bitwarden/clients)         | Hexagonal + Modular | `libs/common/` (TS) + Rust SDK | `common/angular` split per module                                        | Yes              |
+| [Proton Pass](https://github.com/protonpass)              | Hexagonal           | `proton-pass-common/` (Rust)   | UniFFI + WASM bindings                                                   | Yes              |
+| [1Password](https://agilebits.github.io/security-design/) | Hexagonal           | Rust core                      | [Typeshare](https://github.com/1Password/typeshare) generated interfaces | Yes              |
+| [Buttercup](https://github.com/buttercup/buttercup-core)  | Hexagonal           | `buttercup-core` (TS)          | `Datasource` interface                                                   | Yes              |
+| [Padloc](https://github.com/padloc/padloc)                | Modular Monolith    | `packages/core/`               | Direct package imports                                                   | No               |
+
+### Bitwarden Structure
+
+```
+clients/
+├── apps/browser, desktop, web, cli/
+└── libs/
+    ├── common/           # Framework-agnostic core
+    ├── angular/          # Angular adapters
+    └── auth/common, auth/angular/
+```
+
+Docs: [Architecture](https://contributing.bitwarden.com/architecture/clients/), [DI](https://contributing.bitwarden.com/architecture/clients/dependency-injection/)
+
+### Proton Pass Structure
+
+```
+protonpass/
+├── proton-pass-common/   # Rust core
+├── proton-pass-mobile/   # UniFFI bindings
+├── proton-pass-web/      # WASM bindings
+└── android-pass, ios-pass/
+```
+
+### Padloc Structure
+
+```
+padloc/packages/
+├── core/      # Domain + crypto
+├── app/       # Web UI
+├── server/    # Backend
+└── electron, cordova/
+```
 
 ---
 
@@ -423,7 +781,7 @@ We choose Pure Hexagonal (Ports & Adapters) for the SPM extension.
 
 1. **Scores highest on critical requirements**: Testability, provider swappability, and security isolation are non-negotiable for a password manager. Hexagonal scores 5/5 on all three.
 
-2. **Real-world validation**: Bitwarden, Notesnook, and Buttercup all use this pattern for crypto and storage. We're not inventing something new.
+2. **Real-world validation**: Bitwarden, Proton Pass, 1Password, Buttercup, and Padloc all isolate crypto in a core layer and use interface abstractions for storage/sync. We're following industry-proven patterns.
 
 3. **Contributor-friendly for the right tasks**: Adding a sync provider is 2-3 files with a clear pattern. The interface contract serves as documentation.
 
@@ -441,177 +799,7 @@ We choose Pure Hexagonal (Ports & Adapters) for the SPM extension.
 
 ---
 
-## 8. Implementation Rules
-
-### When to Create a Port
-
-Create a port (interface in `core/`) when:
-
-- [ ] Feature involves encryption/decryption
-- [ ] Feature involves authentication/authorization
-- [ ] Feature has multiple implementations (sync providers)
-- [ ] Feature interacts with external systems (browser APIs, IndexedDB, cloud services)
-- [ ] Feature needs mocking for unit tests
-
-### When to Create an Adapter
-
-Create an adapter (implementation in `adapters/`) when:
-
-- [ ] Implementing a port for a specific technology (Web Crypto, IndexedDB, S3, Cognito)
-- [ ] Creating a mock for testing
-- [ ] Supporting a new sync provider
-
-### File Naming Conventions
-
-```
-core/
-├── [domain]/
-│   ├── [name].port.ts         # Interface definition
-│   ├── [name].type.ts         # Types and value objects
-│   └── index.ts               # Barrel export
-
-adapters/
-├── [domain]/
-│   ├── [technology]-[name].adapter.ts  # Implementation
-│   └── index.ts               # Barrel export
-```
-
-Examples:
-
-- `core/crypto/crypto.port.ts`
-- `adapters/crypto/web-crypto.adapter.ts`
-- `adapters/storage/indexeddb-storage.adapter.ts`
-- `adapters/sync/s3-sync.adapter.ts`
-
-### Example: Adding a New Sync Provider
-
-**Scenario**: Contributor wants to add Backblaze B2 support for cloud sync.
-
-**Step 1**: Read the port interface
-
-```typescript
-// core/sync/sync.port.ts
-export interface SyncPort {
-  upload(key: string, data: Uint8Array): Promise<void>;
-  download(key: string): Promise<Uint8Array>;
-  delete(key: string): Promise<void>;
-  list(): Promise<string[]>;
-}
-```
-
-**Step 2**: Create the adapter
-
-```typescript
-// adapters/sync/b2-sync.adapter.ts
-import type { SyncPort } from "@/core/sync";
-
-export function createB2SyncAdapter(config: B2Config): SyncPort {
-  return {
-    async upload(key, data) {
-      // B2-specific implementation
-    },
-    async download(key) {
-      // B2-specific implementation
-    },
-    async delete(key) {
-      // B2-specific implementation
-    },
-    async list() {
-      // B2-specific implementation
-    },
-  };
-}
-```
-
-**Step 3**: Export from barrel
-
-```typescript
-// adapters/sync/index.ts
-export { createB2SyncAdapter } from "./b2-sync.adapter";
-```
-
-**Step 4**: Add to provider selection UI (if applicable)
-
-**Files changed**: 2-3
-**Files that DON'T change**: Core domain logic, other adapters, UI components using `useSync()`
-
-### Example: Adding a New Crypto Library (Argon2)
-
-**Scenario**: Adding Argon2 for key derivation alongside existing PBKDF2.
-
-**Step 1**: Extend the port interface
-
-```typescript
-// core/crypto/crypto.port.ts
-export interface CryptoPort {
-  deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>;
-  // ... existing methods
-}
-```
-
-**Step 2**: Create new adapter
-
-```typescript
-// adapters/crypto/argon2-crypto.adapter.ts
-import type { CryptoPort } from "@/core/crypto";
-import { hash } from "argon2-browser";
-
-export function createArgon2CryptoAdapter(): CryptoPort {
-  return {
-    async deriveKey(password, salt) {
-      const result = await hash({ pass: password, salt, type: 2 });
-      return crypto.subtle.importKey("raw", result.hash, "AES-GCM", false, [
-        "encrypt",
-        "decrypt",
-      ]);
-    },
-    // ... other methods delegate to Web Crypto
-  };
-}
-```
-
-**Step 3**: Wire in context
-
-```typescript
-// ui/contexts/crypto.context.tsx
-const adapter = useArgon2
-  ? createArgon2CryptoAdapter()
-  : createWebCryptoAdapter();
-```
-
-**Files changed**: 2 (new adapter + context wiring)
-**Core unchanged**: Port interface extended, not modified
-
----
-
-## 9. Encryption Strategy
-
-### Two-Layer Model
-
-| Layer       | What                                | When Decrypted                       |
-| ----------- | ----------------------------------- | ------------------------------------ |
-| **Layer 1** | Individual passwords                | On explicit user action (copy, view) |
-| **Layer 2** | Vault metadata (titles, tags, URLs) | Once on vault unlock                 |
-
-**Why**: Metadata available for search without decrypting all passwords.
-
-**Architecture**: `crypto.port.ts` supports both password-level and vault-level operations.
-
-> Detailed encryption design to be documented when implementing crypto module.
-
----
-
-## 10. Sync Strategy
-
-User-controlled conflict resolution—no auto-merge for security-critical data.
-
-**Architecture**: `sync.port.ts` + `sync-diff.type.ts` for provider interface and change detection.
-
-See [sync-strategy.md](./sync-strategy.md) for detailed conflict resolution UI design.
-
----
-
-## References
+## 8. References
 
 ### Security Guidelines
 

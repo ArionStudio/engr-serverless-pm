@@ -1,336 +1,245 @@
 # Password Organization Design
 
 > **Status**: Design document
-> **Date**: 2026-01-17
+> **Date**: 2026-01-18
 > **Related**: [architecture-comparison.md](./architecture-comparison.md)
 
 ---
 
 ## 1. Research Summary
 
-### How Major Password Managers Handle Organization
+### The "Over-Organization" Problem
 
-| Manager       | Folders          | Tags                           | Nesting                  | Notes                                    |
-| ------------- | ---------------- | ------------------------------ | ------------------------ | ---------------------------------------- |
-| **Bitwarden** | Yes              | No (Collections for orgs only) | Unlimited via "/" naming | Users complain about lack of real tags   |
-| **1Password** | Yes (Vaults)     | Yes                            | Single level vaults      | Tags within vaults, powerful but complex |
-| **LastPass**  | Yes              | No                             | Unlimited                | Similar to Bitwarden approach            |
-| **KeePass**   | Yes (Groups)     | Yes                            | Unlimited groups         | Most flexible, can be overwhelming       |
-| **Dashlane**  | Yes (Categories) | No                             | Predefined categories    | Limited customization                    |
+Users often struggle with two competing hierarchies. When a user has a password for "Work Gmail", they hesitate:
 
-### Community Feedback Analysis
+- _Does it go in the "Work" Folder?_
+- _Does it go in the "Email" Tag?_
+- _Does it go in a "Work/Email" Subfolder?_
 
-**What users consistently request:**
-
-- Tags for cross-cutting organization (e.g., "work", "personal", "shared")
-- Folders for hierarchical grouping (e.g., "Finance/Banking", "Finance/Crypto")
-- Search across both organizational methods
-
-**Common complaints to avoid:**
-
-1. **Bitwarden "/" naming convention** - Users dislike creating folder hierarchy through naming (e.g., "Work/Email/Gmail")
-2. **Unlimited nesting** - Leads to over-organization, hard to navigate on mobile
-3. **Mutually exclusive organization** - Can't have same password in multiple "places"
+**Goal**: Remove this cognitive load by enforcing specific roles for Folders and Tags.
 
 ---
 
 ## 2. SPM Organization Model
 
-### Design Decisions
+### Core Philosophy: Place vs. Context
 
-| Decision         | Choice                       | Rationale                                      |
-| ---------------- | ---------------------------- | ---------------------------------------------- |
-| Folders          | Yes, max 2 levels            | Prevents over-nesting, covers 95% of use cases |
-| Tags             | Yes, unlimited               | Cross-cutting concerns, multiple tags per item |
-| Default folder   | "Uncategorized"              | Every password has a home                      |
-| Folder hierarchy | Explicit parent reference    | No "/" naming hacks                            |
-| Tag colors       | Optional, predefined palette | Visual distinction without UI complexity       |
+We separate concerns using strict **Visual Semantics**. We do not allow users to create "Folder structures inside Tags."
+
+| Feature     | Role         | Question Answered          | Visual Identity        | Structure           |
+| :---------- | :----------- | :------------------------- | :--------------------- | :------------------ |
+| **Folders** | **Location** | "Where is this stored?"    | **Icons** (The Object) | Hierarchical (Tree) |
+| **Tags**    | **Context**  | "What are its attributes?" | **Colors** (The Label) | Grouped Flat List   |
 
 ### Organization Diagram
 
-```
+```text
                     ┌─────────────────────────────────────────┐
                     │              User's Vault               │
                     └─────────────────────────────────────────┘
                                         │
-              ┌─────────────────────────┼─────────────────────────┐
-              │                         │                         │
-       ┌──────┴──────┐          ┌───────┴───────┐          ┌──────┴──────┐
-       │   Work      │          │   Personal    │          │ Uncategorized│
-       │  (Folder)   │          │   (Folder)    │          │  (Default)   │
-       └──────┬──────┘          └───────┬───────┘          └─────────────┘
-              │                         │
-    ┌─────────┼─────────┐               │
-    │         │         │               │
-┌───┴───┐ ┌───┴───┐ ┌───┴───┐   ┌───────┴───────┐
-│ Email │ │  Dev  │ │ Admin │   │    Banking    │
-│(Sub)  │ │(Sub)  │ │(Sub)  │   │   (Subfolder) │
-└───────┘ └───────┘ └───────┘   └───────────────┘
-
-Tags (cross-cutting):
-┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐
-│  MFA    │ │ Shared  │ │ Expiring│ │  API    │
-│(orange) │ │ (blue)  │ │  (red)  │ │(purple) │
-└─────────┘ └─────────┘ └─────────┘ └─────────┘
-
-A password can:
-- Be in exactly ONE folder (or subfolder)
-- Have MULTIPLE tags
-- Be searched by folder path, tags, or content
+           ┌────────────────────────────┼──────────────────────────────┐
+           ▼                            ▼                              ▼
+    [Icon] Folders               [Color] Tags                  Global Library
+    (Mutually Exclusive)         (Multi-Select)                (Static-Seeded)
+           │                            │                              │
+    ┌──────┴──────┐              ┌──────┴──────┐               ┌───────┴───────┐
+    │ 💼 Work     │              │ STATUS Grp  │               │ If user types │
+    │ ├─ 📧 Email │              │  🔴 Expiring│               │ "API"...      │
+    │ └─ 🔨 Dev   │              │  🟠 MFA     │               │               │
+    │             │              │             │               │ Suggest from  │
+    │ 🏠 Personal │              │ TOPIC Grp   │               │ Bundled JSON  │
+    │ └─ 🛒 Shop  │              │  🔵 Finance │               │ Library       │
+    └─────────────┘              │  🟣 Social  │               └───────────────┘
+                                 └─────────────┘
 ```
 
-### Predefined Lists
+**Constraints**
 
-Users aren't auto-assigned tags/folders, but we provide **suggested defaults** to reduce friction.
-
-**Predefined Tags** (user can create custom):
-| Tag | Color | Use Case |
-|-----|-------|----------|
-| Work | blue | Work-related accounts |
-| Personal | green | Personal accounts |
-| Finance | yellow | Banking, crypto, payments |
-| Social | purple | Social media |
-| Shopping | orange | E-commerce |
-| MFA | red | Accounts with 2FA enabled |
-| Shared | gray | Credentials shared with others |
-
-**Predefined Folders**:
-| Folder | Subfolders (suggested) |
-|--------|------------------------|
-| Work | Email, Dev, Admin |
-| Personal | Social, Shopping |
-| Finance | Banking, Crypto, Investments |
+- **Folders**: Unlimited nesting depth (UI shows gentle warning beyond 2 levels)
+- **Tags**: Flat list structure (groups are for UI display only)
+- **Limits**: Soft limit of 50 active tags to prevent "tag fatigue"
 
 ---
 
-## 3. Password Creation Flow
+## 3. Global Library (Static Reference)
 
-### Entry Points
+The Global Library is a curated collection of predefined tags and folders bundled with the extension as a static JSON file at `src/assets/data/global-library.json`. On first launch, this file is used to seed the user's local IndexedDB.
 
-Password creation can happen through multiple paths:
+**Important Note**: The Global Library is **static and bundled**, not dynamically updated from a server. While there is no central admin interface, updates to the library are delivered via extension updates that patch the local IndexedDB. Users can create custom tags/folders that are stored locally but are not fed back to any central repository.
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                   PASSWORD CREATION ENTRY POINTS                │
-└─────────────────────────────────────────────────────────────────┘
+### Global Folder Library (Example Excerpts)
 
-1. Manual (from UI)
-   └─► Empty form → User fills all fields → Add tags/folder → Save
+_Note: The full Global Library will contain 100+ predefined folders. This is a partial example._
 
-2. Browser Capture (on form submit)
-   └─► Auto-detect: URL, email/username, password
-   └─► Extract: page keywords, site title (for suggestions)
-   └─► Pre-fill form → User reviews/edits → Add tags/folder → Save
+| ID   | Name           | Icon             | Parent Suggestion | Description             |
+| ---- | -------------- | ---------------- | ----------------- | ----------------------- |
+| f001 | Work           | `briefcase`      | `null` (Root)     | Professional accounts   |
+| f002 | Personal       | `home`           | `null` (Root)     | Personal life accounts  |
+| f003 | Finance        | `banknote`       | `null` (Root)     | Banking and financial   |
+| f004 | Projects       | `folder-git-2`   | `any`             | Project-based grouping  |
+| f005 | Infrastructure | `server`         | `any`             | Cloud/server resources  |
+| f006 | Clients        | `users`          | `Work`            | Client-specific data    |
+| f007 | Keys           | `key`            | `any`             | API keys and secrets    |
+| f008 | Household      | `house`          | `null` (Root)     | Family/household items  |
+| f009 | School         | `graduation-cap` | `Household`       | Education-related       |
+| f010 | Medical        | `heart-pulse`    | `Household`       | Health and medical      |
+| f011 | Entertainment  | `popcorn`        | `Personal`        | Media and entertainment |
+| f012 | Email          | `mail`           | `any`             | Email accounts          |
+| f013 | Dev            | `code-2`         | `Work`            | Development tools       |
 
-3. Import (CSV/other manager)
-   └─► Batch processing → Mapping step → Review → Save all
-```
+**Parent Suggestion Values:**
 
-### Creation Form Flow
+- `null` = Recommended as root-level folder
+- `"any"` = Can be used at any level (root or subfolder)
+- `"SpecificFolderName"` = Recommended as subfolder of that specific folder
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Add Password                                              [X]  │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  Title        [GitHub - john.doe@company.com_____________]      │
-│               (auto-generated from URL + username)              │
-│                                                                 │
-│  URL          [https://github.com_________________________]     │
-│                                                                 │
-│  Username     [john.doe@company.com______________________]      │
-│                                                                 │
-│  Password     [••••••••••••••••••] [Generate] [Show]            │
-│                                                                 │
-│  ─────────────────────────────────────────────────────────────  │
-│                                                                 │
-│  Folder       [See Section 4 - Folder Input UX]                 │
-│                                                                 │
-│  Tags         [See Section 4 - Tag Input UX]                    │
-│                                                                 │
-│  Notes        [Optional notes...________________________]       │
-│               [________________________________________]        │
-│                                                                 │
-├─────────────────────────────────────────────────────────────────┤
-│                              [Cancel]  [Save Password]          │
-└─────────────────────────────────────────────────────────────────┘
-```
+### Global Tag Group Library (Example)
+
+Tag groups now define visual themes that individual tags inherit. Each group has a base icon and color that tags will use by default.
+
+| ID          | Name        | Description                  | Icon           | BaseColor |
+| ----------- | ----------- | ---------------------------- | -------------- | --------- |
+| status      | Status      | System status indicators     | bell           | orange    |
+| topic       | Topic       | Subject matter categories    | tag            | blue      |
+| environment | Environment | Deployment environments      | layers         | purple    |
+| access      | Access      | Access control levels        | shield-keyhole | green     |
+| other       | Other       | Uncategorized or custom tags | hash           | gray      |
+
+### Global Tag Library (Example Excerpts)
+
+_Note: The full Global Library will contain 100+ predefined tags. This is a partial example._
+
+| ID   | Name         | Color\*  | Group ID    | Description                    |
+| ---- | ------------ | -------- | ----------- | ------------------------------ |
+| t001 | Expiring     | `red`    | status      | Passwords nearing expiration   |
+| t002 | MFA          | `orange` | status      | Two-factor enabled accounts    |
+| t003 | Shared       | `gray`   | status      | Credentials shared with others |
+| t004 | Dev          | `blue`   | topic       | Development-related            |
+| t005 | Database     | `purple` | topic       | Database credentials           |
+| t006 | Finance      | `yellow` | topic       | Financial services             |
+| t007 | Social       | `pink`   | topic       | Social media platforms         |
+| t008 | Staging      | `amber`  | environment | Staging/test environments      |
+| t009 | Prod         | `red`    | environment | Production systems             |
+| t010 | Kids         | `green`  | access      | Child-accessible accounts      |
+| t011 | Parents      | `blue`   | access      | Parent-only accounts           |
+| t012 | Subscription | `yellow` | topic       | Recurring payments             |
+| t013 | Documents    | `gray`   | topic       | Document storage               |
+
+\*Color column shows the final tag color, which defaults to a shade of the group's BaseColor but can be overridden for specific tags.
 
 ---
 
-## 4. Tag & Folder Input UX
+## 4. Onboarding: Archetypes (Templates)
 
-> **Design Research Needed**: Research tag/folder input patterns from professional design systems.
-> Look into: Theo Browne's design reviews, Linear's tag system, Notion's property selectors,
-> GitHub's label picker. Document findings before final implementation.
+Archetypes are **starting templates** that pre-fill a new vault with a sensible structure. They are **subsets** of the Global Library, not the source of truth. Users pick one during initial setup, but all suggestions later come from the Global Library.
+
+**Important**: Templates are **flexible definitions**, not rigid references. When a user selects a template, they can modify folder names, parent relationships, and tag properties before creation. This allows for customization while maintaining the template's structure.
+
+**Template Complexity Levels:**
+
+- **Basic**: 3-5 folders, 3-5 tags — Minimal structure, easy to start
+- **Intermediate**: 5-10 folders, 5-10 tags — Balanced structure for power users
+- **Advanced**: 10+ folders, 10+ tags — Comprehensive organization system
+
+### Available Archetypes
+
+#### 1. The "Standard" (Balanced) — **Complexity: Basic**
+
+Best for general users managing personal life and a standard day job.
+
+**Default Folders:** `Work`, `Personal`, `Finance`
+
+**Default Tags:** `Expiring`, `MFA`, `Shared`
+
+#### 2. The "Developer" (Tech-Focused) — **Complexity: Intermediate**
+
+Best for freelancers, engineers, and power users.
+
+**Default Folders:** `Projects`, `Infrastructure`, `Clients`, `Keys`
+
+**Default Tags:** `Dev`, `Database`, `Staging`, `Prod`
+
+#### 3. The "Family" (Household) — **Complexity: Basic**
+
+Best for shared vaults or managing household utilities.
+
+**Default Folders:** `Household`, `School`, `Medical`, `Entertainment`
+
+**Default Tags:** `Kids`, `Parents`, `Subscription`, `Documents`
+
+**Note:** The templates above provide default values that can be customized during onboarding. They can be significantly expanded with more specialized folders and tags (e.g., "Healthcare", "Legal", "Travel", "Freelance") to create intermediate and advanced templates for specific use cases.
+
+---
+
+## 5. Tag & Folder Input UX
+
+### The "Global Library" Suggestion Feature
+
+The input components suggest from the **Global Library**, not from archetypes. This ensures consistency even if users didn't select a particular archetype.
+
+**Scenario**: A user on the "Standard" plan is adding an API Key.
+
+- User types "API" into the tag field.
+- Local Check: Does "API" exist in their vault? → No.
+- Library Check: Does "API" exist in the **Global Library** (local IndexedDB)? → Yes (defined as `Dev` tag in the `topic` group).
+- UI Suggestion: "Create Dev tag?" (Auto-prefills: Color=blue [inherited from topic group's BaseColor], Icon=tag [from topic group], Group=Topic)
+
+**Benefit**: Users maintain a consistent, high-quality taxonomy (correct colors/icons) without manually configuring every new tag. The visual theme (color + icon) comes from the group, making it immediately recognizable.
 
 ### Tag Input Component
 
-**Behavior:**
-
-1. Input field with placeholder "Add tags..."
-2. As user types, filtered list of existing tags appears below
-3. User can select from list OR create new tag (if no match)
-4. Selected tags appear as chips ABOVE the input
-5. Chips have X button to remove
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Tags                                                           │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │ ┌──────────┐ ┌──────────┐ ┌──────────┐                  │    │
-│  │ │ Work  ✕  │ │  MFA  ✕  │ │  Dev  ✕  │   <- Selected   │    │
-│  │ └──────────┘ └──────────┘ └──────────┘                  │    │
-│  └─────────────────────────────────────────────────────────┘    │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │ fin...                                        <- Input  │    │
-│  └─────────────────────────────────────────────────────────┘    │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │ ● Finance (yellow)                         <- Matches   │    │
-│  │ ─────────────────────────────────────────────────────── │    │
-│  │ + Create "fin" tag                         <- New       │    │
-│  └─────────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Key UX Decisions:**
-
-- Show predefined tags first when input is empty (encourage use)
-- Fuzzy search matching (not just prefix)
-- Keyboard navigation (arrow keys, enter to select)
-- Tab to accept top suggestion
+- **Grouped Display**: Dropdown is divided by headers (Status, Topic, Environment) from Global Library definitions.
+- **Visuals**: Tags appear as pills showing the group icon and tag name with the specific color: `[bell icon] Expiring` (in red).
 
 ### Folder Input Component
 
-**Behavior:**
-
-1. Similar to tag input but for folder selection
-2. Shows folder hierarchy visually
-3. When entering text in a folder, creates **subfolder** (not multiple folders)
-4. Max 2 levels enforced in UI (disable nesting beyond)
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Folder                                                         │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │ Work / Dev                              <- Current path │    │
-│  └─────────────────────────────────────────────────────────┘    │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │ Search or create folder...                              │    │
-│  └─────────────────────────────────────────────────────────┘    │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │ 📁 Work                                                 │    │
-│  │    ├─ 📁 Email                                          │    │
-│  │    ├─ 📁 Dev                            ← (selected)    │    │
-│  │    └─ 📁 Admin                                          │    │
-│  │ 📁 Personal                                             │    │
-│  │    ├─ 📁 Social                                         │    │
-│  │    └─ 📁 Shopping                                       │    │
-│  │ 📁 Finance                                              │    │
-│  │ ─────────────────────────────────────────────────────── │    │
-│  │ + Create new folder                                     │    │
-│  └─────────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Creating Subfolder Flow:**
-
-```
-1. User selects "Work" folder
-2. User types "Backend" in search
-3. Options appear:
-   - "Create 'Backend' in Work" (creates Work/Backend)
-   - "Create 'Backend' at root level"
-4. User picks, folder created inline
-```
-
-**Key UX Decisions:**
-
-- Single selection (not multi like tags)
-- Visual tree hierarchy
-- Quick create without leaving form
-- "Uncategorized" always available as fallback
+- **Visual Tree**: Shows icons from Global Library.
+- **Inline Creation**: Allows creating a subfolder directly within the selector: `Work / [ New Folder ]`
+- **UI Guidance**: When nesting exceeds 2 levels, show subtle warning: "Deep nesting may be harder to navigate on mobile"
 
 ---
 
-## 5. Management Pages
+## 6. Management Pages
 
-### Tag Management Page
+### Tag Management
 
-Dedicated page for viewing and managing all tags.
+Organized by Groups to keep the list scannable.
 
-```
+```plaintext
 ┌─────────────────────────────────────────────────────────────────┐
 │  Manage Tags                                         [+ New]    │
 ├─────────────────────────────────────────────────────────────────┤
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │ Search tags...                                           │   │
-│  └──────────────────────────────────────────────────────────┘   │
+│  [bell icon] STATUS (orange theme)                              │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │ 🔴 Expiring      [12 items]               [Edit] [Delete] │  │
+│  │ 🟠 MFA           [45 items]               [Edit] [Delete] │  │
+│  └───────────────────────────────────────────────────────────┘  │
 │                                                                 │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │ Tag           │ Color   │ Used By │ Actions              │   │
-│  ├───────────────┼─────────┼─────────┼──────────────────────┤   │
-│  │ ● Work        │ blue    │ 15      │ [Edit] [Delete]      │   │
-│  │ ● MFA         │ red     │ 12      │ [Edit] [Delete]      │   │
-│  │ ● Finance     │ yellow  │ 8       │ [Edit] [Delete]      │   │
-│  │ ● Personal    │ green   │ 7       │ [Edit] [Delete]      │   │
-│  │ ○ Shared      │ gray    │ 0       │ [Edit] [Delete]      │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                                                                 │
-│  ● = In use (assigned to passwords)                             │
-│  ○ = Unused (safe to delete)                                    │
-│                                                                 │
+│  [tag icon] TOPIC (blue theme)                                  │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │ 🔵 Dev           [8 items]                [Edit] [Delete] │  │
+│  │ 🟣 Finance       [3 items]                [Edit] [Delete] │  │
+│  └───────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Delete Confirmation (when in use):**
+### Folder Management
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Delete "Work" tag?                                             │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ⚠️  This tag is assigned to 15 passwords.                      │
-│                                                                 │
-│  Deleting will remove the tag from all passwords.               │
-│  The passwords themselves will NOT be deleted.                  │
-│                                                                 │
-│                              [Cancel]  [Delete Tag]             │
-└─────────────────────────────────────────────────────────────────┘
-```
+Uses a file-explorer style view with Icons.
 
-### Folder Management Page
-
-> **Design Research Needed**: Take inspiration from professional file management UIs
-> (VS Code explorer, Finder, Linear projects, Notion workspace). Focus on drag-and-drop
-> reordering, inline rename, and clear visual hierarchy.
-
-```
+```plaintext
 ┌─────────────────────────────────────────────────────────────────┐
 │  Manage Folders                                      [+ New]    │
 ├─────────────────────────────────────────────────────────────────┤
+│  📁 💼 Work                                          [⋮]        │
+│      └─ 📧 Email                                     [⋮]        │
+│      └─ 🔨 Dev                                       [⋮]        │
 │                                                                 │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │ 📁 Work (15)                              [⋮]            │   │
-│  │    ├─ 📁 Email (5)                        [⋮]            │   │
-│  │    ├─ 📁 Dev (7)                          [⋮]            │   │
-│  │    └─ 📁 Admin (3)                        [⋮]            │   │
-│  │                                                          │   │
-│  │ 📁 Personal (12)                          [⋮]            │   │
-│  │    ├─ 📁 Social (4)                       [⋮]            │   │
-│  │    └─ 📁 Shopping (8)                     [⋮]            │   │
-│  │                                                          │   │
-│  │ 📁 Finance (8)                            [⋮]            │   │
-│  │    ├─ 📁 Banking (5)                      [⋮]            │   │
-│  │    └─ 📁 Crypto (3)                       [⋮]            │   │
-│  │                                                          │   │
-│  │ 📁 Uncategorized (7)                      [locked]       │   │
-│  └──────────────────────────────────────────────────────────┘   │
+│  📁 🏠 Personal                                      [⋮]        │
+│      └─ 🛒 Shopping                                  [⋮]        │
 │                                                                 │
-│  [⋮] menu: Rename, Add subfolder, Move, Delete                  │
-│  Drag & drop to reorder (within same level)                     │
-│  "Uncategorized" cannot be renamed or deleted                   │
-│                                                                 │
+│  📁 📂 Uncategorized (Default)                       [Locked]   │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -338,52 +247,53 @@ Dedicated page for viewing and managing all tags.
 | Action | Behavior |
 |--------|----------|
 | Rename | Inline edit, ESC to cancel, Enter to save |
-| Add subfolder | Only if parent is root level (max 2 levels) |
+| Add subfolder | Allowed at any level (UI warns if depth > 2) |
 | Move | Move to different parent or root level |
 | Delete | Only if empty (must move passwords first) |
 
-**Delete Blocked (contains passwords):**
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Cannot Delete "Work"                                           │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  This folder contains 15 passwords.                             │
-│                                                                 │
-│  Move or delete the passwords first, then try again.            │
-│                                                                 │
-│  [View Passwords in "Work"]              [OK]                   │
-└─────────────────────────────────────────────────────────────────┘
-```
-
 ---
 
-## 6. Type Definitions
+## 7. Type Definitions
 
 ### Folder Type
 
+Added icon support. We will use a standard set (e.g., Lucide React) mapped by string names.
+
 ```typescript
-// core/passwords/folder.type.ts
+// core/organization/folder.type.ts
 
 export interface Folder {
   id: string;
   name: string;
-  parentId: string | null; // null = root level folder
+  icon: string; // e.g. "briefcase", "home", "server"
+  description?: string;
+  parentId: string | null; // null = root level
   createdAt: number;
-  updatedAt: number;
 }
+```
 
-// Constraints enforced at application level:
-// - Max depth: 2 (folder -> subfolder)
-// - Names unique within same parent
-// - Cannot delete folder with passwords (must move first)
+### Tag Group Type
+
+Defines tag groups with visual themes that individual tags inherit.
+
+```typescript
+// core/organization/tag-group.type.ts
+
+export interface TagGroup {
+  id: string; // e.g., "status", "topic"
+  name: string; // e.g., "Status", "Topic"
+  icon: string; // Base icon for the group (e.g., "bell", "tag")
+  baseColor: TagColor; // Theme color for all tags in this group
+  description?: string;
+}
 ```
 
 ### Tag Type
 
+Inherits visual properties from its group but can override color if needed.
+
 ```typescript
-// core/passwords/tag.type.ts
+// core/organization/tag.type.ts
 
 export type TagColor =
   | "gray"
@@ -392,96 +302,95 @@ export type TagColor =
   | "yellow"
   | "green"
   | "blue"
-  | "purple";
+  | "purple"
+  | "pink";
 
 export interface Tag {
   id: string;
   name: string;
-  color: TagColor;
+  groupId: string; // References TagGroup.id
+  color: TagColor; // Defaults to a shade of TagGroup.baseColor on creation
   createdAt: number;
 }
-
-// Constraints:
-// - Tag names unique (case-insensitive)
-// - Deleting tag removes it from all passwords (no orphan references)
 ```
 
-### Password Metadata Type
+### Global Library Type
+
+Defines the master collection used for suggestions.
 
 ```typescript
-// core/passwords/password.type.ts
+// core/organization/global-library.type.ts
 
-export interface PasswordMetadata {
+export interface GlobalFolderDefinition {
   id: string;
-  title: string;
-  url: string | null;
-  username: string;
-  folderId: string; // References Folder.id, defaults to "uncategorized"
-  tagIds: string[]; // References Tag.id[], can be empty
-  notes: string | null; // Encrypted with Layer 2 (vault key)
-  createdAt: number;
-  updatedAt: number;
-  // Password value NOT here - stored separately, encrypted with Layer 1
+  name: string;
+  icon: string;
+  description?: string;
+  parent: string | null; // null = root suggested, "any" = flexible, or specific parent name
 }
 
-export interface PasswordEntry extends PasswordMetadata {
-  password: string; // Only populated when explicitly decrypted (Layer 1)
+export interface GlobalTagGroupDefinition {
+  id: string;
+  name: string;
+  icon: string; // Added for group theme
+  baseColor: TagColor; // Added for color inheritance
+  description?: string;
+}
+
+export interface GlobalTagDefinition {
+  id: string;
+  name: string;
+  color: TagColor;
+  groupId: string; // References GlobalTagGroupDefinition.id
+  description?: string;
+}
+
+export interface GlobalLibrary {
+  folders: GlobalFolderDefinition[];
+  tagGroups: GlobalTagGroupDefinition[];
+  tags: GlobalTagDefinition[];
+}
+```
+
+### Template (Archetype) Type
+
+References Global Library items by ID; does not define new ones.
+
+```typescript
+// core/organization/templates.type.ts
+
+export interface OrganizationTemplate {
+  id: string; // "archetype_dev_v1"
+  label: string; // "Developer Pack"
+  complexity: "basic" | "intermediate" | "advanced";
+  folderIds: string[]; // References GlobalLibrary.folders[].id
+  tagIds: string[]; // References GlobalLibrary.tags[].id
 }
 ```
 
 ---
 
-## 7. UI Considerations
+## 8. Migration Strategy
 
-### Sidebar Navigation
+For users importing from existing tools, we map their chaos into our structure.
 
-```
-┌────────────────────────┐
-│ All Passwords (42)     │  <- Shows all, default view
-├────────────────────────┤
-│ Folders                │
-│  ├─ Work (15)          │
-│  │   ├─ Email (5)      │
-│  │   ├─ Dev (7)        │
-│  │   └─ Admin (3)      │
-│  ├─ Personal (20)      │
-│  │   └─ Banking (8)    │
-│  └─ Uncategorized (7)  │
-├────────────────────────┤
-│ Tags                   │
-│  ├─ MFA (12)           │
-│  ├─ Shared (5)         │
-│  ├─ Expiring (3)       │
-│  └─ API (8)            │
-└────────────────────────┘
-```
-
-### Search Behavior
-
-- Searches across: title, URL, username, notes, folder name, tag names
-- Filter chips: `folder:Work` `tag:MFA` `has:notes`
-- Results show breadcrumb: `Work / Email > Gmail Account`
-
----
-
-## 8. Migration Path
-
-For users importing from other password managers:
-
-| Source    | Folder Mapping                           | Tag Mapping          |
-| --------- | ---------------------------------------- | -------------------- |
-| Bitwarden | "/" paths → real folders (max 2 levels)  | N/A                  |
-| 1Password | Vaults → folders, tags preserved         | Direct mapping       |
-| LastPass  | Folders preserved                        | N/A                  |
-| KeePass   | Groups → folders (flatten if > 2 levels) | Tags preserved       |
-| CSV       | Optional "folder" and "tags" columns     | Comma-separated tags |
+| Source    | Strategy                                                                                                                               |
+| :-------- | :------------------------------------------------------------------------------------------------------------------------------------- |
+| Bitwarden | "Folders" become Folders. Preserve original depth (no forced flattening).                                                              |
+| Tags      | If source supports tags, map directly. If tag color is unknown, default to gray and group Other.                                       |
+| CSV       | Analyze "Group/Folder" column. If it matches a Known Archetype keyword (e.g., "AWS"), auto-assign correct Icon/Tag Color from Library. |
 
 ---
 
 ## 9. Implementation Priority
 
-1. **Phase 1**: Flat list (current) - works without organization
-2. **Phase 2**: Folders (single level) - most requested feature
-3. **Phase 3**: Tags - cross-cutting organization
-4. **Phase 4**: Subfolders (2 levels) - power user feature
-5. **Phase 5**: Import with organization mapping
+1. **Phase 1**: Core Types (Folder with Icon, Tag with Color/Group).
+2. **Phase 2**: JSON-to-IndexedDB Seeding Logic (The "Static Database").
+3. **Phase 3**: Onboarding Flow (User selects Archetype from seeded data).
+4. **Phase 4**: Smart Input Components (Auto-suggest from local IndexedDB).
+5. **Phase 5**: Cloud Sync Logic (S3/GCS/Azure bucket integration).
+6. **Phase 6**: **Template Import/Export Foundation** — Prepare system infrastructure for future community templates:
+   - Add JSON schema validation for external templates
+   - Create import/export utilities for user vault structures
+   - Design database schema to store custom template metadata
+   - **Note**: Full community template sharing UI will be implemented in a future release
