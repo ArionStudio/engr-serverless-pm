@@ -25,9 +25,9 @@ importers:
       "@base-ui/react":
         specifier: ^1.0.0
         version: 1.0.0(@types/react@19.2.8)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
-      "@fontsource-variable/figtree":
-        specifier: ^5.2.10
-        version: 5.2.10
+      "@fontsource-variable/dm-sans":
+        specifier: ^5.2.8
+        version: 5.2.8
       "@phosphor-icons/react":
         specifier: ^2.1.10
         version: 2.1.10(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -58,6 +58,9 @@ importers:
       tailwindcss:
         specifier: ^4.1.18
         version: 4.1.18
+      tw-animate-css:
+        specifier: ^1.4.0
+        version: 1.4.0
     devDependencies:
       "@eslint/eslintrc":
         specifier: ^3.3.3
@@ -113,9 +116,6 @@ importers:
       prettier:
         specifier: ^3.7.4
         version: 3.7.4
-      tw-animate-css:
-        specifier: ^1.4.0
-        version: 1.4.0
       typescript:
         specifier: ~5.9.3
         version: 5.9.3
@@ -943,10 +943,10 @@ packages:
         integrity: sha512-aGTxbpbg8/b5JfU1HXSrbH3wXZuLPJcNEcZQFMxLs3oSzgtVu6nFPkbbGGUvBcUjKV2YyB9Wxxabo+HEH9tcRQ==,
       }
 
-  "@fontsource-variable/figtree@5.2.10":
+  "@fontsource-variable/dm-sans@5.2.8":
     resolution:
       {
-        integrity: sha512-a5Gumbpy3mdd+Yg31g6Qb7CmjYbrfyutJa3bWfP5q8A4GclIOwX7mI+ZuSHsJnw/mHvW6r9oh1AHJcJTIxK4JA==,
+        integrity: sha512-AxkvMTvNWgfrmlyjiV05vlHYJa+nRQCf1EfvIrQAPBpFJW0O9VTz7oAFr9S3lvbWdmnFoBk7yFqQL86u64nl2g==,
       }
 
   "@hono/node-server@1.19.9":
@@ -6653,7 +6653,7 @@ snapshots:
 
   "@floating-ui/utils@0.2.10": {}
 
-  "@fontsource-variable/figtree@5.2.10": {}
+  "@fontsource-variable/dm-sans@5.2.8": {}
 
   "@hono/node-server@1.19.9(hono@4.11.4)":
     dependencies:
