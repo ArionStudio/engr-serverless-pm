@@ -1,46 +1,32 @@
-import { Sun, Moon, Monitor } from "@phosphor-icons/react";
+import { SunIcon, MoonIcon, MonitorIcon } from "@phosphor-icons/react";
 import { Button } from "@/ui/components/primitives/button";
-import type { ThemePreference } from "@/core/theme";
+import type { ThemePreference } from "./theme.hook";
 
 interface ThemeOption {
   value: ThemePreference;
   label: string;
-  icon: typeof Sun;
+  icon: typeof SunIcon;
 }
 
 const THEME_OPTIONS: ThemeOption[] = [
-  { value: "light", label: "Light", icon: Sun },
-  { value: "dark", label: "Dark", icon: Moon },
-  { value: "system", label: "System", icon: Monitor },
+  { value: "light", label: "Light", icon: SunIcon },
+  { value: "dark", label: "Dark", icon: MoonIcon },
+  { value: "system", label: "System", icon: MonitorIcon },
 ];
 
 interface ThemeToggleProps {
   preference: ThemePreference;
   onThemeChange: (theme: ThemePreference) => void;
-  isLoading?: boolean;
   className?: string;
 }
 
 export function ThemeToggle({
   preference,
   onThemeChange,
-  isLoading = false,
   className,
 }: ThemeToggleProps) {
-  if (isLoading) {
-    return (
-      <div className={`flex gap-2 ${className ?? ""}`}>
-        {THEME_OPTIONS.map(({ value }) => (
-          <Button key={value} variant="outline" size="sm" disabled>
-            ...
-          </Button>
-        ))}
-      </div>
-    );
-  }
-
   return (
-    <div className={`flex gap-2 ${className ?? ""}`}>
+    <div className={`flex gap-1 ${className ?? ""}`}>
       {THEME_OPTIONS.map(({ value, label, icon: Icon }) => (
         <Button
           key={value}
@@ -48,7 +34,7 @@ export function ThemeToggle({
           size="sm"
           onClick={() => onThemeChange(value)}
         >
-          <Icon className="h-4 w-4 mr-2" />
+          <Icon data-icon="inline-start" />
           {label}
         </Button>
       ))}
