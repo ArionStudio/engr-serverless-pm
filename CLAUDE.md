@@ -120,6 +120,7 @@ Other Device ← Extension UI ← Core (decrypt) ← Adapters
 - [ ] `pnpm ext:build` succeeds
 - [ ] No unused imports/variables
 - [ ] Type-only imports use `import type`
+- [ ] Update `TODO.md` if task status changed
 
 ---
 
