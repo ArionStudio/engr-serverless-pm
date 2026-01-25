@@ -4,14 +4,9 @@ import type { ThemePreference } from "@/core/theme";
 interface OptionsViewProps {
   theme: ThemePreference;
   onThemeChange: (theme: ThemePreference) => void;
-  isLoading?: boolean;
 }
 
-export function OptionsView({
-  theme,
-  onThemeChange,
-  isLoading = false,
-}: OptionsViewProps) {
+export function OptionsView({ theme, onThemeChange }: OptionsViewProps) {
   return (
     <div className="min-h-screen p-8">
       <div className="max-w-md mx-auto space-y-8">
@@ -23,11 +18,7 @@ export function OptionsView({
         <div className="space-y-4">
           <div>
             <h2 className="text-sm font-medium mb-3">Theme</h2>
-            <ThemeToggle
-              preference={theme}
-              onThemeChange={onThemeChange}
-              isLoading={isLoading}
-            />
+            <ThemeToggle preference={theme} onThemeChange={onThemeChange} />
           </div>
         </div>
       </div>
