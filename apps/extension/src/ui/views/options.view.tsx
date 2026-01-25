@@ -1,5 +1,4 @@
-import { ThemeToggle } from "@/ui/theme";
-import type { ThemePreference } from "@/core/theme";
+import { ThemeToggle, type ThemePreference } from "@/ui/theme";
 
 interface OptionsViewProps {
   theme: ThemePreference;
