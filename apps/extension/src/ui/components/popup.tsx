@@ -57,7 +57,7 @@ export function Popup() {
       </div>
 
       <div className="relative">
-        <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+        <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <input
           type="text"
           placeholder="Search passwords..."
@@ -65,24 +65,28 @@ export function Popup() {
           onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
             setSearchTerm(e.target.value)
           }
-          className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full pl-10 pr-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
         />
       </div>
 
       <div className="space-y-2">
         {filteredPasswords.length === 0 ? (
-          <p className="text-center text-gray-500 py-4">No passwords found</p>
+          <p className="text-center text-muted-foreground py-4">
+            No passwords found
+          </p>
         ) : (
           filteredPasswords.map((entry) => (
             <div
               key={entry.id}
-              className="border border-gray-200 rounded-lg p-3 cursor-pointer hover:shadow-md transition-shadow"
+              className="border border-border rounded-lg p-3 cursor-pointer hover:shadow-md transition-shadow"
             >
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="font-medium text-sm">{entry.title}</h3>
-                  <p className="text-xs text-gray-600">{entry.username}</p>
-                  <p className="text-xs text-gray-500">{entry.url}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {entry.username}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{entry.url}</p>
                 </div>
                 <Button
                   size="sm"
