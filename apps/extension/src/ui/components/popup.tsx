@@ -1,6 +1,11 @@
 import React, { useState } from "react";
 import { Button } from "@/ui/components/primitives/button";
-import { Search, Plus, Copy, Settings } from "lucide-react";
+import {
+  CopyIcon,
+  MagnifyingGlassIcon,
+  PlusIcon,
+  GearSixIcon,
+} from "@phosphor-icons/react";
 
 interface PasswordEntry {
   id: string;
@@ -43,16 +48,16 @@ export function Popup() {
         <h1 className="text-xl font-bold">🔐 SPM</h1>
         <div className="flex gap-2">
           <Button size="sm" variant="outline" onClick={openOptions}>
-            <Settings className="h-4 w-4" />
+            <GearSixIcon className="h-4 w-4" />
           </Button>
           <Button size="sm">
-            <Plus className="h-4 w-4" />
+            <PlusIcon className="h-4 w-4" />
           </Button>
         </div>
       </div>
 
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+        <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
         <input
           type="text"
           placeholder="Search passwords..."
@@ -84,7 +89,7 @@ export function Popup() {
                   variant="ghost"
                   onClick={() => handleCopyPassword(entry.password)}
                 >
-                  <Copy className="h-3 w-3" />
+                  <CopyIcon className="h-3 w-3" />
                 </Button>
               </div>
             </div>
