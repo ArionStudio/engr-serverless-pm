@@ -23,6 +23,25 @@ Each phase builds on the previous. Skipping phases creates technical debt.
 
 ---
 
+## Testing Strategy
+
+Tests are written **within each phase**, not as a separate phase.
+
+### Tools
+
+| Tool       | Purpose                  | Location                        |
+| ---------- | ------------------------ | ------------------------------- |
+| Vitest     | Unit & integration tests | `**/*.test.ts`, `**/*.test.tsx` |
+| Storybook  | Component visual testing | `**/*.stories.tsx`              |
+| Playwright | E2E browser tests        | Separate task (post-thesis)     |
+
+### Coverage Targets
+
+- Core + Adapters: >80%
+- UI Components: >60%
+
+---
+
 ## Validation of Original Proposal
 
 The originally proposed sequence (Envelope → Sync → Conflict → UI → Safe Save) represents **Phase 6-8 work**. Here's why each step requires earlier phases:
@@ -71,6 +90,10 @@ The originally proposed sequence (Envelope → Sync → Conflict → UI → Safe
 
 **Validation:** All types compile with `strict: true`, no runtime dependencies.
 
+### Tests
+
+- [ ] Type compilation tests (strict mode validation)
+
 ---
 
 ## Phase 2: Crypto Adapter (WebCrypto) `[Thesis]`
@@ -104,6 +127,14 @@ The originally proposed sequence (Envelope → Sync → Conflict → UI → Safe
 
 **Validation:** Unit tests with known test vectors.
 
+### Tests
+
+- [ ] PBKDF2 test vectors (RFC 6070)
+- [ ] AES-256-GCM test vectors (NIST SP 800-38D)
+- [ ] Ed25519 signature verification tests
+- [ ] ECDH key exchange tests
+- [ ] `secureWipe()` memory clearing tests
+
 ---
 
 ## Phase 3: Storage Adapter (IndexedDB) `[Thesis]`
@@ -126,6 +157,12 @@ The originally proposed sequence (Envelope → Sync → Conflict → UI → Safe
 
 **Validation:** Integration tests with in-memory IndexedDB.
 
+### Tests
+
+- [ ] CRUD operations with fake-indexeddb
+- [ ] Schema migration tests
+- [ ] Encrypted blob storage/retrieval
+
 ---
 
 ## Phase 4: Master Password Flow `[Thesis]`
@@ -146,6 +183,13 @@ The originally proposed sequence (Envelope → Sync → Conflict → UI → Safe
 - [ ] Lock confirmation
 
 **Validation:** Can create vault, lock, unlock, and data persists.
+
+### Tests
+
+- [ ] Genesis flow (first-time setup)
+- [ ] Unlock with correct/incorrect password
+- [ ] Lock clears memory state
+- [ ] Auto-lock timer triggers correctly
 
 ---
 
@@ -176,6 +220,19 @@ The originally proposed sequence (Envelope → Sync → Conflict → UI → Safe
 
 **Validation:** Full CRUD cycle works offline.
 
+### Tests
+
+- [ ] Create/Read/Update/Delete operations
+- [ ] Folder organization
+- [ ] Search functionality
+- [ ] Clipboard auto-clear timing
+
+### Storybook
+
+- [ ] Password list view stories
+- [ ] Password form stories
+- [ ] Empty states
+
 ---
 
 ## Phase 6: Signed Envelope Format `[Thesis]`
@@ -205,6 +262,13 @@ interface SignedEnvelope {
 
 **Validation:** Round-trip serialization tests.
 
+### Tests
+
+- [ ] Envelope serialization round-trip
+- [ ] Signature creation/verification
+- [ ] AAD binding validation
+- [ ] Version migration handling
+
 ---
 
 ## Phase 7: S3 Sync Adapter `[Thesis]`
@@ -233,6 +297,13 @@ interface SignedEnvelope {
 
 **Validation:** Integration tests with LocalStack or real AWS.
 
+### Tests
+
+- [ ] Upload/download with mocked S3 (msw or LocalStack)
+- [ ] Cognito token refresh
+- [ ] Offline queue persistence
+- [ ] Retry with exponential backoff
+
 ---
 
 ## Phase 8: Conflict Resolution UI `[Thesis]`
@@ -259,6 +330,18 @@ interface SignedEnvelope {
 
 **Validation:** Simulate concurrent edits, resolve correctly.
 
+### Tests
+
+- [ ] Conflict detection (timestamp comparison)
+- [ ] Keep local/remote resolution
+- [ ] Merge conflict scenarios
+
+### Storybook
+
+- [ ] Conflict notification component
+- [ ] Side-by-side diff view
+- [ ] Resolution buttons
+
 ---
 
 ## Phase 9: Browser Integration `[Thesis]`
@@ -281,6 +364,14 @@ interface SignedEnvelope {
 - [ ] Quick search via address bar
 
 **Validation:** Works on major sites (Google, GitHub, etc.)
+
+### Tests
+
+- [ ] Form detection logic (unit)
+- [ ] URL matching algorithm
+- [ ] Context menu actions
+
+Note: Full E2E with Playwright is a separate task.
 
 ---
 
