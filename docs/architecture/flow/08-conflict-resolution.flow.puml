@@ -1,0 +1,122 @@
+@startuml 08-conflict-resolution
+title Conflict Resolution Flow
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 10
+skinparam shadowing false
+
+skinparam activity {
+    BackgroundColor #E3F2FD
+    BorderColor #1976D2
+}
+
+|Sync Adapter|
+start
+:Download remote vault;
+:Get local vault;
+
+:Compare timestamps;
+note right
+    Local: last modified locally
+    Remote: from S3 envelope
+    LastSync: last successful sync
+end note
+
+if (local.modifiedAt > lastSync AND\nremote.timestamp > lastSync) then (CONFLICT)
+    :Conflict detected!;
+    note right
+        Both local and remote
+        changed since last sync
+        (concurrent edits)
+    end note
+else (no conflict)
+    if (remote.timestamp > local.modifiedAt) then (remote newer)
+        :Apply remote changes;
+        stop
+    else (local newer or equal)
+        :Keep local, upload;
+        stop
+    endif
+endif
+
+|Extension UI|
+:Show Conflict Dialog;
+
+fork
+    :Display Local Version;
+    note right
+        - Modified timestamp
+        - Changed entries
+        - Device that made changes
+    end note
+fork again
+    :Display Remote Version;
+    note right
+        - Signer device ID
+        - Timestamp
+        - Changed entries
+    end note
+end fork
+
+:Show Diff View;
+note right
+    Side-by-side comparison:
+    - Added entries (green)
+    - Removed entries (red)
+    - Modified fields (yellow)
+end note
+
+|User|
+:Choose Resolution;
+
+switch (User Choice?)
+case (Keep Local)
+    |Extension|
+    :Discard remote;
+    :Force upload local;
+    :Increment revision;
+
+case (Keep Remote)
+    |Extension|
+    :Discard local changes;
+    :Apply remote vault;
+    :Update local storage;
+
+case (Merge)
+    |Extension|
+    :Field-level merge;
+    note right
+        **Merge Strategy:**
+        - Newer entry wins per-field
+        - Deleted items: keep tombstone
+        - New items: include both
+        - Modified: latest timestamp wins
+    end note
+    :Create merged vault;
+    :Upload merged version;
+
+case (Manual)
+    |User|
+    :Select entries individually;
+    :Confirm selections;
+    |Extension|
+    :Build custom merge;
+    :Upload result;
+endswitch
+
+|Extension|
+:Update lastSyncTimestamp;
+:Clear conflict state;
+:Refresh UI;
+
+stop
+
+legend right
+    **Conflict Scenarios:**
+    1. Same entry edited on 2 devices
+    2. Entry deleted on one, edited on other
+    3. New entries on both devices (no conflict)
+    4. Rollback attack (timestamp < lastSeen)
+endlegend
+
+@enduml

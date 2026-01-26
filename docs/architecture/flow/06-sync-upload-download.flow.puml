@@ -1,0 +1,96 @@
+@startuml 06-sync-upload-download
+title S3 Sync: Upload / Download Flow
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 10
+skinparam shadowing false
+
+skinparam sequence {
+    ArrowColor #1976D2
+    LifeLineBorderColor #1976D2
+    ParticipantBackgroundColor #E3F2FD
+    ParticipantBorderColor #1976D2
+}
+
+actor User as user
+participant "Extension" as ext
+participant "Sync Adapter" as sync
+participant "Cognito" as cognito
+participant "S3" as s3
+database "IndexedDB" as idb
+
+== UPLOAD (Save to Cloud) ==
+
+user -> ext : Trigger sync / Auto-save
+ext -> ext : Encrypt vault
+ext -> ext : Increment revision
+ext -> ext : Update timestamp
+ext -> ext : Sign envelope (Ed25519)
+
+ext -> sync : upload(signedEnvelope)
+
+sync -> cognito : Get credentials
+cognito --> sync : Temporary AWS creds\n(STS token)
+
+sync -> s3 : PUT vaults/{cognitoId}/vault.enc
+note right of s3
+    **Object Key Format:**
+    vaults/{cognitoId}/vault.enc
+
+    Scoped by IAM policy
+    to user's prefix only
+end note
+
+s3 --> sync : 200 OK + ETag
+
+sync -> idb : Store lastSyncTimestamp
+sync -> idb : Store remote ETag
+sync --> ext : Upload complete
+
+ext --> user : Sync indicator updated
+
+== DOWNLOAD (Load from Cloud) ==
+
+user -> ext : Open extension / Manual sync
+ext -> sync : download()
+
+sync -> cognito : Get credentials
+cognito --> sync : Temporary AWS creds
+
+sync -> s3 : HEAD vaults/{cognitoId}/vault.enc
+s3 --> sync : ETag, Last-Modified
+
+sync -> idb : Get local ETag
+alt Remote unchanged (ETag match)
+    sync --> ext : No changes
+else Remote is newer
+    sync -> s3 : GET vaults/{cognitoId}/vault.enc
+    s3 --> sync : Signed envelope
+
+    sync -> ext : Verify signature
+    note right of ext
+        **Signature Verification:**
+        - Get signer's public key
+        - Ed25519 verify over JCS bytes
+        - Reject if invalid
+    end note
+
+    ext -> ext : Check timestamp
+    note right of ext
+        **Rollback Detection:**
+        if (remote.ts < local.lastSeen)
+          warn("Potential replay attack")
+    end note
+
+    alt No conflict
+        ext -> ext : Decrypt vault
+        ext -> ext : Update memory state
+        ext -> idb : Store updated vault
+        ext --> user : Vault updated
+    else Conflict detected
+        ext --> user : Show conflict UI
+        ref over user, ext : [[08-conflict-resolution]]
+    end
+end
+
+@enduml

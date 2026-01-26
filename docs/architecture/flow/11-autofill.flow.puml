@@ -1,0 +1,135 @@
+@startuml 11-autofill-flow
+title Browser Autofill Flow
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 10
+skinparam shadowing false
+
+skinparam sequence {
+    ArrowColor #1976D2
+    LifeLineBorderColor #1976D2
+    ParticipantBackgroundColor #E3F2FD
+    ParticipantBorderColor #1976D2
+}
+
+participant "Web Page" as page
+participant "Content Script" as content
+participant "Background\nService Worker" as bg
+participant "Extension\nPopup" as popup
+actor User as user
+
+== Page Load: Form Detection ==
+
+page -> content : DOMContentLoaded
+activate content
+
+content -> content : Scan for login forms
+note right of content
+    **Form Detection Heuristics:**
+    - input[type="password"]
+    - input[name~="user|email|login"]
+    - form[action~="login|signin"]
+    - Common class names
+end note
+
+content -> content : Extract form metadata
+note right of content
+    {
+      url: window.location.href,
+      forms: [{
+        passwordField: element,
+        usernameField: element,
+        submitButton: element
+      }]
+    }
+end note
+
+content -> bg : Forms detected (URL, fields)
+deactivate content
+
+== Background: Match Credentials ==
+
+activate bg
+bg -> bg : Check vault unlocked?
+
+alt Vault locked
+    bg -> popup : Request unlock
+    popup -> user : Show unlock prompt
+    user -> popup : Enter password
+    popup -> bg : Vault unlocked
+end
+
+bg -> bg : Search vault for URL match
+note right of bg
+    **URL Matching Algorithm:**
+    1. Exact URL match
+    2. Domain match (ignore path)
+    3. Subdomain match
+    4. Base domain match
+
+    Priority: exact > specific > general
+end note
+
+bg -> bg : Get matching entries
+
+alt Multiple matches
+    bg -> content : Show credential picker
+    content -> page : Inject picker UI
+    page -> user : Display options
+    user -> page : Select credential
+    page -> content : Selection
+    content -> bg : User chose entry X
+end
+
+bg --> content : Credential to fill
+deactivate bg
+
+== Content Script: Fill Form ==
+
+activate content
+content -> content : Get form elements
+
+content -> page : Fill username field
+note right of content
+    **Fill Strategy:**
+    - Dispatch 'focus' event
+    - Set input.value
+    - Dispatch 'input' event
+    - Dispatch 'change' event
+
+    Simulates real user input
+end note
+
+content -> page : Fill password field
+
+content -> content : Show filled indicator
+note right of content
+    Visual feedback:
+    - Icon overlay on fields
+    - Brief highlight animation
+end note
+
+deactivate content
+
+== User: Submit Form ==
+
+user -> page : Click submit
+page -> page : Form submits
+
+note right of page
+    **Extension does NOT auto-submit**
+    User must explicitly click submit
+    (security: prevent drive-by fills)
+end note
+
+== Optional: Save New Password ==
+
+page -> content : Form submitted (new site)
+content -> bg : No saved password for URL
+bg -> popup : Prompt "Save password?"
+popup -> user : Show save dialog
+user -> popup : Confirm save
+popup -> bg : Save new entry
+bg -> bg : Add to vault, encrypt, sync
+
+@enduml
