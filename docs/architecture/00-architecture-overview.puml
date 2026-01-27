@@ -1,0 +1,96 @@
+@startuml 00-architecture-overview
+title End-to-End Data Flow Overview
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 10
+skinparam shadowing false
+
+skinparam component {
+    BackgroundColor #E8F4FD
+    BorderColor #2196F3
+}
+
+skinparam database {
+    BackgroundColor #FFF3E0
+    BorderColor #FF9800
+}
+
+skinparam cloud {
+    BackgroundColor #E8F5E9
+    BorderColor #4CAF50
+}
+
+' Actors
+actor "User" as user
+
+' Local Components
+package "Browser Extension (Trusted RAM)" {
+    component "Extension UI\n(React)" as ui
+    component "Core Layer\n(Types + Ports)" as core
+    component "Crypto Adapter\n(WebCrypto)" as crypto
+    component "Storage Adapter\n(Dexie.js)" as storage
+    component "Sync Adapter\n(AWS SDK)" as sync
+}
+
+' Local Storage (Hostile)
+database "IndexedDB\n(Hostile Disk)" as idb #FFE0B2
+
+' Remote Storage (Hostile)
+cloud "AWS Cloud" {
+    database "S3 Bucket\n(Hostile Storage)" as s3 #FFCCBC
+    component "Cognito\n(Auth)" as cognito
+}
+
+' Other Device
+package "Other Device" as other {
+    component "Extension\nInstance" as otherExt
+}
+
+' User interactions
+user --> ui : Input\n(Password, Actions)
+ui --> user : Display\n(Passwords, Status)
+
+' Internal flow
+ui --> core : Commands
+core --> crypto : Encrypt/Decrypt
+core --> storage : Load/Save
+core --> sync : Upload/Download
+
+' Crypto operations
+crypto --> core : Vault Key\n(memory only)
+
+' Storage flow
+storage <--> idb : Encrypted Blobs\n+ Wrapped Keys
+
+' Sync flow (optional)
+sync --> cognito : Get Temp\nCredentials
+sync <--> s3 : Signed\nEnvelopes\n(if sync enabled)
+
+' Cross-device sync (optional)
+s3 <..> otherExt : Sync via S3\n(optional)
+
+' Security boundaries
+note right of idb
+    **Primary Storage (Hostile)**
+    - Encrypted vault (AES-256-GCM)
+    - Wrapped device keys (AES-KW)
+    - Salt + device metadata
+    - Works fully offline
+end note
+
+note right of s3
+    **Optional Sync (Zero-Knowledge)**
+    - No server-side decryption
+    - Tamper-detected via Ed25519
+    - Rollback-detected via timestamp
+    - Not required for single device
+end note
+
+note bottom of crypto
+    **Trusted RAM Only**
+    - Vault Key never persisted
+    - secureWipe() on lock
+    - extractable: false
+end note
+
+@enduml

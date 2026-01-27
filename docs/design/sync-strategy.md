@@ -8,6 +8,8 @@
 
 ## 1. Core Principle
 
+**Local-first, user-controlled sync** — vault works fully offline, sync is optional.
+
 **User-controlled conflict resolution** — no auto-merge for security-critical data.
 
 Why:
@@ -25,13 +27,15 @@ Why:
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────┐
-│                         SYNC FLOW                                   │
+│                    SYNC FLOW (Optional)                             │
+│              Requires: Sync enabled + Network access                │
 └─────────────────────────────────────────────────────────────────────┘
 
 Step 1: User initiates sync (manual or scheduled)
          │
          ▼
-Step 2: Download remote vault snapshot
+Step 2: If sync enabled, download remote vault snapshot
+         (Skip if local-only mode)
          │
          ▼
 Step 3: Compare local vs remote
@@ -50,14 +54,16 @@ Step 6: Upload merged vault, update local
 
 ### Detailed Steps
 
-| Step | Action                                                  | User Involvement             |
-| ---- | ------------------------------------------------------- | ---------------------------- |
-| 1    | Trigger sync                                            | Click button or auto-trigger |
-| 2    | Fetch `vault.encrypted` from cloud                      | None (background)            |
-| 3    | Decrypt both vaults with master key, run diff algorithm | None (background)            |
-| 4    | If conflicts exist, pause and show diff UI              | **Required**                 |
-| 5    | User picks local/remote/skip for each conflict          | **Required**                 |
-| 6    | Encrypt merged vault, upload to cloud, save locally     | None (background)            |
+> **Note:** This flow only applies when sync is enabled. The vault works fully offline using IndexedDB as primary storage.
+
+| Step | Action                                                   | User Involvement             |
+| ---- | -------------------------------------------------------- | ---------------------------- |
+| 1    | Trigger sync (requires sync to be enabled)               | Click button or auto-trigger |
+| 2    | Fetch `vault.encrypted` from cloud (if sync enabled)     | None (background)            |
+| 3    | Decrypt both vaults with master key, run diff algorithm  | None (background)            |
+| 4    | If conflicts exist, pause and show diff UI               | **Required**                 |
+| 5    | User picks local/remote/skip for each conflict           | **Required**                 |
+| 6    | Encrypt merged vault, save to IndexedDB, upload to cloud | None (background)            |
 
 ---
 
