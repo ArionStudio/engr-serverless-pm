@@ -1,0 +1,42 @@
+@startuml 01-offline-queue-state
+title Offline Queue - State Machine
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 10
+skinparam shadowing false
+
+skinparam state {
+    BackgroundColor #E3F2FD
+    BorderColor #1976D2
+}
+
+state "Online" as online #E8F5E9 {
+    [*] --> normal
+    state "Normal Operation" as normal
+    state "Immediate Sync" as immediateSync
+    normal -right-> immediateSync : User action
+    immediateSync -left-> normal : Sync complete
+}
+
+state "Offline" as offline #FFCDD2 {
+    [*] --> queue
+    state "Queue Changes" as queue
+    state "Local Save Only" as localOnly
+    queue -right-> localOnly : Store in pendingSync
+    localOnly -left-> queue : More changes
+}
+
+state "Reconnecting" as reconnecting #FFF3E0 {
+    [*] --> processQueue
+    state "Process Queue" as processQueue
+    state "Retry with Backoff" as retry
+    processQueue -right-> retry : Upload failed
+    retry -left-> processQueue : Backoff complete
+}
+
+[*] -down-> online
+
+online -down-> offline : Network lost
+offline -down-> reconnecting : Network restored
+reconnecting -up-> online : Queue empty
+@enduml
