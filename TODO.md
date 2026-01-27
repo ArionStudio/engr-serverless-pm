@@ -70,11 +70,11 @@ required to prove WebCrypto's sufficiency for the engineering thesis. These incl
   - [ ] Examples with existing adapters
 - [ ] Review: Check if we need security model documentation for end users
 - [x] AWS S3+Cognito setup documentation (docs/aws/s3-cognito/README.md)
-- [x] Architecture comparison document (apps/extension/docs/architecture-comparison.md)
-- [x] Conventions and patterns guide (apps/extension/docs/conventions.md)
-- [x] Password organization design (apps/extension/docs/password-organization.md)
-- [x] Sync strategy design (apps/extension/docs/sync-strategy.md)
-- [x] Multi-device setup design (apps/extension/docs/multi-device-setup.md)
+- [x] Architecture comparison document (docs/architecture/architecture-comparison.md)
+- [x] Conventions and patterns guide (docs/development/conventions.md)
+- [x] Password organization design (docs/design/password-organization.md)
+- [x] Sync strategy design (docs/design/sync-strategy.md)
+- [x] Multi-device setup design (docs/design/multi-device-setup.md)
 
 ---
 
@@ -437,7 +437,7 @@ which has same security as master password. Consider if this adds real value.
 - Uses WebCrypto `subtle.generateKey()` for Ed25519 (signing) and ECDH P-256 (exchange)
 - Private keys wrapped with Master KEK (AES-KW), marked non-extractable when unwrapped
 - Public keys exported as JWK for storage in vault
-- Algorithm suite system allows future algorithm changes (see security-specification.md §3.0)
+- Algorithm suite system allows future algorithm changes (see docs/security/security-specification.md §3.0)
 
 ---
 

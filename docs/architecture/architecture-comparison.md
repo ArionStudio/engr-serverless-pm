@@ -14,18 +14,18 @@ Serverless Password Manager (SPM) is a browser extension that stores encrypted p
 
 ### 1.2 Features
 
-| Feature                   | Complexity | Notes                                                                       |
-| ------------------------- | ---------- | --------------------------------------------------------------------------- |
-| Master password unlock    | Complex    | Key derivation, session management                                          |
-| Password CRUD             | Complex    | Encryption/decryption on every operation                                    |
-| Password generator        | Simple     | Pure function, no external dependencies                                     |
-| Local storage (IndexedDB) | Medium     | Primary encrypted storage                                                   |
-| Cloud sync (optional)     | Complex    | Multiple provider implementations                                           |
-| Import/Export CSV         | Medium     | Encryption before export                                                    |
-| Password organization     | Medium     | Folders + tags (see [password-organization.md](./password-organization.md)) |
-| Autofill                  | Complex    | Content scripts, DOM interaction                                            |
-| Theme toggle              | Simple     | UI preference only                                                          |
-| Settings management       | Simple     | Local preferences                                                           |
+| Feature                   | Complexity | Notes                                                                               |
+| ------------------------- | ---------- | ----------------------------------------------------------------------------------- |
+| Master password unlock    | Complex    | Key derivation, session management                                                  |
+| Password CRUD             | Complex    | Encryption/decryption on every operation                                            |
+| Password generator        | Simple     | Pure function, no external dependencies                                             |
+| Local storage (IndexedDB) | Medium     | Primary encrypted storage                                                           |
+| Cloud sync (optional)     | Complex    | Multiple provider implementations                                                   |
+| Import/Export CSV         | Medium     | Encryption before export                                                            |
+| Password organization     | Medium     | Folders + tags (see [password-organization.md](../design/password-organization.md)) |
+| Autofill                  | Complex    | Content scripts, DOM interaction                                                    |
+| Theme toggle              | Simple     | UI preference only                                                                  |
+| Settings management       | Simple     | Local preferences                                                                   |
 
 ### 1.3 Tech Stack
 

@@ -128,13 +128,13 @@ Other Device ← Extension UI ← Core (decrypt) ← Adapters ← IndexedDB
 
 ## Key Files
 
-| File                        | Purpose                      |
-| --------------------------- | ---------------------------- |
-| `TODO.md`                   | Task list with scope markers |
-| `security-specification.md` | Detailed security model      |
-| `CONTRIBUTING.md`           | Commit conventions           |
-| `docs/aws/s3-cognito/`      | CloudFormation + AWS docs    |
-| `apps/extension/`           | Chrome extension source      |
+| File                                      | Purpose                      |
+| ----------------------------------------- | ---------------------------- |
+| `TODO.md`                                 | Task list with scope markers |
+| `docs/security/security-specification.md` | Detailed security model      |
+| `CONTRIBUTING.md`                         | Commit conventions           |
+| `docs/aws/s3-cognito/`                    | CloudFormation + AWS docs    |
+| `apps/extension/`                         | Chrome extension source      |
 
 ---
 
