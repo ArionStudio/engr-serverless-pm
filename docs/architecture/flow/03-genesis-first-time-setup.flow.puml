@@ -1,0 +1,72 @@
+@startuml 03-genesis-first-time-setup
+title Genesis Flow (First-Time Setup)
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 10
+skinparam shadowing false
+
+skinparam activity {
+    BackgroundColor #E3F2FD
+    BorderColor #1976D2
+}
+
+|User|
+start
+:Enter & Confirm Master Password;
+
+|Extension|
+:Validate Password Strength;
+if (Strong?) then (yes)
+else (no)
+    :Show Warning;
+    stop
+endif
+
+|WebCrypto|
+fork
+    :Generate Salt (32B);
+fork again
+    :Generate Device ID;
+fork again
+    :Generate Vault Key;
+fork again
+    :Generate Ed25519 Key;
+fork again
+    :Generate ECDH P-256 Key;
+end fork
+
+|Extension|
+:Derive Master KEK;
+:Wrap Device Keys with KEK;
+
+|User|
+split
+    :Master Password Backup;
+    |Extension|
+    :Create Master Slot (PBKDF2+AESKW);
+split again
+    :Recovery Key Backup;
+    |WebCrypto|
+    :Generate Recovery Key (256-bit);
+    |User|
+    :Save & Confirm Recovery Key;
+    |Extension|
+    :Create Recovery Slot (AESKW);
+end split
+
+|Extension|
+:Create & Encrypt Empty Vault;
+:Sign Envelope (Ed25519);
+
+|IndexedDB|
+:Store Wrapped Keys, Salt, Vault;
+
+|Extension|
+:secureWipe(buffers);
+:Mark Setup Complete;
+
+|User|
+:Redirect to Unlock;
+stop
+
+@enduml

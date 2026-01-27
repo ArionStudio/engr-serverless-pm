@@ -1,5 +1,5 @@
-@startuml 08-conflict-resolution
-title Conflict Resolution Flow
+@startuml 06-sync-conflict-resolution
+title Conflict Resolution Flow (When Sync Enabled)
 
 skinparam backgroundColor #FEFEFE
 skinparam roundcorner 10
@@ -12,8 +12,14 @@ skinparam activity {
 
 |Sync Adapter|
 start
-:Download remote vault;
-:Get local vault;
+note right
+    **Precondition:**
+    Sync must be enabled.
+    Local vault always exists
+    in IndexedDB (primary).
+end note
+:Download remote vault (S3);
+:Get local vault (IndexedDB);
 
 :Compare timestamps;
 note right
