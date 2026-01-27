@@ -211,4 +211,4 @@ From [React Rules](https://react.dev/reference/rules):
 ## See Also
 
 - [conventions.md](./conventions.md) - File naming and structure
-- [architecture-comparison.md](./architecture-comparison.md) - Why Hexagonal architecture
+- [architecture-comparison.md](../architecture/architecture-comparison.md) - Why Hexagonal architecture

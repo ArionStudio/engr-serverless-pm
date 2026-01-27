@@ -206,10 +206,17 @@ AES-GCM encryption MUST use this AAD to prevent metadata tampering.
 
 ### 7.1 Local Storage (Hostile Disk)
 
-IndexedDB stores only AES-KW wrapped keys.
+IndexedDB is the **primary vault storage**. Cloud sync (S3) is optional.
 
+IndexedDB stores:
+
+- `encryptedVault` (AES-256-GCM encrypted vault data)
 - `wrappedDeviceSignKey` (Wrapped with MasterKEK)
 - `wrappedDeviceEcdhKey` (Wrapped with MasterKEK)
+- `salt` (32-byte PBKDF2 salt)
+- `deviceId` (This device's UUID)
+- `lastSyncTimestamp` (if sync enabled)
+- `pendingSyncQueue` (if sync enabled, for offline changes)
 
 ### 7.2 Memory Wiping (Critical) — New
 

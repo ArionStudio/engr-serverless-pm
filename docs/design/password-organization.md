@@ -2,7 +2,7 @@
 
 > **Status**: Design document
 > **Date**: 2026-01-18
-> **Related**: [architecture-comparison.md](./architecture-comparison.md)
+> **Related**: [architecture-comparison.md](../architecture/architecture-comparison.md)
 
 ---
 

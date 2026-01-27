@@ -89,7 +89,7 @@ Never violate this flow. Core is pure, adapters implement core, UI consumes adap
 - **Symmetric**: AES-256-GCM with random IV per operation
 - **Signing**: Ed25519 for device identity
 - **Key Exchange**: ECDH P-256 for device key slots
-- **Key Storage**: Wrapped device keys in IndexedDB; Vault Key in memory only
+- **Key Storage**: Encrypted vault + wrapped device keys in IndexedDB; Vault Key in memory only
 
 ### Serverless Constraints
 
@@ -105,12 +105,14 @@ Never violate this flow. Core is pure, adapters implement core, UI consumes adap
 ## Data Flow
 
 ```
-User → Extension UI → Core (encrypt) → Adapters → IndexedDB (local)
-                                              ↓
-                                         S3 (remote)
-                                              ↓
-Other Device ← Extension UI ← Core (decrypt) ← Adapters
+User → Extension UI → Core (encrypt) → Adapters → IndexedDB (primary)
+                                                        ↓
+                                              S3 (optional, if sync enabled)
+                                                        ↓
+Other Device ← Extension UI ← Core (decrypt) ← Adapters ← IndexedDB
 ```
+
+> **Local-first:** IndexedDB is the primary storage. S3 sync is optional for multi-device use.
 
 ---
 
@@ -126,13 +128,13 @@ Other Device ← Extension UI ← Core (decrypt) ← Adapters
 
 ## Key Files
 
-| File                        | Purpose                      |
-| --------------------------- | ---------------------------- |
-| `TODO.md`                   | Task list with scope markers |
-| `security-specification.md` | Detailed security model      |
-| `CONTRIBUTING.md`           | Commit conventions           |
-| `docs/aws/s3-cognito/`      | CloudFormation + AWS docs    |
-| `apps/extension/`           | Chrome extension source      |
+| File                                      | Purpose                      |
+| ----------------------------------------- | ---------------------------- |
+| `TODO.md`                                 | Task list with scope markers |
+| `docs/security/security-specification.md` | Detailed security model      |
+| `CONTRIBUTING.md`                         | Commit conventions           |
+| `docs/aws/s3-cognito/`                    | CloudFormation + AWS docs    |
+| `apps/extension/`                         | Chrome extension source      |
 
 ---
 

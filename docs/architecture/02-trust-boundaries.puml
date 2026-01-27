@@ -1,0 +1,77 @@
+@startuml 02-trust-boundaries
+title Trust Boundaries & Security Zones
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 10
+skinparam shadowing false
+
+skinparam state {
+    BackgroundColor #E3F2FD
+    BorderColor #1976D2
+}
+
+' === TRUSTED ZONE ===
+state "TRUSTED ZONE (Extension RAM)" as trusted #E8F5E9 {
+    state "Master KEK" as masterKek
+    state "Vault Key (DEK)" as vaultKey
+    state "Ed25519 Private Key" as signKey
+    state "ECDH P-256 Private Key" as ecdhKey
+    state "Plaintext Passwords" as plaintext
+
+    masterKek -right-> vaultKey
+    vaultKey -right-> plaintext
+    masterKek -down-> signKey
+    masterKek -down-> ecdhKey
+}
+
+' === HOSTILE DISK ===
+state "HOSTILE ZONE (IndexedDB)" as disk #FFF3E0 {
+    state "Wrapped Device Keys\n(AES-KW)" as wrappedKeys
+    state "Encrypted Vault\n(AES-256-GCM)" as encVault
+    state "Pending Sync Queue" as syncQueue
+    state "Last Seen Timestamp" as timestamp
+
+    wrappedKeys -right-> encVault
+    encVault -right-> syncQueue
+    syncQueue -right-> timestamp
+}
+
+' === HOSTILE CLOUD ===
+state "HOSTILE ZONE (AWS S3)" as cloud #FFCDD2 {
+    state "Signed Envelope" as envelope {
+        state "Encrypted Vault Blob" as s3Vault
+        state "Ed25519 Signature" as signature
+        state "Key Slots" as keySlots
+    }
+    state "Metadata\n(vaultId, revision, timestamp)" as metadata
+
+    s3Vault -right-> signature
+    signature -right-> keySlots
+    envelope -down-> metadata
+}
+
+' === ZONE CONNECTIONS ===
+trusted -down-> disk : Encryption\nBoundary\n(AES-256-GCM)
+disk -down-> cloud : Network\nBoundary\n(Signed Envelope)
+
+note right of trusted
+    **Properties:**
+    * extractable: false
+    * secureWipe() on lock
+    * Auto-lock: 5 min
+end note
+
+note right of disk
+    **Threat Model:**
+    * Attacker has full read/write
+    * All secrets encrypted
+end note
+
+note right of cloud
+    **Zero-Knowledge:**
+    * Server cannot decrypt
+    * Ed25519 tamper detection
+    * Timestamp rollback check
+end note
+
+@enduml

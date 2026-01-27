@@ -1,5 +1,7 @@
 # Multi-Device Setup
 
+> **Local-First:** The vault works fully offline using IndexedDB as primary storage. Multi-device sync is **optional** — you can use the extension on a single device without any cloud configuration.
+
 ## The Challenge
 
 Browser extension context creates unique constraints:
@@ -9,14 +11,16 @@ Browser extension context creates unique constraints:
 - **No simultaneous access** — can't easily "pair" devices in real-time
 - **Security-first** — transferring credentials must be safe
 
-## What Needs to Be Shared
+## What Needs to Be Shared (for Multi-Device)
 
-| Data                  | How Shared         | Notes                            |
-| --------------------- | ------------------ | -------------------------------- |
-| Master password       | **User memorizes** | Never transferred electronically |
-| Cloud provider config | Transfer mechanism | S3 bucket, credentials, region   |
-| Encryption salt       | Stored in cloud    | Downloaded on first sync         |
-| Device ID             | Generated locally  | For sync conflict attribution    |
+| Data                  | How Shared                | Notes                            |
+| --------------------- | ------------------------- | -------------------------------- |
+| Master password       | **User memorizes**        | Never transferred electronically |
+| Cloud provider config | Transfer mechanism        | S3 bucket, credentials, region   |
+| Encryption salt       | In vault envelope (cloud) | Also stored locally in IndexedDB |
+| Device ID             | Generated locally         | Each device has unique ID        |
+
+> **Single-device use:** None of the above is required. The vault is stored locally in IndexedDB with no cloud dependency.
 
 ## Setup Methods
 

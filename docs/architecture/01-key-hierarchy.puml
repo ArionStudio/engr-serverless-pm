@@ -1,0 +1,58 @@
+@startuml 01-key-hierarchy
+title Cryptographic Key Hierarchy
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 10
+skinparam shadowing false
+skinparam linetype ortho
+
+skinparam rectangle {
+    BackgroundColor #E3F2FD
+    BorderColor #1976D2
+}
+
+' === ROW 1: DERIVATION CHAIN ===
+rectangle "Master Password\n+ App Pepper" as input #FAFAFA
+rectangle "SHA-256" as hash #E3F2FD
+rectangle "PBKDF2\n600k iter" as pbkdf2 #E3F2FD
+rectangle "**Master KEK**\n(RAM only)" as masterKek #E8F5E9
+
+input -> hash
+hash -> pbkdf2
+pbkdf2 -> masterKek
+
+' === ROW 2: UNWRAPPED KEYS ===
+rectangle "Ed25519\nSigning Key" as signKey #FFF3E0
+rectangle "ECDH P-256\nExchange Key" as ecdhKey #FFF3E0
+
+masterKek --> signKey : AES-KW
+masterKek --> ecdhKey : AES-KW
+
+' === ROW 3: KEY SLOTS ===
+rectangle "Device Slot\nECDH-ES+A256KW" as deviceSlot #FFF3E0
+rectangle "Master Slot\nPBKDF2+AESKW" as masterSlot #FFF3E0
+
+ecdhKey --> deviceSlot : derive KEK
+masterKek --> masterSlot : backup
+
+' === ROW 4: VAULT KEY ===
+rectangle "**Vault Key**\n(RAM only)" as vaultKey #E8F5E9
+
+deviceSlot --> vaultKey : unwrap
+masterSlot --> vaultKey : unwrap
+
+' === ROW 5: DATA ===
+rectangle "Encrypted Vault\n(AES-256-GCM)" as encData #FFCDD2
+
+vaultKey --> encData : encrypt
+signKey --> encData : sign
+
+legend right
+    |= Color |= Zone |
+    | <#FAFAFA> | User Input |
+    | <#E8F5E9> | Trusted RAM |
+    | <#FFF3E0> | Stored (wrapped) |
+    | <#FFCDD2> | Encrypted Data |
+endlegend
+
+@enduml
