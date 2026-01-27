@@ -1,0 +1,41 @@
+@startuml 02-vault-lock-unlock-state
+title Vault Lock/Unlock - State Machine
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 10
+skinparam shadowing false
+
+skinparam state {
+    BackgroundColor #E3F2FD
+    BorderColor #1976D2
+}
+
+state "Locked" as locked #FFCDD2 {
+    state "Vault Encrypted" as encrypted
+    state "No Keys in Memory" as noKeys
+}
+
+state "Unlocking" as unlocking #FFF3E0 {
+    state "Key Derivation" as deriving
+    state "Vault Decryption" as decrypting
+}
+
+state "Unlocked" as unlocked #E8F5E9 {
+    state "Vault Key in Memory" as keyInMemory
+    state "Data Accessible" as dataAccessible
+}
+
+state "Locking" as locking #FFF3E0 {
+    state "Memory Cleanup" as cleanup
+    state "Secure Wipe" as wipe
+}
+
+[*] --> locked
+
+locked -right-> unlocking : Enter password
+unlocking -down-> unlocked : Success
+unlocking -[dashed]-> locked : Wrong password
+
+unlocked -left-> locking : Lock triggered
+locking -up-> locked : Cleanup complete
+@enduml

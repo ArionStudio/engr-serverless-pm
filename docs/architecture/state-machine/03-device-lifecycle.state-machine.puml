@@ -1,0 +1,38 @@
+@startuml 03-device-lifecycle-state
+title Device Lifecycle - State Machine
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 10
+skinparam shadowing false
+
+skinparam state {
+    BackgroundColor #E3F2FD
+    BorderColor #1976D2
+}
+
+state "Unregistered" as unregistered #FFCDD2 {
+    state "Extension Installed" as installed
+    state "No Crypto Keys" as noKeys
+}
+
+state "Keys Generated" as keysGenerated #FFF3E0 {
+    state "Ed25519 Identity" as identity
+    state "ECDH P-256 Exchange" as exchange
+    state "Awaiting Auth" as awaiting
+}
+
+state "Active" as active #E8F5E9 {
+    state "Has Key Slot" as hasSlot
+    state "Can Decrypt" as canDecrypt
+}
+
+state "Revoked" as revoked #B71C1C : TERMINAL
+
+[*] --> unregistered
+
+unregistered -right-> keysGenerated : Setup starts
+keysGenerated -down-> active : Genesis or\nAuthorized
+active -left-> revoked : User revokes
+
+revoked --> [*]
+@enduml
