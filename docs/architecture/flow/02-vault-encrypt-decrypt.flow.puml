@@ -1,0 +1,47 @@
+@startuml 02-vault-encrypt-decrypt
+title Vault Encryption / Decryption Flow
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 10
+skinparam shadowing false
+
+left to right direction
+
+package "Encrypt (on Lock/Save)" {
+    rectangle "Plaintext\nVault\n(RAM)" as plain #E8F5E9
+    rectangle "Generate IV\n(12 bytes)" as iv #FFF3E0
+    rectangle "Build AAD\n(JCS)" as aad #E3F2FD
+    rectangle "AES-256-GCM" as encrypt #BBDEFB
+    rectangle "Ciphertext\n+ Tag" as blob #FFCDD2
+    database "IndexedDB\n(Primary)" as idb #FFE0B2
+}
+
+package "Decrypt (on Unlock)" {
+    database "IndexedDB\n(Primary)" as idb2 #FFE0B2
+    rectangle "Ciphertext\n+ Tag" as blob2 #FFCDD2
+    rectangle "Extract IV" as iv2 #FFF3E0
+    rectangle "Rebuild AAD" as aad2 #E3F2FD
+    rectangle "AES-256-GCM" as decrypt #BBDEFB
+    rectangle "Plaintext\nVault\n(RAM)" as plain2 #E8F5E9
+    rectangle "FAIL" as fail #F44336
+}
+
+plain --> iv
+iv --> encrypt
+aad --> encrypt
+encrypt --> blob
+blob --> idb
+
+idb2 --> blob2
+blob2 --> iv2
+iv2 --> decrypt
+aad2 --> decrypt
+decrypt --> plain2 : Tag OK
+decrypt --> fail : Tag Invalid
+
+note bottom of idb
+    **Primary Storage**
+    S3 sync is optional
+end note
+
+@enduml

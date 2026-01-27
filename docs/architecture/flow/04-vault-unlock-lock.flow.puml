@@ -1,0 +1,49 @@
+@startuml 04-vault-unlock-lock
+title Unlock / Lock Flow
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 10
+skinparam shadowing false
+
+skinparam activity {
+    BackgroundColor #E3F2FD
+    BorderColor #1976D2
+}
+
+|User|
+start
+:Enter Master Password;
+
+|Extension|
+:Derive Master KEK (PBKDF2);
+:Unwrap Device Keys;
+:Load Vault from IndexedDB;
+:Decrypt Vault (AES-GCM);
+
+if (Decryption OK?) then (yes)
+    :Vault in Memory;
+    :Start Auto-Lock Timer;
+    |User|
+    :Use Extension;
+else (no)
+    |User|
+    :Show "Wrong Password";
+    stop
+endif
+
+|Extension|
+:Lock Triggered;
+note right
+    Triggers: manual, timeout,
+    browser idle, extension suspend
+end note
+
+:secureWipe(vaultKey);
+:Clear Decrypted Data;
+:Reset UI State;
+
+|User|
+:Back to Locked Screen;
+stop
+
+@enduml

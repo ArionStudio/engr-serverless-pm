@@ -1,0 +1,38 @@
+@startuml 01-key-derivation-master-kek
+title Key Derivation Flow (Master KEK)
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 10
+skinparam shadowing false
+
+skinparam activity {
+    BackgroundColor #E3F2FD
+    BorderColor #1976D2
+}
+
+|User|
+start
+:Enter Master Password;
+
+|Extension|
+:Load Application Pepper;
+:Combine Password + Pepper;
+:SHA-256(Password + Pepper);
+:Load Salt from IndexedDB;
+
+|WebCrypto API|
+:PBKDF2-HMAC-SHA256
+(600k iterations, 32-byte salt);
+:Master KEK (256-bit);
+
+|Extension|
+:secureWipe(passwordBuffer);
+stop
+
+legend right
+    | Symbol | Meaning |
+    | KEK | Key Encryption Key |
+    | PBKDF2 | Password-Based KDF 2 |
+endlegend
+
+@enduml

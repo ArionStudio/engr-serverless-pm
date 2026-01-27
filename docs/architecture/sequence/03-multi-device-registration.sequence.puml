@@ -1,4 +1,4 @@
-@startuml 09-device-registration
+@startuml 03-multi-device-registration
 title Device Registration Flow
 
 skinparam backgroundColor #FEFEFE

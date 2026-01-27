@@ -1,0 +1,60 @@
+@startuml 05-browser-autofill
+title Browser Autofill Flow
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 10
+skinparam shadowing false
+
+skinparam sequence {
+    ArrowColor #1976D2
+    LifeLineBorderColor #1976D2
+    ParticipantBackgroundColor #E3F2FD
+    ParticipantBorderColor #1976D2
+}
+
+participant "Web Page" as page
+participant "Content Script" as content
+participant "Background SW" as bg
+participant "Popup" as popup
+actor User as user
+
+== Form Detection ==
+
+page -> content : DOMContentLoaded
+content -> content : Scan for login forms
+content -> bg : Forms detected (URL, fields)
+
+== Match Credentials ==
+
+bg -> bg : Check vault unlocked?
+
+alt Vault locked
+    bg -> popup : Request unlock
+    popup -> user : Show unlock prompt
+    user -> popup : Enter password
+    popup -> bg : Vault unlocked
+end
+
+bg -> bg : Search vault for URL match
+
+alt Multiple matches
+    bg -> content : Show credential picker
+    content -> user : Display options
+    user -> content : Select credential
+    content -> bg : User chose entry
+end
+
+bg --> content : Credential to fill
+
+== Fill Form ==
+
+content -> page : Fill username field
+content -> page : Fill password field
+content -> content : Show filled indicator
+
+== Submit ==
+
+user -> page : Click submit
+page -> page : Form submits
+
+@enduml

@@ -1,4 +1,4 @@
-@startuml 10-device-revocation
+@startuml 04-device-revocation-key-rotation
 title Device Revocation Flow
 
 skinparam backgroundColor #FEFEFE

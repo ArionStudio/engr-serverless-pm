@@ -1,5 +1,5 @@
-@startuml 06-sync-upload-download
-title S3 Sync: Upload / Download Flow
+@startuml 02-cloud-sync-upload-download
+title S3 Sync: Upload / Download Flow (Optional Feature)
 
 skinparam backgroundColor #FEFEFE
 skinparam roundcorner 10
@@ -17,9 +17,15 @@ participant "Extension" as ext
 participant "Sync Adapter" as sync
 participant "Cognito" as cognito
 participant "S3" as s3
-database "IndexedDB" as idb
+database "IndexedDB\n(Primary)" as idb
 
-== UPLOAD (Save to Cloud) ==
+note over ext, s3
+    **This flow is OPTIONAL**
+    Vault works fully offline with IndexedDB as primary storage.
+    S3 sync is only for multi-device scenarios.
+end note
+
+== UPLOAD (Save to Cloud - If Sync Enabled) ==
 
 user -> ext : Trigger sync / Auto-save
 ext -> ext : Encrypt vault
@@ -49,7 +55,7 @@ sync --> ext : Upload complete
 
 ext --> user : Sync indicator updated
 
-== DOWNLOAD (Load from Cloud) ==
+== DOWNLOAD (Sync from Cloud - If Sync Enabled) ==
 
 user -> ext : Open extension / Manual sync
 ext -> sync : download()
@@ -89,7 +95,7 @@ else Remote is newer
         ext --> user : Vault updated
     else Conflict detected
         ext --> user : Show conflict UI
-        ref over user, ext : [[08-conflict-resolution]]
+        ref over user, ext : [[06-sync-conflict-resolution]]
     end
 end
 
