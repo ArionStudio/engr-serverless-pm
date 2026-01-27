@@ -1,0 +1,75 @@
+@startuml 05-offline-queue-processing
+title Offline Queue - Local-First Flow
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 10
+skinparam shadowing false
+skinparam conditionStyle diamond
+
+|User|
+start
+:Perform action\n(Create/Update/Delete);
+
+|Extension|
+:Encrypt & Save to IndexedDB;
+note right
+    **Local-first: Always save locally first**
+    IndexedDB is the primary storage
+end note
+
+if (Sync enabled?) then (yes)
+    :Check network status;
+    if (Online?) then (yes)
+        :Create signed envelope;
+        :Upload to S3;
+        if (Success?) then (yes)
+            :Update lastSyncTimestamp;
+            stop
+        else (no)
+            :Add to offline queue;
+        endif
+    else (no)
+        :Add to pendingSync queue;
+        note right
+            Queue entry:
+            {
+              id: uuid,
+              envelope: SignedEnvelope,
+              createdAt: timestamp,
+              retryCount: 0
+            }
+        end note
+    endif
+else (no)
+    :Local-only mode;
+    note right
+        **No sync configured**
+        Vault works fully offline
+    end note
+    stop
+endif
+
+|Background|
+:Listen for online event;
+
+:Network restored!;
+repeat
+    :Dequeue oldest entry;
+    :Attempt upload;
+    if (Success?) then (yes)
+        :Remove from queue;
+        :Update lastSyncTimestamp;
+    else (no)
+        :Increment retryCount;
+        if (retryCount > maxRetries?) then (yes)
+            :Move to deadLetter queue;
+            :Notify user;
+        else (no)
+            :Wait (exponential backoff);
+        endif
+    endif
+repeat while (Queue not empty?)
+
+:All synced!;
+stop
+@enduml
