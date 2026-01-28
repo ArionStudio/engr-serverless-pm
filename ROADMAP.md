@@ -1,7 +1,7 @@
 # ROADMAP.md
 
 > Implementation sequence for the serverless password manager.
-> Last updated: 2026-01-26
+> Last updated: 2026-01-28
 
 ## Overview
 
@@ -62,12 +62,37 @@ The originally proposed sequence (Envelope → Sync → Conflict → UI → Safe
 
 **Goal:** Visual diagrams before code.
 
-- [ ] Data flow diagrams (encryption/decryption paths)
-- [ ] Component interaction diagrams
-- [ ] State machine diagrams (lock/unlock states)
-- [ ] Sequence diagrams for critical flows
+### Architecture Overviews (`docs/architecture/*.puml`)
 
-**Output:** `docs/architecture/` with SVG/PNG diagrams
+- [x] `00-architecture-overview.puml` - High-level system architecture
+- [x] `01-key-hierarchy.puml` - Cryptographic key relationships
+- [x] `02-trust-boundaries.puml` - Security trust boundaries
+
+### Data Flow Diagrams (`docs/architecture/flow/`)
+
+- [x] `01-key-derivation-master-kek.flow.puml` - Key derivation flow
+- [x] `02-vault-encrypt-decrypt.flow.puml` - Encryption/decryption paths
+- [x] `03-genesis-first-time-setup.flow.puml` - First-time setup flow
+- [x] `04-vault-unlock-lock.flow.puml` - Lock/unlock flow
+- [x] `05-offline-queue-processing.flow.puml` - Offline queue flow
+- [x] `06-sync-conflict-resolution.flow.puml` - Conflict resolution flow
+
+### Sequence Diagrams (`docs/architecture/sequence/`)
+
+- [x] `01-password-crud-operations.sequence.puml` - CRUD operations
+- [x] `02-cloud-sync-upload-download.sequence.puml` - Cloud sync
+- [x] `03-multi-device-registration.sequence.puml` - Device registration
+- [x] `04-device-revocation-key-rotation.sequence.puml` - Revocation flow
+- [x] `05-browser-autofill.sequence.puml` - Autofill flow
+- [x] `06-browser-save-password.sequence.puml` - Save password flow
+
+### State Machine Diagrams (`docs/architecture/state-machine/`)
+
+- [x] `01-offline-queue.state-machine.puml` - Offline queue states
+- [x] `02-vault-lock-unlock.state-machine.puml` - Lock/unlock states
+- [x] `03-device-lifecycle.state-machine.puml` - Device lifecycle states
+
+**Output:** `docs/architecture/` with PlantUML diagrams (render to SVG/PNG)
 
 ---
 
@@ -75,18 +100,67 @@ The originally proposed sequence (Envelope → Sync → Conflict → UI → Safe
 
 **Goal:** Define all domain types and port interfaces. Pure TypeScript, zero dependencies.
 
-### Types (`src/core/types/`)
+### Types (`src/core/[domain]/*.type.ts`)
 
-- [ ] `password.types.ts` - Password, PasswordMetadata, Folder
-- [ ] `crypto.types.ts` - VaultKey, DeviceKey, EncryptedBlob, Envelope
-- [ ] `sync.types.ts` - SyncState, ConflictRecord, DeviceInfo
-- [ ] `storage.types.ts` - VaultSchema, IndexedDBSchema
+**Passwords & Organization:**
 
-### Ports (`src/core/ports/`)
+- [x] `password.type.ts` - PasswordEntry, PasswordMetadata, custom fields
+- [x] `folder.type.ts` - Folder hierarchy
+- [x] `tag.type.ts` - Tag system
+- [x] `templates.type.ts` - Password entry templates
+- [x] `global-library.type.ts` - Shared library types
 
-- [ ] `crypto.port.ts` - ICryptoService interface
-- [ ] `storage.port.ts` - IStorageService interface
-- [ ] `sync.port.ts` - ISyncService interface
+**Crypto:**
+
+- [x] `crypto.type.ts` - VaultKey, MasterKeyMaterial, EncryptedBlob
+- [x] `algorithm-suite.type.ts` - Algorithm configuration types
+
+**Vault:**
+
+- [x] `vault.type.ts` - Vault structure
+- [x] `key-slot.type.ts` - Device key slots
+- [x] `encrypted-data.type.ts` - Encrypted data envelope
+
+**Device:**
+
+- [x] `device.type.ts` - DeviceIdentity, DeviceRegistryEntry, DeviceDisplayInfo
+- [x] `device-key.type.ts` - Device key pairs
+- [x] `device-environment.type.ts` - Environment info for user recognition
+
+**Storage & Sync:**
+
+- [x] `storage.type.ts` - IndexedDB schema types
+- [x] `sync.type.ts` - SyncState, SyncStatus
+- [x] `sync-diff.type.ts` - Diff types for conflict resolution
+- [x] `provider-config.type.ts` - Cloud provider configuration
+
+**Session:**
+
+- [x] `session.type.ts` - Session state types
+
+### Ports (`src/core/[domain]/*.port.ts`)
+
+- [x] `crypto.port.ts` - CryptoPort interface
+- [x] `storage.port.ts` - StoragePort interface
+- [x] `sync.port.ts` - SyncPort interface
+- [x] `device-key.port.ts` - DeviceKeyPort interface
+- [x] `device-environment.port.ts` - DeviceEnvironmentPort interface
+
+### Constants & Utils
+
+- [x] `crypto.const.ts`, `algorithm-suite.const.ts` - Crypto constants
+- [x] `storage.const.ts` - Storage constants
+- [x] `sync.const.ts` - Sync constants
+- [x] `session.const.ts` - Session constants
+- [x] `folder.const.ts` - Default folders
+- [x] `tag.const.ts` - Tag constants
+- [x] `templates.const.ts` - Default templates
+- [x] `device-environment.const.ts` - Device detection constants
+- [x] `password.util.ts` - Password utilities
+- [x] `key-slot.util.ts` - Key slot utilities
+- [x] `session.util.ts` - Session utilities
+- [x] `provider-config.util.ts` - Provider config utilities
+- [x] `device-environment.util.ts` - Environment form utilities
 
 **Validation:** All types compile with `strict: true`, no runtime dependencies.
 
@@ -472,19 +546,19 @@ Phase 9 (Browser) ────────> Phase 10 (Devices) ───> Phase 
 
 ## Current Status
 
-| Phase | Status      | Notes                            |
-| ----- | ----------- | -------------------------------- |
-| 0     | Not Started | Diagrams needed                  |
-| 1     | Not Started | Core layer empty (.gitkeep only) |
-| 2     | Not Started | Adapters layer empty             |
-| 3     | Not Started | Adapters layer empty             |
-| 4     | Not Started | Depends on Phase 2-3             |
-| 5     | Not Started | Depends on Phase 4               |
-| 6     | Not Started | Depends on Phase 2               |
-| 7     | Not Started | Depends on Phase 3, 6            |
-| 8     | Not Started | Depends on Phase 5, 7            |
-| 9     | Not Started | Depends on Phase 5               |
-| 10    | Not Started | Post-thesis                      |
-| 11    | Not Started | Future                           |
+| Phase | Status      | Notes                                |
+| ----- | ----------- | ------------------------------------ |
+| 0     | Complete    | All diagrams done (PlantUML)         |
+| 1     | In Progress | Types & ports defined, tests pending |
+| 2     | Not Started | Adapters layer empty                 |
+| 3     | Not Started | Adapters layer empty                 |
+| 4     | Not Started | Depends on Phase 2-3                 |
+| 5     | Not Started | Depends on Phase 4                   |
+| 6     | Not Started | Depends on Phase 2                   |
+| 7     | Not Started | Depends on Phase 3, 6                |
+| 8     | Not Started | Depends on Phase 5, 7                |
+| 9     | Not Started | Depends on Phase 5                   |
+| 10    | Not Started | Post-thesis                          |
+| 11    | Not Started | Future                               |
 
 **UI Layer:** Working (theme system, Button component, popup with mock data)

@@ -90,28 +90,42 @@ Device B: Settings → Sync → Import Config → Select file → Enter master p
 // core/sync/provider-config.type.ts
 
 interface ProviderConfigBase {
-  region: string;
+  readonly region: string;
 }
 
 interface S3ProviderConfig extends ProviderConfigBase {
-  provider: "aws-s3";
-  bucket: string;
-  identityPoolId: string; // Cognito Identity Pool ID
-  prefix: string; // S3 key prefix (e.g., "user/")
+  readonly provider: "aws-s3";
+  readonly bucket: string;
+  readonly identityPoolId: string; // Cognito Identity Pool ID
+  readonly prefix: string; // S3 key prefix (e.g., "user/")
 }
 
-// Future providers follow the same pattern:
-// interface GCSProviderConfig extends ProviderConfigBase { ... }
-// interface AzureProviderConfig extends ProviderConfigBase { ... }
+interface GCSProviderConfig extends ProviderConfigBase {
+  readonly provider: "gcs";
+  readonly bucket: string;
+  readonly credentials: string; // path or inline JSON
+  readonly prefix: string;
+}
 
-type ProviderConfig = S3ProviderConfig; // Union with future providers
+interface AzureBlobProviderConfig extends ProviderConfigBase {
+  readonly provider: "azure-blob";
+  readonly storageAccount: string;
+  readonly container: string;
+  readonly credential: string; // SAS token or connection string
+  readonly prefix: string;
+}
+
+type ProviderConfig =
+  | S3ProviderConfig
+  | GCSProviderConfig
+  | AzureBlobProviderConfig;
 
 interface ExportedConfig {
-  version: 1;
-  provider: "aws-s3" | "gcs" | "azure-blob";
-  config: ProviderConfig;
-  exportedAt: number;
-  expiresAt: number; // Optional expiration timestamp
+  readonly version: 1;
+  readonly provider: "aws-s3" | "gcs" | "azure-blob";
+  readonly config: ProviderConfig;
+  readonly exportedAt: number; // Unix ms
+  readonly expiresAt: number | null;
   // Note: vault data NOT included, only connection config
 }
 ```
@@ -156,14 +170,24 @@ For security-conscious users who prefer explicit setup:
 Each device generates a unique ID on first setup:
 
 ```typescript
-interface DeviceInfo {
-  deviceId: string; // UUID, generated once
+// core/device/device.type.ts
+
+interface DeviceIdentity {
+  readonly deviceId: string; // UUID, generated once
   deviceName: string; // User-editable ("Work Laptop", "Home PC")
-  browserInfo: string; // "Chrome 120 on Windows"
-  firstSeen: number;
-  lastSync: number;
+}
+
+interface DeviceDisplayInfo extends DeviceIdentity {
+  readonly browserInfo: string; // "Chrome 120 on Windows"
+  readonly firstSeen: number; // Unix ms
+  readonly lastSync: number | null;
+  readonly isCurrentDevice: boolean;
 }
 ```
+
+See also `DeviceEnvironment` in `core/device/device-environment.type.ts` for
+optional environment info (OS, device type, browser, location) captured at
+registration to help users recognize their devices.
 
 **Device List (in Settings):**
 

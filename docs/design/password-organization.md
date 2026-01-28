@@ -110,23 +110,33 @@ Tag groups now define visual themes that individual tags inherit. Each group has
 
 _Note: The full Global Library will contain 100+ predefined tags. This is a partial example._
 
-| ID   | Name         | Color\*  | Group ID    | Description                    |
-| ---- | ------------ | -------- | ----------- | ------------------------------ |
-| t001 | Expiring     | `red`    | status      | Passwords nearing expiration   |
-| t002 | MFA          | `orange` | status      | Two-factor enabled accounts    |
-| t003 | Shared       | `gray`   | status      | Credentials shared with others |
-| t004 | Dev          | `blue`   | topic       | Development-related            |
-| t005 | Database     | `purple` | topic       | Database credentials           |
-| t006 | Finance      | `yellow` | topic       | Financial services             |
-| t007 | Social       | `pink`   | topic       | Social media platforms         |
-| t008 | Staging      | `amber`  | environment | Staging/test environments      |
-| t009 | Prod         | `red`    | environment | Production systems             |
-| t010 | Kids         | `green`  | access      | Child-accessible accounts      |
-| t011 | Parents      | `blue`   | access      | Parent-only accounts           |
-| t012 | Subscription | `yellow` | topic       | Recurring payments             |
-| t013 | Documents    | `gray`   | topic       | Document storage               |
+| ID   | Name         | Color  | Shade | Group ID    | Description                    |
+| ---- | ------------ | ------ | ----- | ----------- | ------------------------------ |
+| t001 | Expiring     | red    | 500   | status      | Passwords nearing expiration   |
+| t002 | MFA          | orange | 500   | status      | Two-factor enabled accounts    |
+| t003 | Shared       | gray   | 500   | status      | Credentials shared with others |
+| t004 | Dev          | blue   | 500   | topic       | Development-related            |
+| t005 | Database     | blue   | 700   | topic       | Database credentials           |
+| t006 | Finance      | yellow | 500   | topic       | Financial services             |
+| t007 | Social       | pink   | 500   | topic       | Social media platforms         |
+| t008 | Staging      | purple | 400   | environment | Staging/test environments      |
+| t009 | Prod         | red    | 600   | environment | Production systems             |
+| t010 | Kids         | green  | 400   | access      | Child-accessible accounts      |
+| t011 | Parents      | green  | 700   | access      | Parent-only accounts           |
+| t012 | Subscription | yellow | 600   | topic       | Recurring payments             |
+| t013 | Documents    | gray   | 500   | topic       | Document storage               |
 
-\*Color column shows the final tag color, which defaults to a shade of the group's BaseColor but can be overridden for specific tags.
+**Shade System:**
+
+Tags use Tailwind-compatible shade values (300-700) within their color:
+
+- **300** - Lightest (subtle, background-friendly)
+- **400** - Light
+- **500** - Default (standard intensity)
+- **600** - Dark
+- **700** - Darkest (high contrast)
+
+This allows multiple tags in the same group to have visual distinction while maintaining the group's color theme. For example, in the `topic` group above, "Dev" uses `blue-500` while "Database" uses `blue-700` for a darker, more distinct appearance.
 
 ---
 
@@ -305,11 +315,15 @@ export type TagColor =
   | "purple"
   | "pink";
 
+/** Tailwind-compatible shade values */
+export type TagShade = 300 | 400 | 500 | 600 | 700;
+
 export interface Tag {
   id: string;
   name: string;
   groupId: string; // References TagGroup.id
-  color: TagColor; // Defaults to a shade of TagGroup.baseColor on creation
+  color: TagColor; // Inherited from group's baseColor or overridden
+  shade: TagShade; // User-selected shade (default: 500)
   createdAt: number;
 }
 ```
@@ -341,6 +355,7 @@ export interface GlobalTagDefinition {
   id: string;
   name: string;
   color: TagColor;
+  shade: TagShade; // Shade within the color (default: 500)
   groupId: string; // References GlobalTagGroupDefinition.id
   description?: string;
 }
