@@ -198,16 +198,22 @@ export interface ResolvedConflict {
 ```typescript
 // core/sync/sync.port.ts
 
-export interface SyncPort {
-  // Provider operations
+export interface ISyncService {
+  // Object operations
   upload(key: string, data: Uint8Array): Promise<void>;
-  download(key: string): Promise<Uint8Array>;
+  download(key: string): Promise<Uint8Array | null>;
   delete(key: string): Promise<void>;
-  list(): Promise<string[]>;
+  list(prefix?: string): Promise<string[]>;
 
-  // Sync-specific
+  // Sync metadata
   getLastSyncTimestamp(): Promise<number | null>;
   setLastSyncTimestamp(timestamp: number): Promise<void>;
+
+  // Connection management
+  testConnection(): Promise<boolean>;
+  isEnabled(): Promise<boolean>;
+  initialize(): Promise<void>;
+  disconnect(): Promise<void>;
 }
 
 // Diff logic lives in core domain, not in port
