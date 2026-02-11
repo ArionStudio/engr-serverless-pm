@@ -1,0 +1,29 @@
+% Chapter 3 — Problem Definition & Threat Model
+%
+% Guide:
+% 3.1 Assets (be explicit):
+%   - Vault plaintext entries, vault key (DEK), device private keys
+%   - Metadata: vaultId, deviceId, timestamps, revisions, device registry
+%   - Sync configuration, local caches (IndexedDB) and remote blobs (S3)
+%
+% 3.2 Adversaries & capabilities:
+%   - Untrusted storage: attacker can read/write/rollback/delete objects
+%   - Offline attacker: brute-force after exfiltration
+%   - Compromised transport: TLS insufficient for confidentiality
+%   - Trusted boundary: only extension volatile memory at runtime
+%
+% 3.3 Security goals (testable invariants):
+%   - Confidentiality, Integrity, Anti-rollback, Key secrecy, Sync correctness
+%
+% 3.4 Out-of-scope:
+%   - Compromised browser binary/OS malware/physical memory extraction
+
+\chapter{Problem Definition and Threat Model}
+
+\section{Protected Assets}
+
+\section{Adversaries and Capabilities}
+
+\section{Security Goals}
+
+\section{Out-of-Scope Threats}

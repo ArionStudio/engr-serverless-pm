@@ -1,0 +1,26 @@
+% Chapter 5 — System Architecture (Hexagonal / Ports & Adapters)
+%
+% Guide:
+% 5.1 Architectural style and why: hexagonal to isolate core from infra/UI
+% 5.2 Layer definitions (map to folders):
+%   - src/core/: types + ports (interfaces), pure logic
+%   - src/adapters/: WebCrypto, S3, IndexedDB adapters, mocks
+%   - src/ui/: views/hooks/stores (React)
+%   - extension/background/: service worker for sync
+% 5.3 State management & DI rules:
+%   - React Context for DI; Zustand for global state
+% 5.4 File conventions: .type.ts, .port.ts, .adapter.ts, .store.ts, .hook.ts, .view.tsx
+% 5.5 Core data flow diagrams:
+%   - Unlock flow, CRUD flow, Sync flow overview
+
+\chapter{System Architecture}
+
+\section{Architectural Style}
+
+\section{Layer Definitions}
+
+\section{State Management and Dependency Injection}
+
+\section{File Conventions}
+
+\section{Data Flow Diagrams}

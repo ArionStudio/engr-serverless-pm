@@ -1,0 +1,445 @@
+% Guide: Writing a Top-Tier Thesis on a Serverless Zero‑Knowledge Browser Password Manager
+% Audience: undergraduate engineering/CS thesis aiming for “elite” research-thesis quality  
+% Goal: help you *write the thesis* (structure, what to mention, what to prove), not write the thesis itself.
+
+% ---
+
+% 0) The thesis “contract” (what you are actually defending)
+
+% 0.1 Your central research claim (make it explicit early)
+% You are not “building a password manager”. You are defending a claim like:
+
+% - **Claim A (security feasibility):** A browser extension using **native WebCrypto** can enforce **zero‑knowledge** confidentiality + integrity even when storage and transport are untrusted (“hostile storage”).
+% - **Claim B (architectural resilience):** Removing application-server logic (“serverless” as *no data-management logic on the provider*) reduces systemic risk (no mass-exfiltration target), at the cost of client-side sync complexity.
+% - **Claim C (practicality):** The design remains usable and performant (KDF cost, UI latency, conflict handling) for realistic vault sizes.
+
+% Everything in the document should support, qualify, or limit these claims.
+
+% 0.2 Your deliverable triad
+% Your thesis should clearly separate these deliverables:
+% 1) **Security specification** (threat model + crypto suite + invariants)  
+% 2) **System design** (hexagonal architecture + components + data flows)  
+% 3) **Experimental evaluation** (security testing + performance + usability + trade-offs)
+
+% The software artifact is the apparatus used to validate the above.
+
+% ---
+
+% 1) Thesis outline (recommended chapter split)
+
+% This split matches typical engineering templates (Intro / SoTA / Design / Implementation / Evaluation) but upgraded to research quality.
+
+% Chapter 1 — Introduction (argument framing)
+% **Purpose:** establish urgency + gap + research question + contributions.
+
+% Include:
+% - The credential-management problem: hundreds of services, reuse, stuffing risk.
+% - Why SaaS password managers centralize risk (vendor breach → millions of vaults).
+% - Why browsers matter (browser as OS) and why web crypto used to be controversial.
+% - Your definition of **serverless** (no app server logic; storage is “dumb blob sync”).
+% - **Research question(s)** and **hypothesis** (security + practicality).
+% - **Scope:** Web Extension first; local-first via IndexedDB; sync optional; platform roadmap (addon → desktop → Android → iOS).
+% - **Contributions (bulleted, measurable):**
+%  - Hostile-storage threat model + security spec (suite-v1, anti-rollback, AAD metadata binding, pepper strategy)
+%  - Hexagonal architecture with ports/adapters and strict dependency direction
+%  - Local-first sync protocol with **mandatory manual conflict resolution**
+%  - Benchmarks + security verification results + usability findings
+% - **Non-goals / boundaries:** browser/OS compromise, malicious extension with high privilege, etc.
+
+% **Rule:** no feature list. Everything must support the thesis claim(s).
+
+% ---
+
+% Chapter 2 — Background & Literature Review (critical synthesis, not glossary)
+% **Purpose:** justify design decisions by reviewing what exists and what fails.
+
+% What to cover:
+% - **Browser security model:** SOP, XSS as bypass, CSP relevance.
+% - **History of JS crypto vs native APIs:** pitfalls of JS polyfills, need for CSPRNG, WebCrypto turning point (`crypto.getRandomValues`, `crypto.subtle`).
+% - **Password manager taxonomy** (table):
+%  - Local (KeePass), Cloud SaaS, Browser extension SaaS-like, **Your serverless hostile-storage model**
+%  - Compare: trust boundary, attack surface, metadata leakage, sync strategy.
+% - **Related approaches and baselines:**
+%  - Mopass-like approaches (position as comparison)
+%  - AWS KMS-style designs (trade: server/provider trust and complexity)
+% - **Cryptographic primitives overview** *only as needed to defend your choices*:
+%  - AEAD concept, AES-GCM integrity, IV uniqueness requirement
+%  - KDFs: PBKDF2 vs Argon2 (note WebCrypto native support vs WASM tradeoff)
+%  - Signatures: why signing vault modifications matters for provenance
+
+% **Rule:** Every subsection ends with “Implication for our design: …”.
+
+% ---
+
+% Chapter 3 — Problem Definition & Threat Model (your “security backbone”)
+% **Purpose:** formalize what you protect, from whom, and what you don’t.
+
+% 3.1 Assets (be explicit)
+% - Vault plaintext entries (passwords, notes, TOTP seeds)
+% - Vault key (DEK), device private keys, derived master key material
+% - Metadata: vaultId, deviceId, timestamps, revisions, device registry
+% - Sync configuration (bucket name, region, credentials)
+% - Local caches (IndexedDB) and remote blobs (S3)
+
+% 3.2 Adversaries & capabilities
+% Use a structured model (STRIDE is fine) and then specialize into your hostile-storage assumptions:
+% - **Untrusted storage:** attacker can read/write/rollback/delete objects in S3 and IndexedDB
+% - **Offline attacker:** can attempt brute-force after exfiltration
+% - **Compromised transport:** treat TLS as insufficient for confidentiality (corporate proxies etc.)
+% - **Trusted boundary:** only extension volatile memory at runtime
+% - Optional: discuss realistic extension threats (XSS within extension UI, malicious websites trying to interact, etc.)
+
+% 3.3 Security goals (turn into testable invariants)
+% Examples (write as “must” statements):
+% - Confidentiality: storage reveals only ciphertext; no plaintext leaves trusted memory
+% - Integrity: modified/forged vault snapshots are rejected
+% - Anti-rollback: older valid snapshots cannot silently replace newer state
+% - Key secrecy: vault key and device private keys are non-extractable and never stored unwrapped
+% - Sync correctness: no silent overwrites; conflicts require explicit user choice
+
+% 3.4 Out-of-scope (must be explicit)
+% - Compromised browser binary/OS malware/physical memory extraction
+% - Fully malicious extension with broad privileges (define whether considered out-of-scope or partially mitigated)
+% - Side-channel resistance beyond WebCrypto guarantees
+
+% ---
+
+% Chapter 4 — Security Specification (Suite-v1) (write like an engineering spec)
+% **Purpose:** define cryptographic suite, formats, metadata, and versioning.
+
+% Include:
+
+% 4.1 Suite versioning strategy
+% - “suite-v1” is frozen; future “suite-v2” must remain backward compatible by envelope tagging.
+
+% 4.2 Primitive selection table (with rationale)
+% - AES-256-GCM for payload AEAD (12-byte IV uniqueness requirement; tag length)
+% - AES-256-KW for wrapping the vault DEK (RFC 3394)
+% - Ed25519 signatures for vault modifications (provenance / non-repudiation)
+% - ECDH P-256 for device-to-device shared secrets during setup
+% - PBKDF2-HMAC-SHA256 with **≥600k iterations** (justify with benchmarks)
+
+% > Note: if any of these primitives are not uniformly supported in your target browsers via WebCrypto, document compatibility and fallbacks (or constrain supported browsers). Don’t hide this—own it.
+
+% 4.3 Key hierarchy (diagram required)
+% Show:
+% - Master password → KDF → KEK (key-encryption key)
+% - DEK (vault key) wrapped by KEK (AES-KW)
+% - Device signing keypair (Ed25519), private key non-extractable
+% - Device pairing key agreement (ECDH) for provisioning secrets
+
+% 4.4 Pepper strategy (split-knowledge hardening)
+% Specify precisely:
+% - Input = SHA256(masterPassword + applicationPepper)
+% - Pepper location: embedded in extension build (not in vault/config)
+% - Threat benefit: attacker needs both storage exfiltration + client reverse engineering
+
+% Also be honest:
+% - Pepper is not a silver bullet; it raises cost and changes attacker model.
+
+% 4.5 Integrity binding with AAD + authenticated metadata
+% Define which metadata fields are bound in AES-GCM AAD:
+% - vaultId, signerDeviceId, revision, timestamp (and any others)
+% Explain the security property:
+% - metadata tampering breaks tag verification
+
+% 4.6 Anti-rollback logic
+% - Track last-seen timestamp/revision locally
+% - Reject/flag older snapshots even if signature verifies
+% - Define the UX for rollback warnings (must not silently accept)
+
+% 4.7 Runtime security & memory hygiene requirements
+% Mandate:
+% - Use `Uint8Array` not strings where possible
+% - Explicit `.fill(0)` wiping
+% - `extractable: false` for DEK and private keys
+% - Auto-lock default 5 minutes triggers wipe flow
+
+% **Rule:** treat this chapter as your *“ground truth”* for later evaluation.
+
+% ---
+
+% Chapter 5 — System Architecture (Hexagonal / Ports & Adapters)
+% **Purpose:** demonstrate engineering rigor and testability.
+
+% 5.1 Architectural style and why
+% - Hexagonal architecture to isolate core logic from infrastructure and UI frameworks.
+% - Dependency rule: always inward; core has no React/no AWS SDK.
+
+% 5.2 Layer definitions (map to folders)
+% - `src/core/`: types + ports (interfaces), pure logic
+% - `src/adapters/`: WebCrypto adapter, S3 adapter, IndexedDB adapter, mocks
+% - `src/ui/`: views/hooks/stores (React)
+% - `extension/background/`: service worker coordinating sync (no React)
+
+% 5.3 State management & DI rules (be strict)
+% - React Context used only for **dependency injection** (wiring ports → adapters)
+% - Global state with Zustand (why over Redux: simplicity/perf)
+% - Business logic in hooks; views are presentational
+
+% 5.4 File conventions (enforceable)
+% - `.type.ts`, `.port.ts`, `.adapter.ts`, `.store.ts`, `.hook.ts`, `.view.tsx`
+% Explain how this supports portability: swapping S3→GCS = new adapter only.
+
+% 5.5 Core data flow diagrams (must include)
+% - Unlock flow: master password → derive → unwrap DEK → load vault entries
+% - CRUD flow: entry edit → encrypt → commit local → mark dirty for sync
+% - Sync flow overview (ties into Chapter 6)
+
+% ---
+
+% Chapter 6 — Synchronization Protocol (local-first, user-controlled)
+% **Purpose:** specify your distributed system behavior without a server arbiter.
+
+% 6.1 Design principle: “No Auto-Merge for conflicts”
+% Explain why LWW is unsafe in a password manager:
+% - can overwrite a new password with old one
+% - can resurrect deleted/compromised credential
+% Your stance: **manual conflict resolution is mandatory**.
+
+% 6.2 The 6-step sync algorithm (spec + pseudo)
+% 1) initiation (preconditions: enabled, unlocked, network check)
+% 2) download remote encrypted snapshot
+% 3) double decrypt (local + remote in memory)
+% 4) diff + categorize:
+%   - auto-resolved (one-sided changes)
+%   - conflicts (both modified or delete-vs-modify)
+% 5) resolution UI:
+%   - masked fields by default
+%   - explicit per-item choice: Use Local / Use Remote / Skip
+%   - no batch resolve
+% 6) completion:
+%   - merge → encrypt → write local
+%   - atomic remote upload (temp then rename)
+
+% 6.3 Edge cases (explicit section)
+% - Offline handling (abort + queue retry)
+% - Master password rotation (detect decrypt failure on other device; prompt for new pass)
+% - Large vault performance (pagination + progress in Diff UI)
+
+% **Rule:** this chapter must be detailed enough that another engineer could implement it.
+
+% ---
+
+% Chapter 7 — Multi-Device Setup, Identity, and Revocation
+% **Purpose:** solve provisioning without a central server.
+
+% 7.1 What must be shared vs what must never be transferred
+% - Must share: storage config + encryption salt
+% - Must never transfer electronically: master password (manual entry only)
+
+% 7.2 Provisioning methods (3 methods, with security properties)
+% 1) QR transfer (co-located):
+%   - encrypted session payload, expires in 5 minutes, one-time use
+% 2) Encrypted export file:
+%   - config encrypted with key derived from master password
+%   - safe over email/USB/cloud drive (without password memory)
+% 3) Manual entry
+
+% 7.3 Device identity model
+% - unique signerDeviceId (UUID)
+% - Ed25519 signing key per device
+% - device registry metadata (OS/browser/last sync), opt-in to reduce fingerprinting
+
+% 7.4 Revocation semantics
+% - cannot wipe disconnected device (no server)
+% - rotate vault keys to prevent future updates from revoked device
+
+% ---
+
+% Chapter 8 — Data Model, Organization, and UX Semantics (security-relevant UX)
+% **Purpose:** show that usability is part of security, and organization decisions are research-informed.
+
+% Include:
+% - “Place vs Context” ontology:
+%  - Folders: hierarchical tree, mutually exclusive, icon-based
+%  - Tags: flat grouped list, multi-select, color-based
+% - Global library of 100+ standard definitions (bundled JSON)
+% - Archetypes (Developer / Family / Standard) to seed structure
+% - Smart suggestions (normalize names/icons/colors)
+
+% Tie to outcomes:
+% - reduces over-organization
+% - improves consistency and retrieval (security via reduced mistakes)
+
+% ---
+
+% Chapter 9 — Infrastructure Backends & Portability (S3 as reference, not dependency)
+% **Purpose:** defend “serverless” operational simplicity and provider-agnostic design.
+
+% Cover:
+% - S3 reference implementation
+% - IaC: CloudFormation template provisions:
+%  - S3 bucket (versioning, public access blocked)
+%  - Cognito Identity Pool
+%  - IAM least privilege (GetObject/PutObject in prefix)
+
+% Alternative backends (and what changes):
+% - GCS (auth differences → adapter)
+% - Azure Blob (mapping differences)
+% - MinIO (S3-compatible endpoint)
+% - Storj (requires distinct adapter)
+
+% Include:
+% - cost analysis for 1MB vault daily sync (pennies/month, often free-tier)
+
+% ---
+
+% Chapter 10 — Implementation Notes (evidence of engineering, not a code tour)
+% **Purpose:** demonstrate you implemented the spec and faced real constraints.
+
+% Include:
+% - repo overview (structure, build, testing)
+% - WebCrypto specifics:
+%  - async flow patterns to avoid UI blocking
+%  - IV generation and uniqueness policy
+%  - key wrapping/unwrapping
+% - storage choices:
+%  - avoid localStorage, use IndexedDB for blobs and async transactions
+% - “war stories”:
+%  - JS GC + memory wiping limits
+%  - how you constrained sensitive lifetimes
+%  - extension MV3 service worker constraints (if relevant)
+
+% **Rule:** every implementation subsection references the requirement/spec it satisfies.
+
+% ---
+
+% Chapter 11 — Evaluation (the grade is decided here)
+% **Purpose:** validate claims quantitatively and adversarially.
+
+% Split into three pillars:
+
+% 11.1 Security verification (“negative testing”)
+% - XSS simulation attempts:
+%  - try exporting keys; prove `extractable: false` blocks export
+% - hostile storage tampering:
+%  - modify ciphertext / metadata; ensure GCM tag failure
+%  - rollback attempt with older snapshot; ensure detection + warning
+% - network interception:
+%  - show only high-entropy blobs transmitted (no plaintext)
+% - automated audits:
+%  - Lighthouse / OWASP ZAP security headers (CSP, HSTS, etc.)
+%  - document findings and fixes
+
+% Deliverables:
+% - test cases table: threat → test → expected result → observed result
+
+% 11.2 Performance benchmarking
+% Define test environment (browser version, CPU, RAM).
+
+% Measure:
+% - PBKDF2 latency at multiple iteration counts (include 600k)
+% - encrypt/decrypt throughput (WebCrypto vs pure JS lib baseline if used)
+% - diff+merge performance for 1k+ entries, UI responsiveness
+
+% Include:
+% - graphs and tables
+% - justification for chosen KDF iterations based on usability/security tradeoff
+
+% 11.3 Usability study
+% n=10–20:
+% - SUS score
+% - task success time: sign up, save credential, autofill
+% - trust perception: “browser-based vs desktop” sentiment
+% - analyze feedback specifically about:
+%  - manual conflict resolution burden
+%  - setup complexity (S3 provisioning)
+
+% ---
+
+% Chapter 12 — Discussion, Limitations, Future Work
+% **Purpose:** interpret results honestly, not “victory lap”.
+
+% Include:
+% - whether claims A/B/C held, and under what conditions
+% - limitations:
+%  - browser/OS compromise
+%  - pepper strategy limits (reverse engineering)
+%  - manual conflict UX cost
+% - future work:
+%  - WebAuthn hardware-backed key material replacing master password
+%  - post-quantum experiments via WASM (Kyber), clearly marked as future work
+%  - improved secure enclave usage where available (platform constraints)
+
+% ---
+
+% 2) What diagrams/tables you must include (minimum set)
+
+% 1) **Threat model table** (adversary → capability → mitigation → residual risk)  
+% 2) **Key hierarchy diagram** (master → KEK → wrap DEK; device signing keys; pairing keys)  
+% 3) **Envelope format / metadata fields** (what is AAD; what is signed; version tags)  
+% 4) **Hexagonal architecture diagram** (ports & adapters; dependency direction)  
+% 5) **Sync sequence diagram** (6-step flow, diff UI pause, atomic upload)  
+% 6) **Comparison table** vs SaaS PMs, Mopass, KMS-like approaches  
+% 7) **Benchmark tables/plots** (PBKDF2 iterations vs latency; crypto throughput; diff performance)  
+% 8) **Usability results** (SUS + task times + qualitative themes)
+
+% Rule: every figure/table must be referenced and explained in text.
+
+% ---
+
+% 3) Writing rules (to match “elite thesis” expectations)
+
+% 3.1 Narrative flow
+% Each chapter must answer:
+% - What problem remains?
+% - What insight/design choice addresses it?
+% - How you validate it?
+
+% 3.2 Tense discipline
+% - Past: what you implemented/tested (“was measured”, “was designed”)
+% - Present: established facts (“AES-GCM provides…”)
+
+% 3.3 Precision (ban “very secure”)
+% Replace vague claims with measurable statements:
+% - “resists tampering” → “GCM tag verification fails on any bitflip; modification is rejected”
+% - “hard to brute force” → “PBKDF2 600k iterations yields X ms on test machine; attacker cost model…”
+
+% 3.4 Citations strategy
+% Cite for:
+% - password reuse / credential stuffing prevalence
+% - arguments about JS crypto pitfalls and WebCrypto motivation
+% - local-first sync and conflict-resolution patterns (where applicable)
+% - usability instruments (SUS)
+% - cryptographic standards (W3C WebCrypto, RFCs)
+
+% ---
+
+% 4) “Do not forget” checklist (common thesis-killers)
+
+% - Define **serverless** precisely (no server-side data logic; storage is dumb).
+% - Make **hostile storage** assumption explicit (remote and local stores attacker-modifiable).
+% - State **what is trusted** (only volatile memory of extension instance).
+% - Specify **suite-v1** and the migration plan to suite-v2.
+% - Document IV uniqueness policy (AES-GCM requirement).
+% - Explain **pepper** benefits *and* limits.
+% - Bind metadata with **AAD**, and add anti-rollback logic.
+% - Explain **manual conflict resolution** and why auto-merge is rejected.
+% - Show portability: adapters, provider-agnostic design, MinIO/Storj feasibility.
+% - Evaluate with adversarial tests + benchmarks + usability (not just “it works”).
+
+% ---
+
+% 5) Suggested work plan (so the writing stays consistent)
+
+% 1) Freeze **Threat Model + Suite-v1 spec** (Ch. 3–4) first  
+% 2) Then write **Architecture + Sync spec** (Ch. 5–6)  
+% 3) Implement to match the spec  
+% 4) Write **Evaluation plan** before running tests (so it’s not cherry-picked)  
+% 5) Run tests, capture artifacts (screenshots of ZAP findings, benchmark logs, diff cases)  
+% 6) Write Discussion/Limitations with the same rigor as the design chapters
+
+% ---
+
+% 6) Thesis “quality bar” rubric you can self-grade against
+
+% - **Originality:** serverless redefinition + hostile-storage + no-auto-merge protocol + pepper + AAD metadata binding
+% - **Technical depth:** spec is implementable; architecture is testable; crypto is correctly used
+% - **Critical thinking:** trade-offs are explicit (setup complexity, manual conflicts, out-of-scope threats)
+% - **Evaluation rigor:** negative testing + reproducible benchmarks + usability study
+% - **Professionalism:** diagrams, tables, consistent terminology, strong citations, no filler screenshots
+
+% ---
+
+% If you want, paste your current table of contents (or your university template headings), and I’ll map them 1:1 to the guide above (what to put in each section, what evidence/figures to include, and what mistakes to avoid).

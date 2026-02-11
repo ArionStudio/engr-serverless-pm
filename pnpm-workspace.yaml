@@ -1,3 +1,4 @@
 packages:
-  - apps/extension
-  - docs/research
+    - apps/extension
+    - docs/research
+    - docs/thesis
