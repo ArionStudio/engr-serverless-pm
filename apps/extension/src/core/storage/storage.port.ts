@@ -18,7 +18,7 @@ import type {
  *
  * Core layer defines the interface; adapters provide Dexie.js implementation.
  */
-export interface IStorageService {
+export interface StoragePort {
   // ─────────────────────────────────────────────────────────────
   // Vault Operations
   // ─────────────────────────────────────────────────────────────

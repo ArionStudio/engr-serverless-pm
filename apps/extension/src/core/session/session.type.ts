@@ -7,8 +7,8 @@
  * @see docs/security/security-specification.md Section 10
  */
 
-import type { MasterKEK, VaultKey } from "../crypto/crypto.type";
-import type { DeviceKeyPair } from "../device/device-key.type";
+import type { MasterKEK, VaultKey } from "../crypto/keys/crypto-keys.type";
+import type { DeviceKeys } from "../device/device-key.type";
 
 /**
  * Active unlocked vault session.
@@ -19,7 +19,7 @@ export interface UnlockedVaultSession {
   readonly vaultKey: VaultKey;
   /** non-extractable */
   readonly masterKEK: MasterKEK;
-  readonly deviceKeyPair: DeviceKeyPair;
+  readonly deviceKeys: DeviceKeys;
   /** Unix ms */
   readonly unlockedAt: number;
   /** Unix ms */

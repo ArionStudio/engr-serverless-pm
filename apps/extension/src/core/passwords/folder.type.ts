@@ -10,16 +10,19 @@
 /**
  * Folder for organizing passwords.
  * Supports unlimited nesting (UI warns beyond 2 levels).
+ *
+ * All fields are readonly to prevent accidental mutation of decrypted data.
+ * Use FolderInput/FolderUpdate for creation and modification operations.
  */
 export interface Folder {
   /** UUID */
   readonly id: string;
-  name: string;
+  readonly name: string;
   /** e.g., "briefcase", "home", "server" */
-  icon: string;
-  description: string | null;
+  readonly icon: string;
+  readonly description: string | null;
   /** null = root level */
-  parentId: string | null;
+  readonly parentId: string | null;
   /** Unix ms */
   readonly createdAt: number;
 }

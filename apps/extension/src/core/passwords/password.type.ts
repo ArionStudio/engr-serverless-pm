@@ -8,23 +8,26 @@
 /**
  * Full password entry with all fields.
  * Stored in the decrypted vault data.
+ *
+ * All fields are readonly to prevent accidental mutation of decrypted data.
+ * Use PasswordInput/PasswordUpdate for creation and modification operations.
  */
 export interface Password {
   /** UUID */
   readonly id: string;
-  title: string;
-  username: string;
+  readonly title: string;
+  readonly username: string;
   /** plaintext, only in decrypted vault */
-  password: string;
-  url: string | null;
-  notes: string | null;
+  readonly password: string;
+  readonly url: string | null;
+  readonly notes: string | null;
   /** null = root */
-  folderId: string | null;
-  tags: string[];
+  readonly folderId: string | null;
+  readonly tags: readonly string[];
   /** Unix ms */
   readonly createdAt: number;
   /** Unix ms */
-  modifiedAt: number;
+  readonly modifiedAt: number;
 }
 
 /**
@@ -37,7 +40,7 @@ export interface PasswordMetadata {
   readonly username: string;
   readonly url: string | null;
   readonly folderId: string | null;
-  readonly tags: string[];
+  readonly tags: readonly string[];
   /** Unix ms */
   readonly modifiedAt: number;
 }

@@ -16,3 +16,11 @@ String sorting by user preferred lang - https://developer.mozilla.org/en-US/docs
 url constructor - https://developer.mozilla.org/en-US/docs/Web/API/URL/URL
 
 service worker lifecycle - https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle
+
+https://blog.engelke.com/2015/02/14/deriving-keys-from-passwords-with-webcrypto/
+
+https://asecuritysite.com/webcrypto/
+
+https://blog.doubleslash.de/en/software-technologien/cyber-security/web-crypto-api-security-and-encryption-on-the-web/
+
+https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/wrapKey
