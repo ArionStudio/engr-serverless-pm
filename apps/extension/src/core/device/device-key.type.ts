@@ -37,11 +37,19 @@ export type DevicePublicKeysJwk = Readonly<{
 /**
  * Wrapped device private keys for persistence (e.g. IndexedDB).
  *
- * Only private keys are wrapped. Public keys can be re-exported or stored
- * separately.
+ * Private keys are wrapped (encrypted) with the MasterKEK using AES-256-GCM
+ * (A256GCMKW). Each wrapped buffer contains `IV (12 bytes) || ciphertext+tag`.
+ * Public keys are stored alongside in their raw/spki export format so that
+ * `unwrapPrivateKeys()` can reconstruct the full `DeviceKeys` without any
+ * network dependency (offline-first). Public keys are public by definition,
+ * so storing them unencrypted has no security cost.
  */
 export type WrappedDeviceKeys = Readonly<{
   readonly suiteId: AlgorithmSuiteId;
   readonly wrappedSigningPrivateKey: ArrayBuffer;
   readonly wrappedAgreementPrivateKey: ArrayBuffer;
+  /** Ed25519 public key exported as "raw" (32 bytes). */
+  readonly signingPublicKeyBytes: ArrayBuffer;
+  /** ECDH P-256 public key exported as "spki". */
+  readonly agreementPublicKeyBytes: ArrayBuffer;
 }>;

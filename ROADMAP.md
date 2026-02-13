@@ -1,7 +1,7 @@
 # ROADMAP.md
 
 > Implementation sequence for the serverless password manager.
-> Last updated: 2026-01-28
+> Last updated: 2026-02-13
 
 ## Overview
 
@@ -110,16 +110,24 @@ The originally proposed sequence (Envelope → Sync → Conflict → UI → Safe
 - [x] `templates.type.ts` - Password entry templates
 - [x] `global-library.type.ts` - Shared library types
 
-**Crypto:**
+**Crypto** (`src/core/crypto/`):
 
-- [x] `crypto.type.ts` - VaultKey, MasterKeyMaterial, EncryptedBlob
-- [x] `algorithm-suite.type.ts` - Algorithm configuration types
+- [x] `crypto.port.ts` - CryptoPort interface (deriveKey, encrypt, decrypt, hash, wrapKey, unwrapKey)
+- [x] `crypto.const.ts` - Crypto constants
+- [x] `algorithms/` - KDF, symmetric, signing, key-exchange, key-wrap, hashing configs
+- [x] `suites/` - Algorithm suite definitions, registry, helpers
+- [x] `profiles/` - Crypto profile registry and types
+- [x] `formats/` - Key format and serialization suite types
+- [x] `keys/` - CryptoKey aggregate types
 
 **Vault:**
 
 - [x] `vault.type.ts` - Vault structure
 - [x] `key-slot.type.ts` - Device key slots
-- [x] `encrypted-data.type.ts` - Encrypted data envelope
+- [x] `encrypted-payload.type.ts` - Encrypted payload (IV, ciphertext, AAD)
+- [x] `vault-envelope.type.ts` - Signed vault envelope
+- [x] `vault-metadata.type.ts` - Vault metadata (devices, timestamps)
+- [x] `vault-snapshot.type.ts` - Vault snapshot for sync
 
 **Device:**
 
@@ -148,7 +156,7 @@ The originally proposed sequence (Envelope → Sync → Conflict → UI → Safe
 
 ### Constants & Utils
 
-- [x] `crypto.const.ts`, `algorithm-suite.const.ts` - Crypto constants
+- [x] `algorithm-suite.const.ts` - Algorithm suite constants (in `crypto/suites/`)
 - [x] `storage.const.ts` - Storage constants
 - [x] `sync.const.ts` - Sync constants
 - [x] `session.const.ts` - Session constants
@@ -170,44 +178,58 @@ The originally proposed sequence (Envelope → Sync → Conflict → UI → Safe
 
 ---
 
-## Phase 2: Crypto Adapter (WebCrypto) `[Thesis]`
+## Phase 2: Crypto & Device Key Adapters (WebCrypto) `[Thesis]`
 
-**Goal:** Implement crypto port using WebCrypto API.
+**Goal:** Implement CryptoPort and DeviceKeyPort using WebCrypto API.
 
-### Key Derivation
+### 2a: Crypto Adapter (CryptoPort) ✓
 
-- [ ] PBKDF2-SHA256 with 600,000 iterations
+Key derivation, symmetric encryption, hashing, and key wrapping.
+
+- [x] PBKDF2-SHA256 with 600,000 iterations
 - [ ] Application pepper (hardcoded, defense-in-depth)
-- [ ] Salt generation and storage
+- [x] Salt generation and storage
+- [x] AES-256-GCM encryption
+- [x] Random IV per operation (96-bit)
+- [x] AAD binding for context
+- [x] Key wrapping / unwrapping (AES-256-GCM via profile suite)
+- [x] Vault key generation
+- [x] Hashing (SHA-256 via profile suite)
 
-### Symmetric Encryption
+**Location:** `src/adapters/crypto/web-crypto-api.adapter.ts`
 
-- [ ] AES-256-GCM encryption
-- [ ] Random IV per operation (96-bit)
-- [ ] AAD binding for context
+#### Tests
 
-### Asymmetric Operations
+- [ ] PBKDF2 test vectors (RFC 6070)
+- [ ] AES-256-GCM test vectors (NIST SP 800-38D)
 
-- [ ] Ed25519 for device signing
-- [ ] ECDH P-256 for key exchange
-- [ ] Device key slot wrapping
+### 2b: Device Key Adapter (DeviceKeyPort)
 
-### Memory Hygiene
+Device identity key pairs, signing, key agreement, and private key protection.
+
+- [ ] Generate device keys (Ed25519 signing + ECDH P-256 agreement)
+- [ ] Export public keys as JWK
+- [ ] Wrap/unwrap device private keys with MasterKEK
+- [ ] Sign and verify (Ed25519)
+- [ ] Derive shared secret (ECDH P-256)
+
+**Location:** `src/adapters/device/` (new)
+
+#### Tests
+
+- [ ] Ed25519 signature verification tests
+- [ ] ECDH key exchange tests
+
+### Memory Hygiene (shared)
 
 - [ ] `secureWipe()` utility for sensitive data
 - [ ] Vault Key held in memory only (never persisted)
 
-**Location:** `src/adapters/crypto/`
+#### Tests
+
+- [ ] `secureWipe()` memory clearing tests
 
 **Validation:** Unit tests with known test vectors.
-
-### Tests
-
-- [ ] PBKDF2 test vectors (RFC 6070)
-- [ ] AES-256-GCM test vectors (NIST SP 800-38D)
-- [ ] Ed25519 signature verification tests
-- [ ] ECDH key exchange tests
-- [ ] `secureWipe()` memory clearing tests
 
 ---
 
@@ -546,19 +568,19 @@ Phase 9 (Browser) ────────> Phase 10 (Devices) ───> Phase 
 
 ## Current Status
 
-| Phase | Status      | Notes                                |
-| ----- | ----------- | ------------------------------------ |
-| 0     | Complete    | All diagrams done (PlantUML)         |
-| 1     | In Progress | Types & ports defined, tests pending |
-| 2     | Not Started | Adapters layer empty                 |
-| 3     | Not Started | Adapters layer empty                 |
-| 4     | Not Started | Depends on Phase 2-3                 |
-| 5     | Not Started | Depends on Phase 4                   |
-| 6     | Not Started | Depends on Phase 2                   |
-| 7     | Not Started | Depends on Phase 3, 6                |
-| 8     | Not Started | Depends on Phase 5, 7                |
-| 9     | Not Started | Depends on Phase 5                   |
-| 10    | Not Started | Post-thesis                          |
-| 11    | Not Started | Future                               |
+| Phase | Status      | Notes                                                                  |
+| ----- | ----------- | ---------------------------------------------------------------------- |
+| 0     | Complete    | All diagrams done (PlantUML)                                           |
+| 1     | Complete    | All types, ports, constants & utils defined; tests pending             |
+| 2     | In Progress | CryptoPort adapter complete; DeviceKeyPort adapter & tests not started |
+| 3     | Not Started | Depends on Phase 2                                                     |
+| 4     | Not Started | Depends on Phase 2-3                                                   |
+| 5     | Not Started | Depends on Phase 4                                                     |
+| 6     | Not Started | Depends on Phase 2                                                     |
+| 7     | Not Started | Depends on Phase 3, 6                                                  |
+| 8     | Not Started | Depends on Phase 5, 7                                                  |
+| 9     | Not Started | Depends on Phase 5                                                     |
+| 10    | Not Started | Post-thesis                                                            |
+| 11    | Not Started | Future                                                                 |
 
 **UI Layer:** Working (theme system, Button component, popup with mock data)

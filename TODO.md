@@ -82,31 +82,47 @@ required to prove WebCrypto's sufficiency for the engineering thesis. These incl
 
 ### Core Layer (`src/core/`)
 
-- [ ] Crypto port and types
-  - [ ] `crypto.port.ts` - deriveKey, encrypt, decrypt interfaces
-  - [ ] `encrypted-data.type.ts` - IV, ciphertext types
-- [ ] Password types
-  - [ ] `password.type.ts` - Password, EncryptedPassword
-  - [ ] `folder.type.ts` - Folder with icon support
-  - [ ] **[Future]** `tag.type.ts` - Tag with color and groupId
+- [x] Crypto port and types
+  - [x] `crypto.port.ts` - deriveKey, encrypt, decrypt, hash, wrapKey, unwrapKey interfaces
+  - [x] `encrypted-payload.type.ts` - IV, ciphertext, AAD types
+  - [x] `crypto/algorithms/` - KDF, symmetric, signing, key-exchange, key-wrap, hashing configs
+  - [x] `crypto/suites/` - Algorithm suite definitions (configurable crypto primitives)
+  - [x] `crypto/profiles/` - Crypto profile registry and types
+  - [x] `crypto/formats/` - Key format and serialization suite types
+  - [x] `crypto/keys/` - CryptoKey aggregate types
+- [x] Vault types
+  - [x] `vault.type.ts` - Vault structure
+  - [x] `vault-envelope.type.ts` - Signed vault envelope
+  - [x] `vault-metadata.type.ts` - Vault metadata (devices, timestamps)
+  - [x] `vault-snapshot.type.ts` - Vault snapshot for sync
+  - [x] `key-slot.type.ts` - Device key slots
+- [x] Password types
+  - [x] `password.type.ts` - Password, EncryptedPassword
+  - [x] `folder.type.ts` - Folder with icon support
+  - [x] **[Future]** `tag.type.ts` - Tag with color and groupId
   - [ ] **[Future]** `tag-group.type.ts` - TagGroup with baseColor
 - [ ] Password repository port
   - [ ] `password-repository.port.ts` - CRUD interface
-- [ ] Sync port and types
-  - [ ] `sync.port.ts` - upload, download, delete, list
-  - [ ] `sync-diff.type.ts` - SyncChange, SyncConflict, SyncDiff
-- [ ] Device key types
-  - [ ] `device.type.ts` - Device, DeviceRegistry
-  - [ ] `device-key.port.ts` - generateSignKeyPair (Ed25519), generateExchangeKeyPair (ECDH P-256), sign, verify interfaces
-  - [ ] `algorithm-suite.type.ts` - Algorithm suite definitions (configurable crypto primitives)
-- [ ] **[Future]** Global library types
-  - [ ] `global-library.type.ts` - folder/tag definitions
-  - [ ] `templates.type.ts` - organization archetypes
+- [x] Sync port and types
+  - [x] `sync.port.ts` - upload, download, delete, list
+  - [x] `sync-diff.type.ts` - SyncChange, SyncConflict, SyncDiff
+- [x] Device key types
+  - [x] `device.type.ts` - Device, DeviceRegistry
+  - [x] `device-key.type.ts` - Device key pair types
+  - [x] `device-key.port.ts` - generateSignKeyPair (Ed25519), generateExchangeKeyPair (ECDH P-256), sign, verify interfaces
+- [x] Storage port and types
+  - [x] `storage.port.ts` - StoragePort interface
+  - [x] `storage.type.ts` - IndexedDB schema types
+- [x] Session types
+  - [x] `session.type.ts` - Session state types
+- [x] **[Future]** Global library types
+  - [x] `global-library.type.ts` - folder/tag definitions
+  - [x] `templates.type.ts` - organization archetypes
 
 ### Adapters Layer (`src/adapters/`)
 
-- [ ] Crypto adapter
-  - [ ] `web-crypto.adapter.ts` - PBKDF2 + AES-256-GCM implementation
+- [x] Crypto adapter
+  - [x] `web-crypto-api.adapter.ts` - PBKDF2 + AES-256-GCM + key wrapping (generateSalt, generateIV, generateVaultKey, deriveKey, encrypt, decrypt, hash, wrapKey, unwrapKey)
 - [ ] Device key adapter
   - [ ] `device-key.adapter.ts` - Ed25519 signing key pair + ECDH P-256 exchange key pair generation, sign/verify
 - [ ] Storage adapter
@@ -435,7 +451,7 @@ which has same security as master password. Consider if this adds real value.
 #### Implementation Notes
 
 - Uses WebCrypto `subtle.generateKey()` for Ed25519 (signing) and ECDH P-256 (exchange)
-- Private keys wrapped with Master KEK (AES-KW), marked non-extractable when unwrapped
+- Private keys wrapped with Master KEK (AES-256-GCM A256GCMKW), marked non-extractable when unwrapped
 - Public keys exported as JWK for storage in vault
 - Algorithm suite system allows future algorithm changes (see docs/security/security-specification.md §3.0)
 
@@ -548,17 +564,22 @@ docs/architecture/
 └── swappable-components.md # What can be replaced
 ```
 
-### Phase 1: Core Types & Architecture
+### Phase 1: Core Types & Architecture ✓
 
-- [ ] Password, Folder types
-- [ ] **[Future]** Tag types
-- [ ] Crypto port interface
-- [ ] Storage port interface
+- [x] Password, Folder types
+- [x] **[Future]** Tag types
+- [x] Crypto port interface
+- [x] Storage port interface
+- [x] Vault types (envelope, metadata, snapshot, encrypted-payload)
+- [x] Device key types and port
+- [x] Session types
+- [x] Sync port and types
+- [x] Crypto domain restructured (algorithms/, formats/, keys/, profiles/, suites/)
 
-### Phase 2: Local Storage
+### Phase 2: Local Storage (In Progress)
 
 - [ ] IndexedDB adapter (Dexie.js)
-- [ ] Web Crypto adapter
+- [x] Web Crypto adapter (`web-crypto-api.adapter.ts` - PBKDF2, AES-256-GCM, key wrapping)
 - [ ] Device key adapter (Ed25519 + ECDH P-256 dual key pairs)
 - [ ] Master password flow (derive Master KEK, store in memory)
 - [ ] Device registration (generate dual key pairs, wrap with Master KEK, store in IndexedDB)

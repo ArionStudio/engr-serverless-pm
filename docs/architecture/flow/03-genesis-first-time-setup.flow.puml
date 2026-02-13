@@ -43,7 +43,7 @@ end fork
 split
     :Master Password Backup;
     |Extension|
-    :Create Master Slot (PBKDF2+AESKW);
+    :Create Master Slot (PBKDF2+A256GCMKW);
 split again
     :Recovery Key Backup;
     |WebCrypto|
@@ -51,7 +51,7 @@ split again
     |User|
     :Save & Confirm Recovery Key;
     |Extension|
-    :Create Recovery Slot (AESKW);
+    :Create Recovery Slot (A256GCMKW);
 end split
 
 |Extension|

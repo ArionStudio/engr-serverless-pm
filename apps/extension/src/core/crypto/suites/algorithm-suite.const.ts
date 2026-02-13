@@ -10,7 +10,7 @@ import { ED25519 } from "../algorithms/signing.const";
 import { ECDH_P256 } from "../algorithms/key-exchange.const";
 import { AES_256_GCM } from "../algorithms/symmetric.const";
 import { PBKDF2_HMAC_SHA256_600K } from "../algorithms/kdf.const";
-import { AES_256_KW } from "../algorithms/key-wrap.const";
+import { AES_256_GCM_KW } from "../algorithms/key-wrap.const";
 
 /**
  * Default algorithm suite (suite-v1).
@@ -22,7 +22,7 @@ export const ALGORITHM_SUITE_V1: AlgorithmSuite = {
   keyExchange: ECDH_P256,
   symmetric: AES_256_GCM,
   kdf: PBKDF2_HMAC_SHA256_600K,
-  keyWrap: AES_256_KW,
+  keyWrap: AES_256_GCM_KW,
 } as const;
 
 /**

@@ -1,5 +1,6 @@
 import type { AlgorithmSuite } from "./algorithm-suite.type";
 import { buildKdfDeriveKeyParams } from "../algorithms/kdf.params";
+import { buildKeyWrapParams } from "../algorithms/key-wrap.params";
 import { buildSymmetricParams } from "../algorithms/symmetric.params";
 
 /**
@@ -37,4 +38,22 @@ export function buildSuiteSymmetricParams(
   aad?: BufferSource,
 ): AesGcmParams {
   return buildSymmetricParams(suite.symmetric, iv, aad);
+}
+
+/**
+ * Suite-level helper: build key wrap/unwrap parameters for WebCrypto based on
+ * the suite.
+ *
+ * This selects the suite's key wrap algorithm (e.g. AES-256-GCM A256GCMKW) and
+ * converts it into WebCrypto parameter objects.
+ *
+ * @param suite - Algorithm suite definition
+ * @param iv - Per-wrap nonce/IV bytes
+ * @returns WebCrypto params for `crypto.subtle.wrapKey(...)` / `unwrapKey(...)`
+ */
+export function buildSuiteKeyWrapParams(
+  suite: AlgorithmSuite,
+  iv: BufferSource,
+): AesGcmParams {
+  return buildKeyWrapParams(suite.keyWrap, iv);
 }

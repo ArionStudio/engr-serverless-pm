@@ -41,9 +41,9 @@ A serverless password manager where **confidentiality and tamper-detection** are
 
 The system supports **named algorithm suites** — predefined, validated combinations of cryptographic primitives. Users may select from supported suites; arbitrary mixing of algorithms is not permitted.
 
-| Suite ID   | Signing | Key Exchange | Symmetric   | KDF    | Key Wrap |
-| ---------- | ------- | ------------ | ----------- | ------ | -------- |
-| `suite-v1` | Ed25519 | ECDH P-256   | AES-256-GCM | PBKDF2 | AES-KW   |
+| Suite ID   | Signing | Key Exchange | Symmetric   | KDF    | Key Wrap                |
+| ---------- | ------- | ------------ | ----------- | ------ | ----------------------- |
+| `suite-v1` | Ed25519 | ECDH P-256   | AES-256-GCM | PBKDF2 | AES-256-GCM (A256GCMKW) |
 
 - **Default:** `suite-v1`
 - The vault file format's `alg` fields (§6.2) identify which suite was used, enabling forward-compatible algorithm changes.
@@ -78,7 +78,10 @@ The parameters below define `suite-v1`.
 
 ### 3.4 Key Wrapping (Key Lock)
 
-- Algorithm: AES-256-KW (RFC 3394)
+- Algorithm: AES-256-GCM (A256GCMKW per RFC 7518 §4.7)
+- IV: 12 random bytes, unique per wrap operation
+- Tag length: 128 bits
+- Output format: `IV (12 bytes) || ciphertext+tag`
 
 ### 3.5 Signing (Identity)
 
@@ -115,20 +118,20 @@ Each device generates:
 
 ### 5.1 Slot Types
 
-1.  **Device Slot (ECDH-ES+A256KW)**
-2.  **Master Backup Slot (PBKDF2+AESKW)**
+1.  **Device Slot (ECDH-ES+A256GCMKW)**
+2.  **Master Backup Slot (PBKDF2+A256GCMKW)**
 
-### 5.2 ECDH-ES+A256KW Derivation (Hardened)
+### 5.2 ECDH-ES+A256GCMKW Derivation (Hardened)
 
 To wrap the Vault Key for a device:
 
 1.  Compute ECDH shared secret `Z` (Ephem Priv + Device Pub).
 2.  Derive `KEK` using **Concat KDF** (SHA-256):
-    - `AlgorithmID` = "A256KW"
+    - `AlgorithmID` = "A256GCMKW"
     - `PartyUInfo` = `apu`
     - `PartyVInfo` = `apv`
     - **Constraint:** Output must be exactly 256 bits.
-3.  Wrap Vault Key with `KEK` (AES-KW).
+3.  Wrap Vault Key with `KEK` (AES-256-GCM).
 
 ---
 
@@ -159,20 +162,20 @@ To wrap the Vault Key for a device:
       {
         "type": "device",
         "deviceId": "device_uuid_123",
-        "alg": "ECDH-ES+A256KW",
+        "alg": "ECDH-ES+A256GCMKW",
         "epk": { "kty": "EC", "crv": "P-256", "x": "...", "y": "..." },
         "apu": "b64url(bytes)",
         "apv": "b64url(bytes)",
-        "ciphertext": "b64url(aes_kw_wrapped_vault_key)"
+        "ciphertext": "b64url(iv_12_bytes || aes_gcm_wrapped_vault_key+tag)"
       },
       {
         "type": "master",
         "deviceId": "master_backup",
-        "alg": "PBKDF2+AESKW",
+        "alg": "PBKDF2+A256GCMKW",
         "hash": "SHA-256",
         "iterations": 600000,
         "salt": "b64url(32 bytes)", // Upgraded to 32 bytes
-        "ciphertext": "b64url(aes_kw_wrapped_vault_key)"
+        "ciphertext": "b64url(iv_12_bytes || aes_gcm_wrapped_vault_key+tag)"
       }
     ],
 

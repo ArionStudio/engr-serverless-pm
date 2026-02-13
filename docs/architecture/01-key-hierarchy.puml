@@ -25,12 +25,12 @@ pbkdf2 -> masterKek
 rectangle "Ed25519\nSigning Key" as signKey #FFF3E0
 rectangle "ECDH P-256\nExchange Key" as ecdhKey #FFF3E0
 
-masterKek --> signKey : AES-KW
-masterKek --> ecdhKey : AES-KW
+masterKek --> signKey : AES-GCM
+masterKek --> ecdhKey : AES-GCM
 
 ' === ROW 3: KEY SLOTS ===
-rectangle "Device Slot\nECDH-ES+A256KW" as deviceSlot #FFF3E0
-rectangle "Master Slot\nPBKDF2+AESKW" as masterSlot #FFF3E0
+rectangle "Device Slot\nECDH-ES+A256GCMKW" as deviceSlot #FFF3E0
+rectangle "Master Slot\nPBKDF2+A256GCMKW" as masterSlot #FFF3E0
 
 ecdhKey --> deviceSlot : derive KEK
 masterKek --> masterSlot : backup

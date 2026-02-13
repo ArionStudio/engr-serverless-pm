@@ -13,8 +13,10 @@ import type { CryptoProfile } from "../../core/crypto/profiles/crypto-profile.ty
 import { resolveAlgorithmSuite } from "../../core/crypto/suites/algorithm-suite.registry";
 import {
   buildSuiteKdfDeriveKeyParams,
+  buildSuiteKeyWrapParams,
   buildSuiteSymmetricParams,
 } from "../../core/crypto/suites/algorithm-suite.helpers";
+import { AES_GCM_IV_LENGTH_BYTES } from "../../core/crypto/crypto.const";
 import { decodeBase64Url, encodeBase64Url } from "@/lib/base64Url.utils";
 
 /**
@@ -130,12 +132,20 @@ export const WebCryptoApiAdapter: CryptoPort = {
   ): Promise<ArrayBuffer> {
     const suite = resolveAlgorithmSuite(profile.algorithmSuiteId);
 
-    return crypto.subtle.wrapKey(
+    const iv = new Uint8Array(AES_GCM_IV_LENGTH_BYTES);
+    crypto.getRandomValues(iv);
+
+    const wrapped = await crypto.subtle.wrapKey(
       format,
       keyToWrap,
       wrappingKey,
-      suite.keyWrap.algorithm,
+      buildSuiteKeyWrapParams(suite, iv),
     );
+
+    const result = new Uint8Array(iv.byteLength + wrapped.byteLength);
+    result.set(iv, 0);
+    result.set(new Uint8Array(wrapped), iv.byteLength);
+    return result.buffer;
   },
 
   async unwrapKey(
@@ -149,11 +159,17 @@ export const WebCryptoApiAdapter: CryptoPort = {
   ): Promise<CryptoKey> {
     const suite = resolveAlgorithmSuite(profile.algorithmSuiteId);
 
+    const data = new Uint8Array(wrappedKey);
+    const iv = new Uint8Array(AES_GCM_IV_LENGTH_BYTES);
+    iv.set(data.subarray(0, AES_GCM_IV_LENGTH_BYTES));
+    const ciphertext = data.slice(AES_GCM_IV_LENGTH_BYTES)
+      .buffer as ArrayBuffer;
+
     return crypto.subtle.unwrapKey(
       format,
-      wrappedKey,
+      ciphertext,
       unwrappingKey,
-      suite.keyWrap.algorithm,
+      buildSuiteKeyWrapParams(suite, iv),
       algorithm,
       extractable,
       keyUsages,

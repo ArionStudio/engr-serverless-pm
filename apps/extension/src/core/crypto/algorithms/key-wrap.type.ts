@@ -3,16 +3,18 @@
  */
 
 /**
- * AES-256-KW (RFC 3394) key wrap definition.
+ * AES-256-GCM key wrap definition (A256GCMKW per RFC 7518 section 4.7).
  *
  * WebCrypto usage:
- * - KEK generation: `{ name: "AES-KW", length: 256 }`
- * - wrap/unwrap: `{ name: "AES-KW" }`
+ * - KEK generation: `{ name: "AES-GCM", length: 256 }`
+ * - wrap/unwrap: `{ name: "AES-GCM", iv, tagLength: 128 }`
+ *
+ * Output format: `IV (12 bytes) || ciphertext+tag`
  */
-export type Aes256KwKeyWrapAlgorithm = Readonly<{
-  readonly kind: "Aes256KwKeyWrapAlgorithm";
-  readonly keyGen: Readonly<{ readonly name: "AES-KW"; readonly length: 256 }>;
-  readonly algorithm: Readonly<{ readonly name: "AES-KW" }>;
+export type Aes256GcmKeyWrapAlgorithm = Readonly<{
+  readonly kind: "Aes256GcmKeyWrapAlgorithm";
+  readonly keyGen: Readonly<{ readonly name: "AES-GCM"; readonly length: 256 }>;
+  readonly tagLengthBits: 128;
 }>;
 
 /**
@@ -20,4 +22,4 @@ export type Aes256KwKeyWrapAlgorithm = Readonly<{
  *
  * Extend by widening this union.
  */
-export type KeyWrapAlgorithm = Aes256KwKeyWrapAlgorithm;
+export type KeyWrapAlgorithm = Aes256GcmKeyWrapAlgorithm;

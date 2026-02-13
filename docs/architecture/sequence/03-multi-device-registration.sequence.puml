@@ -48,11 +48,11 @@ existingDev -> existingDev : Get Vault Key from memory
 
 existingDev -> existingDev : Create ECDH Key Slot\nfor new device
 note right of existingDev
-    **ECDH-ES+A256KW:**
+    **ECDH-ES+A256GCMKW:**
     1. Generate ephemeral P-256 keypair
     2. ECDH: ephemeral.priv + newDevice.pub
     3. ConcatKDF(shared) -> KEK
-    4. AES-KW wrap Vault Key
+    4. AES-GCM wrap Vault Key
 end note
 
 existingDev -> existingDev : Add key slot to vault
@@ -75,7 +75,7 @@ note right of newDev
     **Unwrap Vault Key:**
     1. ECDH: own.priv + slot.epk
     2. ConcatKDF(shared) -> KEK
-    3. AES-KW unwrap -> Vault Key
+    3. AES-GCM unwrap -> Vault Key
 end note
 
 newDev -> newDev : Decrypt vault with Vault Key
@@ -89,7 +89,7 @@ legend right
     {
       type: "device",
       deviceId: "uuid",
-      alg: "ECDH-ES+A256KW",
+      alg: "ECDH-ES+A256GCMKW",
       epk: { kty, crv, x, y },
       apu: "base64url",
       apv: "base64url",
