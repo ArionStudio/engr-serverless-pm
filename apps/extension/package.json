@@ -8,7 +8,8 @@
     "build": "./scripts/build.sh",
     "test": "vitest",
     "lint": "eslint --config ./config/eslint.config.mjs .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "type-check": "tsc --noEmit -p tsconfig.typecheck.json"
   },
   "dependencies": {
     "@base-ui/react": "^1.0.0",

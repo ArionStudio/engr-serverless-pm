@@ -174,7 +174,7 @@ The originally proposed sequence (Envelope → Sync → Conflict → UI → Safe
 
 ### Tests
 
-- [ ] Type compilation tests (strict mode validation)
+- [x] Type compilation tests (strict mode validation)
 
 ---
 
@@ -187,7 +187,7 @@ The originally proposed sequence (Envelope → Sync → Conflict → UI → Safe
 Key derivation, symmetric encryption, hashing, and key wrapping.
 
 - [x] PBKDF2-SHA256 with 600,000 iterations
-- [ ] Application pepper (hardcoded, defense-in-depth)
+- [x] Application pepper (hardcoded, defense-in-depth)
 - [x] Salt generation and storage
 - [x] AES-256-GCM encryption
 - [x] Random IV per operation (96-bit)
@@ -200,34 +200,49 @@ Key derivation, symmetric encryption, hashing, and key wrapping.
 
 #### Tests
 
-- [ ] PBKDF2 test vectors (RFC 6070)
-- [ ] AES-256-GCM test vectors (NIST SP 800-38D)
+- [x] Key derivation round-trip (derive → wrap → unwrap)
+- [x] Different salts produce different derived keys
+- [x] Salt generation (32 bytes default, custom length)
+- [x] IV generation (12 bytes)
+- [x] Vault key generation (AES-256-GCM, 256-bit)
+- [x] Encrypt/decrypt round-trip
+- [x] IV uniqueness per encryption
+- [x] AAD binding (correct, wrong, missing AAD)
+- [x] SHA-256 known test vectors (empty input, "abc")
+- [x] Key wrap/unwrap round-trip
+- [x] Wrapped output size (12 IV + 32 key + 16 tag = 60 bytes)
+- [x] Wrapping randomness (random IV per wrap)
+- [x] Application pepper (32-byte constant, preprocessPassword)
+- [x] PBKDF2 test vectors (RFC 7914 Appendix B)
+- [x] AES-256-GCM test vectors (NIST SP 800-38D)
 
-### 2b: Device Key Adapter (DeviceKeyPort)
+### 2b: Device Key Adapter (DeviceKeyPort) ✓
 
 Device identity key pairs, signing, key agreement, and private key protection.
 
-- [ ] Generate device keys (Ed25519 signing + ECDH P-256 agreement)
-- [ ] Export public keys as JWK
-- [ ] Wrap/unwrap device private keys with MasterKEK
-- [ ] Sign and verify (Ed25519)
-- [ ] Derive shared secret (ECDH P-256)
+- [x] Generate device keys (Ed25519 signing + ECDH P-256 agreement)
+- [x] Export public keys as JWK
+- [x] Wrap/unwrap device private keys with MasterKEK (AES-256-GCM A256GCMKW)
+- [x] Sign and verify (Ed25519)
+- [x] Derive shared secret (ECDH P-256)
 
-**Location:** `src/adapters/device/` (new)
-
-#### Tests
-
-- [ ] Ed25519 signature verification tests
-- [ ] ECDH key exchange tests
-
-### Memory Hygiene (shared)
-
-- [ ] `secureWipe()` utility for sensitive data
-- [ ] Vault Key held in memory only (never persisted)
+**Location:** `src/adapters/device/web-crypto-device-key.adapter.ts`
 
 #### Tests
 
-- [ ] `secureWipe()` memory clearing tests
+- [x] Ed25519 signature verification tests
+- [x] ECDH key exchange tests
+- [x] ECDH P-256 PKCS8 wrap/unwrap round-trip
+- [x] Per-key IV uniqueness (signing IV ≠ agreement IV)
+
+### Memory Hygiene (shared) ✓
+
+- [x] `secureWipe()` utility for sensitive data
+- [x] Vault Key held in memory only (never persisted)
+
+#### Tests
+
+- [x] `secureWipe()` memory clearing tests
 
 **Validation:** Unit tests with known test vectors.
 
@@ -568,19 +583,19 @@ Phase 9 (Browser) ────────> Phase 10 (Devices) ───> Phase 
 
 ## Current Status
 
-| Phase | Status      | Notes                                                                  |
-| ----- | ----------- | ---------------------------------------------------------------------- |
-| 0     | Complete    | All diagrams done (PlantUML)                                           |
-| 1     | Complete    | All types, ports, constants & utils defined; tests pending             |
-| 2     | In Progress | CryptoPort adapter complete; DeviceKeyPort adapter & tests not started |
-| 3     | Not Started | Depends on Phase 2                                                     |
-| 4     | Not Started | Depends on Phase 2-3                                                   |
-| 5     | Not Started | Depends on Phase 4                                                     |
-| 6     | Not Started | Depends on Phase 2                                                     |
-| 7     | Not Started | Depends on Phase 3, 6                                                  |
-| 8     | Not Started | Depends on Phase 5, 7                                                  |
-| 9     | Not Started | Depends on Phase 5                                                     |
-| 10    | Not Started | Post-thesis                                                            |
-| 11    | Not Started | Future                                                                 |
+| Phase | Status      | Notes                                                                                     |
+| ----- | ----------- | ----------------------------------------------------------------------------------------- |
+| 0     | Complete    | All diagrams done (PlantUML)                                                              |
+| 1     | Complete    | All types, ports, constants & utils defined; type compilation tests ✓                     |
+| 2     | Complete    | CryptoPort ✓, DeviceKeyPort ✓, secureWipe ✓, pepper ✓, memory guard ✓, standard vectors ✓ |
+| 3     | Not Started | Depends on Phase 2                                                                        |
+| 4     | Not Started | Depends on Phase 2-3                                                                      |
+| 5     | Not Started | Depends on Phase 4                                                                        |
+| 6     | Not Started | Depends on Phase 2                                                                        |
+| 7     | Not Started | Depends on Phase 3, 6                                                                     |
+| 8     | Not Started | Depends on Phase 5, 7                                                                     |
+| 9     | Not Started | Depends on Phase 5                                                                        |
+| 10    | Not Started | Post-thesis                                                                               |
+| 11    | Not Started | Future                                                                                    |
 
 **UI Layer:** Working (theme system, Button component, popup with mock data)

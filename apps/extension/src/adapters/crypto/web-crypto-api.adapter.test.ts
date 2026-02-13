@@ -304,3 +304,207 @@ describe("WebCryptoApiAdapter", () => {
     });
   });
 });
+
+/**
+ * PBKDF2-HMAC-SHA256 test vectors from RFC 7914, Appendix B.
+ *
+ * These test crypto.subtle.deriveBits() directly because the adapter's
+ * deriveKey() returns a non-extractable CryptoKey (raw bytes can't be read).
+ */
+describe("PBKDF2 standard test vectors (RFC 7914 Appendix B)", () => {
+  const hexFromBytes = (bytes: Uint8Array): string =>
+    Array.from(bytes)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+
+  it('P="passwd", S="salt", c=1, dkLen=64', async () => {
+    const password = new TextEncoder().encode("passwd");
+    const salt = new TextEncoder().encode("salt");
+
+    const baseKey = await crypto.subtle.importKey(
+      "raw",
+      password,
+      { name: "PBKDF2" },
+      false,
+      ["deriveBits"],
+    );
+
+    const bits = await crypto.subtle.deriveBits(
+      { name: "PBKDF2", salt, iterations: 1, hash: "SHA-256" },
+      baseKey,
+      64 * 8,
+    );
+
+    expect(hexFromBytes(new Uint8Array(bits))).toBe(
+      "55ac046e56e3089fec1691c22544b605" +
+        "f94185216dde0465e68b9d57c20dacbc" +
+        "49ca9cccf179b645991664b39d77ef31" +
+        "7c71b845b1e30bd509112041d3a19783",
+    );
+  });
+
+  it('P="Password", S="NaCl", c=80000, dkLen=64', async () => {
+    const password = new TextEncoder().encode("Password");
+    const salt = new TextEncoder().encode("NaCl");
+
+    const baseKey = await crypto.subtle.importKey(
+      "raw",
+      password,
+      { name: "PBKDF2" },
+      false,
+      ["deriveBits"],
+    );
+
+    const bits = await crypto.subtle.deriveBits(
+      { name: "PBKDF2", salt, iterations: 80_000, hash: "SHA-256" },
+      baseKey,
+      64 * 8,
+    );
+
+    expect(hexFromBytes(new Uint8Array(bits))).toBe(
+      "4ddcd8f60b98be21830cee5ef22701f9" +
+        "641a4418d04c0414aeff08876b34ab56" +
+        "a1d425a1225833549adb841b51c9b317" +
+        "6a272bdebba1d078478f62b397f33c8d",
+    );
+  });
+});
+
+/**
+ * AES-256-GCM test vector from NIST SP 800-38D, Test Case 16.
+ *
+ * Uses crypto.subtle directly because the adapter generates a random IV
+ * internally — can't use it for deterministic vector testing.
+ *
+ * Test Case 16: 256-bit key, 96-bit IV, 128-bit tag.
+ */
+describe("AES-256-GCM standard test vectors (NIST SP 800-38D)", () => {
+  const fromHex = (hex: string): ArrayBuffer => {
+    const bytes = hex.match(/.{2}/g)!.map((byte) => parseInt(byte, 16));
+    return new Uint8Array(bytes).buffer as ArrayBuffer;
+  };
+
+  // NIST SP 800-38D, Test Case 16
+  const TC16_KEY = fromHex(
+    "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308",
+  );
+  const TC16_IV = fromHex("cafebabefacedbaddecaf888");
+  const TC16_PLAINTEXT = fromHex(
+    "d9313225f88406e5a55909c5aff5269a" +
+      "86a7a9531534f7da2e4c303d8a318a72" +
+      "1c3c0c95956809532fcf0e2449a6b525" +
+      "b16aedf5aa0de657ba637b39",
+  );
+  const TC16_AAD = fromHex("feedfacedeadbeeffeedfacedeadbeefabaddad2");
+  const TC16_CIPHERTEXT = fromHex(
+    "522dc1f099567d07f47f37a32a84427d" +
+      "643a8cdcbfe5c0c97598a2bd2555d1aa" +
+      "8cb08e48590dbb3da7b08b1056828838" +
+      "c5f61e6393ba7a0abcc9f662",
+  );
+  const TC16_TAG = fromHex("76fc6ece0f4e1768cddf8853bb2d551b");
+
+  it("encrypts to expected ciphertext + tag", async () => {
+    const key = await crypto.subtle.importKey(
+      "raw",
+      TC16_KEY,
+      { name: "AES-GCM" },
+      false,
+      ["encrypt"],
+    );
+
+    const result = await crypto.subtle.encrypt(
+      {
+        name: "AES-GCM",
+        iv: TC16_IV,
+        additionalData: TC16_AAD,
+        tagLength: 128,
+      },
+      key,
+      TC16_PLAINTEXT,
+    );
+
+    // WebCrypto appends the tag to the ciphertext
+    const output = new Uint8Array(result);
+    const expectedCiphertext = new Uint8Array(TC16_CIPHERTEXT);
+    const expectedTag = new Uint8Array(TC16_TAG);
+    const ciphertext = output.slice(0, expectedCiphertext.length);
+    const tag = output.slice(expectedCiphertext.length);
+
+    expect(ciphertext).toEqual(expectedCiphertext);
+    expect(tag).toEqual(expectedTag);
+  });
+
+  it("decrypts to expected plaintext", async () => {
+    const key = await crypto.subtle.importKey(
+      "raw",
+      TC16_KEY,
+      { name: "AES-GCM" },
+      false,
+      ["decrypt"],
+    );
+
+    // WebCrypto expects ciphertext + tag concatenated
+    const ct = new Uint8Array(TC16_CIPHERTEXT);
+    const tag = new Uint8Array(TC16_TAG);
+    const ciphertextWithTag = new Uint8Array(ct.length + tag.length);
+    ciphertextWithTag.set(ct, 0);
+    ciphertextWithTag.set(tag, ct.length);
+
+    const result = await crypto.subtle.decrypt(
+      {
+        name: "AES-GCM",
+        iv: TC16_IV,
+        additionalData: TC16_AAD,
+        tagLength: 128,
+      },
+      key,
+      ciphertextWithTag.buffer as ArrayBuffer,
+    );
+
+    expect(new Uint8Array(result)).toEqual(new Uint8Array(TC16_PLAINTEXT));
+  });
+});
+
+/**
+ * Key memory safety tests.
+ *
+ * Verify that the adapter produces keys with correct extractability
+ * and usage constraints — the crypto-level guardrails that ensure
+ * the Vault Key is never persisted.
+ */
+describe("key memory safety", () => {
+  it("MasterKEK is non-extractable", async () => {
+    const password = new TextEncoder().encode("test-password");
+    const salt = WebCryptoApiAdapter.generateSalt();
+    const { masterKEK } = await WebCryptoApiAdapter.deriveKey(
+      profile,
+      password,
+      salt,
+    );
+
+    expect(masterKEK.extractable).toBe(false);
+    await expect(crypto.subtle.exportKey("raw", masterKEK)).rejects.toThrow();
+  });
+
+  it("MasterKEK only has wrapping usages", async () => {
+    const password = new TextEncoder().encode("test-password");
+    const salt = WebCryptoApiAdapter.generateSalt();
+    const { masterKEK } = await WebCryptoApiAdapter.deriveKey(
+      profile,
+      password,
+      salt,
+    );
+
+    expect([...masterKEK.usages].sort()).toEqual(["unwrapKey", "wrapKey"]);
+  });
+
+  it("VaultKey is extractable only for wrapping", async () => {
+    const vaultKey = await WebCryptoApiAdapter.generateVaultKey(profile);
+
+    // Must be extractable so wrapKey("raw", ...) can read it
+    expect(vaultKey.extractable).toBe(true);
+    // But limited to encrypt/decrypt — cannot be used for wrapping
+    expect([...vaultKey.usages].sort()).toEqual(["decrypt", "encrypt"]);
+  });
+});

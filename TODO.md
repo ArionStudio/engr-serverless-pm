@@ -123,8 +123,8 @@ required to prove WebCrypto's sufficiency for the engineering thesis. These incl
 
 - [x] Crypto adapter
   - [x] `web-crypto-api.adapter.ts` - PBKDF2 + AES-256-GCM + key wrapping (generateSalt, generateIV, generateVaultKey, deriveKey, encrypt, decrypt, hash, wrapKey, unwrapKey)
-- [ ] Device key adapter
-  - [ ] `device-key.adapter.ts` - Ed25519 signing key pair + ECDH P-256 exchange key pair generation, sign/verify
+- [x] Device key adapter
+  - [x] `web-crypto-device-key.adapter.ts` - Ed25519 signing + ECDH P-256 agreement, wrap/unwrap (AES-256-GCM), sign/verify, deriveSharedSecret
 - [ ] Storage adapter
   - [ ] `indexeddb.adapter.ts` - local encrypted storage (using Dexie.js)
 - [ ] Sync adapters (implement SyncPort interface)
@@ -421,10 +421,10 @@ which has same security as master password. Consider if this adds real value.
 > Per-device asymmetric key pairs enable selective device revocation without
 > changing the master password. Demonstrates WebCrypto's asymmetric capabilities.
 
-- [ ] Generate dual key pairs on device setup (WebCrypto `generateKey`)
-  - [ ] Ed25519 signing key pair (device identity)
-  - [ ] ECDH P-256 exchange key pair (key slot access)
-  - [ ] Private keys wrapped with Master KEK, stored in IndexedDB (non-extractable when unwrapped)
+- [x] Generate dual key pairs on device setup (WebCrypto `generateKey`)
+  - [x] Ed25519 signing key pair (device identity)
+  - [x] ECDH P-256 exchange key pair (key slot access)
+  - [x] Private keys wrapped with Master KEK (AES-256-GCM A256GCMKW), stored in IndexedDB (non-extractable when unwrapped)
   - [ ] Public keys stored in cloud vault's device registry
 - [ ] Device authentication flow:
   - [ ] On sync, device signs a challenge with private key
@@ -501,17 +501,18 @@ which has same security as master password. Consider if this adds real value.
 
 ### Security Tests (In Scope)
 
-- [ ] Crypto adapter security tests
-  - [ ] Key derivation correctness (PBKDF2 parameters)
-  - [ ] Encryption/decryption round-trip integrity
-  - [ ] IV uniqueness per operation
-  - [ ] Key never persisted to storage
-- [ ] Device key security tests
-  - [ ] Dual key pair generation (Ed25519 + ECDH P-256)
-  - [ ] Private key non-extractable flag (both key types)
-  - [ ] Sign/verify round-trip (Ed25519)
-  - [ ] Signature verification fails with wrong key
-  - [ ] ECDH key slot derivation and unwrap
+- [x] Crypto adapter security tests
+  - [x] Key derivation correctness (PBKDF2 parameters)
+  - [x] Encryption/decryption round-trip integrity
+  - [x] IV uniqueness per operation
+  - [x] Key never persisted to storage
+- [x] Device key security tests
+  - [x] Dual key pair generation (Ed25519 + ECDH P-256)
+  - [x] Private key non-extractable flag (both key types)
+  - [x] Sign/verify round-trip (Ed25519)
+  - [x] Signature verification fails with wrong key
+  - [x] ECDH key agreement (mutual secret derivation)
+  - [x] ECDH P-256 PKCS8 wrap/unwrap round-trip
   - [ ] Revoked device rejection
 - [ ] Access point security tests
   - [ ] Master password validation
@@ -580,7 +581,7 @@ docs/architecture/
 
 - [ ] IndexedDB adapter (Dexie.js)
 - [x] Web Crypto adapter (`web-crypto-api.adapter.ts` - PBKDF2, AES-256-GCM, key wrapping)
-- [ ] Device key adapter (Ed25519 + ECDH P-256 dual key pairs)
+- [x] Device key adapter (Ed25519 + ECDH P-256 dual key pairs, AES-256-GCM wrapping)
 - [ ] Master password flow (derive Master KEK, store in memory)
 - [ ] Device registration (generate dual key pairs, wrap with Master KEK, store in IndexedDB)
 
