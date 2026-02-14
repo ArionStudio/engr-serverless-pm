@@ -18,7 +18,7 @@
  */
 
 import type { DeviceKeyPort } from "@/core/device/device-key.port";
-import type { AlgorithmSuite } from "@/core/crypto/suites/algorithm-suite.type";
+import type { CryptoProfile } from "@/core/crypto/profiles/crypto-profile.type";
 import type { MasterKEK } from "@/core/crypto/keys/crypto-keys.type";
 import type {
   DeviceKeys,
@@ -33,6 +33,8 @@ import {
 } from "@/core/crypto/keys/crypto-keys.type";
 import { buildKeyWrapParams } from "@/core/crypto/algorithms/key-wrap.params";
 import { AES_GCM_IV_LENGTH_BYTES } from "@/core/crypto/crypto.const";
+import { resolveAlgorithmSuite } from "@/core/crypto/suites/algorithm-suite.registry";
+import { resolveSerializationSuite } from "@/core/crypto/formats/serialization-suite.registry";
 
 /** Prepend a random IV to wrapped key bytes. */
 function prependIv(iv: Uint8Array, wrapped: ArrayBuffer): ArrayBuffer {
@@ -55,7 +57,9 @@ function splitIv(data: ArrayBuffer): {
 }
 
 export const WebCryptoDeviceKeyAdapter: DeviceKeyPort = {
-  async generateKeys(suite: AlgorithmSuite): Promise<DeviceKeys> {
+  async generateKeys(profile: CryptoProfile): Promise<DeviceKeys> {
+    const suite = resolveAlgorithmSuite(profile.algorithmSuiteId);
+
     const signingPair = await crypto.subtle.generateKey(
       suite.signing.algorithm,
       true,
@@ -82,9 +86,11 @@ export const WebCryptoDeviceKeyAdapter: DeviceKeyPort = {
   },
 
   async exportPublicKeysJwk(
-    suite: AlgorithmSuite,
+    profile: CryptoProfile,
     keys: DeviceKeys,
   ): Promise<DevicePublicKeysJwk> {
+    const suite = resolveAlgorithmSuite(profile.algorithmSuiteId);
+
     const [signingPublicJwk, agreementPublicJwk] = await Promise.all([
       crypto.subtle.exportKey("jwk", keys.signing.publicKey),
       crypto.subtle.exportKey("jwk", keys.agreement.publicKey),
@@ -98,10 +104,15 @@ export const WebCryptoDeviceKeyAdapter: DeviceKeyPort = {
   },
 
   async wrapPrivateKeys(
-    suite: AlgorithmSuite,
+    profile: CryptoProfile,
     keys: DeviceKeys,
     masterKEK: MasterKEK,
   ): Promise<WrappedDeviceKeys> {
+    const suite = resolveAlgorithmSuite(profile.algorithmSuiteId);
+    const serialization = resolveSerializationSuite(
+      profile.serializationSuiteId,
+    );
+
     const signingIv = new Uint8Array(AES_GCM_IV_LENGTH_BYTES);
     crypto.getRandomValues(signingIv);
     const agreementIv = new Uint8Array(AES_GCM_IV_LENGTH_BYTES);
@@ -114,19 +125,25 @@ export const WebCryptoDeviceKeyAdapter: DeviceKeyPort = {
       agreementPublicKeyBytes,
     ] = await Promise.all([
       crypto.subtle.wrapKey(
-        "pkcs8",
+        serialization.deviceKeys.signingPrivate,
         keys.signing.privateKey,
         masterKEK,
         buildKeyWrapParams(suite.keyWrap, signingIv),
       ),
       crypto.subtle.wrapKey(
-        "pkcs8",
+        serialization.deviceKeys.agreementPrivate,
         keys.agreement.privateKey,
         masterKEK,
         buildKeyWrapParams(suite.keyWrap, agreementIv),
       ),
-      crypto.subtle.exportKey("raw", keys.signing.publicKey),
-      crypto.subtle.exportKey("spki", keys.agreement.publicKey),
+      crypto.subtle.exportKey(
+        serialization.deviceKeys.signingPublic,
+        keys.signing.publicKey,
+      ),
+      crypto.subtle.exportKey(
+        serialization.deviceKeys.agreementPublic,
+        keys.agreement.publicKey,
+      ),
     ]);
 
     return {
@@ -139,10 +156,15 @@ export const WebCryptoDeviceKeyAdapter: DeviceKeyPort = {
   },
 
   async unwrapPrivateKeys(
-    suite: AlgorithmSuite,
+    profile: CryptoProfile,
     wrapped: WrappedDeviceKeys,
     masterKEK: MasterKEK,
   ): Promise<DeviceKeys> {
+    const suite = resolveAlgorithmSuite(profile.algorithmSuiteId);
+    const serialization = resolveSerializationSuite(
+      profile.serializationSuiteId,
+    );
+
     const signing = splitIv(wrapped.wrappedSigningPrivateKey);
     const agreement = splitIv(wrapped.wrappedAgreementPrivateKey);
 
@@ -153,7 +175,7 @@ export const WebCryptoDeviceKeyAdapter: DeviceKeyPort = {
       agreementPublicKey,
     ] = await Promise.all([
       crypto.subtle.unwrapKey(
-        "pkcs8",
+        serialization.deviceKeys.signingPrivate,
         signing.ciphertext,
         masterKEK,
         buildKeyWrapParams(suite.keyWrap, signing.iv),
@@ -162,7 +184,7 @@ export const WebCryptoDeviceKeyAdapter: DeviceKeyPort = {
         ["sign"],
       ),
       crypto.subtle.unwrapKey(
-        "pkcs8",
+        serialization.deviceKeys.agreementPrivate,
         agreement.ciphertext,
         masterKEK,
         buildKeyWrapParams(suite.keyWrap, agreement.iv),
@@ -171,14 +193,14 @@ export const WebCryptoDeviceKeyAdapter: DeviceKeyPort = {
         ["deriveKey", "deriveBits"],
       ),
       crypto.subtle.importKey(
-        "raw",
+        serialization.deviceKeys.signingPublic,
         wrapped.signingPublicKeyBytes,
         suite.signing.algorithm,
         true,
         ["verify"],
       ),
       crypto.subtle.importKey(
-        "spki",
+        serialization.deviceKeys.agreementPublic,
         wrapped.agreementPublicKeyBytes,
         suite.keyExchange.algorithm,
         true,
@@ -200,10 +222,12 @@ export const WebCryptoDeviceKeyAdapter: DeviceKeyPort = {
   },
 
   async sign(
-    suite: AlgorithmSuite,
+    profile: CryptoProfile,
     data: BufferSource,
     keys: DeviceKeys,
   ): Promise<Uint8Array> {
+    const suite = resolveAlgorithmSuite(profile.algorithmSuiteId);
+
     const signature = await crypto.subtle.sign(
       suite.signing.algorithm,
       keys.signing.privateKey,
@@ -213,11 +237,13 @@ export const WebCryptoDeviceKeyAdapter: DeviceKeyPort = {
   },
 
   async verify(
-    suite: AlgorithmSuite,
+    profile: CryptoProfile,
     data: BufferSource,
     signature: BufferSource,
     signingPublicJwk: JsonWebKey,
   ): Promise<boolean> {
+    const suite = resolveAlgorithmSuite(profile.algorithmSuiteId);
+
     const publicKey = await crypto.subtle.importKey(
       "jwk",
       signingPublicJwk,
@@ -235,17 +261,19 @@ export const WebCryptoDeviceKeyAdapter: DeviceKeyPort = {
   },
 
   /**
-   * Derive raw shared secret via ECDH.
+   * Derive raw shared secret via key agreement.
    *
    * WARNING: The returned bytes are raw key agreement output. Per spec §3.6,
    * the caller MUST apply a KDF (HKDF or ConcatKDF) before using as an
    * AES key or for any other symmetric purpose.
    */
   async deriveSharedSecret(
-    suite: AlgorithmSuite,
+    profile: CryptoProfile,
     keys: DeviceKeys,
     remoteAgreementPublicJwk: JsonWebKey,
   ): Promise<Uint8Array> {
+    const suite = resolveAlgorithmSuite(profile.algorithmSuiteId);
+
     const remotePublicKey = await crypto.subtle.importKey(
       "jwk",
       remoteAgreementPublicJwk,
@@ -255,7 +283,7 @@ export const WebCryptoDeviceKeyAdapter: DeviceKeyPort = {
     );
 
     const secretBits = await crypto.subtle.deriveBits(
-      { name: "ECDH", public: remotePublicKey },
+      { name: suite.keyExchange.algorithm.name, public: remotePublicKey },
       keys.agreement.privateKey,
       256,
     );

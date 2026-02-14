@@ -20,3 +20,9 @@ export type PrivateKeyFormat = "pkcs8" | "raw" | "jwk";
  * Use this for APIs that can wrap/unwind any key type.
  */
 export type KeyFormat = PublicKeyFormat | PrivateKeyFormat;
+
+/** Binary (non-JWK) public key format for local persistence. */
+export type BinaryPublicKeyFormat = Exclude<PublicKeyFormat, "jwk">;
+
+/** Binary (non-JWK) private key format for local persistence. */
+export type BinaryPrivateKeyFormat = Exclude<PrivateKeyFormat, "jwk">;

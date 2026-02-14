@@ -18,7 +18,7 @@ state "TRUSTED ZONE (Extension RAM)" as trusted #E8F5E9 {
     state "ECDH P-256 Private Key" as ecdhKey
     state "Plaintext Passwords" as plaintext
 
-    masterKek -right-> vaultKey
+    ecdhKey -right-> vaultKey
     vaultKey -right-> plaintext
     masterKek -down-> signKey
     masterKek -down-> ecdhKey
