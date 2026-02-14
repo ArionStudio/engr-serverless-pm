@@ -4,11 +4,7 @@
  * @see docs/security/security-specification.md Section 5
  */
 
-import type {
-  DeviceKeySlot,
-  KeySlot,
-  MasterBackupKeySlot,
-} from "./key-slot.type";
+import type { DeviceKeySlot, KeySlot, SecretKeySlot } from "./key-slot.type";
 
 /**
  * Type guard to check if a key slot is a device slot.
@@ -18,10 +14,8 @@ export function isDeviceKeySlot(slot: KeySlot): slot is DeviceKeySlot {
 }
 
 /**
- * Type guard to check if a key slot is a master backup slot.
+ * Type guard to check if a key slot is a secret key slot.
  */
-export function isMasterBackupKeySlot(
-  slot: KeySlot,
-): slot is MasterBackupKeySlot {
-  return slot.type === "master";
+export function isSecretKeySlot(slot: KeySlot): slot is SecretKeySlot {
+  return slot.type === "secret-key";
 }

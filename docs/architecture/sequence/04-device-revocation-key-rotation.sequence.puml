@@ -54,8 +54,8 @@ note right of trusted
     3. ECDH -> ConcatKDF -> new KEK
     4. AES-GCM wrap NEW Vault Key
 
-    **For master backup:**
-    1. PBKDF2 from password
+    **For secret key slot:**
+    1. Generate NEW Secret Key
     2. AES-GCM wrap NEW Vault Key
 end note
 
@@ -63,7 +63,9 @@ loop For each remaining device
     trusted -> trusted : Create ECDH key slot\nwith NEW Vault Key
 end
 
-trusted -> trusted : Create master backup slot\nwith NEW Vault Key
+trusted -> trusted : Create secret key slot\nwith NEW Vault Key
+
+trusted --> user : Display NEW Secret Key\n(old one invalidated)
 
 == Step 4: Commit Changes ==
 

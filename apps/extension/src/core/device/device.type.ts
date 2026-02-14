@@ -8,7 +8,10 @@
  * @see docs/security/security-specification.md Section 4
  */
 
-import type { DeviceEnvironment } from "./device-environment.type";
+import type {
+  DeviceEnvironment,
+  DeviceLocationEntry,
+} from "./device-environment.type";
 
 export interface DeviceIdentity {
   /** UUID, generated once per device */
@@ -34,6 +37,8 @@ export interface DeviceRegistryEntry {
   lastSyncTimestamp: number | null;
   /** Captured at registration - user-controlled environment info */
   readonly environment: DeviceEnvironment;
+  /** Ongoing location tracking — recorded on each unlock/sync (unlimited) */
+  locationHistory: DeviceLocationEntry[];
 }
 
 export interface DeviceRegistry {

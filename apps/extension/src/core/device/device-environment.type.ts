@@ -28,6 +28,19 @@ export interface DeviceEnvironment {
 }
 
 /**
+ * A single location record in a device's location history.
+ * Recorded on each unlock/sync to help users verify access patterns.
+ */
+export interface DeviceLocationEntry {
+  /** e.g., "Warsaw, PL" or "52.23, 21.01" */
+  readonly location: string;
+  /** Unix ms — when this location was recorded */
+  readonly timestamp: number;
+  /** How the location was determined */
+  readonly source: "gps" | "ip" | "manual";
+}
+
+/**
  * Auto-detected environment before user customization.
  * Used to populate the registration form.
  */

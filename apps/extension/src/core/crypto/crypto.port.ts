@@ -134,7 +134,7 @@ export interface CryptoPort {
    * Wrap a key with another key using the profile-selected key wrap algorithm.
    *
    * This is used for:
-   * - wrapping the vault key by MasterKEK / device KEK / backup KEK
+   * - wrapping the vault key by device KEK / secret KEK
    * - wrapping device private keys (typically "pkcs8")
    *
    * @param profile - Crypto profile selecting algorithm + serialization suites

@@ -287,6 +287,7 @@ vault.encrypted (in S3/GCS/Azure):
   - [ ] Region selection
   - [ ] Access credentials input
   - [ ] Test connection button
+- [ ] Secret key self-enrollment flow (enter password + secret key → auto-register device)
 
 ### Device Management
 
@@ -303,6 +304,9 @@ vault.encrypted (in S3/GCS/Azure):
   - [ ] Last sync timestamp
   - [ ] Created date
 - [ ] "Remove device" removes public key from registry (cryptographic revocation)
+- [ ] Self-registration via secret key slot (no existing device needed)
+- [ ] Device location history (recorded on unlock/sync, unlimited entries)
+- [ ] New device notification on sync (diff device registry before/after)
 - [ ] Show warning for devices not synced in 30+ days
 
 ### Access Revocation
@@ -392,24 +396,25 @@ which has same security as master password. Consider if this adds real value.
 
 > Document what we protect against and explicit limitations
 
-| Threat                             | Protected | Notes                     |
-| ---------------------------------- | --------- | ------------------------- |
-| Remote attacker (no device access) | Yes       | Encryption at rest        |
-| Cloud provider reads data          | Yes       | Client-side encryption    |
-| Network eavesdropping              | Yes       | HTTPS + client encryption |
-| Malicious extension update         | Partial   | User must verify updates  |
-| Physical device access (locked)    | Yes       | Master password required  |
-| Physical device access (unlocked)  | No        | Key in memory             |
-| Browser memory dump                | No        | Key in memory             |
-| Compromised master password        | No        | Need password rotation    |
-| Single device compromised          | Yes       | Revoke device key only    |
-| Keylogger on device                | No        | Out of scope              |
+| Threat                                | Protected | Notes                           |
+| ------------------------------------- | --------- | ------------------------------- |
+| Remote attacker (no device access)    | Yes       | Encryption at rest              |
+| Cloud provider reads data             | Yes       | Client-side encryption          |
+| Network eavesdropping                 | Yes       | HTTPS + client encryption       |
+| Malicious extension update            | Partial   | User must verify updates        |
+| Physical device access (locked)       | Yes       | Master password required        |
+| Physical device access (unlocked)     | No        | Key in memory                   |
+| Browser memory dump                   | No        | Key in memory                   |
+| Compromised master password (S3 only) | Yes       | Device keys + secret key needed |
+| Compromised master password + device  | No        | Need password rotation          |
+| Single device compromised             | Yes       | Revoke device key only          |
+| Keylogger on device                   | No        | Out of scope                    |
 
 ### Key Management
 
 - [ ] Master password never stored (only derived key in memory)
 - [ ] Key derivation on every unlock
-- [ ] No password recovery possible (by design)
+- [ ] Vault access via secret key (256-bit, generated at setup, stored offline by user). Used for device enrollment and disaster recovery.
 - [ ] Password change requires:
   - Re-derive new key
   - Re-encrypt entire vault
@@ -640,4 +645,4 @@ docs/architecture/
 - No real-time sync (pull-based only)
 - No server-enforced access control
 - Client must handle all conflict resolution
-- Recovery requires master password (no "forgot password" flow possible)
+- Recovery and device enrollment require secret key (no "forgot password" flow, but secret key provides disaster recovery and self-enrollment)

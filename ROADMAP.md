@@ -1,7 +1,7 @@
 # ROADMAP.md
 
 > Implementation sequence for the serverless password manager.
-> Last updated: 2026-02-13
+> Last updated: 2026-02-14
 
 ## Overview
 
@@ -117,7 +117,7 @@ The originally proposed sequence (Envelope → Sync → Conflict → UI → Safe
 - [x] `algorithms/` - KDF, symmetric, signing, key-exchange, key-wrap, hashing configs
 - [x] `suites/` - Algorithm suite definitions, registry, helpers
 - [x] `profiles/` - Crypto profile registry and types
-- [x] `formats/` - Key format and serialization suite types
+- [x] `formats/` - Key format, serialization suite types, and suite registry
 - [x] `keys/` - CryptoKey aggregate types
 
 **Vault:**
@@ -230,10 +230,15 @@ Device identity key pairs, signing, key agreement, and private key protection.
 
 #### Tests
 
-- [x] Ed25519 signature verification tests
-- [x] ECDH key exchange tests
+- [x] Key generation (algorithm names, suiteId, extractability)
+- [x] Export public keys as JWK (OKP/Ed25519, EC/P-256)
+- [x] Ed25519 sign/verify round-trip, wrong data, wrong key
+- [x] Wrap/unwrap round-trip (sign → verify with original JWK)
+- [x] Unwrapped keys are non-extractable (signing + agreement)
 - [x] ECDH P-256 PKCS8 wrap/unwrap round-trip
 - [x] Per-key IV uniqueness (signing IV ≠ agreement IV)
+- [x] ECDH mutual agreement (A.priv+B.pub = B.priv+A.pub)
+- [x] Shared secret size (32 bytes) and uniqueness per pair
 
 ### Memory Hygiene (shared) ✓
 
@@ -252,27 +257,35 @@ Device identity key pairs, signing, key agreement, and private key protection.
 
 **Goal:** Implement storage port using Dexie.js.
 
-### Database Schema
+### Database Schema ✓
 
-- [ ] `vaults` table - encrypted vault blobs
-- [ ] `metadata` table - unencrypted metadata (lastSync, deviceId)
-- [ ] `pendingSync` table - offline queue
+- [x] `vaults` table - encrypted vault records (keyed by `vaultId`)
+- [x] `deviceState` table - local device state (keyed by `deviceId`)
+- [x] `pendingSync` table - offline queue (keyed by `id`, indexed by `timestamp`)
 
-### Operations
+### Infrastructure ✓
 
-- [ ] `saveVault(encrypted: EncryptedBlob)`
-- [ ] `loadVault(): EncryptedBlob | null`
-- [ ] `clearVault()` - secure deletion
+- [x] `src/infrastructure/database/dexie-db.ts` - Dexie database instance with typed tables
 
-**Location:** `src/adapters/storage/`
+### Operations ✓
 
-**Validation:** Integration tests with in-memory IndexedDB.
+- [x] `saveVault` / `loadVault` / `clearVault` - singleton vault record
+- [x] `saveDeviceState` / `loadDeviceState` / `clearDeviceState` - device state
+- [x] `addPendingSync` / `getPendingSyncItems` / `removePendingSync` / `clearPendingSync` - sync queue
+- [x] `isReady()` - database health check
+- [x] `deleteAll()` - transactional wipe of all stores
 
-### Tests
+**Location:** `src/adapters/storage/dexie-storage.adapter.ts`
 
-- [ ] CRUD operations with fake-indexeddb
-- [ ] Schema migration tests
-- [ ] Encrypted blob storage/retrieval
+**Validation:** Integration tests with fake-indexeddb.
+
+### Tests ✓
+
+- [x] Vault CRUD (save, load, overwrite, clear, Uint8Array round-trip)
+- [x] Device state CRUD (save, load, overwrite, clear, salt/ArrayBuffer round-trip)
+- [x] Pending sync queue (add, ordered retrieval, remove by id, clear, empty state)
+- [x] Database management (isReady, deleteAll clears all stores)
+- [x] Schema migration tests (v1 stores, v1→v2 data preservation, binary survival, empty DB upgrade)
 
 ---
 
@@ -283,6 +296,7 @@ Device identity key pairs, signing, key agreement, and private key protection.
 ### Flows
 
 - [ ] **Genesis** - First-time setup, derive Vault Key, create empty vault
+  - [ ] Secret key generation and display (256-bit random, shown once at genesis, needed for adding new devices)
 - [ ] **Unlock** - Derive Vault Key, decrypt vault, load into memory
 - [ ] **Lock** - Wipe Vault Key from memory, clear UI state
 - [ ] **Auto-lock** - Timer-based lock (configurable)
@@ -492,17 +506,20 @@ Note: Full E2E with Playwright is a separate task.
 
 ### Features
 
-- [ ] Device registration flow
-- [ ] Device list UI
-- [ ] Remote device revocation
-- [ ] Key rotation on revocation
+- [ ] Secret key self-enrollment flow
+- [ ] Device list UI (with location history per device)
+- [ ] New device notification on sync
+- [ ] Device location recording on unlock/sync (GPS → IP fallback)
+- [ ] Device revocation with key rotation
+- [ ] New secret key generation on rotation
 
 ### Security
 
 - [ ] Re-wrap Vault Key for each device
 - [ ] Revoked devices can't decrypt new vaults
+- [ ] New secret key displayed after rotation (old one invalidated)
 
-**Validation:** Add device, revoke device, verify access control.
+**Validation:** Self-enroll device, revoke device, verify access control and key rotation.
 
 ---
 
@@ -588,7 +605,7 @@ Phase 9 (Browser) ────────> Phase 10 (Devices) ───> Phase 
 | 0     | Complete    | All diagrams done (PlantUML)                                                              |
 | 1     | Complete    | All types, ports, constants & utils defined; type compilation tests ✓                     |
 | 2     | Complete    | CryptoPort ✓, DeviceKeyPort ✓, secureWipe ✓, pepper ✓, memory guard ✓, standard vectors ✓ |
-| 3     | Not Started | Depends on Phase 2                                                                        |
+| 3     | Complete    | Dexie adapter ✓, all CRUD ✓, 22 tests ✓, schema migration ✓                               |
 | 4     | Not Started | Depends on Phase 2-3                                                                      |
 | 5     | Not Started | Depends on Phase 4                                                                        |
 | 6     | Not Started | Depends on Phase 2                                                                        |

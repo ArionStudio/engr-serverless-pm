@@ -30,16 +30,17 @@ masterKek --> ecdhKey : AES-GCM
 
 ' === ROW 3: KEY SLOTS ===
 rectangle "Device Slot\nECDH-ES+A256GCMKW" as deviceSlot #FFF3E0
-rectangle "Master Slot\nPBKDF2+A256GCMKW" as masterSlot #FFF3E0
+rectangle "Secret Key Slot\nA256GCMKW" as secretKeySlot #FFF3E0
+rectangle "**Secret Key**\n(256-bit random)" as secretKey #E8F5E9
 
 ecdhKey --> deviceSlot : derive KEK
-masterKek --> masterSlot : backup
+secretKey --> secretKeySlot : wrap
 
 ' === ROW 4: VAULT KEY ===
 rectangle "**Vault Key**\n(RAM only)" as vaultKey #E8F5E9
 
 deviceSlot --> vaultKey : unwrap
-masterSlot --> vaultKey : unwrap
+secretKeySlot --> vaultKey : unwrap
 
 ' === ROW 5: DATA ===
 rectangle "Encrypted Vault\n(AES-256-GCM)" as encData #FFCDD2
@@ -50,7 +51,7 @@ signKey --> encData : sign
 legend right
     |= Color |= Zone |
     | <#FAFAFA> | User Input |
-    | <#E8F5E9> | Trusted RAM |
+    | <#E8F5E9> | Trusted RAM / User-held |
     | <#FFF3E0> | Stored (wrapped) |
     | <#FFCDD2> | Encrypted Data |
 endlegend

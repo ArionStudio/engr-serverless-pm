@@ -13,16 +13,21 @@ Browser extension context creates unique constraints:
 
 ## What Needs to Be Shared (for Multi-Device)
 
-| Data                  | How Shared                | Notes                            |
-| --------------------- | ------------------------- | -------------------------------- |
-| Master password       | **User memorizes**        | Never transferred electronically |
-| Cloud provider config | Transfer mechanism        | S3 bucket, credentials, region   |
-| Encryption salt       | In vault envelope (cloud) | Also stored locally in IndexedDB |
-| Device ID             | Generated locally         | Each device has unique ID        |
+| Data                  | How Shared                | Notes                                            |
+| --------------------- | ------------------------- | ------------------------------------------------ |
+| Master password       | **User memorizes**        | Never transferred electronically                 |
+| Secret key            | **User saves offline**    | 256-bit, needed for device enrollment & recovery |
+| Cloud provider config | Transfer mechanism        | S3 bucket, credentials, region                   |
+| Encryption salt       | In vault envelope (cloud) | Also stored locally in IndexedDB                 |
+| Device ID             | Generated locally         | Each device has unique ID                        |
 
 > **Single-device use:** None of the above is required. The vault is stored locally in IndexedDB with no cloud dependency.
 
 ## Setup Methods
+
+These methods transfer **cloud provider config only** (S3 bucket, credentials, region). The actual vault unlock uses master password + secret key — no device-to-device key transfer is needed.
+
+New device enrollment: enter cloud config + master password + secret key → download vault → unwrap VaultKey from secret key slot → self-register.
 
 ### Method 1: QR Code Transfer (Recommended for Same Location)
 
@@ -213,8 +218,9 @@ registration to help users recognize their devices.
 **Remove Device:**
 
 - Doesn't delete data from that device (can't remotely wipe)
-- Removes from "known devices" list
-- User should change master password if device is lost/stolen
+- Triggers key rotation: new VaultKey + new secret key (old secret key invalidated)
+- Re-creates key slots for remaining trusted devices only
+- User must save the new secret key (displayed once after rotation)
 
 ## Offline-First Considerations
 
@@ -246,12 +252,25 @@ Evening (Home PC):
 
 **Key insight:** Sync is always user-initiated or on-unlock, never real-time. This matches the non-simultaneous access pattern.
 
+## Device Location History
+
+Each device records its location on every unlock/sync, appending to its `locationHistory` in the device registry (stored encrypted inside the vault).
+
+- **Detection:** Browser Geolocation API (with user consent) → IP geolocation fallback (`ipinfo.io/json`)
+- **Storage:** Unlimited entries (encrypted inside vault, no pruning)
+- **Purpose:** User recognition — verify "was this access from me?"
+- **New device detection:** On sync, diff local vs remote device registry. If new `deviceId`s appear → show notification with device name, environment info, and registration location.
+
+Users can view location history per device in the device list UI.
+
 ## Security Considerations
 
-| Concern             | Mitigation                                                 |
-| ------------------- | ---------------------------------------------------------- |
-| QR code intercepted | Expires quickly, one-time use, optional PIN                |
-| Config file stolen  | Encrypted with master password                             |
-| Device lost/stolen  | Change master password, data still encrypted locally       |
-| Man-in-the-middle   | Cloud providers use TLS, vault double-encrypted            |
-| Credential exposure | Cloud credentials have minimal permissions (single bucket) |
+| Concern                | Mitigation                                                              |
+| ---------------------- | ----------------------------------------------------------------------- |
+| QR code intercepted    | Expires quickly, one-time use, optional PIN                             |
+| Config file stolen     | Encrypted with master password                                          |
+| Device lost/stolen     | Revoke device key (triggers key rotation), data still encrypted locally |
+| Secret key compromised | Rotate VaultKey + generate new secret key from any trusted device       |
+| Unknown device added   | Notification shown on sync. User can revoke if unauthorized.            |
+| Man-in-the-middle      | Cloud providers use TLS, vault encrypted with device-specific key slots |
+| Credential exposure    | Cloud credentials have minimal permissions (single bucket)              |

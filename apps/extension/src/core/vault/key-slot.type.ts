@@ -103,37 +103,47 @@ export interface DeviceKeySlot {
 }
 
 /**
- * Master backup key slot.
+ * Secret key slot.
  *
  * Purpose:
- * - Allow vault recovery using the master password-derived KEK (or another
- *   user-held recovery secret), as defined by the active profile.
+ * - Allow device enrollment and disaster recovery using a random 256-bit
+ *   secret key generated at genesis and stored offline by the user
+ *   (paper backup, USB, etc.). Modeled after 1Password's Secret Key.
  *
- * This slot intentionally stores ONLY what cannot be derived from:
- * - vault metadata (profileId)
- * - user input at unlock time (master password)
+ * The secret key serves two roles:
+ * 1. **Device enrollment**: A new device enters master password + secret key
+ *    to unwrap VaultKey, then creates its own device slot (self-registration).
+ * 2. **Disaster recovery**: If all devices are lost, the secret key slot
+ *    allows rebuilding access from the cloud vault.
  *
- * Therefore, it contains only:
- * - a KDF salt (needed to re-derive the same KEK)
- * - the wrapped VaultKey bytes
+ * Unlike the old master backup slot, this does NOT derive a KEK from the
+ * master password. The secret key IS the wrapping key (or is used directly
+ * to derive one via the profile's key-wrap algorithm). This ensures that
+ * a stolen S3 vault cannot be decrypted with the master password alone —
+ * the attacker would also need the secret key.
+ *
+ * The secret key is:
+ * - Generated once at genesis (crypto.getRandomValues, 256 bits)
+ * - Displayed to the user exactly once (they must save it offline)
+ * - secureWipe()'d from memory immediately after slot creation
+ * - Never stored digitally by the extension
+ *
+ * This slot contains only the wrapped VaultKey bytes. No salt or KDF
+ * parameters are needed because the secret key is pre-generated, not
+ * password-derived.
  */
-export interface MasterBackupKeySlot {
+export interface SecretKeySlot {
   /** Slot discriminator. */
-  readonly type: "master";
+  readonly type: "secret-key";
 
-  /** Special identifier for the master backup slot. */
-  readonly deviceId: "master_backup";
-
-  /**
-   * KDF salt used to derive the master/backup KEK for this slot (base64url).
-   *
-   * The KDF algorithm and parameters (iterations/hash/etc.) are resolved from
-   * `VaultMetadata.profileId` and MUST NOT be duplicated here.
-   */
-  readonly salt: Base64UrlBytes;
+  /** Special identifier for the secret key slot. */
+  readonly deviceId: "secret_key";
 
   /**
    * Wrapped VaultKey bytes (base64url).
+   *
+   * Produced by the profile-selected key wrap algorithm using the
+   * secret key as the wrapping key.
    */
   readonly ciphertext: Base64UrlBytes;
 }
@@ -141,4 +151,4 @@ export interface MasterBackupKeySlot {
 /**
  * Any supported key slot.
  */
-export type KeySlot = DeviceKeySlot | MasterBackupKeySlot;
+export type KeySlot = DeviceKeySlot | SecretKeySlot;

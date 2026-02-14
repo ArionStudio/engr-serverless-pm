@@ -119,7 +119,7 @@ Each device generates:
 ### 5.1 Slot Types
 
 1.  **Device Slot (ECDH-ES+A256GCMKW)**
-2.  **Master Backup Slot (PBKDF2+A256GCMKW)**
+2.  **Secret Key Slot (A256GCMKW)**
 
 ### 5.2 ECDH-ES+A256GCMKW Derivation (Hardened)
 
@@ -169,12 +169,9 @@ To wrap the Vault Key for a device:
         "ciphertext": "b64url(iv_12_bytes || aes_gcm_wrapped_vault_key+tag)"
       },
       {
-        "type": "master",
-        "deviceId": "master_backup",
-        "alg": "PBKDF2+A256GCMKW",
-        "hash": "SHA-256",
-        "iterations": 600000,
-        "salt": "b64url(32 bytes)", // Upgraded to 32 bytes
+        "type": "secret-key",
+        "deviceId": "secret_key",
+        "alg": "A256GCMKW",
         "ciphertext": "b64url(iv_12_bytes || aes_gcm_wrapped_vault_key+tag)"
       }
     ],
@@ -221,7 +218,20 @@ IndexedDB stores:
 - `lastSyncTimestamp` (if sync enabled)
 - `pendingSyncQueue` (if sync enabled, for offline changes)
 
-### 7.2 Memory Wiping (Critical) — New
+### 7.2 Device Location History
+
+Each device records its location on every unlock/sync operation, appending to its own `locationHistory` array in the device registry (inside the encrypted vault data).
+
+- **Detection strategy:**
+  1. **Primary:** Browser Geolocation API (`navigator.geolocation`) — requires user consent
+  2. **Fallback:** IP geolocation (`ipinfo.io/json`)
+  3. **Decline both:** No location recorded for that session
+
+- **Storage:** Unlimited entries (encrypted inside vault, no pruning)
+- **Purpose:** User recognition only — allows users to verify "was this access from me?" Not used for security enforcement.
+- **New device detection:** On sync download, diff local vs remote `deviceRegistry.devices`. If new `deviceId`s appear, show notification with device name, environment info, and registration location.
+
+### 7.3 Memory Wiping (Critical) — New
 
 Since JS Garbage Collection is unpredictable:
 
@@ -238,8 +248,9 @@ Since JS Garbage Collection is unpredictable:
 1.  **Strength Check:** Validate Password Entropy & Pwned List.
 2.  **Derivation:** MasterKEK = PBKDF2(Hash(Password + Pepper), Salt, 600k).
 3.  **Generation:** Create VaultKey, DeviceKeys.
-4.  **Persistence:** Wrap Device Keys with MasterKEK → Store in IndexedDB.
-5.  **Genesis Save:** Encrypt, Sign, Upload.
+4.  **Secret Key:** Generate random 256-bit secret key, display to user (save offline). Wrap VaultKey with secret key → secret key slot. `secureWipe(secretKey)`. The secret key is used for both device enrollment and disaster recovery.
+5.  **Persistence:** Wrap Device Keys with MasterKEK → Store in IndexedDB.
+6.  **Genesis Save:** Encrypt, Sign, Upload.
 
 ### 8.2 Login (Unlock)
 
@@ -248,7 +259,7 @@ Since JS Garbage Collection is unpredictable:
 3.  **Unwrap Identity:** Unwrap Device Keys from IndexedDB.
 4.  **Download & Verify:** Fetch Vault. Verify Ed25519 signature.
 5.  **Rollback Check:** If `vault.timestamp < local.lastSeenTimestamp`, Warn User.
-6.  **Decrypt:** Unwrap Vault Key -> Decrypt Data.
+6.  **Decrypt:** Unwrap Vault Key via device key slot (ECDH) → Decrypt Data. Secret key slot is used for device enrollment and disaster recovery (all devices lost).
 7.  **Wipe:** `passwordBuffer.fill(0)` immediately.
 
 ### 8.3 Safe Save (Debounced)
@@ -265,6 +276,24 @@ Since JS Garbage Collection is unpredictable:
 2.  **Re-Encrypt:** Encrypt data with New Key.
 3.  **Re-Slot:** Create new slots for only trusted devices.
 4.  **Commit:** Increment revision, sign, upload.
+
+### 8.5 Device Enrollment (Self-Registration)
+
+A new device can join the vault without any involvement from existing devices. The user needs: master password (memorized) + secret key (paper backup) + cloud config.
+
+1.  **Cloud Config:** User provides cloud provider config (QR code / config file / manual entry).
+2.  **Input:** User enters master password + secret key.
+3.  **Download:** Download vault from S3.
+4.  **Verify:** Verify envelope signature (Ed25519).
+5.  **Unwrap:** Unwrap VaultKey from secret key slot (A256GCMKW).
+6.  **Generate:** Generate device keys (Ed25519 + ECDH P-256).
+7.  **Create Slot:** Create own ECDH device key slot (wrapping VaultKey).
+8.  **Register:** Add self to device registry in vault data.
+9.  **Derive:** Derive MasterKEK from password → wrap device private keys.
+10. **Sign:** Sign updated envelope (Ed25519).
+11. **Upload:** Upload updated vault to S3.
+12. **Persist:** Store wrapped keys + device state in IndexedDB.
+13. **Wipe:** `secureWipe(secretKey, passwordBuffer)`.
 
 ---
 
