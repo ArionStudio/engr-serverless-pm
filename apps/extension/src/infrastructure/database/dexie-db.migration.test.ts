@@ -1,7 +1,6 @@
 import "fake-indexeddb/auto";
 import Dexie from "dexie";
 import { afterEach, describe, expect, it } from "vitest";
-import type { AlgorithmSuiteId } from "@/core/crypto/suites/algorithm-suite.type";
 import type {
   EncryptedVaultRecord,
   LocalDeviceState,
@@ -30,6 +29,7 @@ function makeVault(
 ): EncryptedVaultRecord {
   return {
     vaultId: "vault-001",
+    profileId: "profile-v1",
     data: new Uint8Array([1, 2, 3, 4, 5]),
     lastModified: Date.now(),
     lastSyncTimestamp: null,
@@ -45,7 +45,6 @@ function makeDeviceState(
     deviceName: "Test Device",
     salt: new Uint8Array(32).fill(0xab),
     wrappedDeviceKeys: {
-      suiteId: "suite-v1" as AlgorithmSuiteId,
       wrappedSigningPrivateKey: new ArrayBuffer(48),
       wrappedAgreementPrivateKey: new ArrayBuffer(48),
       signingPublicKeyBytes: new ArrayBuffer(32),
@@ -163,6 +162,7 @@ describe("Dexie schema migrations", () => {
       const loadedVault = await v2.table(STORE_NAMES.VAULT).get("vault-001");
       expect(loadedVault).not.toBeUndefined();
       expect(loadedVault.vaultId).toBe(vault.vaultId);
+      expect(loadedVault.profileId).toBe(vault.profileId);
       expect(loadedVault.lastModified).toBe(vault.lastModified);
 
       const loadedState = await v2
@@ -208,7 +208,6 @@ describe("Dexie schema migrations", () => {
         makeDeviceState({
           salt,
           wrappedDeviceKeys: {
-            suiteId: "suite-v1" as AlgorithmSuiteId,
             wrappedSigningPrivateKey: wrappedSigning,
             wrappedAgreementPrivateKey: wrappedAgreement,
             signingPublicKeyBytes: signingPub,

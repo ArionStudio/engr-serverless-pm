@@ -46,9 +46,9 @@ The system supports **named algorithm suites** — predefined, validated combina
 | `suite-v1` | Ed25519 | ECDH P-256   | AES-256-GCM | PBKDF2 | AES-256-GCM (A256GCMKW) |
 
 - **Default:** `suite-v1`
-- The vault file format's `alg` fields (§6.2) identify which suite was used, enabling forward-compatible algorithm changes.
+- The vault file format's `metadata.profileId` (§6.2) identifies the full crypto profile (algorithm suite + serialization suite).
 - Implementations **MUST** reject unknown suite or algorithm identifiers.
-- Future suites (e.g., post-quantum) can be added without breaking existing vaults — each device reads the `alg` field to determine how to process each key slot.
+- Future suites (e.g., post-quantum) can be added without breaking existing vaults. Devices resolve processing rules from `profileId`.
 
 The parameters below define `suite-v1`.
 
@@ -148,12 +148,15 @@ To wrap the Vault Key for a device:
 ```json
 {
   "version": 1,
+  "metadata": {
+    "profileId": "profile-v1"
+  },
 
   "envelope": {
     "vaultId": "b64url(16+ bytes random)",
     "signerDeviceId": "device_uuid",
     "revision": 1,
-    "timestamp": 1700000000,
+    "timestamp": 1700000000000,
     "signature": "b64url(raw_ed25519_sig_64_bytes)"
   },
 
@@ -162,8 +165,10 @@ To wrap the Vault Key for a device:
       {
         "type": "device",
         "deviceId": "device_uuid_123",
-        "alg": "ECDH-ES+A256GCMKW",
-        "epk": { "kty": "EC", "crv": "P-256", "x": "...", "y": "..." },
+        "epk": {
+          "format": "spki",
+          "data": "b64url(ephemeral_public_key_bytes)"
+        },
         "apu": "b64url(bytes)",
         "apv": "b64url(bytes)",
         "ciphertext": "b64url(iv_12_bytes || aes_gcm_wrapped_vault_key+tag)"
@@ -171,14 +176,12 @@ To wrap the Vault Key for a device:
       {
         "type": "secret-key",
         "deviceId": "secret_key",
-        "alg": "A256GCMKW",
         "ciphertext": "b64url(iv_12_bytes || aes_gcm_wrapped_vault_key+tag)"
       }
     ],
 
     "data": {
-      "alg": "A256GCM",
-      "iv": "b64url(12 bytes)",
+      "nonce": "b64url(12 bytes)",
       "ciphertext": "b64url(aes_gcm_ciphertext||tag)"
     }
   }
@@ -192,6 +195,7 @@ Compute:
 ```javascript
 aadObject = {
   version,
+  metadata: { profileId },
   envelope: { vaultId, signerDeviceId, revision, timestamp },
   keySlotsDigest,
 };
@@ -210,13 +214,23 @@ IndexedDB is the **primary vault storage**. Cloud sync (S3) is optional.
 
 IndexedDB stores:
 
-- `encryptedVault` (AES-256-GCM encrypted vault data)
-- `wrappedDeviceSignKey` (Wrapped with MasterKEK)
-- `wrappedDeviceEcdhKey` (Wrapped with MasterKEK)
-- `salt` (32-byte PBKDF2 salt)
-- `deviceId` (This device's UUID)
-- `lastSyncTimestamp` (if sync enabled)
-- `pendingSyncQueue` (if sync enabled, for offline changes)
+- `vault` singleton record:
+  - `vaultId`
+  - `profileId` (crypto profile used for this snapshot)
+  - `data` (serialized encrypted snapshot bytes)
+  - `lastModified`
+  - `lastSyncTimestamp` (nullable)
+- `deviceState` singleton record:
+  - `deviceId`, `deviceName`, `vaultId`
+  - `salt` (32-byte PBKDF2 salt)
+  - `wrappedDeviceKeys`:
+    - `wrappedSigningPrivateKey`
+    - `wrappedAgreementPrivateKey`
+    - `signingPublicKeyBytes`
+    - `agreementPublicKeyBytes`
+  - `createdAt`, `lastSyncTimestamp` (nullable)
+- `pendingSync` queue records:
+  - `id`, `operation`, `entryId`, `timestamp`, `retryCount`
 
 ### 7.2 Device Location History
 

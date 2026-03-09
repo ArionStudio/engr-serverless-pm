@@ -30,11 +30,6 @@ describe("WebCryptoDeviceKeyAdapter", () => {
       expect(keys.agreement.publicKey.algorithm.name).toBe("ECDH");
     });
 
-    it("sets the correct suiteId", async () => {
-      const keys = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
-      expect(keys.suiteId).toBe("suite-v1");
-    });
-
     it("generates extractable signing private key (required for wrapKey)", async () => {
       const keys = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
       expect(keys.signing.privateKey.extractable).toBe(true);
@@ -44,10 +39,7 @@ describe("WebCryptoDeviceKeyAdapter", () => {
   describe("exportPublicKeysJwk", () => {
     it("exports signing public key as OKP/Ed25519 JWK", async () => {
       const keys = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
-      const jwks = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(
-        profile,
-        keys,
-      );
+      const jwks = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(keys);
 
       expect(jwks.signingPublicJwk.kty).toBe("OKP");
       expect(jwks.signingPublicJwk.crv).toBe("Ed25519");
@@ -55,10 +47,7 @@ describe("WebCryptoDeviceKeyAdapter", () => {
 
     it("exports agreement public key as EC/P-256 JWK", async () => {
       const keys = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
-      const jwks = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(
-        profile,
-        keys,
-      );
+      const jwks = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(keys);
 
       expect(jwks.agreementPublicJwk.kty).toBe("EC");
       expect(jwks.agreementPublicJwk.crv).toBe("P-256");
@@ -68,10 +57,7 @@ describe("WebCryptoDeviceKeyAdapter", () => {
   describe("sign / verify", () => {
     it("round-trips: sign then verify succeeds", async () => {
       const keys = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
-      const jwks = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(
-        profile,
-        keys,
-      );
+      const jwks = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(keys);
       const data = new TextEncoder().encode("sign-verify test");
 
       const signature = await WebCryptoDeviceKeyAdapter.sign(
@@ -91,10 +77,7 @@ describe("WebCryptoDeviceKeyAdapter", () => {
 
     it("fails verification with different data", async () => {
       const keys = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
-      const jwks = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(
-        profile,
-        keys,
-      );
+      const jwks = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(keys);
       const data = new TextEncoder().encode("original data");
       const tampered = new TextEncoder().encode("tampered data");
 
@@ -116,10 +99,7 @@ describe("WebCryptoDeviceKeyAdapter", () => {
     it("fails verification with a different key", async () => {
       const keys1 = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
       const keys2 = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
-      const jwks2 = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(
-        profile,
-        keys2,
-      );
+      const jwks2 = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(keys2);
       const data = new TextEncoder().encode("wrong key test");
 
       const signature = await WebCryptoDeviceKeyAdapter.sign(
@@ -142,10 +122,7 @@ describe("WebCryptoDeviceKeyAdapter", () => {
     it("round-trips: wrap → unwrap → sign → verify with original public JWK", async () => {
       const masterKEK = await createMasterKEK();
       const keys = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
-      const jwks = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(
-        profile,
-        keys,
-      );
+      const jwks = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(keys);
 
       const wrapped = await WebCryptoDeviceKeyAdapter.wrapPrivateKeys(
         profile,
@@ -228,10 +205,8 @@ describe("WebCryptoDeviceKeyAdapter", () => {
 
       // Verify ECDH agreement still works with restored keys
       const otherKeys = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
-      const otherJwks = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(
-        profile,
-        otherKeys,
-      );
+      const otherJwks =
+        await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(otherKeys);
 
       const secretOriginal = await WebCryptoDeviceKeyAdapter.deriveSharedSecret(
         profile,
@@ -273,14 +248,8 @@ describe("WebCryptoDeviceKeyAdapter", () => {
     it("produces mutual agreement (A.priv + B.pub === B.priv + A.pub)", async () => {
       const keysA = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
       const keysB = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
-      const jwksA = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(
-        profile,
-        keysA,
-      );
-      const jwksB = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(
-        profile,
-        keysB,
-      );
+      const jwksA = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(keysA);
+      const jwksB = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(keysB);
 
       const secretAB = await WebCryptoDeviceKeyAdapter.deriveSharedSecret(
         profile,
@@ -299,10 +268,7 @@ describe("WebCryptoDeviceKeyAdapter", () => {
     it("produces 32 bytes", async () => {
       const keysA = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
       const keysB = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
-      const jwksB = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(
-        profile,
-        keysB,
-      );
+      const jwksB = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(keysB);
 
       const secret = await WebCryptoDeviceKeyAdapter.deriveSharedSecret(
         profile,
@@ -317,14 +283,8 @@ describe("WebCryptoDeviceKeyAdapter", () => {
       const keysA = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
       const keysB = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
       const keysC = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
-      const jwksB = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(
-        profile,
-        keysB,
-      );
-      const jwksC = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(
-        profile,
-        keysC,
-      );
+      const jwksB = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(keysB);
+      const jwksC = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(keysC);
 
       const secretAB = await WebCryptoDeviceKeyAdapter.deriveSharedSecret(
         profile,

@@ -6,7 +6,8 @@ import type {
   LocalDeviceState,
   PendingSyncItem,
 } from "@/core/storage/storage.type";
-import type { AlgorithmSuiteId } from "@/core/crypto/suites/algorithm-suite.type";
+import { STORE_NAMES } from "@/core/storage/storage.const";
+import { db } from "@/infrastructure/database/dexie-db";
 
 // ── Fixtures ─────────────────────────────────────────────
 
@@ -15,6 +16,7 @@ function makeVault(
 ): EncryptedVaultRecord {
   return {
     vaultId: "vault-001",
+    profileId: "profile-v1",
     data: new Uint8Array([1, 2, 3, 4, 5]),
     lastModified: Date.now(),
     lastSyncTimestamp: null,
@@ -30,7 +32,6 @@ function makeDeviceState(
     deviceName: "Test Device",
     salt: new Uint8Array(32).fill(0xab),
     wrappedDeviceKeys: {
-      suiteId: "SUITE_V1" as AlgorithmSuiteId,
       wrappedSigningPrivateKey: new ArrayBuffer(48),
       wrappedAgreementPrivateKey: new ArrayBuffer(48),
       signingPublicKeyBytes: new ArrayBuffer(32),
@@ -66,16 +67,17 @@ describe("DexieStorageAdapter", () => {
   describe("vault operations", () => {
     it("saves and loads a vault record", async () => {
       const vault = makeVault();
-      await DexieStorageAdapter.saveVault(vault);
-      const loaded = await DexieStorageAdapter.loadVault();
+      await DexieStorageAdapter.saveVault(vault, "default_vault");
+      const loaded = await DexieStorageAdapter.loadVault("default_vault");
 
       expect(loaded).not.toBeNull();
-      expect(loaded!.vaultId).toBe(vault.vaultId);
+      expect(loaded!.vaultId).toBe("default_vault");
+      expect(loaded!.profileId).toBe(vault.profileId);
       expect(loaded!.lastModified).toBe(vault.lastModified);
     });
 
     it("returns null when no vault exists", async () => {
-      const loaded = await DexieStorageAdapter.loadVault();
+      const loaded = await DexieStorageAdapter.loadVault("default_vault");
       expect(loaded).toBeNull();
     });
 
@@ -83,27 +85,40 @@ describe("DexieStorageAdapter", () => {
       const vault1 = makeVault({ lastModified: 1000 });
       const vault2 = makeVault({ lastModified: 2000 });
 
-      await DexieStorageAdapter.saveVault(vault1);
-      await DexieStorageAdapter.saveVault(vault2);
+      await DexieStorageAdapter.saveVault(vault1, "default_vault");
+      await DexieStorageAdapter.saveVault(vault2, "default_vault");
 
-      const loaded = await DexieStorageAdapter.loadVault();
+      const loaded = await DexieStorageAdapter.loadVault("default_vault");
       expect(loaded!.lastModified).toBe(2000);
     });
 
     it("clearVault removes the vault", async () => {
-      await DexieStorageAdapter.saveVault(makeVault());
+      await DexieStorageAdapter.saveVault(makeVault(), "default_vault");
       await DexieStorageAdapter.clearVault();
 
-      const loaded = await DexieStorageAdapter.loadVault();
+      const loaded = await DexieStorageAdapter.loadVault("default_vault");
       expect(loaded).toBeNull();
     });
 
     it("preserves Uint8Array data through round-trip", async () => {
       const data = new Uint8Array([10, 20, 30, 40, 50]);
-      await DexieStorageAdapter.saveVault(makeVault({ data }));
+      await DexieStorageAdapter.saveVault(makeVault({ data }), "default_vault");
 
-      const loaded = await DexieStorageAdapter.loadVault();
+      const loaded = await DexieStorageAdapter.loadVault("default_vault");
       expect(new Uint8Array(loaded!.data)).toEqual(data);
+    });
+
+    it("loads vault deterministically from singleton key when multiple rows exist", async () => {
+      await db[STORE_NAMES.VAULT].put(makeVault({ vaultId: "legacy-vault" }));
+      await DexieStorageAdapter.saveVault(
+        makeVault({ vaultId: "ignored-id" }),
+        "default_vault",
+      );
+
+      const loaded = await DexieStorageAdapter.loadVault("default_vault");
+      expect(loaded).not.toBeNull();
+      expect(loaded!.vaultId).toBe("default_vault");
+      expect(loaded!.profileId).toBe("profile-v1");
     });
   });
 
@@ -112,16 +127,18 @@ describe("DexieStorageAdapter", () => {
   describe("device state operations", () => {
     it("saves and loads device state", async () => {
       const state = makeDeviceState();
-      await DexieStorageAdapter.saveDeviceState(state);
-      const loaded = await DexieStorageAdapter.loadDeviceState();
+      await DexieStorageAdapter.saveDeviceState(state, "default_device");
+      const loaded =
+        await DexieStorageAdapter.loadDeviceState("default_device");
 
       expect(loaded).not.toBeNull();
-      expect(loaded!.deviceId).toBe(state.deviceId);
+      expect(loaded!.deviceId).toBe("default_device");
       expect(loaded!.deviceName).toBe(state.deviceName);
     });
 
     it("returns null when no device state exists", async () => {
-      const loaded = await DexieStorageAdapter.loadDeviceState();
+      const loaded =
+        await DexieStorageAdapter.loadDeviceState("default_device");
       expect(loaded).toBeNull();
     });
 
@@ -129,40 +146,65 @@ describe("DexieStorageAdapter", () => {
       const state1 = makeDeviceState({ deviceName: "Old Name" });
       const state2 = makeDeviceState({ deviceName: "New Name" });
 
-      await DexieStorageAdapter.saveDeviceState(state1);
-      await DexieStorageAdapter.saveDeviceState(state2);
+      await DexieStorageAdapter.saveDeviceState(state1, "default_device");
+      await DexieStorageAdapter.saveDeviceState(state2, "default_device");
 
-      const loaded = await DexieStorageAdapter.loadDeviceState();
+      const loaded =
+        await DexieStorageAdapter.loadDeviceState("default_device");
       expect(loaded!.deviceName).toBe("New Name");
     });
 
     it("clearDeviceState removes the state", async () => {
-      await DexieStorageAdapter.saveDeviceState(makeDeviceState());
+      await DexieStorageAdapter.saveDeviceState(
+        makeDeviceState(),
+        "default_device",
+      );
       await DexieStorageAdapter.clearDeviceState();
 
-      const loaded = await DexieStorageAdapter.loadDeviceState();
+      const loaded =
+        await DexieStorageAdapter.loadDeviceState("default_device");
       expect(loaded).toBeNull();
     });
 
     it("preserves Uint8Array salt through round-trip", async () => {
       const salt = new Uint8Array(32).fill(0xcd);
-      await DexieStorageAdapter.saveDeviceState(makeDeviceState({ salt }));
+      await DexieStorageAdapter.saveDeviceState(
+        makeDeviceState({ salt }),
+        "default_device",
+      );
 
-      const loaded = await DexieStorageAdapter.loadDeviceState();
+      const loaded =
+        await DexieStorageAdapter.loadDeviceState("default_device");
       expect(new Uint8Array(loaded!.salt)).toEqual(salt);
     });
 
     it("preserves ArrayBuffer wrapped keys through round-trip", async () => {
       const state = makeDeviceState();
-      await DexieStorageAdapter.saveDeviceState(state);
+      await DexieStorageAdapter.saveDeviceState(state, "default_device");
 
-      const loaded = await DexieStorageAdapter.loadDeviceState();
+      const loaded =
+        await DexieStorageAdapter.loadDeviceState("default_device");
       expect(
         loaded!.wrappedDeviceKeys.wrappedSigningPrivateKey.byteLength,
       ).toBe(state.wrappedDeviceKeys.wrappedSigningPrivateKey.byteLength);
       expect(
         loaded!.wrappedDeviceKeys.wrappedAgreementPrivateKey.byteLength,
       ).toBe(state.wrappedDeviceKeys.wrappedAgreementPrivateKey.byteLength);
+    });
+
+    it("loads device state deterministically from singleton key when multiple rows exist", async () => {
+      await db[STORE_NAMES.DEVICE_STATE].put(
+        makeDeviceState({ deviceId: "legacy-device" }),
+      );
+      await DexieStorageAdapter.saveDeviceState(
+        makeDeviceState({ deviceId: "ignored-id" }),
+        "default_device",
+      );
+
+      const loaded =
+        await DexieStorageAdapter.loadDeviceState("default_device");
+      expect(loaded).not.toBeNull();
+      expect(loaded!.deviceId).toBe("default_device");
     });
   });
 
@@ -233,14 +275,19 @@ describe("DexieStorageAdapter", () => {
     });
 
     it("deleteAll clears all stores", async () => {
-      await DexieStorageAdapter.saveVault(makeVault());
-      await DexieStorageAdapter.saveDeviceState(makeDeviceState());
+      await DexieStorageAdapter.saveVault(makeVault(), "default_vault");
+      await DexieStorageAdapter.saveDeviceState(
+        makeDeviceState(),
+        "default_device",
+      );
       await DexieStorageAdapter.addPendingSync(makeSyncItem());
 
       await DexieStorageAdapter.deleteAll();
 
-      expect(await DexieStorageAdapter.loadVault()).toBeNull();
-      expect(await DexieStorageAdapter.loadDeviceState()).toBeNull();
+      expect(await DexieStorageAdapter.loadVault("default_vault")).toBeNull();
+      expect(
+        await DexieStorageAdapter.loadDeviceState("default_device"),
+      ).toBeNull();
       expect(await DexieStorageAdapter.getPendingSyncItems()).toEqual([]);
     });
   });

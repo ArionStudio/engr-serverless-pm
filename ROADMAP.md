@@ -1,618 +1,394 @@
-# ROADMAP.md
+# ROADMAP
 
 > Implementation sequence for the serverless password manager.
-> Last updated: 2026-02-14
+> Last updated: 2026-02-18
+> This is the only planning file.
 
 ## Overview
 
-This roadmap follows **hexagonal architecture** principles:
+This roadmap follows hexagonal architecture:
 
+```text
+Core (types/ports) -> Adapters (implementations) -> UI/Extension (consumption)
 ```
-Core (types/ports) → Adapters (implementations) → UI (consumption)
-```
 
-Each phase builds on the previous. Skipping phases creates technical debt.
+Each phase builds on previous phases. Do not skip dependencies.
 
-### Scope Markers
+## Scope Markers
 
 | Marker         | Meaning                                    |
 | -------------- | ------------------------------------------ |
 | `[Thesis]`     | Required for engineering thesis completion |
-| `[Production]` | Required for real-world deployment         |
-| `[Future]`     | Nice-to-have, post-thesis improvements     |
+| `[Production]` | Required for production readiness          |
+| `[Future]`     | Explicitly deferred                        |
 
----
+## Current State (Repo-Verified)
 
-## Testing Strategy
+### Completed
 
-Tests are written **within each phase**, not as a separate phase.
+- [x] Architecture diagrams in `docs/architecture/**`
+- [x] Core domain types and ports in `apps/extension/src/core/**`
+- [x] Crypto adapter in `apps/extension/src/adapters/crypto/web-crypto-api.adapter.ts`
+- [x] Device key adapter in `apps/extension/src/adapters/device/web-crypto-device-key.adapter.ts` (partial — missing KDF on ECDH)
+- [x] Storage adapter in `apps/extension/src/adapters/storage/dexie-storage.adapter.ts`
+- [x] Dexie DB schema/migrations in `apps/extension/src/infrastructure/database/dexie-db.ts`
+- [x] Extension tests currently pass (`pnpm ext:test`)
+- [x] S3+Cognito CloudFormation template and docs
 
-### Tools
+### Not Started / Partial
 
-| Tool       | Purpose                  | Location                        |
-| ---------- | ------------------------ | ------------------------------- |
-| Vitest     | Unit & integration tests | `**/*.test.ts`, `**/*.test.tsx` |
-| Storybook  | Component visual testing | `**/*.stories.tsx`              |
-| Playwright | E2E browser tests        | Separate task (post-thesis)     |
-
-### Coverage Targets
-
-- Core + Adapters: >80%
-- UI Components: >60%
-
----
-
-## Validation of Original Proposal
-
-The originally proposed sequence (Envelope → Sync → Conflict → UI → Safe Save) represents **Phase 6-8 work**. Here's why each step requires earlier phases:
-
-| Proposed Step          | Actual Phase | Why It Needs Earlier Phases                          |
-| ---------------------- | ------------ | ---------------------------------------------------- |
-| Signed Envelope Format | Phase 6      | Needs crypto adapter (Phase 2) to sign envelopes     |
-| S3 Sync Adapter        | Phase 7      | Needs storage adapter (Phase 3) to have data to sync |
-| Conflict Resolution    | Phase 8      | Needs CRUD (Phase 5) to have conflicting items       |
-| UI Polish              | Phase 8+     | Needs working features to polish                     |
-| Safe Save Flow         | Phase 5      | Needs master password flow (Phase 4) first           |
-
-**The proposal is correct in spirit but inverted in sequence.** You cannot sync passwords that don't exist yet.
+- [ ] ConcatKDF/HKDF + SlotKEK derivation (Phase 2b gap — §3.6, §5.2)
+- [ ] Master password runtime flow (genesis/unlock/lock/auto-lock)
+- [ ] Password CRUD wired to encrypted vault lifecycle
+- [ ] Signed snapshot pipeline end-to-end
+- [ ] Sync adapter implementation (`SyncPort`)
+- [ ] Conflict resolution flow/UI
+- [ ] Browser autofill/save integration
 
 ---
 
 ## Phase 0: Architecture Documentation `[Thesis]`
 
-**Goal:** Visual diagrams before code.
+### Goal
 
-### Architecture Overviews (`docs/architecture/*.puml`)
+Visual architecture and trust model before implementation.
 
-- [x] `00-architecture-overview.puml` - High-level system architecture
-- [x] `01-key-hierarchy.puml` - Cryptographic key relationships
-- [x] `02-trust-boundaries.puml` - Security trust boundaries
+### Checklist
 
-### Data Flow Diagrams (`docs/architecture/flow/`)
+- [x] Overview diagrams (`docs/architecture/*.puml`)
+- [x] Data-flow diagrams (`docs/architecture/flow/*`)
+- [x] Sequence diagrams (`docs/architecture/sequence/*`)
+- [x] State-machine diagrams (`docs/architecture/state-machine/*`)
 
-- [x] `01-key-derivation-master-kek.flow.puml` - Key derivation flow
-- [x] `02-vault-encrypt-decrypt.flow.puml` - Encryption/decryption paths
-- [x] `03-genesis-first-time-setup.flow.puml` - First-time setup flow
-- [x] `04-vault-unlock-lock.flow.puml` - Lock/unlock flow
-- [x] `05-offline-queue-processing.flow.puml` - Offline queue flow
-- [x] `06-sync-conflict-resolution.flow.puml` - Conflict resolution flow
+### Output
 
-### Sequence Diagrams (`docs/architecture/sequence/`)
-
-- [x] `01-password-crud-operations.sequence.puml` - CRUD operations
-- [x] `02-cloud-sync-upload-download.sequence.puml` - Cloud sync
-- [x] `03-multi-device-registration.sequence.puml` - Device registration
-- [x] `04-device-revocation-key-rotation.sequence.puml` - Revocation flow
-- [x] `05-browser-autofill.sequence.puml` - Autofill flow
-- [x] `06-browser-save-password.sequence.puml` - Save password flow
-
-### State Machine Diagrams (`docs/architecture/state-machine/`)
-
-- [x] `01-offline-queue.state-machine.puml` - Offline queue states
-- [x] `02-vault-lock-unlock.state-machine.puml` - Lock/unlock states
-- [x] `03-device-lifecycle.state-machine.puml` - Device lifecycle states
-
-**Output:** `docs/architecture/` with PlantUML diagrams (render to SVG/PNG)
+- [x] Architecture documentation set exists in repo
 
 ---
 
 ## Phase 1: Core Types & Ports `[Thesis]`
 
-**Goal:** Define all domain types and port interfaces. Pure TypeScript, zero dependencies.
+### Goal
 
-### Types (`src/core/[domain]/*.type.ts`)
+Define pure domain contracts, no runtime dependencies.
 
-**Passwords & Organization:**
+### Checklist
 
-- [x] `password.type.ts` - PasswordEntry, PasswordMetadata, custom fields
-- [x] `folder.type.ts` - Folder hierarchy
-- [x] `tag.type.ts` - Tag system
-- [x] `templates.type.ts` - Password entry templates
-- [x] `global-library.type.ts` - Shared library types
+- [x] Crypto domain contracts (`apps/extension/src/core/crypto/**`)
+- [x] Vault contracts (`apps/extension/src/core/vault/**`)
+- [x] Device contracts (`apps/extension/src/core/device/**`)
+- [x] Storage contracts (`apps/extension/src/core/storage/**`)
+- [x] Sync contracts (`apps/extension/src/core/sync/**`)
+- [x] Password/session/organization contracts
+- [x] Core constants + utils
 
-**Crypto** (`src/core/crypto/`):
+### Validation
 
-- [x] `crypto.port.ts` - CryptoPort interface (deriveKey, encrypt, decrypt, hash, wrapKey, unwrapKey)
-- [x] `crypto.const.ts` - Crypto constants
-- [x] `algorithms/` - KDF, symmetric, signing, key-exchange, key-wrap, hashing configs
-- [x] `suites/` - Algorithm suite definitions, registry, helpers
-- [x] `profiles/` - Crypto profile registry and types
-- [x] `formats/` - Key format, serialization suite types, and suite registry
-- [x] `keys/` - CryptoKey aggregate types
-
-**Vault:**
-
-- [x] `vault.type.ts` - Vault structure
-- [x] `key-slot.type.ts` - Device key slots
-- [x] `encrypted-payload.type.ts` - Encrypted payload (IV, ciphertext, AAD)
-- [x] `vault-envelope.type.ts` - Signed vault envelope
-- [x] `vault-metadata.type.ts` - Vault metadata (devices, timestamps)
-- [x] `vault-snapshot.type.ts` - Vault snapshot for sync
-
-**Device:**
-
-- [x] `device.type.ts` - DeviceIdentity, DeviceRegistryEntry, DeviceDisplayInfo
-- [x] `device-key.type.ts` - Device key pairs
-- [x] `device-environment.type.ts` - Environment info for user recognition
-
-**Storage & Sync:**
-
-- [x] `storage.type.ts` - IndexedDB schema types
-- [x] `sync.type.ts` - SyncState, SyncStatus
-- [x] `sync-diff.type.ts` - Diff types for conflict resolution
-- [x] `provider-config.type.ts` - Cloud provider configuration
-
-**Session:**
-
-- [x] `session.type.ts` - Session state types
-
-### Ports (`src/core/[domain]/*.port.ts`)
-
-- [x] `crypto.port.ts` - CryptoPort interface
-- [x] `storage.port.ts` - StoragePort interface
-- [x] `sync.port.ts` - SyncPort interface
-- [x] `device-key.port.ts` - DeviceKeyPort interface
-- [x] `device-environment.port.ts` - DeviceEnvironmentPort interface
-
-### Constants & Utils
-
-- [x] `algorithm-suite.const.ts` - Algorithm suite constants (in `crypto/suites/`)
-- [x] `storage.const.ts` - Storage constants
-- [x] `sync.const.ts` - Sync constants
-- [x] `session.const.ts` - Session constants
-- [x] `folder.const.ts` - Default folders
-- [x] `tag.const.ts` - Tag constants
-- [x] `templates.const.ts` - Default templates
-- [x] `device-environment.const.ts` - Device detection constants
-- [x] `password.util.ts` - Password utilities
-- [x] `key-slot.util.ts` - Key slot utilities
-- [x] `session.util.ts` - Session utilities
-- [x] `provider-config.util.ts` - Provider config utilities
-- [x] `device-environment.util.ts` - Environment form utilities
-
-**Validation:** All types compile with `strict: true`, no runtime dependencies.
-
-### Tests
-
-- [x] Type compilation tests (strict mode validation)
+- [x] Types compile under strict TS setup
 
 ---
 
-## Phase 2: Crypto & Device Key Adapters (WebCrypto) `[Thesis]`
+## Phase 2: Crypto & Device Adapters `[Thesis]`
 
-**Goal:** Implement CryptoPort and DeviceKeyPort using WebCrypto API.
+### Goal
 
-### 2a: Crypto Adapter (CryptoPort) ✓
+Implement profile-driven crypto with WebCrypto.
 
-Key derivation, symmetric encryption, hashing, and key wrapping.
+### 2a Crypto Adapter
 
-- [x] PBKDF2-SHA256 with 600,000 iterations
-- [x] Application pepper (hardcoded, defense-in-depth)
-- [x] Salt generation and storage
-- [x] AES-256-GCM encryption
-- [x] Random IV per operation (96-bit)
-- [x] AAD binding for context
-- [x] Key wrapping / unwrapping (AES-256-GCM via profile suite)
-- [x] Vault key generation
-- [x] Hashing (SHA-256 via profile suite)
+Location: `apps/extension/src/adapters/crypto/web-crypto-api.adapter.ts`
 
-**Location:** `src/adapters/crypto/web-crypto-api.adapter.ts`
+- [x] PBKDF2-SHA256 (600k iterations)
+- [x] Pepper pre-processing path
+- [x] AES-256-GCM encrypt/decrypt
+- [x] Random salt + IV generation
+- [x] Hashing via profile-selected suite
+- [x] Key wrap/unwrap via profile-selected suite
 
-#### Tests
+### 2b Device Key Adapter
 
-- [x] Key derivation round-trip (derive → wrap → unwrap)
-- [x] Different salts produce different derived keys
-- [x] Salt generation (32 bytes default, custom length)
-- [x] IV generation (12 bytes)
-- [x] Vault key generation (AES-256-GCM, 256-bit)
-- [x] Encrypt/decrypt round-trip
-- [x] IV uniqueness per encryption
-- [x] AAD binding (correct, wrong, missing AAD)
-- [x] SHA-256 known test vectors (empty input, "abc")
-- [x] Key wrap/unwrap round-trip
-- [x] Wrapped output size (12 IV + 32 key + 16 tag = 60 bytes)
-- [x] Wrapping randomness (random IV per wrap)
-- [x] Application pepper (32-byte constant, preprocessPassword)
-- [x] PBKDF2 test vectors (RFC 7914 Appendix B)
-- [x] AES-256-GCM test vectors (NIST SP 800-38D)
+Location: `apps/extension/src/adapters/device/web-crypto-device-key.adapter.ts`
 
-### 2b: Device Key Adapter (DeviceKeyPort) ✓
-
-Device identity key pairs, signing, key agreement, and private key protection.
-
-- [x] Generate device keys (Ed25519 signing + ECDH P-256 agreement)
+- [x] Generate Ed25519 signing keys
+- [x] Generate ECDH P-256 agreement keys
 - [x] Export public keys as JWK
-- [x] Wrap/unwrap device private keys with MasterKEK (AES-256-GCM A256GCMKW)
-- [x] Sign and verify (Ed25519)
-- [x] Derive shared secret (ECDH P-256)
+- [x] Wrap/unwrap private keys with MasterKEK
+- [x] Sign/verify via profile-selected suite
+- [x] Shared-secret derivation
+- [x] Malformed wrapped-key validation before unwrap
+- [ ] ConcatKDF (NIST SP 800-56A) or HKDF implementation for ECDH shared secrets
+- [ ] `deriveSlotKEK()` — ECDH + KDF pipeline returning a safe AES wrapping key
+- [ ] Enforce KDF on raw ECDH output (§3.6: raw `deriveBits` must never be used directly)
 
-**Location:** `src/adapters/device/web-crypto-device-key.adapter.ts`
+### Validation
 
-#### Tests
-
-- [x] Key generation (algorithm names, suiteId, extractability)
-- [x] Export public keys as JWK (OKP/Ed25519, EC/P-256)
-- [x] Ed25519 sign/verify round-trip, wrong data, wrong key
-- [x] Wrap/unwrap round-trip (sign → verify with original JWK)
-- [x] Unwrapped keys are non-extractable (signing + agreement)
-- [x] ECDH P-256 PKCS8 wrap/unwrap round-trip
-- [x] Per-key IV uniqueness (signing IV ≠ agreement IV)
-- [x] ECDH mutual agreement (A.priv+B.pub = B.priv+A.pub)
-- [x] Shared secret size (32 bytes) and uniqueness per pair
-
-### Memory Hygiene (shared) ✓
-
-- [x] `secureWipe()` utility for sensitive data
-- [x] Vault Key held in memory only (never persisted)
-
-#### Tests
-
-- [x] `secureWipe()` memory clearing tests
-
-**Validation:** Unit tests with known test vectors.
+- [x] Adapter test suites pass
+- [ ] ConcatKDF/HKDF test vectors
+- [ ] SlotKEK derivation round-trip tests
 
 ---
 
-## Phase 3: Storage Adapter (IndexedDB) `[Thesis]`
+## Phase 3: Local Storage Adapter `[Thesis]`
 
-**Goal:** Implement storage port using Dexie.js.
+### Goal
 
-### Database Schema ✓
+Implement local persistence with deterministic singleton access.
 
-- [x] `vaults` table - encrypted vault records (keyed by `vaultId`)
-- [x] `deviceState` table - local device state (keyed by `deviceId`)
-- [x] `pendingSync` table - offline queue (keyed by `id`, indexed by `timestamp`)
+### Checklist
 
-### Infrastructure ✓
+- [x] Dexie schema (`vault`, `deviceState`, `pendingSync`)
+- [x] Vault save/load/clear
+- [x] Device state save/load/clear
+- [x] Pending sync queue operations
+- [x] DB health check and full wipe
+- [x] Deterministic singleton reads/writes (canonical keys)
+- [x] Persist vault `profileId` in local vault record
 
-- [x] `src/infrastructure/database/dexie-db.ts` - Dexie database instance with typed tables
+### Location
 
-### Operations ✓
+- `apps/extension/src/adapters/storage/dexie-storage.adapter.ts`
+- `apps/extension/src/infrastructure/database/dexie-db.ts`
 
-- [x] `saveVault` / `loadVault` / `clearVault` - singleton vault record
-- [x] `saveDeviceState` / `loadDeviceState` / `clearDeviceState` - device state
-- [x] `addPendingSync` / `getPendingSyncItems` / `removePendingSync` / `clearPendingSync` - sync queue
-- [x] `isReady()` - database health check
-- [x] `deleteAll()` - transactional wipe of all stores
+### Validation
 
-**Location:** `src/adapters/storage/dexie-storage.adapter.ts`
-
-**Validation:** Integration tests with fake-indexeddb.
-
-### Tests ✓
-
-- [x] Vault CRUD (save, load, overwrite, clear, Uint8Array round-trip)
-- [x] Device state CRUD (save, load, overwrite, clear, salt/ArrayBuffer round-trip)
-- [x] Pending sync queue (add, ordered retrieval, remove by id, clear, empty state)
-- [x] Database management (isReady, deleteAll clears all stores)
-- [x] Schema migration tests (v1 stores, v1→v2 data preservation, binary survival, empty DB upgrade)
+- [x] Storage and migration tests pass
 
 ---
 
 ## Phase 4: Master Password Flow `[Thesis]`
 
-**Goal:** Complete lock/unlock lifecycle.
+### Goal
 
-### Flows
+Complete vault session lifecycle (genesis, unlock, lock, auto-lock).
 
-- [ ] **Genesis** - First-time setup, derive Vault Key, create empty vault
-  - [ ] Secret key generation and display (256-bit random, shown once at genesis, needed for adding new devices)
-- [ ] **Unlock** - Derive Vault Key, decrypt vault, load into memory
-- [ ] **Lock** - Wipe Vault Key from memory, clear UI state
-- [ ] **Auto-lock** - Timer-based lock (configurable)
+### Checklist
 
-### UI Components
+- [ ] Genesis setup flow
+- [ ] Derive MasterKEK from password + salt
+- [ ] Generate VaultKey + device keys + initial snapshot
+- [ ] Secret-key generation + one-time display flow
+- [ ] Unlock flow and in-memory session hydration
+- [ ] Lock flow with memory cleanup
+- [ ] Auto-lock timer and timeout configuration
 
-- [ ] Master password input (with strength indicator)
-- [ ] Unlock screen
-- [ ] Lock confirmation
+### Validation
 
-**Validation:** Can create vault, lock, unlock, and data persists.
-
-### Tests
-
-- [ ] Genesis flow (first-time setup)
-- [ ] Unlock with correct/incorrect password
-- [ ] Lock clears memory state
-- [ ] Auto-lock timer triggers correctly
+- [ ] Correct password unlocks
+- [ ] Wrong password fails cleanly
+- [ ] Lock removes runtime-sensitive state
+- [ ] Auto-lock triggers and relock works
 
 ---
 
 ## Phase 5: Password CRUD `[Thesis]`
 
-**Goal:** Core password management functionality.
+### Goal
 
-### Operations
+Functional offline password manager over encrypted vault data.
 
-- [ ] **Create** - Add new password entry
-- [ ] **Read** - List and search passwords
-- [ ] **Update** - Edit existing entry
-- [ ] **Delete** - Remove entry (soft delete for sync)
+### Checklist
 
-### Features
-
+- [ ] Create password entries
+- [ ] List/read entries
+- [ ] Edit/update entries
+- [ ] Delete entries
+- [ ] Search by title/url/username
 - [ ] Folder organization
-- [ ] Search (title, URL, username)
 - [ ] Password generator integration
-- [ ] Copy to clipboard (auto-clear after 30s)
+- [ ] Clipboard copy with timed clear
 
-### UI Components
+### Validation
 
-- [ ] Password list view
-- [ ] Password detail/edit form
-- [ ] Folder sidebar
-- [ ] Search bar
-
-**Validation:** Full CRUD cycle works offline.
-
-### Tests
-
-- [ ] Create/Read/Update/Delete operations
-- [ ] Folder organization
-- [ ] Search functionality
-- [ ] Clipboard auto-clear timing
-
-### Storybook
-
-- [ ] Password list view stories
-- [ ] Password form stories
-- [ ] Empty states
+- [ ] Full CRUD cycle works offline
+- [ ] Search/filter tests
+- [ ] Folder behavior tests
 
 ---
 
-## Phase 6: Signed Envelope Format `[Thesis]`
+## Phase 6: Signed Snapshot Pipeline `[Thesis]`
 
-**Goal:** Tamper-evident sync format.
+### Goal
 
-### Envelope Structure
+Implement signed vault snapshot pipeline aligned with core vault types.
 
-```typescript
-interface SignedEnvelope {
-  payload: EncryptedBlob; // AES-256-GCM encrypted vault
-  signature: Uint8Array; // Ed25519 signature
-  deviceId: string; // Signing device
-  timestamp: number; // Unix ms
-  version: number; // Schema version
-}
-```
+### Core Types Already Present
 
-### Implementation
+- `apps/extension/src/core/vault/vault-snapshot.type.ts`
+- `apps/extension/src/core/vault/vault-envelope.type.ts`
+- `apps/extension/src/core/vault/vault-metadata.type.ts`
+- `apps/extension/src/core/vault/encrypted-payload.type.ts`
 
-- [ ] Envelope creation with JCS (JSON Canonicalization)
-- [ ] AAD binding (deviceId + timestamp in AAD)
-- [ ] Signature verification
-- [ ] Version migration support
+### Checklist
 
-**Location:** `src/core/types/envelope.types.ts`, `src/adapters/crypto/envelope.ts`
+- [ ] Snapshot serialization/deserialization
+- [ ] Canonicalized envelope signing input (JCS)
+- [ ] Signature create/verify flow
+- [ ] AAD binding strategy implemented in runtime pipeline
+- [ ] Version migration guardrails
 
-**Validation:** Round-trip serialization tests.
+### Validation
 
-### Tests
-
-- [ ] Envelope serialization round-trip
-- [ ] Signature creation/verification
-- [ ] AAD binding validation
-- [ ] Version migration handling
+- [ ] Signature/tamper tests
+- [ ] Snapshot round-trip tests
+- [ ] AAD mismatch rejection tests
 
 ---
 
-## Phase 7: S3 Sync Adapter `[Thesis]`
+## Phase 7: Cloud Sync Adapter `[Thesis]`
 
-**Goal:** Cloud sync via AWS S3 + Cognito.
+### Goal
 
-### AWS Integration
+Implement sync adapter conforming to `SyncPort`.
 
-- [ ] Cognito authentication (anonymous or email)
-- [ ] S3 bucket access via presigned URLs
-- [ ] Per-user object key: `vaults/{cognitoId}/vault.enc`
+### Target Location
 
-### Sync Operations
+- `apps/extension/src/adapters/sync/` (to be created)
 
-- [ ] `upload(envelope: SignedEnvelope)`
-- [ ] `download(): SignedEnvelope | null`
-- [ ] `getLastModified(): Date`
+### Checklist
 
-### Offline Support
+- [ ] AWS credential bootstrap (Cognito identity flow)
+- [ ] `upload/download/delete/list` implementation
+- [ ] Per-user object key convention
+- [ ] Last-sync metadata handling
+- [ ] Retry/backoff and failure handling
 
-- [ ] Queue changes when offline
-- [ ] Retry with exponential backoff
-- [ ] Conflict detection (ETag mismatch)
+### Validation
 
-**Location:** `src/adapters/sync/`
-
-**Validation:** Integration tests with LocalStack or real AWS.
-
-### Tests
-
-- [ ] Upload/download with mocked S3 (msw or LocalStack)
-- [ ] Cognito token refresh
-- [ ] Offline queue persistence
-- [ ] Retry with exponential backoff
+- [ ] Adapter unit tests with mocked AWS boundaries
+- [ ] End-to-end sync smoke scenario
 
 ---
 
-## Phase 8: Conflict Resolution UI `[Thesis]`
+## Phase 8: Conflict Resolution `[Thesis]`
 
-**Goal:** Handle sync conflicts gracefully.
+### Goal
 
-### Conflict Detection
+Deterministic local-vs-remote conflict handling with explicit user choices.
 
-- [ ] Compare local vs remote timestamps
-- [ ] Detect concurrent edits
+### Checklist
 
-### Resolution Strategies
+- [ ] Diff engine (local/remote)
+- [ ] Conflict classification
+- [ ] Resolution actions (use local/use remote/skip)
+- [ ] Conflict review UI
+- [ ] Merge + persist + upload pipeline
 
-- [ ] **Keep Local** - Overwrite remote
-- [ ] **Keep Remote** - Overwrite local
-- [ ] **Merge** - Field-level merge (if possible)
-- [ ] **Manual** - Show diff, let user decide
+### Validation
 
-### UI Components
-
-- [ ] Conflict notification
-- [ ] Side-by-side diff view
-- [ ] Resolution action buttons
-
-**Validation:** Simulate concurrent edits, resolve correctly.
-
-### Tests
-
-- [ ] Conflict detection (timestamp comparison)
-- [ ] Keep local/remote resolution
-- [ ] Merge conflict scenarios
-
-### Storybook
-
-- [ ] Conflict notification component
-- [ ] Side-by-side diff view
-- [ ] Resolution buttons
+- [ ] Conflict simulation tests
+- [ ] Resolution correctness tests
 
 ---
 
 ## Phase 9: Browser Integration `[Thesis]`
 
-**Goal:** Chrome extension features.
+### Goal
 
-### Autofill
+Extension browser workflows (autofill/save/generate).
 
-- [ ] Content script for form detection
-- [ ] Match URLs to saved passwords
-- [ ] Inject credentials on user action
+### Checklist
 
-### Context Menu
-
-- [ ] Right-click "Save password"
-- [ ] Right-click "Generate password"
-
-### Omnibox
-
-- [ ] Quick search via address bar
-
-**Validation:** Works on major sites (Google, GitHub, etc.)
-
-### Tests
-
-- [ ] Form detection logic (unit)
-- [ ] URL matching algorithm
+- [ ] Form detection logic
+- [ ] Credential matching and fill actions
+- [ ] Save-password detection flow
 - [ ] Context menu actions
 
-Note: Full E2E with Playwright is a separate task.
+### Validation
+
+- [ ] Unit tests for detection/matching
+- [ ] Integration tests on representative forms
 
 ---
 
 ## Phase 10: Device Management `[Production]`
 
-**Goal:** Multi-device support with revocation.
+### Goal
 
-### Features
+Multi-device lifecycle and revocation controls.
 
-- [ ] Secret key self-enrollment flow
-- [ ] Device list UI (with location history per device)
-- [ ] New device notification on sync
-- [ ] Device location recording on unlock/sync (GPS → IP fallback)
-- [ ] Device revocation with key rotation
-- [ ] New secret key generation on rotation
+### Checklist
 
-### Security
-
-- [ ] Re-wrap Vault Key for each device
-- [ ] Revoked devices can't decrypt new vaults
-- [ ] New secret key displayed after rotation (old one invalidated)
-
-**Validation:** Self-enroll device, revoke device, verify access control and key rotation.
+- [ ] Secret-key self-enrollment
+- [ ] Device registry UI
+- [ ] New device detection on sync
+- [ ] Device revocation flow
+- [ ] Key rotation flow
 
 ---
 
 ## Phase 11: Polish `[Future]`
 
-**Goal:** Quality-of-life improvements.
+### Checklist
 
-### Import/Export
+- [ ] Import/export (CSV, Bitwarden, etc.)
+- [ ] Breach checking (k-anonymity)
+- [ ] Accessibility hardening
+- [ ] Cross-browser/mobile strategy
 
-- [ ] Import from Chrome, Firefox, 1Password, Bitwarden
-- [ ] Export to CSV (encrypted option)
+---
 
-### Security Enhancements
+## Cross-Cutting Workstreams
 
-- [ ] HIBP breach checking (k-anonymity)
-- [ ] Password strength scoring
-- [ ] Duplicate password detection
+### Documentation
 
-### UX Improvements
+- [ ] Root `README.md` full onboarding
+  - [ ] Project overview
+  - [ ] Setup instructions
+  - [ ] Build/lint/test commands
+  - [ ] Load unpacked extension guide
+  - [ ] Documentation map
+- [ ] Adapter architecture guide
+- [ ] End-user security summary
 
-- [ ] Keyboard shortcuts
-- [ ] Dark/light theme (done)
-- [ ] Accessibility audit
+### Testing
+
+- [x] Crypto tests
+- [x] Device key tests
+- [x] Storage tests
+- [x] DB migration tests
+- [ ] Master password/session lifecycle tests
+- [ ] Sync logic tests
+- [ ] Conflict flow tests
+- [ ] Browser integration tests
+- [ ] E2E critical path tests `[Future]`
+
+### Infrastructure
+
+- [x] AWS S3+Cognito template/docs
+- [ ] Validate deployment in real AWS account
+- [ ] CI for extension checks `[Future]`
 
 ---
 
 ## Dependency Graph
 
-```
-Phase 0 (Docs)
-    │
-    v
-Phase 1 (Core Types) ─────────────────────────────┐
-    │                                              │
-    v                                              │
-Phase 2 (Crypto) ──────────────────┐               │
-    │                               │               │
-    v                               v               v
-Phase 3 (Storage) ────────> Phase 6 (Envelope) ────┤
-    │                               │               │
-    v                               v               │
-Phase 4 (Master PW) ──────> Phase 7 (S3 Sync) ─────┤
-    │                               │               │
-    v                               v               │
-Phase 5 (CRUD) ───────────> Phase 8 (Conflicts) ───┤
-    │                               │               │
-    v                               v               v
-Phase 9 (Browser) ────────> Phase 10 (Devices) ───> Phase 11 (Polish)
+```text
+0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
+                                 \-> 10 (production hardening)
 ```
 
-**Critical Path:** 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
+Critical path for thesis: `0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9`
 
 ---
 
-## Success Metrics
+## Success Criteria
 
-### Thesis Completion (Phases 0-9)
+### Thesis Completion
 
-- [ ] All `[Thesis]` checkboxes complete
-- [ ] Security specification implemented as documented
-- [ ] Working Chrome extension with offline-first sync
-- [ ] Test coverage > 80% for core and adapters
-- [ ] Documentation complete for thesis defense
+- [ ] All `[Thesis]` phases complete
+- [ ] Security-spec behavior implemented in runtime code
+- [ ] Offline-first extension flow works end-to-end
+- [ ] Stable passing test baseline for core/adapters
 
-### Production Ready (Phase 10)
+### Production Readiness
 
-- [ ] Device management with secure revocation
-- [ ] Security audit passed
-- [ ] Performance benchmarks met
-
-### Future (Phase 11)
-
-- [ ] Import from major password managers
-- [ ] Breach checking integration
-- [ ] Accessibility WCAG 2.1 AA compliant
+- [ ] Device revocation + rotation fully functional
+- [ ] Security review completed
+- [ ] Cloud setup/recovery runbook complete
 
 ---
 
-## Current Status
+## Maintenance Rules
 
-| Phase | Status      | Notes                                                                                     |
-| ----- | ----------- | ----------------------------------------------------------------------------------------- |
-| 0     | Complete    | All diagrams done (PlantUML)                                                              |
-| 1     | Complete    | All types, ports, constants & utils defined; type compilation tests ✓                     |
-| 2     | Complete    | CryptoPort ✓, DeviceKeyPort ✓, secureWipe ✓, pepper ✓, memory guard ✓, standard vectors ✓ |
-| 3     | Complete    | Dexie adapter ✓, all CRUD ✓, 22 tests ✓, schema migration ✓                               |
-| 4     | Not Started | Depends on Phase 2-3                                                                      |
-| 5     | Not Started | Depends on Phase 4                                                                        |
-| 6     | Not Started | Depends on Phase 2                                                                        |
-| 7     | Not Started | Depends on Phase 3, 6                                                                     |
-| 8     | Not Started | Depends on Phase 5, 7                                                                     |
-| 9     | Not Started | Depends on Phase 5                                                                        |
-| 10    | Not Started | Post-thesis                                                                               |
-| 11    | Not Started | Future                                                                                    |
-
-**UI Layer:** Working (theme system, Button component, popup with mock data)
+- Update this file in the same PR as feature status changes.
+- Do not maintain parallel roadmap/todo files.

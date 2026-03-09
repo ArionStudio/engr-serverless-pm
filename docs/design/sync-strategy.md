@@ -198,7 +198,7 @@ export interface ResolvedConflict {
 ```typescript
 // core/sync/sync.port.ts
 
-export interface ISyncService {
+export interface SyncPort {
   // Object operations
   upload(key: string, data: Uint8Array): Promise<void>;
   download(key: string): Promise<Uint8Array | null>;

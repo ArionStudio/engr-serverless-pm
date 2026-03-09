@@ -32,10 +32,7 @@ export interface DeviceKeyPort {
    * @param keys - Device keys
    * @returns JWK-encoded public keys
    */
-  exportPublicKeysJwk(
-    profile: CryptoProfile,
-    keys: DeviceKeys,
-  ): Promise<DevicePublicKeysJwk>;
+  exportPublicKeysJwk(keys: DeviceKeys): Promise<DevicePublicKeysJwk>;
 
   /**
    * Wrap device private keys using the MasterKEK for persistence.

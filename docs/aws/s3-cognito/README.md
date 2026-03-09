@@ -1,23 +1,24 @@
 # S3 + Cognito for Browser Extension
 
-A CloudFormation template to provision a private S3 bucket and a Cognito Identity Pool for a browser extension to read/write data using temporary AWS credentials. It enforces strict CORS, AES256 encryption, and versioning with lifecycle cleanup.
+A CloudFormation template to provision a private S3 bucket, Cognito User Pool, and Cognito Identity Pool for a browser extension to read/write data using temporary AWS credentials. It enforces strict CORS, server-side encryption, and versioning with lifecycle cleanup.
 
 ## Features
 
 - Private S3 bucket with public access blocked
-- Default encryption: AES256 (KMS optional)
+- Default encryption: AES256 (SSE-S3)
 - Versioning enabled; lifecycle to prune noncurrent versions and abort incomplete uploads
 - Strict CORS for extension origins; exposes `ETag` and `x-amz-version-id`
-- Cognito Identity Pool (unauth identities) + IAM role with least-privilege S3 access scoped to a prefix
+- Cognito User Pool auth + Identity Pool federation (authenticated identities only)
+- IAM role with least-privilege S3 access scoped to `${UserPrefix}${identityId}/`
 
 ## Parameters
 
 - `BucketName` (String): Unique S3 bucket name
 - `ExtensionOrigins` (CommaDelimitedList): CORS origins (e.g., `chrome-extension://id,https://your.site`)
-- `UseKMS` (true|false): Use SSE-KMS and enforce on PutObject (default: false)
-- `KMSKeyArn` (String): KMS key ARN (required when `UseKMS=true`, default: "")
 - `UserPrefix` (String): Object key prefix to scope access (default: `user/`)
 - `IdentityPoolName` (String): Cognito Identity Pool name (default: `S3ExtPool`)
+- `UserPoolName` (String): Cognito User Pool name (default: `S3ExtUserPool`)
+- `UserPoolClientName` (String): Cognito User Pool app client name (default: `S3ExtPublicClient`)
 - `RoleName` (String): IAM role name (default: `CognitoS3ExtRole`)
 - `LifecycleEnabled` (true|false): Enable lifecycle cleanup rules (default: true)
 - `NoncurrentVersionExpirationDays` (Number): Days to delete noncurrent versions (default: 30)
@@ -27,6 +28,9 @@ A CloudFormation template to provision a private S3 bucket and a Cognito Identit
 
 - `BucketNameOut` — S3 bucket name
 - `IdentityPoolIdOut` — Cognito Identity Pool ID
+- `UserPoolIdOut` — Cognito User Pool ID
+- `UserPoolClientIdOut` — Cognito User Pool app client ID
+- `UserPoolProviderNameOut` — Cognito provider name for identity federation
 - `CognitoRoleArnOut` — IAM role ARN
 - `RegionOut` — AWS region
 - `PrefixOut` — Enforced S3 key prefix
@@ -59,10 +63,10 @@ A CloudFormation template to provision a private S3 bucket and a Cognito Identit
      --parameter-overrides \
        BucketName=<bucket-name> \
        ExtensionOrigins="<extension-origins>" \
-       UseKMS=false \
-       KMSKeyArn="" \
        UserPrefix="<prefix>" \
        IdentityPoolName="<pool-name>" \
+       UserPoolName="<user-pool-name>" \
+       UserPoolClientName="<user-pool-client-name>" \
        RoleName="<role-name>" \
        LifecycleEnabled=true \
        NoncurrentVersionExpirationDays=30 \
@@ -71,10 +75,10 @@ A CloudFormation template to provision a private S3 bucket and a Cognito Identit
 
 **Parameter Examples:**
 
-| Environment | Stack Name               | Bucket Name              | UserPrefix  | IdentityPoolName | RoleName              |
-| ----------- | ------------------------ | ------------------------ | ----------- | ---------------- | --------------------- |
-| Production  | `spm-ext-s3-cognito`     | `your-unique-bucket`     | `user/`     | `S3ExtPool`      | `CognitoS3ExtRole`    |
-| Development | `spm-ext-s3-cognito-dev` | `your-unique-bucket-dev` | `dev-user/` | `S3ExtPoolDev`   | `CognitoS3ExtRoleDev` |
+| Environment | Stack Name               | Bucket Name              | UserPrefix  | IdentityPoolName | UserPoolName       | RoleName              |
+| ----------- | ------------------------ | ------------------------ | ----------- | ---------------- | ------------------ | --------------------- |
+| Production  | `spm-ext-s3-cognito`     | `your-unique-bucket`     | `user/`     | `S3ExtPool`      | `S3ExtUserPool`    | `CognitoS3ExtRole`    |
+| Development | `spm-ext-s3-cognito-dev` | `your-unique-bucket-dev` | `dev-user/` | `S3ExtPoolDev`   | `S3ExtUserPoolDev` | `CognitoS3ExtRoleDev` |
 
 **Required Values to Replace:**
 
@@ -129,10 +133,10 @@ If you prefer using your local AWS CLI instead of CloudShell:
      --parameter-overrides \
        BucketName=<bucket-name> \
        ExtensionOrigins="<extension-origins>" \
-       UseKMS=false \
-       KMSKeyArn="" \
        UserPrefix="<prefix>" \
        IdentityPoolName="<pool-name>" \
+       UserPoolName="<user-pool-name>" \
+       UserPoolClientName="<user-pool-client-name>" \
        RoleName="<role-name>" \
        LifecycleEnabled=true \
        NoncurrentVersionExpirationDays=30 \
@@ -144,7 +148,8 @@ If you prefer using your local AWS CLI instead of CloudShell:
 ## Notes
 
 - TLS-only access is enforced; public access is blocked
-- If `UseKMS=true`, ensure CMK policy allows the IAM role to use the key via S3 in this region
+- Identity Pool disables unauthenticated identities
+- S3 access is isolated per authenticated Cognito identity (`${UserPrefix}${identityId}/`)
 - CORS origins must match exactly
 - Lifecycle rules apply only to `UserPrefix`
 

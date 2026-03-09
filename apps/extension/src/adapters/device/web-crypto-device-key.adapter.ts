@@ -73,7 +73,6 @@ export const WebCryptoDeviceKeyAdapter: DeviceKeyPort = {
     );
 
     return {
-      suiteId: suite.id,
       signing: {
         publicKey: asSigningPublicKey(signingPair.publicKey),
         privateKey: asSigningPrivateKey(signingPair.privateKey),
@@ -85,19 +84,13 @@ export const WebCryptoDeviceKeyAdapter: DeviceKeyPort = {
     };
   },
 
-  async exportPublicKeysJwk(
-    profile: CryptoProfile,
-    keys: DeviceKeys,
-  ): Promise<DevicePublicKeysJwk> {
-    const suite = resolveAlgorithmSuite(profile.algorithmSuiteId);
-
+  async exportPublicKeysJwk(keys: DeviceKeys): Promise<DevicePublicKeysJwk> {
     const [signingPublicJwk, agreementPublicJwk] = await Promise.all([
       crypto.subtle.exportKey("jwk", keys.signing.publicKey),
       crypto.subtle.exportKey("jwk", keys.agreement.publicKey),
     ]);
 
     return {
-      suiteId: suite.id,
       signingPublicJwk,
       agreementPublicJwk,
     };
@@ -147,7 +140,6 @@ export const WebCryptoDeviceKeyAdapter: DeviceKeyPort = {
     ]);
 
     return {
-      suiteId: suite.id,
       wrappedSigningPrivateKey: prependIv(signingIv, rawWrappedSigning),
       wrappedAgreementPrivateKey: prependIv(agreementIv, rawWrappedAgreement),
       signingPublicKeyBytes,
@@ -209,7 +201,6 @@ export const WebCryptoDeviceKeyAdapter: DeviceKeyPort = {
     ]);
 
     return {
-      suiteId: suite.id,
       signing: {
         publicKey: asSigningPublicKey(signingPublicKey),
         privateKey: asSigningPrivateKey(signingPrivateKey),

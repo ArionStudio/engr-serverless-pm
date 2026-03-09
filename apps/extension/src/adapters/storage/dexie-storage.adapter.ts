@@ -10,12 +10,12 @@ import { db } from "@/infrastructure/database/dexie-db";
 export const DexieStorageAdapter: StoragePort = {
   // ── Vault (singleton) ──────────────────────────────────
 
-  async saveVault(vault: EncryptedVaultRecord): Promise<void> {
-    await db[STORE_NAMES.VAULT].put(vault);
+  async saveVault(vault: EncryptedVaultRecord, vaultId: string): Promise<void> {
+    await db[STORE_NAMES.VAULT].put({ ...vault, vaultId });
   },
 
-  async loadVault(): Promise<EncryptedVaultRecord | null> {
-    return (await db[STORE_NAMES.VAULT].toCollection().first()) ?? null;
+  async loadVault(vaultId: string): Promise<EncryptedVaultRecord | null> {
+    return (await db[STORE_NAMES.VAULT].get(vaultId)) ?? null;
   },
 
   async clearVault(): Promise<void> {
@@ -24,12 +24,18 @@ export const DexieStorageAdapter: StoragePort = {
 
   // ── Device State (singleton) ───────────────────────────
 
-  async saveDeviceState(state: LocalDeviceState): Promise<void> {
-    await db[STORE_NAMES.DEVICE_STATE].put(state);
+  async saveDeviceState(
+    state: LocalDeviceState,
+    deviceId: string,
+  ): Promise<void> {
+    await db[STORE_NAMES.DEVICE_STATE].put({
+      ...state,
+      deviceId: deviceId,
+    });
   },
 
-  async loadDeviceState(): Promise<LocalDeviceState | null> {
-    return (await db[STORE_NAMES.DEVICE_STATE].toCollection().first()) ?? null;
+  async loadDeviceState(deviceId: string): Promise<LocalDeviceState | null> {
+    return (await db[STORE_NAMES.DEVICE_STATE].get(deviceId)) ?? null;
   },
 
   async clearDeviceState(): Promise<void> {

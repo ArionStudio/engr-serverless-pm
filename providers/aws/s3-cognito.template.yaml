@@ -8,15 +8,6 @@ Parameters:
   ExtensionOrigins:
     Type: CommaDelimitedList
     Description: Comma-separated list of allowed CORS origins (e.g., chrome-extension://id,https://your.site)
-  UseKMS:
-    Type: String
-    AllowedValues: ["true", "false"]
-    Default: "false"
-    Description: Use SSE-KMS by default and require it on uploads
-  KMSKeyArn:
-    Type: String
-    Default: ""
-    Description: KMS CMK ARN to use when UseKMS=true
   UserPrefix:
     Type: String
     Default: "user/"
@@ -24,6 +15,12 @@ Parameters:
   IdentityPoolName:
     Type: String
     Default: "S3ExtPool"
+  UserPoolName:
+    Type: String
+    Default: "S3ExtUserPool"
+  UserPoolClientName:
+    Type: String
+    Default: "S3ExtPublicClient"
   RoleName:
     Type: String
     Default: "CognitoS3ExtRole"
@@ -42,7 +39,6 @@ Parameters:
     Description: Days after which incomplete multipart uploads are aborted
 
 Conditions:
-  UseKMSCond: !Equals [!Ref UseKMS, "true"]
   IsLifecycleEnabled: !Equals [!Ref LifecycleEnabled, "true"]
 
 Resources:
@@ -122,14 +118,16 @@ Resources:
             Resource: !Sub "arn:aws:s3:::${DataBucket}"
             Condition:
               StringLike:
-                s3:prefix: [!Sub "${UserPrefix}*"]
+                s3:prefix:
+                  [!Sub "${UserPrefix}${!cognito-identity.amazonaws.com:sub}/*"]
           - Sid: ListVersionsWithinPrefix
             Effect: Allow
             Action: ["s3:ListBucketVersions"]
             Resource: !Sub "arn:aws:s3:::${DataBucket}"
             Condition:
               StringLike:
-                s3:prefix: [!Sub "${UserPrefix}*"]
+                s3:prefix:
+                  [!Sub "${UserPrefix}${!cognito-identity.amazonaws.com:sub}/*"]
           - Sid: ObjectRW
             Effect: Allow
             Action:
@@ -137,28 +135,44 @@ Resources:
               - "s3:GetObjectVersion"
               - "s3:PutObject"
               - "s3:DeleteObject"
-            Resource: !Sub "arn:aws:s3:::${DataBucket}/${UserPrefix}*"
-          - !If
-            - UseKMSCond
-            - Sid: KmsDecryptEncryptIfUsed
-              Effect: Allow
-              Action:
-                - "kms:Encrypt"
-                - "kms:Decrypt"
-                - "kms:GenerateDataKey*"
-                - "kms:DescribeKey"
-              Resource: !Ref KMSKeyArn
-              Condition:
-                StringEquals:
-                  kms:ViaService: !Sub "s3.${AWS::Region}.amazonaws.com"
-            - !Ref "AWS::NoValue"
+            Resource: !Sub "arn:aws:s3:::${DataBucket}/${UserPrefix}${!cognito-identity.amazonaws.com:sub}/*"
 
-  # Cognito identity pool + role for unauth identities
+  # Cognito User Pool for extension user authentication
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Ref UserPoolName
+      UsernameAttributes: ["email"]
+      AutoVerifiedAttributes: ["email"]
+      MfaConfiguration: "OFF"
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      ClientName: !Ref UserPoolClientName
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+
+  # Cognito identity pool + role for authenticated identities only
   CognitoIdentityPool:
     Type: AWS::Cognito::IdentityPool
     Properties:
       IdentityPoolName: !Ref IdentityPoolName
-      AllowUnauthenticatedIdentities: true
+      AllowUnauthenticatedIdentities: false
+      CognitoIdentityProviders:
+        - ClientId: !Ref CognitoUserPoolClient
+          ProviderName: !GetAtt CognitoUserPool.ProviderName
 
   CognitoAuthRole:
     Type: AWS::IAM::Role
@@ -175,7 +189,7 @@ Resources:
               StringEquals:
                 cognito-identity.amazonaws.com:aud: !Ref CognitoIdentityPool
               ForAnyValue:StringLike:
-                cognito-identity.amazonaws.com:amr: unauthenticated
+                cognito-identity.amazonaws.com:amr: authenticated
       ManagedPolicyArns:
         - !Ref S3AccessPolicy
 
@@ -184,7 +198,7 @@ Resources:
     Properties:
       IdentityPoolId: !Ref CognitoIdentityPool
       Roles:
-        unauthenticated: !GetAtt CognitoAuthRole.Arn
+        authenticated: !GetAtt CognitoAuthRole.Arn
 
 Outputs:
   BucketNameOut:
@@ -197,6 +211,21 @@ Outputs:
     Value: !Ref CognitoIdentityPool
     Export:
       Name: !Sub "${AWS::StackName}-IdentityPoolId"
+  UserPoolIdOut:
+    Description: Cognito User Pool ID
+    Value: !Ref CognitoUserPool
+    Export:
+      Name: !Sub "${AWS::StackName}-UserPoolId"
+  UserPoolClientIdOut:
+    Description: Cognito User Pool Client ID
+    Value: !Ref CognitoUserPoolClient
+    Export:
+      Name: !Sub "${AWS::StackName}-UserPoolClientId"
+  UserPoolProviderNameOut:
+    Description: Cognito User Pool provider name for identity federation
+    Value: !GetAtt CognitoUserPool.ProviderName
+    Export:
+      Name: !Sub "${AWS::StackName}-UserPoolProviderName"
   CognitoRoleArnOut:
     Description: Cognito role ARN
     Value: !GetAtt CognitoAuthRole.Arn
@@ -214,4 +243,4 @@ Outputs:
       Name: !Sub "${AWS::StackName}-Prefix"
   TemplateVersion:
     Description: Template version
-    Value: "v4"
+    Value: "v5"

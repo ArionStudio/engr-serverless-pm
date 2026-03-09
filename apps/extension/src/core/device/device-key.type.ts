@@ -1,4 +1,3 @@
-import type { AlgorithmSuiteId } from "../crypto/suites/algorithm-suite.type";
 import type {
   DeviceSigningKeyPair,
   DeviceAgreementKeyPair,
@@ -15,9 +14,6 @@ import type {
  * - Public keys cannot be confused with private keys.
  */
 export type DeviceKeys = Readonly<{
-  /** Algorithm suite identifier used to generate/interpret these keys. */
-  readonly suiteId: AlgorithmSuiteId;
-
   /** Device signing keys (suite-defined, e.g. Ed25519 today). */
   readonly signing: DeviceSigningKeyPair;
 
@@ -29,7 +25,6 @@ export type DeviceKeys = Readonly<{
  * Device public keys exported as JWK for registration / transport.
  */
 export type DevicePublicKeysJwk = Readonly<{
-  readonly suiteId: AlgorithmSuiteId;
   readonly signingPublicJwk: JsonWebKey;
   readonly agreementPublicJwk: JsonWebKey;
 }>;
@@ -45,7 +40,6 @@ export type DevicePublicKeysJwk = Readonly<{
  * so storing them unencrypted has no security cost.
  */
 export type WrappedDeviceKeys = Readonly<{
-  readonly suiteId: AlgorithmSuiteId;
   readonly wrappedSigningPrivateKey: ArrayBuffer;
   readonly wrappedAgreementPrivateKey: ArrayBuffer;
   /** Ed25519 public key exported as "raw" (32 bytes). */
