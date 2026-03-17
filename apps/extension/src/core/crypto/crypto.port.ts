@@ -47,10 +47,8 @@ export interface CryptoPort {
   /**
    * Derive MasterKEK from password using the profile-selected KDF.
    *
-   * Input is pre-processed: SHA-256(password + pepper)
-   *
    * @param profile - Crypto profile selecting algorithm + serialization suites
-   * @param password - Pre-processed password bytes
+   * @param password - Password bytes used as KDF input
    * @param salt - Random salt (32 bytes minimum)
    * @returns Derived MasterKEK (non-extractable) + salt used
    */

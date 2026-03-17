@@ -19,15 +19,14 @@ A serverless password manager where **confidentiality and tamper-detection** are
 - **Confidentiality:** attacker cannot learn secrets from S3/IndexedDB.
 - **Tamper detection:** modifications of encrypted payload are detected (decrypt fails).
 - **Access control:** only authorized devices (or master password holder) can obtain the Vault Key.
-- **Resilience:** Mitigation of offline brute-force attacks via "Peppering".
+- **Resilience:** Mitigation of offline brute-force attacks via a strong master password, unique salt, and a high-cost KDF.
 
 ---
 
 ## 2. Terminology
 
 - **Vault Key (DEK):** AES-256-GCM key encrypting the vault data.
-- **Master KEK:** PBKDF2-derived key (Password + Salt + **Pepper**) used to wrap private keys.
-- **Pepper:** A high-entropy application-secret (baked into build or separate config) used to mitigate offline attacks.
+- **Master KEK:** PBKDF2-derived key (master password + salt) used to wrap private keys.
 - **Device Signing Key Pair:** Ed25519 (sign/verify).
 - **Device Exchange Key Pair:** ECDH P-256 (derive secrets for per-device key slots).
 - **Key Slot:** An encrypted copy of the Vault Key for a recipient.
@@ -65,9 +64,14 @@ The parameters below define `suite-v1`.
 - Algorithm: PBKDF2 with HMAC-SHA-256
 - Iterations: **600,000**
 - Salt: random, **32 bytes minimum**
-- **Pepper Strategy (NEW):**
-  - Input to PBKDF2 is `SHA256(MasterPassword + ApplicationPepper)`.
-  - _Rationale:_ Prevents an attacker who steals the S3 database from cracking passwords without also reverse-engineering the extension code.
+- Input to PBKDF2 is the UTF-8 encoded master password.
+
+### 3.2.1 Master Password Requirements
+
+- **Minimum requirement:** at least **12 characters**.
+- **Recommended requirement:** at least **16 characters**, or a passphrase of **5 or more random words**.
+- **Uniqueness:** the master password **MUST NOT** be reused from any other site, app, or account.
+- **Rationale:** in this serverless, client-side, open-source design there is no server-held secret protecting the vault. Resistance to offline guessing depends primarily on the password strength, the random salt, and the PBKDF2 cost factor.
 
 ### 3.3 Payload Encryption (Data Lock)
 
@@ -259,8 +263,8 @@ Since JS Garbage Collection is unpredictable:
 
 ### 8.1 Setup (Genesis)
 
-1.  **Strength Check:** Validate Password Entropy & Pwned List.
-2.  **Derivation:** MasterKEK = PBKDF2(Hash(Password + Pepper), Salt, 600k).
+1.  **Strength Check:** Enforce the minimum master-password policy and warn when the password does not meet the recommended strength guidance.
+2.  **Derivation:** MasterKEK = PBKDF2(Password, Salt, 600k).
 3.  **Generation:** Create VaultKey, DeviceKeys.
 4.  **Secret Key:** Generate random 256-bit secret key, display to user (save offline). Wrap VaultKey with secret key → secret key slot. `secureWipe(secretKey)`. The secret key is used for both device enrollment and disaster recovery.
 5.  **Persistence:** Wrap Device Keys with MasterKEK → Store in IndexedDB.
@@ -269,7 +273,7 @@ Since JS Garbage Collection is unpredictable:
 ### 8.2 Login (Unlock)
 
 1.  **Input:** User enters Password.
-2.  **Derive:** Re-compute MasterKEK (using Pepper).
+2.  **Derive:** Re-compute MasterKEK from password and stored salt.
 3.  **Unwrap Identity:** Unwrap Device Keys from IndexedDB.
 4.  **Download & Verify:** Fetch Vault. Verify Ed25519 signature.
 5.  **Rollback Check:** If `vault.timestamp < local.lastSeenTimestamp`, Warn User.
@@ -356,7 +360,7 @@ Strict CSP required in manifest.json:
 - [ ] **Dual Key Pairs:** Every device generates two distinct pairs: Ed25519 (Identity) and ECDH P-256 (Key Exchange).
 - [ ] **IV Uniqueness:** All AES-GCM operations use a fresh, random 12-byte IV. Never reuse an IV for the same key.
 - [ ] **Salt Strength:** All salts are random and >= 32 bytes (upgraded from 16 bytes).
-- [ ] **Pepper (NEW):** The Password KDF input includes a global, high-entropy ApplicationPepper secret mixed with the user's password.
+- [ ] **Master Password Policy:** Enforce the documented minimum length and present the recommended stronger passphrase guidance during setup.
 - [ ] **KDF Safety (NEW):** ECDH raw key bits are never used directly. They must pass through HKDF or ConcatKDF to derive the actual AES key.
 
 ### Runtime Security

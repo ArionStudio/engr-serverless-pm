@@ -99,7 +99,6 @@ Implement profile-driven crypto with WebCrypto.
 Location: `apps/extension/src/adapters/crypto/web-crypto-api.adapter.ts`
 
 - [x] PBKDF2-SHA256 (600k iterations)
-- [x] Pepper pre-processing path
 - [x] AES-256-GCM encrypt/decrypt
 - [x] Random salt + IV generation
 - [x] Hashing via profile-selected suite
