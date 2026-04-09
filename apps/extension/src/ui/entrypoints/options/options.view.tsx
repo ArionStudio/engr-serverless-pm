@@ -1,11 +1,7 @@
-import { ThemeToggle, type ThemePreference } from "@/ui/theme";
+import { ThemeToggle, useTheme } from "@/ui/features/theme";
 
-interface OptionsViewProps {
-  theme: ThemePreference;
-  onThemeChange: (theme: ThemePreference) => void;
-}
-
-export function OptionsView({ theme, onThemeChange }: OptionsViewProps) {
+export function OptionsView() {
+  const { preference, setTheme } = useTheme();
   return (
     <div className="min-h-screen p-8">
       <div className="max-w-md mx-auto space-y-8">
@@ -17,7 +13,7 @@ export function OptionsView({ theme, onThemeChange }: OptionsViewProps) {
         <div className="space-y-4">
           <div>
             <h2 className="text-sm font-medium mb-3">Theme</h2>
-            <ThemeToggle preference={theme} onThemeChange={onThemeChange} />
+            <ThemeToggle preference={preference} onThemeChange={setTheme} />
           </div>
         </div>
       </div>
