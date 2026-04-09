@@ -39,20 +39,14 @@ end fork
 :Derive Master KEK;
 :Wrap Device Keys with KEK;
 
+|WebCrypto|
+:Generate Secret Key (256-bit);
+
 |User|
-split
-    :Master Password Backup;
-    |Extension|
-    :Create Master Slot (PBKDF2+AESKW);
-split again
-    :Recovery Key Backup;
-    |WebCrypto|
-    :Generate Recovery Key (256-bit);
-    |User|
-    :Save & Confirm Recovery Key;
-    |Extension|
-    :Create Recovery Slot (AESKW);
-end split
+:Save & Confirm Secret Key;
+
+|Extension|
+:Create Secret Key Slot (A256GCMKW);
 
 |Extension|
 :Create & Encrypt Empty Vault;

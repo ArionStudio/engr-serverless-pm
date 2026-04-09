@@ -7,6 +7,7 @@
  */
 
 import type { WrappedDeviceKeys } from "../device/device-key.type";
+import type { CryptoProfileId } from "../crypto/profiles/crypto-profile.type";
 
 /**
  * Local device state stored in IndexedDB.
@@ -31,7 +32,9 @@ export interface LocalDeviceState {
  */
 export interface EncryptedVaultRecord {
   readonly vaultId: string;
-  /** SignedVaultEnvelope as bytes */
+  /** Profile used to encrypt and wrap this vault snapshot. */
+  readonly profileId: CryptoProfileId;
+  /** Serialized encrypted vault snapshot bytes. */
   readonly data: Uint8Array;
   /** Unix ms */
   readonly lastModified: number;

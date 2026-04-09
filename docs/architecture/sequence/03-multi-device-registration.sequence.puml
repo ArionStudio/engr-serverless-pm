@@ -1,5 +1,5 @@
 @startuml 03-multi-device-registration
-title Device Registration Flow
+title Device Self-Enrollment Flow
 
 skinparam backgroundColor #FEFEFE
 skinparam roundcorner 10
@@ -12,89 +12,88 @@ skinparam sequence {
     ParticipantBorderColor #1976D2
 }
 
-actor "User\n(New Device)" as userNew
+actor "User\n(New Device)" as user
 participant "New Device\nExtension" as newDev
-actor "User\n(Existing Device)" as userExisting
-participant "Existing Device\nExtension" as existingDev
 participant "S3" as s3
 
-== Step 1: New Device Setup ==
+== Step 1: Install & Configure ==
 
-userNew -> newDev : Install extension
+user -> newDev : Install extension
+user -> newDev : Configure cloud provider\n(QR code / config file / manual entry)
+user -> newDev : Enter master password\n+ secret key
+
+== Step 2: Generate Device Keys ==
+
 newDev -> newDev : Generate Device ID (UUID)
 newDev -> newDev : Generate Ed25519 keypair\n(signing)
 newDev -> newDev : Generate ECDH P-256 keypair\n(key exchange)
-
-newDev -> newDev : Export ECDH public key
-newDev --> userNew : Show device public key\n(QR code or base64)
 
 note right of newDev
     **New Device Keys:**
     - deviceSignKeyPair (Ed25519)
     - deviceEcdhKeyPair (P-256)
-
-    Private keys not yet wrapped
-    (no Master KEK yet)
 end note
 
-== Step 2: Authorize on Existing Device ==
-
-userNew -> userExisting : Share public key\n(scan QR / paste)
-userExisting -> existingDev : Add new device
-
-existingDev -> existingDev : Verify user owns\nexisting device (unlock)
-
-existingDev -> existingDev : Get Vault Key from memory
-
-existingDev -> existingDev : Create ECDH Key Slot\nfor new device
-note right of existingDev
-    **ECDH-ES+A256KW:**
-    1. Generate ephemeral P-256 keypair
-    2. ECDH: ephemeral.priv + newDevice.pub
-    3. ConcatKDF(shared) -> KEK
-    4. AES-KW wrap Vault Key
-end note
-
-existingDev -> existingDev : Add key slot to vault
-existingDev -> existingDev : Sign updated envelope
-existingDev -> s3 : Upload updated vault
-
-existingDev --> userExisting : Device authorized
-
-== Step 3: New Device Unlocks ==
-
-userNew -> newDev : Enter Master Password / Recovery Key
-newDev -> newDev : Derive KEK
+== Step 3: Download & Verify Vault ==
 
 newDev -> s3 : Download vault
-s3 --> newDev : Signed envelope with\nnew device's key slot
+s3 --> newDev : Signed envelope
 
-newDev -> newDev : Find own key slot\n(by deviceId)
-newDev -> newDev : ECDH decrypt key slot
+newDev -> newDev : Verify envelope signature\n(Ed25519)
+
+== Step 4: Unwrap VaultKey via Secret Key ==
+
+newDev -> newDev : Find secret key slot\n(type: "secret-key")
+newDev -> newDev : Unwrap VaultKey from\nsecret key slot
+
 note right of newDev
-    **Unwrap Vault Key:**
-    1. ECDH: own.priv + slot.epk
-    2. ConcatKDF(shared) -> KEK
-    3. AES-KW unwrap -> Vault Key
+    **Secret Key Slot (A256GCMKW):**
+    1. Import secret key as AES-256 CryptoKey
+    2. AES-GCM unwrap → VaultKey
 end note
 
-newDev -> newDev : Decrypt vault with Vault Key
-newDev -> newDev : Wrap device private keys\nwith Master KEK
-newDev -> newDev : Store wrapped keys in IndexedDB
+== Step 5: Self-Register ==
 
-newDev --> userNew : Setup complete!\nVault accessible
+newDev -> newDev : Create own ECDH device\nkey slot (wrapping VaultKey)
+note right of newDev
+    **ECDH-ES+A256GCMKW:**
+    1. Generate ephemeral P-256 keypair
+    2. ECDH: ephemeral.priv + own.pub
+    3. ConcatKDF(shared) → KEK
+    4. AES-GCM wrap VaultKey
+end note
+
+newDev -> newDev : Add self to device registry\n(deviceId, name, public keys,\nenvironment, location)
+
+== Step 6: Persist & Upload ==
+
+newDev -> newDev : Derive MasterKEK from password
+newDev -> newDev : Wrap device private keys\nwith MasterKEK
+newDev -> newDev : Sign updated envelope\n(Ed25519)
+
+newDev -> s3 : Upload updated vault
+s3 --> newDev : 200 OK
+
+newDev -> newDev : Store wrapped keys +\ndevice state in IndexedDB
+newDev -> newDev : secureWipe(secretKey,\npasswordBuffer)
+
+newDev --> user : Setup complete!\nVault accessible
+
+note right of newDev
+    **No existing device needed.**
+    User only needs:
+    - Master password (memorized)
+    - Secret key (paper backup)
+    - Cloud config (QR/file/manual)
+end note
 
 legend right
-    **Key Slot Structure:**
-    {
-      type: "device",
-      deviceId: "uuid",
-      alg: "ECDH-ES+A256KW",
-      epk: { kty, crv, x, y },
-      apu: "base64url",
-      apv: "base64url",
-      ciphertext: "wrapped_vault_key"
-    }
+    **Self-Enrollment:**
+    New devices unwrap VaultKey
+    from the secret key slot and
+    create their own device slot.
+    Existing devices see the new
+    device on their next sync.
 endlegend
 
 @enduml

@@ -18,7 +18,7 @@ import type {
  *
  * Core layer defines the interface; adapters provide Dexie.js implementation.
  */
-export interface IStorageService {
+export interface StoragePort {
   // ─────────────────────────────────────────────────────────────
   // Vault Operations
   // ─────────────────────────────────────────────────────────────
@@ -27,15 +27,18 @@ export interface IStorageService {
    * Save encrypted vault to local storage.
    *
    * @param vault - Encrypted vault record
+   * @param vaultId - Vault ID
    */
-  saveVault(vault: EncryptedVaultRecord): Promise<void>;
+  saveVault(vault: EncryptedVaultRecord, vaultId: string): Promise<void>;
 
   /**
    * Load encrypted vault from local storage.
    *
+   * @param vaultId - Vault ID
+   *
    * @returns Encrypted vault record or null if not found
    */
-  loadVault(): Promise<EncryptedVaultRecord | null>;
+  loadVault(vaultId: string): Promise<EncryptedVaultRecord | null>;
 
   /**
    * Clear vault from local storage.
@@ -50,16 +53,20 @@ export interface IStorageService {
   /**
    * Save device state to local storage.
    *
+   * @param deviceId - Device ID
+   *
    * @param state - Local device state including wrapped keys
    */
-  saveDeviceState(state: LocalDeviceState): Promise<void>;
+  saveDeviceState(state: LocalDeviceState, deviceId: string): Promise<void>;
 
   /**
    * Load device state from local storage.
    *
+   * @param deviceId - Device ID
+   *
    * @returns Device state or null if not registered
    */
-  loadDeviceState(): Promise<LocalDeviceState | null>;
+  loadDeviceState(deviceId: string): Promise<LocalDeviceState | null>;
 
   /**
    * Clear device state from local storage.

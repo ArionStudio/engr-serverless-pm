@@ -1,62 +1,49 @@
+import type {
+  DeviceSigningKeyPair,
+  DeviceAgreementKeyPair,
+} from "../crypto/keys/crypto-keys.type";
+
 /**
- * Device key pair types for signing and key exchange.
+ * Device identity keys used by the protocol.
  *
- * Each device generates two key pairs:
- * 1. Ed25519 for signing (identity verification)
- * 2. ECDH P-256 for key exchange (device key slots)
+ * Purposes are stable. Algorithms can change between suites without changing
+ * this type shape.
  *
- * @see docs/security/security-specification.md Section 4
+ * Uses branded key types for compile-time safety:
+ * - Signing keys cannot be confused with agreement keys.
+ * - Public keys cannot be confused with private keys.
  */
+export type DeviceKeys = Readonly<{
+  /** Device signing keys (suite-defined, e.g. Ed25519 today). */
+  readonly signing: DeviceSigningKeyPair;
+
+  /** Device key agreement keys (suite-defined, e.g. ECDH/X25519/etc). */
+  readonly agreement: DeviceAgreementKeyPair;
+}>;
 
 /**
- * Ed25519 signing key pair for device identity.
- * Used to sign vault envelopes for provenance verification.
+ * Device public keys exported as JWK for registration / transport.
  */
-export interface DeviceSignKeyPair {
-  readonly publicKey: CryptoKey;
-  /** non-extractable at runtime */
-  readonly privateKey: CryptoKey;
-}
+export type DevicePublicKeysJwk = Readonly<{
+  readonly signingPublicJwk: JsonWebKey;
+  readonly agreementPublicJwk: JsonWebKey;
+}>;
 
 /**
- * ECDH P-256 key pair for key exchange.
- * Used to create per-device key slots for vault key distribution.
- */
-export interface DeviceEcdhKeyPair {
-  readonly publicKey: CryptoKey;
-  /** non-extractable at runtime */
-  readonly privateKey: CryptoKey;
-}
-
-export interface DeviceKeyPair {
-  readonly signKeyPair: DeviceSignKeyPair;
-  readonly ecdhKeyPair: DeviceEcdhKeyPair;
-}
-
-export interface WrappedKey {
-  readonly wrappedKey: Uint8Array;
-  readonly alg: "PBKDF2+AESKW";
-  readonly format: "pkcs8";
-}
-
-/**
- * Wrapped device private keys for persistent storage.
- * Keys are wrapped with MasterKEK derived from the master password.
+ * Wrapped device private keys for persistence (e.g. IndexedDB).
  *
- * Stored in IndexedDB - useless without the master password.
+ * Private keys are wrapped (encrypted) with the MasterKEK using AES-256-GCM
+ * (A256GCMKW). Each wrapped buffer contains `IV (12 bytes) || ciphertext+tag`.
+ * Public keys are stored alongside in their raw/spki export format so that
+ * `unwrapPrivateKeys()` can reconstruct the full `DeviceKeys` without any
+ * network dependency (offline-first). Public keys are public by definition,
+ * so storing them unencrypted has no security cost.
  */
-export interface WrappedDeviceKeys {
-  readonly signKey: WrappedKey;
-  readonly ecdhKey: WrappedKey;
-}
-
-/**
- * Exportable device public keys in JWK format.
- * Used for device registration and key slot creation.
- */
-export interface DevicePublicKeys {
-  /** JWK format */
-  readonly signKey: JsonWebKey;
-  /** JWK format */
-  readonly exchangeKey: JsonWebKey;
-}
+export type WrappedDeviceKeys = Readonly<{
+  readonly wrappedSigningPrivateKey: ArrayBuffer;
+  readonly wrappedAgreementPrivateKey: ArrayBuffer;
+  /** Ed25519 public key exported as "raw" (32 bytes). */
+  readonly signingPublicKeyBytes: ArrayBuffer;
+  /** ECDH P-256 public key exported as "spki". */
+  readonly agreementPublicKeyBytes: ArrayBuffer;
+}>;

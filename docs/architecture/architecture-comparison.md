@@ -71,7 +71,7 @@ These are the problems our architecture must solve.
 | **Code sharing across entry points** | Popup, Options, and Background all need the same crypto and storage logic. Duplication creates security bugs.                            |
 | **Contributor friendliness**         | Contributors should easily add new sync providers. Clear pattern, minimal files to change.                                               |
 | **Security auditability**            | All encryption code must be in one place for security reviews. Scattered crypto = missed vulnerabilities.                                |
-| **Encrypted metadata access**        | Metadata (tags, URLs) searchable in UI while passwords stay encrypted. Two-layer encryption.                                             |
+| **Encrypted metadata access**        | Metadata searchable in-memory after vault decrypt. All data protected by single AES-256-GCM envelope.                                    |
 
 ---
 
@@ -104,9 +104,7 @@ src/
 ├── core/                    # Domain + Ports (pure, no dependencies)
 │   ├── crypto/
 │   │   ├── crypto.port.ts
-│   │   ├── encrypted-data.type.ts
-│   │   ├── password-crypto.type.ts   # Layer 1 (individual passwords)
-│   │   └── vault-crypto.type.ts      # Layer 2 (metadata)
+│   │   └── encrypted-payload.type.ts
 │   ├── storage/
 │   │   └── storage.port.ts      # Local storage interface
 │   ├── sync/

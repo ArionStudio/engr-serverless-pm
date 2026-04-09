@@ -1,18 +1,12 @@
 /**
- * Sync service port interface.
+ * Sync port interface.
  *
  * Defines the contract for cloud sync operations.
  * Implementations handle provider-specific details (S3, GCS, etc.).
  *
  * @see docs/design/sync-strategy.md
  */
-
-/**
- * Sync service port interface.
- *
- * Core layer defines the interface; adapters provide AWS S3 implementation.
- */
-export interface ISyncService {
+export interface SyncPort {
   // ─────────────────────────────────────────────────────────────
   // Object Operations
   // ─────────────────────────────────────────────────────────────

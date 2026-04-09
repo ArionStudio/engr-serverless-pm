@@ -19,15 +19,14 @@ A serverless password manager where **confidentiality and tamper-detection** are
 - **Confidentiality:** attacker cannot learn secrets from S3/IndexedDB.
 - **Tamper detection:** modifications of encrypted payload are detected (decrypt fails).
 - **Access control:** only authorized devices (or master password holder) can obtain the Vault Key.
-- **Resilience:** Mitigation of offline brute-force attacks via "Peppering".
+- **Resilience:** Mitigation of offline brute-force attacks via a strong master password, unique salt, and a high-cost KDF.
 
 ---
 
 ## 2. Terminology
 
 - **Vault Key (DEK):** AES-256-GCM key encrypting the vault data.
-- **Master KEK:** PBKDF2-derived key (Password + Salt + **Pepper**) used to wrap private keys.
-- **Pepper:** A high-entropy application-secret (baked into build or separate config) used to mitigate offline attacks.
+- **Master KEK:** PBKDF2-derived key (master password + salt) used to wrap private keys.
 - **Device Signing Key Pair:** Ed25519 (sign/verify).
 - **Device Exchange Key Pair:** ECDH P-256 (derive secrets for per-device key slots).
 - **Key Slot:** An encrypted copy of the Vault Key for a recipient.
@@ -41,14 +40,14 @@ A serverless password manager where **confidentiality and tamper-detection** are
 
 The system supports **named algorithm suites** — predefined, validated combinations of cryptographic primitives. Users may select from supported suites; arbitrary mixing of algorithms is not permitted.
 
-| Suite ID   | Signing | Key Exchange | Symmetric   | KDF    | Key Wrap |
-| ---------- | ------- | ------------ | ----------- | ------ | -------- |
-| `suite-v1` | Ed25519 | ECDH P-256   | AES-256-GCM | PBKDF2 | AES-KW   |
+| Suite ID   | Signing | Key Exchange | Symmetric   | KDF    | Key Wrap                |
+| ---------- | ------- | ------------ | ----------- | ------ | ----------------------- |
+| `suite-v1` | Ed25519 | ECDH P-256   | AES-256-GCM | PBKDF2 | AES-256-GCM (A256GCMKW) |
 
 - **Default:** `suite-v1`
-- The vault file format's `alg` fields (§6.2) identify which suite was used, enabling forward-compatible algorithm changes.
+- The vault file format's `metadata.profileId` (§6.2) identifies the full crypto profile (algorithm suite + serialization suite).
 - Implementations **MUST** reject unknown suite or algorithm identifiers.
-- Future suites (e.g., post-quantum) can be added without breaking existing vaults — each device reads the `alg` field to determine how to process each key slot.
+- Future suites (e.g., post-quantum) can be added without breaking existing vaults. Devices resolve processing rules from `profileId`.
 
 The parameters below define `suite-v1`.
 
@@ -65,9 +64,14 @@ The parameters below define `suite-v1`.
 - Algorithm: PBKDF2 with HMAC-SHA-256
 - Iterations: **600,000**
 - Salt: random, **32 bytes minimum**
-- **Pepper Strategy (NEW):**
-  - Input to PBKDF2 is `SHA256(MasterPassword + ApplicationPepper)`.
-  - _Rationale:_ Prevents an attacker who steals the S3 database from cracking passwords without also reverse-engineering the extension code.
+- Input to PBKDF2 is the UTF-8 encoded master password.
+
+### 3.2.1 Master Password Requirements
+
+- **Minimum requirement:** at least **12 characters**.
+- **Recommended requirement:** at least **16 characters**, or a passphrase of **5 or more random words**.
+- **Uniqueness:** the master password **MUST NOT** be reused from any other site, app, or account.
+- **Rationale:** in this serverless, client-side, open-source design there is no server-held secret protecting the vault. Resistance to offline guessing depends primarily on the password strength, the random salt, and the PBKDF2 cost factor.
 
 ### 3.3 Payload Encryption (Data Lock)
 
@@ -78,7 +82,10 @@ The parameters below define `suite-v1`.
 
 ### 3.4 Key Wrapping (Key Lock)
 
-- Algorithm: AES-256-KW (RFC 3394)
+- Algorithm: AES-256-GCM (A256GCMKW per RFC 7518 §4.7)
+- IV: 12 random bytes, unique per wrap operation
+- Tag length: 128 bits
+- Output format: `IV (12 bytes) || ciphertext+tag`
 
 ### 3.5 Signing (Identity)
 
@@ -115,20 +122,20 @@ Each device generates:
 
 ### 5.1 Slot Types
 
-1.  **Device Slot (ECDH-ES+A256KW)**
-2.  **Master Backup Slot (PBKDF2+AESKW)**
+1.  **Device Slot (ECDH-ES+A256GCMKW)**
+2.  **Secret Key Slot (A256GCMKW)**
 
-### 5.2 ECDH-ES+A256KW Derivation (Hardened)
+### 5.2 ECDH-ES+A256GCMKW Derivation (Hardened)
 
 To wrap the Vault Key for a device:
 
 1.  Compute ECDH shared secret `Z` (Ephem Priv + Device Pub).
 2.  Derive `KEK` using **Concat KDF** (SHA-256):
-    - `AlgorithmID` = "A256KW"
+    - `AlgorithmID` = "A256GCMKW"
     - `PartyUInfo` = `apu`
     - `PartyVInfo` = `apv`
     - **Constraint:** Output must be exactly 256 bits.
-3.  Wrap Vault Key with `KEK` (AES-KW).
+3.  Wrap Vault Key with `KEK` (AES-256-GCM).
 
 ---
 
@@ -145,12 +152,15 @@ To wrap the Vault Key for a device:
 ```json
 {
   "version": 1,
+  "metadata": {
+    "profileId": "profile-v1"
+  },
 
   "envelope": {
     "vaultId": "b64url(16+ bytes random)",
     "signerDeviceId": "device_uuid",
     "revision": 1,
-    "timestamp": 1700000000,
+    "timestamp": 1700000000000,
     "signature": "b64url(raw_ed25519_sig_64_bytes)"
   },
 
@@ -159,26 +169,23 @@ To wrap the Vault Key for a device:
       {
         "type": "device",
         "deviceId": "device_uuid_123",
-        "alg": "ECDH-ES+A256KW",
-        "epk": { "kty": "EC", "crv": "P-256", "x": "...", "y": "..." },
+        "epk": {
+          "format": "spki",
+          "data": "b64url(ephemeral_public_key_bytes)"
+        },
         "apu": "b64url(bytes)",
         "apv": "b64url(bytes)",
-        "ciphertext": "b64url(aes_kw_wrapped_vault_key)"
+        "ciphertext": "b64url(iv_12_bytes || aes_gcm_wrapped_vault_key+tag)"
       },
       {
-        "type": "master",
-        "deviceId": "master_backup",
-        "alg": "PBKDF2+AESKW",
-        "hash": "SHA-256",
-        "iterations": 600000,
-        "salt": "b64url(32 bytes)", // Upgraded to 32 bytes
-        "ciphertext": "b64url(aes_kw_wrapped_vault_key)"
+        "type": "secret-key",
+        "deviceId": "secret_key",
+        "ciphertext": "b64url(iv_12_bytes || aes_gcm_wrapped_vault_key+tag)"
       }
     ],
 
     "data": {
-      "alg": "A256GCM",
-      "iv": "b64url(12 bytes)",
+      "nonce": "b64url(12 bytes)",
       "ciphertext": "b64url(aes_gcm_ciphertext||tag)"
     }
   }
@@ -192,6 +199,7 @@ Compute:
 ```javascript
 aadObject = {
   version,
+  metadata: { profileId },
   envelope: { vaultId, signerDeviceId, revision, timestamp },
   keySlotsDigest,
 };
@@ -210,15 +218,38 @@ IndexedDB is the **primary vault storage**. Cloud sync (S3) is optional.
 
 IndexedDB stores:
 
-- `encryptedVault` (AES-256-GCM encrypted vault data)
-- `wrappedDeviceSignKey` (Wrapped with MasterKEK)
-- `wrappedDeviceEcdhKey` (Wrapped with MasterKEK)
-- `salt` (32-byte PBKDF2 salt)
-- `deviceId` (This device's UUID)
-- `lastSyncTimestamp` (if sync enabled)
-- `pendingSyncQueue` (if sync enabled, for offline changes)
+- `vault` singleton record:
+  - `vaultId`
+  - `profileId` (crypto profile used for this snapshot)
+  - `data` (serialized encrypted snapshot bytes)
+  - `lastModified`
+  - `lastSyncTimestamp` (nullable)
+- `deviceState` singleton record:
+  - `deviceId`, `deviceName`, `vaultId`
+  - `salt` (32-byte PBKDF2 salt)
+  - `wrappedDeviceKeys`:
+    - `wrappedSigningPrivateKey`
+    - `wrappedAgreementPrivateKey`
+    - `signingPublicKeyBytes`
+    - `agreementPublicKeyBytes`
+  - `createdAt`, `lastSyncTimestamp` (nullable)
+- `pendingSync` queue records:
+  - `id`, `operation`, `entryId`, `timestamp`, `retryCount`
 
-### 7.2 Memory Wiping (Critical) — New
+### 7.2 Device Location History
+
+Each device records its location on every unlock/sync operation, appending to its own `locationHistory` array in the device registry (inside the encrypted vault data).
+
+- **Detection strategy:**
+  1. **Primary:** Browser Geolocation API (`navigator.geolocation`) — requires user consent
+  2. **Fallback:** IP geolocation (`ipinfo.io/json`)
+  3. **Decline both:** No location recorded for that session
+
+- **Storage:** Unlimited entries (encrypted inside vault, no pruning)
+- **Purpose:** User recognition only — allows users to verify "was this access from me?" Not used for security enforcement.
+- **New device detection:** On sync download, diff local vs remote `deviceRegistry.devices`. If new `deviceId`s appear, show notification with device name, environment info, and registration location.
+
+### 7.3 Memory Wiping (Critical) — New
 
 Since JS Garbage Collection is unpredictable:
 
@@ -232,20 +263,21 @@ Since JS Garbage Collection is unpredictable:
 
 ### 8.1 Setup (Genesis)
 
-1.  **Strength Check:** Validate Password Entropy & Pwned List.
-2.  **Derivation:** MasterKEK = PBKDF2(Hash(Password + Pepper), Salt, 600k).
+1.  **Strength Check:** Enforce the minimum master-password policy and warn when the password does not meet the recommended strength guidance.
+2.  **Derivation:** MasterKEK = PBKDF2(Password, Salt, 600k).
 3.  **Generation:** Create VaultKey, DeviceKeys.
-4.  **Persistence:** Wrap Device Keys with MasterKEK → Store in IndexedDB.
-5.  **Genesis Save:** Encrypt, Sign, Upload.
+4.  **Secret Key:** Generate random 256-bit secret key, display to user (save offline). Wrap VaultKey with secret key → secret key slot. `secureWipe(secretKey)`. The secret key is used for both device enrollment and disaster recovery.
+5.  **Persistence:** Wrap Device Keys with MasterKEK → Store in IndexedDB.
+6.  **Genesis Save:** Encrypt, Sign, Upload.
 
 ### 8.2 Login (Unlock)
 
 1.  **Input:** User enters Password.
-2.  **Derive:** Re-compute MasterKEK (using Pepper).
+2.  **Derive:** Re-compute MasterKEK from password and stored salt.
 3.  **Unwrap Identity:** Unwrap Device Keys from IndexedDB.
 4.  **Download & Verify:** Fetch Vault. Verify Ed25519 signature.
 5.  **Rollback Check:** If `vault.timestamp < local.lastSeenTimestamp`, Warn User.
-6.  **Decrypt:** Unwrap Vault Key -> Decrypt Data.
+6.  **Decrypt:** Unwrap Vault Key via device key slot (ECDH) → Decrypt Data. Secret key slot is used for device enrollment and disaster recovery (all devices lost).
 7.  **Wipe:** `passwordBuffer.fill(0)` immediately.
 
 ### 8.3 Safe Save (Debounced)
@@ -262,6 +294,24 @@ Since JS Garbage Collection is unpredictable:
 2.  **Re-Encrypt:** Encrypt data with New Key.
 3.  **Re-Slot:** Create new slots for only trusted devices.
 4.  **Commit:** Increment revision, sign, upload.
+
+### 8.5 Device Enrollment (Self-Registration)
+
+A new device can join the vault without any involvement from existing devices. The user needs: master password (memorized) + secret key (paper backup) + cloud config.
+
+1.  **Cloud Config:** User provides cloud provider config (QR code / config file / manual entry).
+2.  **Input:** User enters master password + secret key.
+3.  **Download:** Download vault from S3.
+4.  **Verify:** Verify envelope signature (Ed25519).
+5.  **Unwrap:** Unwrap VaultKey from secret key slot (A256GCMKW).
+6.  **Generate:** Generate device keys (Ed25519 + ECDH P-256).
+7.  **Create Slot:** Create own ECDH device key slot (wrapping VaultKey).
+8.  **Register:** Add self to device registry in vault data.
+9.  **Derive:** Derive MasterKEK from password → wrap device private keys.
+10. **Sign:** Sign updated envelope (Ed25519).
+11. **Upload:** Upload updated vault to S3.
+12. **Persist:** Store wrapped keys + device state in IndexedDB.
+13. **Wipe:** `secureWipe(secretKey, passwordBuffer)`.
 
 ---
 
@@ -310,7 +360,7 @@ Strict CSP required in manifest.json:
 - [ ] **Dual Key Pairs:** Every device generates two distinct pairs: Ed25519 (Identity) and ECDH P-256 (Key Exchange).
 - [ ] **IV Uniqueness:** All AES-GCM operations use a fresh, random 12-byte IV. Never reuse an IV for the same key.
 - [ ] **Salt Strength:** All salts are random and >= 32 bytes (upgraded from 16 bytes).
-- [ ] **Pepper (NEW):** The Password KDF input includes a global, high-entropy ApplicationPepper secret mixed with the user's password.
+- [ ] **Master Password Policy:** Enforce the documented minimum length and present the recommended stronger passphrase guidance during setup.
 - [ ] **KDF Safety (NEW):** ECDH raw key bits are never used directly. They must pass through HKDF or ConcatKDF to derive the actual AES key.
 
 ### Runtime Security

@@ -73,7 +73,7 @@ s3 <..> otherExt : Sync via S3\n(optional)
 note right of idb
     **Primary Storage (Hostile)**
     - Encrypted vault (AES-256-GCM)
-    - Wrapped device keys (AES-KW)
+    - Wrapped device keys (AES-256-GCM)
     - Salt + device metadata
     - Works fully offline
 end note

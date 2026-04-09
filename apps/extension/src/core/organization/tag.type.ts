@@ -33,30 +33,36 @@ export type TagShade = 300 | 400 | 500 | 600 | 700;
 /**
  * Tag group for organizing related tags.
  * Groups define visual themes that tags inherit.
+ *
+ * All fields are readonly to prevent accidental mutation of decrypted data.
+ * Use TagGroupInput for creation operations.
  */
 export interface TagGroup {
   /** e.g., "status", "topic" */
   readonly id: string;
-  name: string;
+  readonly name: string;
   /** e.g., "bell", "tag" */
-  icon: string;
-  baseColor: TagColor;
-  description: string | null;
+  readonly icon: string;
+  readonly baseColor: TagColor;
+  readonly description: string | null;
 }
 
 /**
  * Individual tag for labeling passwords.
  * Inherits visual properties from its group but can override color.
+ *
+ * All fields are readonly to prevent accidental mutation of decrypted data.
+ * Use TagInput for creation operations.
  */
 export interface Tag {
   /** UUID */
   readonly id: string;
-  name: string;
+  readonly name: string;
   readonly groupId: string;
   /** Inherited from group's baseColor, can be overridden */
-  color: TagColor;
+  readonly color: TagColor;
   /** User-selected shade within the color (default: 500) */
-  shade: TagShade;
+  readonly shade: TagShade;
   /** Unix ms */
   readonly createdAt: number;
 }

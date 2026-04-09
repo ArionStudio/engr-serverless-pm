@@ -1,9 +1,9 @@
 /**
- * Vault envelope and signed vault types.
+ * Vault domain types.
  *
- * The vault uses a "Signed Envelope" format with:
- * - Envelope: Metadata + Ed25519 signature for provenance
- * - Payload: Key slots + encrypted data
+ * The vault uses a signed envelope to bind metadata to the encrypted payload:
+ * - Envelope: metadata + Ed25519 signature for provenance
+ * - Payload: key slots + encrypted data
  *
  * @see docs/security/security-specification.md Section 6
  */
@@ -12,60 +12,48 @@ import type { DeviceRegistry } from "../device/device.type";
 import type { Folder } from "../passwords/folder.type";
 import type { Password } from "../passwords/password.type";
 import type { Tag, TagGroup } from "../organization/tag.type";
-import type { EncryptedDataPayload } from "./encrypted-data.type";
+import type { EncryptedDataPayload } from "./encrypted-payload.type";
 import type { KeySlot } from "./key-slot.type";
-
-/**
- * Vault envelope containing metadata and signature.
- * The signature is computed over the canonicalized (JCS) envelope.
- */
-export interface VaultEnvelope {
-  /** base64url encoded, 16+ random bytes */
-  readonly vaultId: string;
-  readonly signerDeviceId: string;
-  readonly revision: number;
-  /** Unix ms */
-  readonly timestamp: number;
-  /** base64url encoded, raw 64 bytes */
-  readonly signature: string;
-}
-
-/**
- * Unsigned envelope for signing operations.
- * Contains all envelope fields except the signature.
- */
-export type UnsignedVaultEnvelope = Omit<VaultEnvelope, "signature">;
+import type {
+  UnsignedVaultEnvelope,
+  VaultEnvelope,
+} from "./vault-envelope.type";
 
 /**
  * Additional Authenticated Data (AAD) object.
  *
- * AAD binds the envelope metadata to the encrypted data,
- * preventing metadata tampering attacks.
+ * AAD binds the envelope metadata and slot list to the encrypted vault data.
+ * This prevents metadata/slot tampering attacks because the AAD must match on
+ * decryption.
  *
- * Computed as: UTF8(JCS(aadObject))
+ * Computed as:
+ * - `aadBytes = UTF8(JCS(aadObject))`
  *
  * @see docs/security/security-specification.md Section 6.3
  */
 export interface AADObject {
+  /** AAD format version. */
   readonly version: number;
+
+  /** Unsigned envelope fields bound to the ciphertext. */
   readonly envelope: UnsignedVaultEnvelope;
-  /** base64url encoded */
+
+  /** base64url encoded digest of the key slots list. */
   readonly keySlotsDigest: string;
 }
 
+/**
+ * Vault payload included in the signed container.
+ */
 export interface VaultPayload {
   readonly keySlots: KeySlot[];
   readonly data: EncryptedDataPayload;
 }
 
 /**
- * Complete signed vault envelope structure.
- * This is the top-level format stored in IndexedDB and cloud storage.
+ * Complete signed vault container.
  *
- * File format uses:
- * - Binary: base64url (no padding)
- * - Strings: UTF-8
- * - Canonicalization: RFC 8785 JCS
+ * Stored/persisted as part of the vault snapshot.
  */
 export interface SignedVaultEnvelope {
   readonly version: 1;
@@ -75,6 +63,7 @@ export interface SignedVaultEnvelope {
 
 /**
  * Decrypted vault contents (plaintext).
+ *
  * Only exists in memory during an unlocked session.
  */
 export interface DecryptedVaultData {

@@ -18,7 +18,7 @@ state "TRUSTED ZONE (Extension RAM)" as trusted #E8F5E9 {
     state "ECDH P-256 Private Key" as ecdhKey
     state "Plaintext Passwords" as plaintext
 
-    masterKek -right-> vaultKey
+    ecdhKey -right-> vaultKey
     vaultKey -right-> plaintext
     masterKek -down-> signKey
     masterKek -down-> ecdhKey
@@ -26,7 +26,7 @@ state "TRUSTED ZONE (Extension RAM)" as trusted #E8F5E9 {
 
 ' === HOSTILE DISK ===
 state "HOSTILE ZONE (IndexedDB)" as disk #FFF3E0 {
-    state "Wrapped Device Keys\n(AES-KW)" as wrappedKeys
+    state "Wrapped Device Keys\n(AES-256-GCM)" as wrappedKeys
     state "Encrypted Vault\n(AES-256-GCM)" as encVault
     state "Pending Sync Queue" as syncQueue
     state "Last Seen Timestamp" as timestamp
