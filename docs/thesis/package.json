@@ -1,0 +1,14 @@
+{
+  "name": "serverless-pm-thesis",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "latexmk -pvc thesis.tex",
+    "build": "latexmk thesis.tex",
+    "build:watch": "latexmk -pvc thesis.tex",
+    "format": "latexindent thesis.tex",
+    "clean": "latexmk -c",
+    "clean:all": "latexmk -C",
+    "preview": "open thesis.pdf || xdg-open thesis.pdf"
+  }
+}

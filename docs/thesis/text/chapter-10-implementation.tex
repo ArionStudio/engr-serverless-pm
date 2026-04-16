@@ -1,0 +1,26 @@
+% Chapter 10 — Implementation Notes
+%
+% Guide:
+% - Repo overview (structure, build, testing)
+% - WebCrypto specifics:
+%   * async flow patterns to avoid UI blocking
+%   * IV generation and uniqueness policy
+%   * key wrapping/unwrapping
+% - Storage choices:
+%   * avoid localStorage, use IndexedDB for blobs and async transactions
+% - "War stories":
+%   * JS GC + memory wiping limits
+%   * how you constrained sensitive lifetimes
+%   * extension MV3 service worker constraints
+%
+% Rule: every subsection references the requirement/spec it satisfies.
+
+\chapter{Implementation Notes}
+
+\section{Repository Overview}
+
+\section{WebCrypto API Specifics}
+
+\section{Storage Layer Choices}
+
+\section{Practical Constraints}

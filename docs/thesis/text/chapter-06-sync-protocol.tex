@@ -1,0 +1,23 @@
+% Chapter 6 — Synchronization Protocol (local-first, user-controlled)
+%
+% Guide:
+% 6.1 Design principle: "No Auto-Merge for conflicts"
+%   - LWW is unsafe in a password manager (can overwrite new with old)
+%   - Stance: mandatory manual conflict resolution
+% 6.2 The 6-step sync algorithm (spec + pseudo):
+%   1) Initiation (preconditions)
+%   2) Download remote encrypted snapshot
+%   3) Double decrypt (local + remote in memory)
+%   4) Diff + categorize (auto-resolved vs conflicts)
+%   5) Resolution UI (masked fields, per-item choice)
+%   6) Completion (merge -> encrypt -> write local -> atomic upload)
+% 6.3 Edge cases:
+%   - Offline handling, password rotation, large vault performance
+
+\chapter{Synchronization Protocol}
+
+\section{Design Principle: No Auto-Merge}
+
+\section{Six-Step Synchronization Algorithm}
+
+\section{Edge Cases}

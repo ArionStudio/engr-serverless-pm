@@ -1,0 +1,35 @@
+% Chapter 2 — Background & Literature Review (critical synthesis, not glossary)
+%
+% Guide:
+% - Browser security model: SOP, XSS as bypass, CSP relevance.
+% - History of JS crypto vs native APIs: pitfalls of JS polyfills, WebCrypto turning point.
+% - Password manager taxonomy (table):
+%   * Local (KeePass), Cloud SaaS, Browser extension SaaS-like, Serverless hostile-storage
+%   * Compare: trust boundary, attack surface, metadata leakage, sync strategy.
+% - Related approaches and baselines:
+%   * Mopass-like approaches (position as comparison)
+%   * AWS KMS-style designs (trade: server/provider trust and complexity)
+% - Cryptographic primitives overview (only as needed to defend choices):
+%   * AEAD concept, AES-GCM integrity, IV uniqueness requirement
+%   * KDFs: PBKDF2 vs Argon2 (note WebCrypto native support vs WASM tradeoff)
+%   * Signatures: why signing vault modifications matters for provenance
+%
+% Rule: Every subsection ends with "Implication for our design: ...".
+
+\chapter{Background and Literature Review}
+
+\section{Browser Security Model}
+
+\section{History of JavaScript Cryptography}
+
+\section{Password Manager Taxonomy}
+
+\section{Related Approaches and Baselines}
+
+\section{Cryptographic Primitives Overview}
+
+\subsection{AEAD and AES-GCM}
+
+\subsection{Key Derivation Functions}
+
+\subsection{Digital Signatures}

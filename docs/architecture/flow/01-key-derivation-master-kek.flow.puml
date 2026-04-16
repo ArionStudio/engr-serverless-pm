@@ -15,9 +15,7 @@ start
 :Enter Master Password;
 
 |Extension|
-:Load Application Pepper;
-:Combine Password + Pepper;
-:SHA-256(Password + Pepper);
+:UTF-8 encode password;
 :Load Salt from IndexedDB;
 
 |WebCrypto API|

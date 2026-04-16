@@ -1,0 +1,32 @@
+% Chapter 4 — Security Specification (Suite-v1)
+%
+% Guide:
+% 4.1 Suite versioning strategy ("suite-v1" frozen; future "suite-v2" compatible)
+% 4.2 Primitive selection table with rationale:
+%   - AES-256-GCM (AEAD), AES-256-KW (wrapping), Ed25519 (signing),
+%   - ECDH P-256 (key exchange), PBKDF2-HMAC-SHA256 >= 600k iterations
+% 4.3 Key hierarchy (diagram required):
+%   - Master password -> KDF -> KEK -> wrap DEK (AES-KW)
+%   - Device signing keypair (Ed25519), device pairing (ECDH)
+% 4.4 Pepper strategy (split-knowledge hardening)
+% 4.5 Integrity binding with AAD + authenticated metadata
+% 4.6 Anti-rollback logic
+% 4.7 Runtime security & memory hygiene requirements
+%
+% Rule: treat this chapter as your "ground truth" for later evaluation.
+
+\chapter{Security Specification (Suite-v1)}
+
+\section{Cryptographic Suite Versioning Strategy}
+
+\section{Primitive Selection}
+
+\section{Key Hierarchy}
+
+\section{Pepper Strategy}
+
+\section{Integrity Binding with AAD}
+
+\section{Anti-Rollback Logic}
+
+\section{Runtime Security and Memory Hygiene}

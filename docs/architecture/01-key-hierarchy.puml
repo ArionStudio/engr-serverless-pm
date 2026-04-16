@@ -12,13 +12,11 @@ skinparam rectangle {
 }
 
 ' === ROW 1: DERIVATION CHAIN ===
-rectangle "Master Password\n+ App Pepper" as input #FAFAFA
-rectangle "SHA-256" as hash #E3F2FD
+rectangle "Master Password" as input #FAFAFA
 rectangle "PBKDF2\n600k iter" as pbkdf2 #E3F2FD
 rectangle "**Master KEK**\n(RAM only)" as masterKek #E8F5E9
 
-input -> hash
-hash -> pbkdf2
+input -> pbkdf2
 pbkdf2 -> masterKek
 
 ' === ROW 2: UNWRAPPED KEYS ===
