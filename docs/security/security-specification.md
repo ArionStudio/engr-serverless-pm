@@ -27,6 +27,7 @@ A serverless password manager where **confidentiality and tamper-detection** are
 
 - **Vault Key (DEK):** AES-256-GCM key encrypting the vault data.
 - **Master KEK:** PBKDF2-derived key (master password + salt) used to wrap private keys.
+- **Sync Config Key:** key derived from Master KEK via domain separation, used only to encrypt local sync configuration.
 - **Device Signing Key Pair:** Ed25519 (sign/verify).
 - **Device Exchange Key Pair:** ECDH P-256 (derive secrets for per-device key slots).
 - **Key Slot:** An encrypted copy of the Vault Key for a recipient.
@@ -235,6 +236,10 @@ IndexedDB stores:
   - `createdAt`, `lastSyncTimestamp` (nullable)
 - `pendingSync` queue records:
   - `id`, `operation`, `entryId`, `timestamp`, `retryCount`
+- `syncConfig` singleton record:
+  - encrypted sync provider configuration
+  - must be encrypted locally with `Sync Config Key`
+  - temporary AWS credentials must not be persisted
 
 ### 7.2 Device Location History
 
@@ -266,9 +271,10 @@ Since JS Garbage Collection is unpredictable:
 1.  **Strength Check:** Enforce the minimum master-password policy and warn when the password does not meet the recommended strength guidance.
 2.  **Derivation:** MasterKEK = PBKDF2(Password, Salt, 600k).
 3.  **Generation:** Create VaultKey, DeviceKeys.
-4.  **Secret Key:** Generate random 256-bit secret key, display to user (save offline). Wrap VaultKey with secret key → secret key slot. `secureWipe(secretKey)`. The secret key is used for both device enrollment and disaster recovery.
+4.  **Secret Key:** Generate random 256-bit secret key, display to user (save offline). Wrap VaultKey with secret key → secret key slot. `secureWipe(secretKey)`. The secret key is used for disaster recovery and vault access on a new device.
 5.  **Persistence:** Wrap Device Keys with MasterKEK → Store in IndexedDB.
-6.  **Genesis Save:** Encrypt, Sign, Upload.
+6.  **Sync Config Protection:** If sync is enabled, derive `SyncConfigKey` from `MasterKEK` and use it only for local sync configuration encryption.
+7.  **Genesis Save:** Encrypt, Sign, Upload.
 
 ### 8.2 Login (Unlock)
 
@@ -277,7 +283,7 @@ Since JS Garbage Collection is unpredictable:
 3.  **Unwrap Identity:** Unwrap Device Keys from IndexedDB.
 4.  **Download & Verify:** Fetch Vault. Verify Ed25519 signature.
 5.  **Rollback Check:** If `vault.timestamp < local.lastSeenTimestamp`, Warn User.
-6.  **Decrypt:** Unwrap Vault Key via device key slot (ECDH) → Decrypt Data. Secret key slot is used for device enrollment and disaster recovery (all devices lost).
+6.  **Decrypt:** Unwrap Vault Key via device key slot (ECDH) → Decrypt Data. Secret key slot is used for disaster recovery and new-device vault access.
 7.  **Wipe:** `passwordBuffer.fill(0)` immediately.
 
 ### 8.3 Safe Save (Debounced)
@@ -295,23 +301,26 @@ Since JS Garbage Collection is unpredictable:
 3.  **Re-Slot:** Create new slots for only trusted devices.
 4.  **Commit:** Increment revision, sign, upload.
 
-### 8.5 Device Enrollment (Self-Registration)
+### 8.5 Device Enrollment
 
-A new device can join the vault without any involvement from existing devices. The user needs: master password (memorized) + secret key (paper backup) + cloud config.
+A new device joins the vault using bootstrap material created by an already trusted device. The user needs: enrollment package + one-time enrollment secret + master password + secret key.
 
-1.  **Cloud Config:** User provides cloud provider config (QR code / config file / manual entry).
-2.  **Input:** User enters master password + secret key.
-3.  **Download:** Download vault from S3.
-4.  **Verify:** Verify envelope signature (Ed25519).
-5.  **Unwrap:** Unwrap VaultKey from secret key slot (A256GCMKW).
-6.  **Generate:** Generate device keys (Ed25519 + ECDH P-256).
-7.  **Create Slot:** Create own ECDH device key slot (wrapping VaultKey).
-8.  **Register:** Add self to device registry in vault data.
-9.  **Derive:** Derive MasterKEK from password → wrap device private keys.
-10. **Sign:** Sign updated envelope (Ed25519).
-11. **Upload:** Upload updated vault to S3.
-12. **Persist:** Store wrapped keys + device state in IndexedDB.
-13. **Wipe:** `secureWipe(secretKey, passwordBuffer)`.
+1.  **Create Package:** Trusted device creates enrollment package containing sync configuration, vault id, and trusted public device keys.
+2.  **Protect Package:** Enrollment package is encrypted with a random one-time enrollment secret and transferred to the user.
+3.  **Import Package:** User provides enrollment package + one-time enrollment secret on the new device.
+4.  **Decrypt Package:** New device decrypts and verifies enrollment package.
+5.  **Input:** User enters master password + secret key.
+6.  **Download:** Download vault from S3 using sync configuration from the enrollment package.
+7.  **Verify:** Verify envelope signature against trusted public device keys from the enrollment package.
+8.  **Unwrap:** Unwrap VaultKey from secret key slot (A256GCMKW).
+9.  **Generate:** Generate device keys (Ed25519 + ECDH P-256).
+10. **Create Slot:** Create own ECDH device key slot (wrapping VaultKey).
+11. **Register:** Add self to device registry in vault data.
+12. **Derive:** Derive MasterKEK from password → wrap device private keys and derive `SyncConfigKey` for local sync configuration storage.
+13. **Sign:** Sign updated envelope (Ed25519).
+14. **Upload:** Upload updated vault to S3.
+15. **Persist:** Store wrapped keys + device state + encrypted sync configuration in IndexedDB.
+16. **Wipe:** `secureWipe(secretKey, passwordBuffer, enrollmentSecretBuffer)`.
 
 ---
 

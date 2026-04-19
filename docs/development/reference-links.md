@@ -2,6 +2,23 @@
 
 Collected external references for extension development, browser APIs, and crypto.
 
+## Thread Modeling
+
+- Manifesto: http://threatmodelingmanifesto.org/
+- threat modeling card deck: https://github.com/adamshostack/eop/
+
+Owasp Cheat Sheets:
+
+    - mesuring relative attack surface: https://www.cs.cmu.edu/~wing/publications/Howard-Wing03.pdf
+    - Browser extensions vulnerabilities: https://cheatsheetseries.owasp.org/cheatsheets/Browser_Extension_Vulnerabilities_Cheat_Sheet.html
+    - Password storage: https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
+    - Secrets management: https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+
+Bitwarden resources:
+
+- https://bitwarden.com/help/bitwarden-security-white-paper/
+- https://bitwarden.com/resources/zero-knowledge-encryption-white-paper/
+
 ## Chrome Extension
 
 - Chrome extension tutorials: https://developer.chrome.com/docs/extensions/get-started#tutorials

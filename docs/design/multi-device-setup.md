@@ -13,21 +13,22 @@ Browser extension context creates unique constraints:
 
 ## What Needs to Be Shared (for Multi-Device)
 
-| Data                  | How Shared                | Notes                                            |
-| --------------------- | ------------------------- | ------------------------------------------------ |
-| Master password       | **User memorizes**        | Never transferred electronically                 |
-| Secret key            | **User saves offline**    | 256-bit, needed for device enrollment & recovery |
-| Cloud provider config | Transfer mechanism        | S3 bucket, credentials, region                   |
-| Encryption salt       | In vault envelope (cloud) | Also stored locally in IndexedDB                 |
-| Device ID             | Generated locally         | Each device has unique ID                        |
+| Data                       | How Shared                | Notes                                             |
+| -------------------------- | ------------------------- | ------------------------------------------------- |
+| Master password            | **User memorizes**        | Never transferred electronically                  |
+| Secret key                 | **User saves offline**    | 256-bit, needed for vault recovery on new device  |
+| Enrollment package         | Transfer mechanism        | Encrypted bootstrap payload from trusted device   |
+| One-time enrollment secret | Transfer mechanism        | High-entropy secret used only for package decrypt |
+| Encryption salt            | In vault envelope (cloud) | Also stored locally in IndexedDB                  |
+| Device ID                  | Generated locally         | Each device has unique ID                         |
 
 > **Single-device use:** None of the above is required. The vault is stored locally in IndexedDB with no cloud dependency.
 
 ## Setup Methods
 
-These methods transfer **cloud provider config only** (S3 bucket, credentials, region). The actual vault unlock uses master password + secret key — no device-to-device key transfer is needed.
+These methods transfer **enrollment bootstrap data** from an already trusted device. The actual vault unlock still uses master password + secret key on the new device.
 
-New device enrollment: enter cloud config + master password + secret key → download vault → unwrap VaultKey from secret key slot → self-register.
+New device enrollment: import enrollment package + enter one-time enrollment secret + enter master password + secret key → download vault → verify against trusted device keys from package → unwrap VaultKey from secret key slot → self-register.
 
 ### Method 1: QR Code Transfer (Recommended for Same Location)
 
@@ -42,13 +43,13 @@ When user has access to both devices simultaneously:
 │         ┌─────────────────────────┐                             │
 │         │  ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄  │                             │
 │         │  ██ ▄▄▄▄▄ █ ▄ █ ▄▄▄ ██  │                             │
-│         │  ██ █   █ █▄▄▄█▄█   ██  │  <- QR contains:           │
-│         │  ██ █▄▄▄█ █ ▄▄ █ ▄▄▄██  │     - Provider type        │
-│         │  ██▄▄▄▄▄▄▄█▄█ █▄█▄█▄██  │     - Bucket/container     │
-│         │  ██ ▄▄ ▄▄▄ ▄▄▄█▄▄ ▄ ██  │     - Region               │
-│         └─────────────────────────┘     - Access credentials   │
+│         │  ██ █   █ █▄▄▄█▄█   ██  │  <- QR contains encrypted │
+│         │  ██ █▄▄▄█ █ ▄▄ █ ▄▄▄██  │     enrollment package:   │
+│         │  ██▄▄▄▄▄▄▄█▄█ █▄█▄█▄██  │     - sync config         │
+│         │  ██ ▄▄ ▄▄▄ ▄▄▄█▄▄ ▄ ██  │     - vault id            │
+│         └─────────────────────────┘     - trusted device keys │
 │                                                                 │
-│  "Scan this QR code on your other device"                       │
+│  "Transfer this QR and one-time secret to your other device"    │
 │  Expires in: 5:00                                               │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
@@ -64,7 +65,7 @@ When user has access to both devices simultaneously:
 │  │                                                           │  │
 │  │                     - or -                                │  │
 │  │                                                           │  │
-│  │              [ Enter Manually ]                           │  │
+│  │              [ Import File ]                              │  │
 │  │                                                           │  │
 │  └───────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
@@ -73,8 +74,8 @@ When user has access to both devices simultaneously:
 **Security:**
 
 - QR code expires after 5 minutes
-- One-time use (invalidated after scan)
-- Contains encrypted payload (additional PIN protection optional)
+- Contains encrypted enrollment package
+- One-time enrollment secret is transferred separately
 - Does NOT contain master password
 
 ### Method 2: Configuration Export File
@@ -82,64 +83,45 @@ When user has access to both devices simultaneously:
 For devices that can't be in same location:
 
 ```text
-Device A: Settings → Sync → Export Config → Downloads "spm-config.encrypted"
+Device A: Settings → Sync → Export Enrollment Package → Downloads "spm-enrollment.encrypted"
           ↓
           (Transfer via secure channel: email to self, USB, cloud drive)
           ↓
-Device B: Settings → Sync → Import Config → Select file → Enter master password
+Device B: Settings → Sync → Connect Existing Vault → Select file → Enter one-time enrollment secret
 ```
 
-**File contents (encrypted with master-password-derived key):**
+**File contents (encrypted with one-time enrollment secret):**
 
 ```typescript
-// core/sync/provider-config.type.ts
+// enrollment package shape
 
-interface ProviderConfigBase {
-  readonly region: string;
-}
-
-interface S3ProviderConfig extends ProviderConfigBase {
+interface S3SyncConfig {
   readonly provider: "aws-s3";
   readonly bucket: string;
+  readonly region: string;
+  readonly userPoolId: string;
+  readonly userPoolClientId: string;
   readonly identityPoolId: string; // Cognito Identity Pool ID
   readonly prefix: string; // S3 key prefix (e.g., "user/")
 }
 
-interface GCSProviderConfig extends ProviderConfigBase {
-  readonly provider: "gcs";
-  readonly bucket: string;
-  readonly credentials: string; // path or inline JSON
-  readonly prefix: string;
-}
-
-interface AzureBlobProviderConfig extends ProviderConfigBase {
-  readonly provider: "azure-blob";
-  readonly storageAccount: string;
-  readonly container: string;
-  readonly credential: string; // SAS token or connection string
-  readonly prefix: string;
-}
-
-type ProviderConfig =
-  | S3ProviderConfig
-  | GCSProviderConfig
-  | AzureBlobProviderConfig;
-
-interface ExportedConfig {
+interface EnrollmentPackage {
   readonly version: 1;
-  readonly provider: "aws-s3" | "gcs" | "azure-blob";
-  readonly config: ProviderConfig;
-  readonly exportedAt: number; // Unix ms
+  readonly vaultId: string;
+  readonly syncConfig: S3SyncConfig;
+  readonly trustedSigningKeys: readonly string[];
+  readonly trustedAgreementKeys: readonly string[];
+  readonly createdAt: number; // Unix ms
   readonly expiresAt: number | null;
-  // Note: vault data NOT included, only connection config
+  // Note: vault data NOT included
 }
 ```
 
 **Security:**
 
-- File encrypted — useless without master password
+- File encrypted — useless without one-time enrollment secret
 - User responsible for secure transfer
-- Can set expiration on exported config
+- Can set expiration on exported package
 
 ### Method 3: Manual Configuration
 
@@ -150,23 +132,17 @@ For security-conscious users who prefer explicit setup:
 │  Connect to Existing Vault                                      │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  Provider        [AWS S3 ▼]                                     │
+│  Enrollment Data [paste armored payload____________________]    │
 │                                                                 │
-│  Bucket Name     [my-password-vault___________________]         │
-│                                                                 │
-│  Region          [us-east-1 ▼]                                  │
-│                                                                 │
-│  Access Key ID   [AKIA..._____________________________]         │
-│                                                                 │
-│  Secret Key      [••••••••••••••••••••________________]         │
+│  One-Time Secret [••••••••••••••••••••________________]         │
 │                                                                 │
 │  ─────────────────────────────────────────────────────────────  │
 │                                                                 │
 │  Master Password [••••••••••••••••••__________________]         │
-│  (to decrypt vault)                                             │
+│  Secret Key      [••••••••••••••••••••________________]         │
 │                                                                 │
 ├─────────────────────────────────────────────────────────────────┤
-│  [Test Connection]                    [Cancel]  [Connect]       │
+│  [Verify Package]                    [Cancel]  [Connect]        │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -267,8 +243,8 @@ Users can view location history per device in the device list UI.
 
 | Concern                | Mitigation                                                              |
 | ---------------------- | ----------------------------------------------------------------------- |
-| QR code intercepted    | Expires quickly, one-time use, optional PIN                             |
-| Config file stolen     | Encrypted with master password                                          |
+| QR code intercepted    | Expires quickly, protected by one-time enrollment secret                |
+| Enrollment file stolen | Encrypted with one-time enrollment secret                               |
 | Device lost/stolen     | Revoke device key (triggers key rotation), data still encrypted locally |
 | Secret key compromised | Rotate VaultKey + generate new secret key from any trusted device       |
 | Unknown device added   | Notification shown on sync. User can revoke if unauthorized.            |

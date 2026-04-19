@@ -33,10 +33,10 @@ chore(deps): update vite to v5.0
 
 ## AI Assistance Disclosure
 
-When AI tools (such as Claude, GitHub Copilot, ChatGPT, etc.) are used to generate or significantly modify code, commits must include a `Co-Authored-By` footer to maintain transparency:
+When AI tools (such as Claude, GitHub Copilot, ChatGPT, etc.) are used to generate or significantly modify code, commits must include a `Assisted-by` footer to maintain transparency:
 
 ```
-Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+Assisted-by: Claude Opus 4.5 <noreply@anthropic.com>
 ```
 
 ### When to include AI co-authorship
@@ -74,5 +74,5 @@ using AES-256-GCM with PBKDF2 key derivation.
 
 AI assistance: searched, structured, generated, hints
 
-Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+Assisted-by: Claude Opus 4.5 <noreply@anthropic.com>
 ```
