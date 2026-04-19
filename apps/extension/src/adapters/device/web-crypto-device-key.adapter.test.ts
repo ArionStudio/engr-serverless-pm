@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { WebCryptoDeviceKeyAdapter } from "./web-crypto-device-key.adapter";
 import { WebCryptoApiAdapter } from "@/adapters/crypto/web-crypto-api.adapter";
-import { CRYPTO_PROFILE_V1 } from "@/core/crypto/profiles/crypto-profile.const";
+import { CRYPTO_PROFILE_V1 } from "@/old-core/crypto/profiles/crypto-profile.const";
 
 const profile = CRYPTO_PROFILE_V1;
 
@@ -36,28 +36,37 @@ describe("WebCryptoDeviceKeyAdapter", () => {
     });
   });
 
-  describe("exportPublicKeysJwk", () => {
-    it("exports signing public key as OKP/Ed25519 JWK", async () => {
+  describe("exportPublicKeys", () => {
+    it('exports signing public key in the profile-defined "raw" format', async () => {
       const keys = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
-      const jwks = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(keys);
+      const exported = await WebCryptoDeviceKeyAdapter.exportPublicKeys(
+        profile,
+        keys,
+      );
 
-      expect(jwks.signingPublicJwk.kty).toBe("OKP");
-      expect(jwks.signingPublicJwk.crv).toBe("Ed25519");
+      expect(exported.signing.format).toBe("raw");
+      expect(exported.signing.data.byteLength).toBeGreaterThan(0);
     });
 
-    it("exports agreement public key as EC/P-256 JWK", async () => {
+    it('exports agreement public key in the profile-defined "spki" format', async () => {
       const keys = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
-      const jwks = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(keys);
+      const exported = await WebCryptoDeviceKeyAdapter.exportPublicKeys(
+        profile,
+        keys,
+      );
 
-      expect(jwks.agreementPublicJwk.kty).toBe("EC");
-      expect(jwks.agreementPublicJwk.crv).toBe("P-256");
+      expect(exported.agreement.format).toBe("spki");
+      expect(exported.agreement.data.byteLength).toBeGreaterThan(0);
     });
   });
 
   describe("sign / verify", () => {
     it("round-trips: sign then verify succeeds", async () => {
       const keys = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
-      const jwks = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(keys);
+      const exported = await WebCryptoDeviceKeyAdapter.exportPublicKeys(
+        profile,
+        keys,
+      );
       const data = new TextEncoder().encode("sign-verify test");
 
       const signature = await WebCryptoDeviceKeyAdapter.sign(
@@ -69,7 +78,7 @@ describe("WebCryptoDeviceKeyAdapter", () => {
         profile,
         data,
         signature as BufferSource,
-        jwks.signingPublicJwk,
+        exported.signing,
       );
 
       expect(valid).toBe(true);
@@ -77,7 +86,10 @@ describe("WebCryptoDeviceKeyAdapter", () => {
 
     it("fails verification with different data", async () => {
       const keys = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
-      const jwks = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(keys);
+      const exported = await WebCryptoDeviceKeyAdapter.exportPublicKeys(
+        profile,
+        keys,
+      );
       const data = new TextEncoder().encode("original data");
       const tampered = new TextEncoder().encode("tampered data");
 
@@ -90,7 +102,7 @@ describe("WebCryptoDeviceKeyAdapter", () => {
         profile,
         tampered,
         signature as BufferSource,
-        jwks.signingPublicJwk,
+        exported.signing,
       );
 
       expect(valid).toBe(false);
@@ -99,7 +111,10 @@ describe("WebCryptoDeviceKeyAdapter", () => {
     it("fails verification with a different key", async () => {
       const keys1 = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
       const keys2 = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
-      const jwks2 = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(keys2);
+      const exported2 = await WebCryptoDeviceKeyAdapter.exportPublicKeys(
+        profile,
+        keys2,
+      );
       const data = new TextEncoder().encode("wrong key test");
 
       const signature = await WebCryptoDeviceKeyAdapter.sign(
@@ -111,7 +126,7 @@ describe("WebCryptoDeviceKeyAdapter", () => {
         profile,
         data,
         signature as BufferSource,
-        jwks2.signingPublicJwk,
+        exported2.signing,
       );
 
       expect(valid).toBe(false);
@@ -119,10 +134,13 @@ describe("WebCryptoDeviceKeyAdapter", () => {
   });
 
   describe("wrapPrivateKeys / unwrapPrivateKeys", () => {
-    it("round-trips: wrap → unwrap → sign → verify with original public JWK", async () => {
+    it("round-trips: wrap → unwrap → sign → verify with original exported public key", async () => {
       const masterKEK = await createMasterKEK();
       const keys = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
-      const jwks = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(keys);
+      const exported = await WebCryptoDeviceKeyAdapter.exportPublicKeys(
+        profile,
+        keys,
+      );
 
       const wrapped = await WebCryptoDeviceKeyAdapter.wrapPrivateKeys(
         profile,
@@ -135,7 +153,7 @@ describe("WebCryptoDeviceKeyAdapter", () => {
         masterKEK,
       );
 
-      // Sign with restored keys, verify with original public JWK
+      // Sign with restored keys, verify with original exported public key
       const data = new TextEncoder().encode("wrap-unwrap round-trip");
       const signature = await WebCryptoDeviceKeyAdapter.sign(
         profile,
@@ -146,7 +164,7 @@ describe("WebCryptoDeviceKeyAdapter", () => {
         profile,
         data,
         signature as BufferSource,
-        jwks.signingPublicJwk,
+        exported.signing,
       );
 
       expect(valid).toBe(true);
@@ -203,23 +221,8 @@ describe("WebCryptoDeviceKeyAdapter", () => {
         masterKEK,
       );
 
-      // Verify ECDH agreement still works with restored keys
-      const otherKeys = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
-      const otherJwks =
-        await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(otherKeys);
-
-      const secretOriginal = await WebCryptoDeviceKeyAdapter.deriveSharedSecret(
-        profile,
-        keys,
-        otherJwks.agreementPublicJwk,
-      );
-      const secretRestored = await WebCryptoDeviceKeyAdapter.deriveSharedSecret(
-        profile,
-        restored,
-        otherJwks.agreementPublicJwk,
-      );
-
-      expect(secretRestored).toEqual(secretOriginal);
+      expect(restored.agreement.privateKey.algorithm.name).toBe("ECDH");
+      expect(restored.agreement.publicKey.algorithm.name).toBe("ECDH");
     });
 
     it("signing IV and agreement IV are different in wrapped output", async () => {
@@ -244,60 +247,22 @@ describe("WebCryptoDeviceKeyAdapter", () => {
     });
   });
 
-  describe("deriveSharedSecret", () => {
-    it("produces mutual agreement (A.priv + B.pub === B.priv + A.pub)", async () => {
+  describe("deriveSlotKEK", () => {
+    it("throws until the slot KDF contract is finalized", async () => {
       const keysA = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
       const keysB = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
-      const jwksA = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(keysA);
-      const jwksB = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(keysB);
-
-      const secretAB = await WebCryptoDeviceKeyAdapter.deriveSharedSecret(
-        profile,
-        keysA,
-        jwksB.agreementPublicJwk,
-      );
-      const secretBA = await WebCryptoDeviceKeyAdapter.deriveSharedSecret(
+      const exportedB = await WebCryptoDeviceKeyAdapter.exportPublicKeys(
         profile,
         keysB,
-        jwksA.agreementPublicJwk,
       );
 
-      expect(secretAB).toEqual(secretBA);
-    });
-
-    it("produces 32 bytes", async () => {
-      const keysA = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
-      const keysB = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
-      const jwksB = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(keysB);
-
-      const secret = await WebCryptoDeviceKeyAdapter.deriveSharedSecret(
-        profile,
-        keysA,
-        jwksB.agreementPublicJwk,
-      );
-
-      expect(secret.length).toBe(32);
-    });
-
-    it("produces different secrets for different pairs", async () => {
-      const keysA = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
-      const keysB = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
-      const keysC = await WebCryptoDeviceKeyAdapter.generateKeys(profile);
-      const jwksB = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(keysB);
-      const jwksC = await WebCryptoDeviceKeyAdapter.exportPublicKeysJwk(keysC);
-
-      const secretAB = await WebCryptoDeviceKeyAdapter.deriveSharedSecret(
-        profile,
-        keysA,
-        jwksB.agreementPublicJwk,
-      );
-      const secretAC = await WebCryptoDeviceKeyAdapter.deriveSharedSecret(
-        profile,
-        keysA,
-        jwksC.agreementPublicJwk,
-      );
-
-      expect(secretAB).not.toEqual(secretAC);
+      await expect(
+        WebCryptoDeviceKeyAdapter.deriveSlotKEK(
+          profile,
+          keysA,
+          exportedB.agreement,
+        ),
+      ).rejects.toThrow("deriveSlotKEK is not implemented");
     });
   });
 });

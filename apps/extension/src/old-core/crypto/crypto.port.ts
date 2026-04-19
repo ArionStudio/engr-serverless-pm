@@ -15,10 +15,10 @@
  * @see docs/security/security-specification.md
  */
 
-import type { EncryptedDataPayload } from "../vault/domain/encrypted-payload.type";
-import type { MasterKEK, VaultKey } from "./domain/crypto-keys.type";
-import type { CryptoProfile } from "./domain/crypto-profile.type";
-import type { KeyFormat } from "./domain/key-format.type";
+import type { EncryptedDataPayload } from "../vault/encrypted-payload.type";
+import type { MasterKEK, VaultKey } from "./keys/crypto-keys.type";
+import type { CryptoProfile } from "./profiles/crypto-profile.type";
+import type { KeyFormat } from "./formats/key-format.type";
 
 /**
  * Result of key derivation operation.
@@ -47,8 +47,10 @@ export interface CryptoPort {
   /**
    * Derive MasterKEK from password using the profile-selected KDF.
    *
+   * Input is pre-processed: SHA-256(password + pepper)
+   *
    * @param profile - Crypto profile selecting algorithm + serialization suites
-   * @param password - Password bytes used as KDF input
+   * @param password - Pre-processed password bytes
    * @param salt - Random salt (32 bytes minimum)
    * @returns Derived MasterKEK (non-extractable) + salt used
    */

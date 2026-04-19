@@ -5,8 +5,8 @@ import type {
   EncryptedVaultRecord,
   LocalDeviceState,
   PendingSyncItem,
-} from "@/core/storage/storage.type";
-import { STORE_NAMES } from "@/core/storage/storage.const";
+} from "@/old-core/storage/storage.type";
+import { STORE_NAMES } from "@/old-core/storage/storage.const";
 
 // ── V1 Schema (current) ────────────────────────────────
 

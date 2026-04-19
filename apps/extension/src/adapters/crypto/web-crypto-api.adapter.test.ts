@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { WebCryptoApiAdapter } from "./web-crypto-api.adapter";
-import { CRYPTO_PROFILE_V1 } from "@/core/crypto/profiles/crypto-profile.const";
-import { asVaultKey } from "@/core/crypto/keys/crypto-keys.type";
+import { CRYPTO_PROFILE_V1 } from "@/old-core/crypto/profiles/crypto-profile.const";
+import { asVaultKey } from "@/old-core/crypto/keys/crypto-keys.type";
 
 const profile = CRYPTO_PROFILE_V1;
 

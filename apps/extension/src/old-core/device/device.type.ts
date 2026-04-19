@@ -12,6 +12,7 @@ import type {
   DeviceEnvironment,
   DeviceLocationEntry,
 } from "./device-environment.type";
+import type { ExportedPublicKeyMaterial } from "./device-key.type";
 
 export interface DeviceIdentity {
   /** UUID, generated once per device */
@@ -27,10 +28,10 @@ export interface DeviceIdentity {
 export interface DeviceRegistryEntry {
   readonly deviceId: string;
   deviceName: string;
-  /** JWK format */
-  readonly publicSignKey: JsonWebKey;
-  /** JWK format */
-  readonly publicExchangeKey: JsonWebKey;
+  /** Exported signing public key in explicit binary format */
+  readonly publicSignKey: ExportedPublicKeyMaterial;
+  /** Exported agreement public key in explicit binary format */
+  readonly publicExchangeKey: ExportedPublicKeyMaterial;
   /** Unix ms */
   readonly createdAt: number;
   /** Unix ms, null if never synced */

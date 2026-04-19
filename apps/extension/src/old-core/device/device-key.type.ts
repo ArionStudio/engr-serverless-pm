@@ -2,6 +2,7 @@ import type {
   DeviceSigningKeyPair,
   DeviceAgreementKeyPair,
 } from "../crypto/keys/crypto-keys.type";
+import type { BinaryPublicKeyFormat } from "../crypto/formats/key-format.type";
 
 /**
  * Device identity keys used by the protocol.
@@ -22,11 +23,21 @@ export type DeviceKeys = Readonly<{
 }>;
 
 /**
- * Device public keys exported as JWK for registration / transport.
+ * Exported public key material in an explicit binary serialization format.
+ *
+ * The bytes are opaque to callers and interpreted according to `format`.
  */
-export type DevicePublicKeysJwk = Readonly<{
-  readonly signingPublicJwk: JsonWebKey;
-  readonly agreementPublicJwk: JsonWebKey;
+export type ExportedPublicKeyMaterial = Readonly<{
+  readonly format: BinaryPublicKeyFormat;
+  readonly data: ArrayBuffer;
+}>;
+
+/**
+ * Device public keys exported for registration, transport, and verification.
+ */
+export type ExportedDevicePublicKeys = Readonly<{
+  readonly signing: ExportedPublicKeyMaterial;
+  readonly agreement: ExportedPublicKeyMaterial;
 }>;
 
 /**

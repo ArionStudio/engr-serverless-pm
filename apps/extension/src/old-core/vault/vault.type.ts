@@ -56,7 +56,7 @@ export interface VaultPayload {
  * Stored/persisted as part of the vault snapshot.
  */
 export interface SignedVaultEnvelope {
-  readonly version: 1;
+  readonly version: number;
   readonly envelope: VaultEnvelope;
   readonly payload: VaultPayload;
 }

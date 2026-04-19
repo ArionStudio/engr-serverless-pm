@@ -1,22 +1,22 @@
 import type {
   CryptoPort,
   KeyDerivationResult,
-} from "../../core/crypto/crypto.port";
-import type { VaultKey } from "../../core/crypto/keys/crypto-keys.type";
+} from "../../old-core/crypto/crypto.port";
+import type { VaultKey } from "../../old-core/crypto/keys/crypto-keys.type";
 import {
   asMasterKEK,
   asVaultKey,
-} from "../../core/crypto/keys/crypto-keys.type";
-import type { KeyFormat } from "../../core/crypto/formats/key-format.type";
-import type { EncryptedDataPayload } from "../../core/vault/encrypted-payload.type";
-import type { CryptoProfile } from "../../core/crypto/profiles/crypto-profile.type";
-import { resolveAlgorithmSuite } from "../../core/crypto/suites/algorithm-suite.registry";
+} from "../../old-core/crypto/keys/crypto-keys.type";
+import type { KeyFormat } from "../../old-core/crypto/formats/key-format.type";
+import type { EncryptedDataPayload } from "../../old-core/vault/encrypted-payload.type";
+import type { CryptoProfile } from "../../old-core/crypto/profiles/crypto-profile.type";
+import { resolveAlgorithmSuite } from "../../old-core/crypto/suites/algorithm-suite.registry";
 import {
   buildSuiteKdfDeriveKeyParams,
   buildSuiteKeyWrapParams,
   buildSuiteSymmetricParams,
-} from "../../core/crypto/suites/algorithm-suite.helpers";
-import { AES_GCM_IV_LENGTH_BYTES } from "../../core/crypto/crypto.const";
+} from "../../old-core/crypto/suites/algorithm-suite.helpers";
+import { AES_GCM_IV_LENGTH_BYTES } from "../../old-core/crypto/crypto.const";
 import { decodeBase64Url, encodeBase64Url } from "@/lib/base64Url.utils";
 
 /**

@@ -1,8 +1,9 @@
-import type { MasterKEK } from "../crypto/keys/crypto-keys.type";
+import type { MasterKEK, SlotKEK } from "../crypto/keys/crypto-keys.type";
 import type { CryptoProfile } from "../crypto/profiles/crypto-profile.type";
 import type {
   DeviceKeys,
-  DevicePublicKeysJwk,
+  ExportedDevicePublicKeys,
+  ExportedPublicKeyMaterial,
   WrappedDeviceKeys,
 } from "./device-key.type";
 
@@ -10,12 +11,18 @@ import type {
  * Device key service port interface.
  *
  * Purpose-based device identity crypto:
- * - signing
- * - agreement (key agreement / exchange)
+ * - signing and signature verification for vault authenticity
+ * - agreement key handling for safe device slot derivation
  *
- * The concrete algorithms and serialization formats are defined by the provided
- * `CryptoProfile`. This keeps the device model stable when you add new suites.
+ * This port is serialization-neutral. Public keys are exchanged as exported
+ * key material together with an explicit format tag rather than a hard-coded
+ * transport representation such as JWK.
+ *
+ * The concrete algorithms and supported serialization formats are defined by
+ * the provided `CryptoProfile`. This keeps the device-key model stable when
+ * new reviewed suites are introduced.
  */
+
 export interface DeviceKeyPort {
   /**
    * Generate device identity keys according to the crypto profile.
@@ -26,13 +33,16 @@ export interface DeviceKeyPort {
   generateKeys(profile: CryptoProfile): Promise<DeviceKeys>;
 
   /**
-   * Export device public keys as JWK for registration / transport.
+   * Export device public keys for registration / transport.
    *
    * @param profile - Crypto profile configuration
    * @param keys - Device keys
-   * @returns JWK-encoded public keys
+   * @returns Public keys encoded in profile-defined export formats
    */
-  exportPublicKeysJwk(keys: DeviceKeys): Promise<DevicePublicKeysJwk>;
+  exportPublicKeys(
+    profile: CryptoProfile,
+    keys: DeviceKeys,
+  ): Promise<ExportedDevicePublicKeys>;
 
   /**
    * Wrap device private keys using the MasterKEK for persistence.
@@ -77,34 +87,41 @@ export interface DeviceKeyPort {
   ): Promise<Uint8Array>;
 
   /**
-   * Verify a signature using a signing public key (JWK).
+   * Verify a signature using exported signing public key material.
    *
    * @param profile - Crypto profile configuration
    * @param data - Original data
    * @param signature - Signature bytes
-   * @param signingPublicJwk - Signing public key in JWK format
+   * @param signingPublicKey - Signing public key in an explicit export format
    * @returns True if the signature is valid
    */
   verify(
     profile: CryptoProfile,
     data: BufferSource,
     signature: BufferSource,
-    signingPublicJwk: JsonWebKey,
+    signingPublicKey: ExportedPublicKeyMaterial,
   ): Promise<boolean>;
 
   /**
-   * Derive a shared secret using the device agreement private key and a remote
-   * agreement public key (JWK). The concrete key agreement algorithm is defined
-   * by the suite.
+   * Derive a SlotKEK for device key-slot operations.
+   *
+   * This method performs the safe agreement-based derivation pipeline:
+   * 1. Use the local device agreement private key
+   * 2. Use the remote or ephemeral agreement public key
+   * 3. Perform key agreement
+   * 4. Apply the required profile-defined KDF and context binding
+   *
+   * Raw agreement output is an internal intermediate only and MUST NOT be
+   * exposed by the public port.
    *
    * @param profile - Crypto profile configuration
    * @param keys - Device keys (contains agreement private key)
-   * @param remoteAgreementPublicJwk - Remote agreement public key in JWK format
-   * @returns Derived secret bytes
+   * @param remoteAgreementPublicKey - Remote or ephemeral agreement public key
+   * @returns Derived SlotKEK suitable for VaultKey wrapping/unwrapping
    */
-  deriveSharedSecret(
+  deriveSlotKEK(
     profile: CryptoProfile,
     keys: DeviceKeys,
-    remoteAgreementPublicJwk: JsonWebKey,
-  ): Promise<Uint8Array>;
+    remoteAgreementPublicKey: ExportedPublicKeyMaterial,
+  ): Promise<SlotKEK>;
 }

@@ -16,7 +16,7 @@
  * - https://datatracker.ietf.org/doc/html/rfc4648#section-5
  */
 
-import type { Base64UrlBytes } from "../core/vault/key-slot.type";
+import type { Base64UrlBytes } from "../old-core/vault/key-slot.type";
 
 /**
  * Base64 alphabet (RFC 4648 §4).

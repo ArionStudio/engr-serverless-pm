@@ -1,10 +1,10 @@
-import type { StoragePort } from "@/core/storage/storage.port";
+import type { StoragePort } from "@/old-core/storage/storage.port";
 import type {
   EncryptedVaultRecord,
   LocalDeviceState,
   PendingSyncItem,
-} from "@/core/storage/storage.type";
-import { STORE_NAMES } from "@/core/storage/storage.const";
+} from "@/old-core/storage/storage.type";
+import { STORE_NAMES } from "@/old-core/storage/storage.const";
 import { db } from "@/infrastructure/database/dexie-db";
 
 export const DexieStorageAdapter: StoragePort = {

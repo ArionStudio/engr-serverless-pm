@@ -17,24 +17,28 @@
  * @see docs/security/security-specification.md §3.5, §4.2
  */
 
-import type { DeviceKeyPort } from "@/core/device/device-key.port";
-import type { CryptoProfile } from "@/core/crypto/profiles/crypto-profile.type";
-import type { MasterKEK } from "@/core/crypto/keys/crypto-keys.type";
+import type { DeviceKeyPort } from "@/old-core/device/device-key.port";
+import type { CryptoProfile } from "@/old-core/crypto/profiles/crypto-profile.type";
+import type {
+  MasterKEK,
+  SlotKEK,
+} from "@/old-core/crypto/keys/crypto-keys.type";
 import type {
   DeviceKeys,
-  DevicePublicKeysJwk,
+  ExportedDevicePublicKeys,
+  ExportedPublicKeyMaterial,
   WrappedDeviceKeys,
-} from "@/core/device/device-key.type";
+} from "@/old-core/device/device-key.type";
 import {
   asSigningPrivateKey,
   asSigningPublicKey,
   asAgreementPrivateKey,
   asAgreementPublicKey,
-} from "@/core/crypto/keys/crypto-keys.type";
-import { buildKeyWrapParams } from "@/core/crypto/algorithms/key-wrap.params";
-import { AES_GCM_IV_LENGTH_BYTES } from "@/core/crypto/crypto.const";
-import { resolveAlgorithmSuite } from "@/core/crypto/suites/algorithm-suite.registry";
-import { resolveSerializationSuite } from "@/core/crypto/formats/serialization-suite.registry";
+} from "@/old-core/crypto/keys/crypto-keys.type";
+import { buildKeyWrapParams } from "@/old-core/crypto/algorithms/key-wrap.params";
+import { AES_GCM_IV_LENGTH_BYTES } from "@/old-core/crypto/crypto.const";
+import { resolveAlgorithmSuite } from "@/old-core/crypto/suites/algorithm-suite.registry";
+import { resolveSerializationSuite } from "@/old-core/crypto/formats/serialization-suite.registry";
 
 /** Prepend a random IV to wrapped key bytes. */
 function prependIv(iv: Uint8Array, wrapped: ArrayBuffer): ArrayBuffer {
@@ -84,15 +88,34 @@ export const WebCryptoDeviceKeyAdapter: DeviceKeyPort = {
     };
   },
 
-  async exportPublicKeysJwk(keys: DeviceKeys): Promise<DevicePublicKeysJwk> {
-    const [signingPublicJwk, agreementPublicJwk] = await Promise.all([
-      crypto.subtle.exportKey("jwk", keys.signing.publicKey),
-      crypto.subtle.exportKey("jwk", keys.agreement.publicKey),
+  async exportPublicKeys(
+    profile: CryptoProfile,
+    keys: DeviceKeys,
+  ): Promise<ExportedDevicePublicKeys> {
+    const serialization = resolveSerializationSuite(
+      profile.serializationSuiteId,
+    );
+
+    const [signingPublicKeyBytes, agreementPublicKeyBytes] = await Promise.all([
+      crypto.subtle.exportKey(
+        serialization.deviceKeys.signingPublic,
+        keys.signing.publicKey,
+      ),
+      crypto.subtle.exportKey(
+        serialization.deviceKeys.agreementPublic,
+        keys.agreement.publicKey,
+      ),
     ]);
 
     return {
-      signingPublicJwk,
-      agreementPublicJwk,
+      signing: {
+        format: serialization.deviceKeys.signingPublic,
+        data: signingPublicKeyBytes,
+      },
+      agreement: {
+        format: serialization.deviceKeys.agreementPublic,
+        data: agreementPublicKeyBytes,
+      },
     };
   },
 
@@ -231,13 +254,13 @@ export const WebCryptoDeviceKeyAdapter: DeviceKeyPort = {
     profile: CryptoProfile,
     data: BufferSource,
     signature: BufferSource,
-    signingPublicJwk: JsonWebKey,
+    signingPublicKey: ExportedPublicKeyMaterial,
   ): Promise<boolean> {
     const suite = resolveAlgorithmSuite(profile.algorithmSuiteId);
 
     const publicKey = await crypto.subtle.importKey(
-      "jwk",
-      signingPublicJwk,
+      signingPublicKey.format,
+      signingPublicKey.data,
       suite.signing.algorithm,
       true,
       ["verify"],
@@ -252,33 +275,29 @@ export const WebCryptoDeviceKeyAdapter: DeviceKeyPort = {
   },
 
   /**
-   * Derive raw shared secret via key agreement.
-   *
-   * WARNING: The returned bytes are raw key agreement output. Per spec §3.6,
-   * the caller MUST apply a KDF (HKDF or ConcatKDF) before using as an
-   * AES key or for any other symmetric purpose.
+   * SlotKEK derivation is intentionally left unimplemented until the slot KDF
+   * inputs are finalized in the public contract.
    */
-  async deriveSharedSecret(
+  async deriveSlotKEK(
     profile: CryptoProfile,
     keys: DeviceKeys,
-    remoteAgreementPublicJwk: JsonWebKey,
-  ): Promise<Uint8Array> {
+    remoteAgreementPublicKey: ExportedPublicKeyMaterial,
+  ): Promise<SlotKEK> {
     const suite = resolveAlgorithmSuite(profile.algorithmSuiteId);
 
-    const remotePublicKey = await crypto.subtle.importKey(
-      "jwk",
-      remoteAgreementPublicJwk,
+    await crypto.subtle.importKey(
+      remoteAgreementPublicKey.format,
+      remoteAgreementPublicKey.data,
       suite.keyExchange.algorithm,
       true,
       [],
     );
 
-    const secretBits = await crypto.subtle.deriveBits(
-      { name: suite.keyExchange.algorithm.name, public: remotePublicKey },
-      keys.agreement.privateKey,
-      256,
-    );
+    void profile;
+    void keys;
 
-    return new Uint8Array(secretBits);
+    throw new Error(
+      "deriveSlotKEK is not implemented until slot KDF inputs are added to the contract",
+    );
   },
 };

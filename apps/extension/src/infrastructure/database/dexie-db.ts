@@ -4,12 +4,12 @@ import type {
   EncryptedVaultRecord,
   LocalDeviceState,
   PendingSyncItem,
-} from "@/core/storage/storage.type";
+} from "@/old-core/storage/storage.type";
 import {
   DATABASE_NAME,
   STORAGE_SCHEMA_VERSION,
   STORE_NAMES,
-} from "@/core/storage/storage.const";
+} from "@/old-core/storage/storage.const";
 
 type VaultManagerDb = Dexie & {
   [STORE_NAMES.VAULT]: EntityTable<EncryptedVaultRecord, "vaultId">;
