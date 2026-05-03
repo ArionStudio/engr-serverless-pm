@@ -1,15 +1,20 @@
 import Dexie from "dexie";
 import type { EntityTable } from "dexie";
-import type {
-  EncryptedVaultRecord,
-  LocalDeviceState,
-  PendingSyncItem,
-} from "@/old-core/storage/storage.type";
-import {
-  DATABASE_NAME,
-  STORAGE_SCHEMA_VERSION,
-  STORE_NAMES,
-} from "@/old-core/storage/storage.const";
+
+const STORE_NAMES = {
+  VAULT: "",
+  DEVICE_STATE: "",
+  PENDING_SYNC: "",
+};
+
+const DATABASE_NAME = "";
+const STORAGE_SCHEMA_VERSION = 1;
+
+type EncryptedVaultRecord = {
+  vaultId: "";
+};
+type LocalDeviceState = { deviceId: "" };
+type PendingSyncItem = { id: "" };
 
 type VaultManagerDb = Dexie & {
   [STORE_NAMES.VAULT]: EntityTable<EncryptedVaultRecord, "vaultId">;

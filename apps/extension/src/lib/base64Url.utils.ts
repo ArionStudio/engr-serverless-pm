@@ -16,7 +16,8 @@
  * - https://datatracker.ietf.org/doc/html/rfc4648#section-5
  */
 
-import type { Base64UrlBytes } from "../old-core/vault/key-slot.type";
+declare const Base64UrlBytesBrand: unique symbol;
+export type Base64UrlBytes = string & { readonly [Base64UrlBytesBrand]: true };
 
 /**
  * Base64 alphabet (RFC 4648 §4).

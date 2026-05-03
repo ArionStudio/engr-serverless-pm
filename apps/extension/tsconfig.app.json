@@ -29,6 +29,6 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src"],
+  "include": ["src", "src/old/core"],
   "exclude": ["src/**/*.typecheck.ts"]
 }
