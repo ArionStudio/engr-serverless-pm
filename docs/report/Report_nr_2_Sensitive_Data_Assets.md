@@ -61,13 +61,6 @@
 - What it is used for: locally protect the persisted `device signing private key`
 - Protected by: derived as a dedicated subkey from the `master-password root key`
 
-#### temporary AWS credentials
-
-- Security relevance: authenticated and authorized access to cloud sync resources
-- Where it lives: runtime memory
-- What it is used for: temporary authorized access to `AWS S3` through the sync layer
-- Protected by: runtime memory only / not persisted
-
 #### vault snapshot
 
 - Security relevance: protected persisted vault state
@@ -106,8 +99,8 @@
 #### cloud sync credentials
 
 - Security relevance: authentication and authorization for the sync layer; cloud location binding
-- Where it lives: `IndexedDB`
-- What it is used for: authenticate to Cognito and identify/access the correct cloud sync location
+- Where it lives: `IndexedDB`, encrypted
+- What it is used for: authenticate to AWS S3 bucket and identify/access the correct cloud sync location
 - Protected by: `cloud sync credentials protection key`
 
 #### cloud sync credentials protection key
@@ -119,17 +112,11 @@
 
 #### enrollment secret
 
-- Security relevance: confidentiality and authentication of enrollment bootstrap
-- Where it lives: user memory / user-kept transfer channel
-- What it is used for: decrypt and authenticate the `enrollment package` during new-device enrollment
-- Protected by: system-generated high-entropy secret; not stored by the system
+[ Need further consultation on topic ]
 
 #### enrollment package
 
-- Security relevance: protected bootstrap data for new-device enrollment
-- Where it lives: user transfer channel / new device input
-- What it is used for: bootstrap new-device enrollment into an existing synced vault
-- Protected by: authenticated encryption using the `enrollment secret`
+[ Need further consultation on topic ]
 
 #### registered device agreement public keys
 

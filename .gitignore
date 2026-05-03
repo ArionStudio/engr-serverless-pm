@@ -81,3 +81,10 @@ temp/
 *.sym
 *.app
 *.pdf
+
+# python 
+
+## virtual environment
+
+*venv/*
+
