@@ -9,8 +9,10 @@ import type { VaultLocalRepositoryPort } from "../ports/vault-local-repository.p
 import {
   DeviceAccessMaterialNotFoundError,
   DeviceKeySlotNotFoundError,
+  UnsupportedAlgorithmSuiteError,
   VaultSnapshotNotFoundError,
   VaultSnapshotSignatureVerificationFailedError,
+  VaultSnapshotSignerNotTrustedError,
 } from "./errors/unlock-vault.errors";
 
 export type UnlockVaultCommandParams = {
@@ -53,9 +55,42 @@ export class UnlockVaultUseCase {
       throw new VaultSnapshotNotFoundError(params.vaultId);
     }
 
+    if (
+      deviceAccessMaterial.algorithmSuiteId !== this.crypto.algorithmSuite.id
+    ) {
+      throw new UnsupportedAlgorithmSuiteError({
+        vaultId: params.vaultId,
+        artifact: "device access material",
+        expectedAlgorithmSuiteId: this.crypto.algorithmSuite.id,
+        actualAlgorithmSuiteId: deviceAccessMaterial.algorithmSuiteId,
+      });
+    }
+
+    if (
+      vaultSnapshot.metadata.algorithmSuiteId !== this.crypto.algorithmSuite.id
+    ) {
+      throw new UnsupportedAlgorithmSuiteError({
+        vaultId: params.vaultId,
+        artifact: "vault snapshot",
+        expectedAlgorithmSuiteId: this.crypto.algorithmSuite.id,
+        actualAlgorithmSuiteId: vaultSnapshot.metadata.algorithmSuiteId,
+      });
+    }
+
+    const signerDevice = vaultSnapshot.trustedDevices.find(
+      (device) => device.id === vaultSnapshot.metadata.createdByDeviceId,
+    );
+
+    if (signerDevice === undefined) {
+      throw new VaultSnapshotSignerNotTrustedError(
+        params.vaultId,
+        vaultSnapshot.metadata.createdByDeviceId,
+      );
+    }
+
     const isSnapshotAuthentic = await this.crypto.verifyVaultSnapshotSignature(
       vaultSnapshot,
-      deviceAccessMaterial.devicePublicSignKey,
+      signerDevice.publicKeys.signingKey,
     );
 
     if (!isSnapshotAuthentic) {

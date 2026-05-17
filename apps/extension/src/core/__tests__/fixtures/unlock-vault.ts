@@ -28,6 +28,14 @@ export function createUnlockVaultTestContext() {
       algorithmSuiteId: ports.crypto.algorithmSuite.id,
       createdByDeviceId: values.deviceId,
     },
+    trustedDevices: [
+      {
+        id: values.deviceId,
+        publicKeys: {
+          signingKey: values.devicePublicSignKey,
+        },
+      },
+    ],
     keySlots: {
       deviceSlots: [
         {

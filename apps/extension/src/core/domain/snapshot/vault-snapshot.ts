@@ -2,6 +2,7 @@ import type {
   SerializedEncrypted,
   SerializedSignatureOf,
 } from "../crypto/protected-artifact";
+import type { TrustedDevice } from "../device/device";
 import type { Vault } from "../vault/vault";
 import type { DeviceKeySlot, RecoveryKeySlot } from "./key-slot";
 
@@ -19,6 +20,7 @@ export type VaultSnapshotMetadata = {
 
 export type UnsignedVaultSnapshot = {
   metadata: VaultSnapshotMetadata;
+  trustedDevices: TrustedDevice[];
   keySlots: {
     deviceSlots: DeviceKeySlot[];
     recoveryKeySlot: RecoveryKeySlot;

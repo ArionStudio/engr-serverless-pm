@@ -76,6 +76,15 @@ describe("InitializeVaultUseCase", () => {
       tags: [],
     };
 
+    const expectedTrustedDevices = [
+      {
+        id: ctx.values.deviceId,
+        publicKeys: {
+          signingKey: ctx.values.devicePublicSignKey,
+        },
+      },
+    ];
+
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).toHaveBeenCalledWith(
       expectedVault,
       ctx.values.vaultMasterKey,
@@ -107,6 +116,7 @@ describe("InitializeVaultUseCase", () => {
         algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
         createdByDeviceId: ctx.values.deviceId,
       },
+      trustedDevices: expectedTrustedDevices,
       keySlots: {
         deviceSlots: [
           {
@@ -125,6 +135,7 @@ describe("InitializeVaultUseCase", () => {
     expect(ctx.ports.crypto.signVaultSnapshot).toHaveBeenCalledWith(
       {
         metadata: ctx.saved.vaultSnapshot?.metadata,
+        trustedDevices: ctx.saved.vaultSnapshot?.trustedDevices,
         keySlots: ctx.saved.vaultSnapshot?.keySlots,
         content: ctx.saved.vaultSnapshot?.content,
       },
@@ -140,12 +151,12 @@ describe("InitializeVaultUseCase", () => {
     });
   });
 
-  it("bubbles repository errors and does not save unlocked state when snapshot persistence fails", async () => {
+  it("bubbles local initialization errors and does not save unlocked state", async () => {
     const ctx = createInitializeVaultTestContext();
-    const error = new Error("snapshot save failed");
+    const error = new Error("local initialization failed");
 
     vi.mocked(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
     ).mockRejectedValueOnce(error);
 
     await expect(
@@ -156,25 +167,19 @@ describe("InitializeVaultUseCase", () => {
     ).rejects.toThrow(error);
 
     expect(
-      ctx.ports.vaultLocalRepository.saveDeviceAccessMaterial,
-    ).toHaveBeenCalledTimes(1);
-    expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
     ).toHaveBeenCalledTimes(1);
     expect(
       ctx.ports.unlockedVaultRepository.saveUnlockedVault,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.removeLocalVaultDescriptor,
+      ctx.ports.vaultLocalRepository.saveLocalVaultDescriptor,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.removeDeviceAccessMaterial,
+      ctx.ports.vaultLocalRepository.saveDeviceAccessMaterial,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.removeVaultSnapshot,
-    ).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.unlockedVaultRepository.removeUnlockedVault,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
     ).not.toHaveBeenCalled();
   });
 });

@@ -140,6 +140,14 @@ export class InitializeVaultUseCase {
         algorithmSuiteId: this.crypto.algorithmSuite.id,
         createdByDeviceId: deviceId,
       },
+      trustedDevices: [
+        {
+          id: deviceId,
+          publicKeys: {
+            signingKey: deviceSignKeyPair.publicKey,
+          },
+        },
+      ],
       keySlots: {
         deviceSlots: [
           {
@@ -189,13 +197,11 @@ export class InitializeVaultUseCase {
       devicePrivateSignKey: deviceSignKeyPair.privateKey,
     };
 
-    await this.vaultLocalRepository.saveLocalVaultDescriptor(
-      localVaultDescriptor,
-    );
-    await this.vaultLocalRepository.saveDeviceAccessMaterial(
+    await this.vaultLocalRepository.saveInitializedLocalVault({
+      descriptor: localVaultDescriptor,
       deviceAccessMaterial,
-    );
-    await this.vaultLocalRepository.saveVaultSnapshot(vaultSnapshot);
+      snapshot: vaultSnapshot,
+    });
     await this.unlockedVaultRepository.saveUnlockedVault(unlockedVault);
 
     return {

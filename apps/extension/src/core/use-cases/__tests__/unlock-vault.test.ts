@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import {
   DeviceAccessMaterialNotFoundError,
   DeviceKeySlotNotFoundError,
+  UnsupportedAlgorithmSuiteError,
   VaultSnapshotNotFoundError,
   VaultSnapshotSignatureVerificationFailedError,
+  VaultSnapshotSignerNotTrustedError,
 } from "../errors/unlock-vault.errors";
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
 
@@ -115,6 +117,78 @@ describe("UnlockVaultUseCase", () => {
       }),
     ).rejects.toBeInstanceOf(VaultSnapshotSignatureVerificationFailedError);
 
+    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.unlockedVaultRepository.saveUnlockedVault,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("fails when device access material uses unsupported algorithm suite", async () => {
+    const ctx = createUnlockVaultTestContext();
+    ctx.saved.deviceAccessMaterial = {
+      ...ctx.deviceAccessMaterial,
+      algorithmSuiteId: "spm-unsupported",
+    };
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+      }),
+    ).rejects.toBeInstanceOf(UnsupportedAlgorithmSuiteError);
+
+    expect(
+      ctx.ports.crypto.verifyVaultSnapshotSignature,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.unlockedVaultRepository.saveUnlockedVault,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("fails when vault snapshot uses unsupported algorithm suite", async () => {
+    const ctx = createUnlockVaultTestContext();
+    ctx.saved.vaultSnapshot = {
+      ...ctx.vaultSnapshot,
+      metadata: {
+        ...ctx.vaultSnapshot.metadata,
+        algorithmSuiteId: "spm-unsupported",
+      },
+    };
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+      }),
+    ).rejects.toBeInstanceOf(UnsupportedAlgorithmSuiteError);
+
+    expect(
+      ctx.ports.crypto.verifyVaultSnapshotSignature,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.unlockedVaultRepository.saveUnlockedVault,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("fails when snapshot signer is not trusted", async () => {
+    const ctx = createUnlockVaultTestContext();
+    ctx.saved.vaultSnapshot = {
+      ...ctx.vaultSnapshot,
+      trustedDevices: [],
+    };
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+      }),
+    ).rejects.toBeInstanceOf(VaultSnapshotSignerNotTrustedError);
+
+    expect(
+      ctx.ports.crypto.verifyVaultSnapshotSignature,
+    ).not.toHaveBeenCalled();
     expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
     expect(
       ctx.ports.unlockedVaultRepository.saveUnlockedVault,

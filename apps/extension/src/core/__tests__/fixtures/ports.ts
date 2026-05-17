@@ -90,6 +90,18 @@ export function createCoreTestPorts(
   };
 
   const vaultLocalRepository: VaultLocalRepositoryPort = {
+    saveInitializedLocalVault: vi.fn(
+      async ({ descriptor, deviceAccessMaterial, snapshot }) => {
+        saved.localVaultDescriptor = descriptor;
+        saved.deviceAccessMaterial = deviceAccessMaterial;
+        saved.vaultSnapshot = snapshot;
+      },
+    ),
+    removePersistedLocalVault: vi.fn(async () => {
+      saved.localVaultDescriptor = undefined;
+      saved.deviceAccessMaterial = undefined;
+      saved.vaultSnapshot = undefined;
+    }),
     saveLocalVaultDescriptor: vi.fn(async (descriptor) => {
       saved.localVaultDescriptor = descriptor;
     }),

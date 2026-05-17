@@ -8,3 +8,10 @@ export type Device = {
     signingKey: DevicePublicSignKey;
   };
 };
+
+export type TrustedDevice = {
+  id: string; // random
+  publicKeys: {
+    signingKey: DevicePublicSignKey;
+  };
+};

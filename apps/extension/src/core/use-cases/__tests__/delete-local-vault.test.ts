@@ -38,14 +38,17 @@ describe("DeleteLocalVaultUseCase", () => {
     ).resolves.toBeUndefined();
 
     expect(
-      ctx.ports.vaultLocalRepository.removeLocalVaultDescriptor,
+      ctx.ports.vaultLocalRepository.removePersistedLocalVault,
     ).toHaveBeenCalledWith(ctx.values.vaultId);
+    expect(
+      ctx.ports.vaultLocalRepository.removeLocalVaultDescriptor,
+    ).not.toHaveBeenCalled();
     expect(
       ctx.ports.vaultLocalRepository.removeDeviceAccessMaterial,
-    ).toHaveBeenCalledWith(ctx.values.vaultId);
+    ).not.toHaveBeenCalled();
     expect(
       ctx.ports.vaultLocalRepository.removeVaultSnapshot,
-    ).toHaveBeenCalledWith(ctx.values.vaultId);
+    ).not.toHaveBeenCalled();
     expect(
       ctx.ports.unlockedVaultRepository.removeUnlockedVault,
     ).toHaveBeenCalledTimes(1);
@@ -62,7 +65,7 @@ describe("DeleteLocalVaultUseCase", () => {
     ).rejects.toBeInstanceOf(VaultMustBeUnlockedForLocalDeletionError);
 
     expect(
-      ctx.ports.vaultLocalRepository.removeLocalVaultDescriptor,
+      ctx.ports.vaultLocalRepository.removePersistedLocalVault,
     ).not.toHaveBeenCalled();
     expect(
       ctx.ports.unlockedVaultRepository.removeUnlockedVault,
@@ -83,19 +86,19 @@ describe("DeleteLocalVaultUseCase", () => {
     ).rejects.toBeInstanceOf(VaultMustBeUnlockedForLocalDeletionError);
 
     expect(
-      ctx.ports.vaultLocalRepository.removeLocalVaultDescriptor,
+      ctx.ports.vaultLocalRepository.removePersistedLocalVault,
     ).not.toHaveBeenCalled();
     expect(
       ctx.ports.unlockedVaultRepository.removeUnlockedVault,
     ).not.toHaveBeenCalled();
   });
 
-  it("does not remove unlocked state when local deletion fails", async () => {
+  it("does not remove unlocked state when persisted local deletion fails", async () => {
     const ctx = createContext();
-    const error = new Error("descriptor deletion failed");
+    const error = new Error("persisted local deletion failed");
 
     vi.mocked(
-      ctx.ports.vaultLocalRepository.removeLocalVaultDescriptor,
+      ctx.ports.vaultLocalRepository.removePersistedLocalVault,
     ).mockRejectedValueOnce(error);
 
     await expect(
@@ -104,12 +107,6 @@ describe("DeleteLocalVaultUseCase", () => {
       }),
     ).rejects.toThrow(error);
 
-    expect(
-      ctx.ports.vaultLocalRepository.removeDeviceAccessMaterial,
-    ).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.vaultLocalRepository.removeVaultSnapshot,
-    ).not.toHaveBeenCalled();
     expect(
       ctx.ports.unlockedVaultRepository.removeUnlockedVault,
     ).not.toHaveBeenCalled();
@@ -130,13 +127,7 @@ describe("DeleteLocalVaultUseCase", () => {
     ).rejects.toThrow(error);
 
     expect(
-      ctx.ports.vaultLocalRepository.removeLocalVaultDescriptor,
-    ).toHaveBeenCalledWith(ctx.values.vaultId);
-    expect(
-      ctx.ports.vaultLocalRepository.removeDeviceAccessMaterial,
-    ).toHaveBeenCalledWith(ctx.values.vaultId);
-    expect(
-      ctx.ports.vaultLocalRepository.removeVaultSnapshot,
+      ctx.ports.vaultLocalRepository.removePersistedLocalVault,
     ).toHaveBeenCalledWith(ctx.values.vaultId);
   });
 });

@@ -21,6 +21,29 @@ export class VaultSnapshotSignatureVerificationFailedError extends Error {
   }
 }
 
+export class VaultSnapshotSignerNotTrustedError extends Error {
+  constructor(vaultId: string, signerDeviceId: string) {
+    super(
+      `Vault snapshot signer "${signerDeviceId}" is not trusted for vault "${vaultId}".`,
+    );
+    this.name = "VaultSnapshotSignerNotTrustedError";
+  }
+}
+
+export class UnsupportedAlgorithmSuiteError extends Error {
+  constructor(params: {
+    vaultId: string;
+    artifact: string;
+    expectedAlgorithmSuiteId: string;
+    actualAlgorithmSuiteId: string;
+  }) {
+    super(
+      `Unsupported algorithm suite "${params.actualAlgorithmSuiteId}" for ${params.artifact} in vault "${params.vaultId}". Expected "${params.expectedAlgorithmSuiteId}".`,
+    );
+    this.name = "UnsupportedAlgorithmSuiteError";
+  }
+}
+
 export class DeviceKeySlotNotFoundError extends Error {
   constructor(vaultId: string, deviceId: string) {
     super(

@@ -25,9 +25,7 @@ export class DeleteLocalVaultUseCase {
       throw new VaultMustBeUnlockedForLocalDeletionError(params.vaultId);
     }
 
-    await this.vaultLocalRepository.removeLocalVaultDescriptor(params.vaultId);
-    await this.vaultLocalRepository.removeDeviceAccessMaterial(params.vaultId);
-    await this.vaultLocalRepository.removeVaultSnapshot(params.vaultId);
+    await this.vaultLocalRepository.removePersistedLocalVault(params.vaultId);
     await this.unlockedVaultRepository.removeUnlockedVault();
   }
 }
