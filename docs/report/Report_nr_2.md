@@ -17,6 +17,7 @@ My system goal is to provide a password manager that:
 #### Scope
 
 - Allow user to create and use a vault locally without creating a cloud account
+- Allow user to list local vaults available on the current device
 - Allow user to unlock and lock its vault
 - Allow user to add, update and remove password entries
 - Allow user to organize password entries using folders and tags
@@ -69,13 +70,14 @@ Content scripts receive only the login and password required for an explicit aut
 
 - vault initialization: \
   uses: `local key initialization` \
-  creates recovery secret key, create the initial vault state, encrypt and authenticate it, and persist it in local storage
+  generates a local vault display name, creates recovery key source material, returns the recovery key as a BIP39 mnemonic for one-time user display, creates the initial vault state, encrypts and signs it as the first `vault snapshot`, persists the local vault descriptor, device access material, and snapshot in local storage, and stores the newly unlocked vault in `storage.session`
+
+- list local vaults: \
+  read locally persisted non-secret `local vault descriptors` so the user can select which vault to unlock on a device that contains more than one local vault
 
 - vault unlock: \
   requires: `vault initialization` \
-  use the master password to unlock locally protected key material, decrypt the stored
-  vault state, create the unlocked working state, and store the fully unlocked vault
-  in `storage.session`
+  use the selected vault id and master password to load `device access material`, verify the persisted `vault snapshot`, unwrap local keys, unwrap the `vault master key` through the current device key slot, decrypt the stored vault state, create the unlocked working state, and store the unlocked vault in `storage.session`
 
 - vault lock: \
   requires: `vault unlock` \
@@ -157,17 +159,16 @@ Content scripts receive only the login and password required for an explicit aut
   longer participate as an authorized device
 
 - vault access recovery: \
-  recover vault access when the master password is forgotten using recovery secret and re-protect local access with a new master password
+  recover vault access when the master password is forgotten using the recovery mnemonic key and re-protect local access with a new master password
 
 - vault deletion: \
   uses: `vault lock` \
   may trigger: `remove files from cloud sync`, `remove local sync credentials` \
-  permanently delete all local vault data from the device, including encrypted vault
-  state, protected local keys, session state
+  permanently delete all local vault data from the device, including the local vault descriptor, encrypted vault state, device access material, protected local keys, and session state
 
 ### Data stores
 
-- `indexedDB` - long lived encrypted data
+- `indexedDB` - long lived local data, including encrypted vault snapshots, device access material, sync state, and non-secret local vault descriptors
 - `storage.session` - short lived data containing the fully unlocked vault during the unlocked vault stage
 - `S3 bucket` - cloud storage for sync layer
 - `runtime memory` - storage used during extension runtime
@@ -191,10 +192,12 @@ Definitions:
 - `full entry details` - password entry data with password value
 - `entry identifications` - entry name, matched site/domain, and login identifier needed to let the user choose the correct entry
 - `cloud sync credentials` - user-provided AWS access keys and S3 configuration, such as bucket, region, and object prefix, used to access the configured `S3 bucket`; stored locally encrypted with a dedicated master-password-derived protection key
+- `local vault descriptor` - non-secret local metadata for a vault available on the current device, including vault id, generated display name, creation time, and optional last-unlocked time
+- `device access material` - local persisted material needed to unlock one vault from the current device; contains salts, public signing key, and protected local keys, but no raw vault master key or raw recovery key
 - `vault snapshot` - canonical encrypted and authenticated vault state stored locally and optionally in the sync layer
 - `local sync state` - locally stored information needed to compare local and remote vault states
 - `trusted device` - device registered in the vault and allowed to decrypt, verify, sign, and extend device trust
-- `trusted public device keys` - registered public signing keys and public agreement keys of devices trusted by the vault
+- `trusted public device keys` - registered public signing keys of devices trusted by the vault
 - `enrollment package` - [ Need further consultation on topic ]
 - `enrollment secret` - [ Need further consultation on topic ]
 
@@ -314,8 +317,8 @@ High-risk interaction zone:
 What the enrollment design should provide:
 
 - an already trusted device must authorize adding a new trusted device
-- the new device should generate its own long-term device agreement and signing private keys locally
-- enrollment should not require using the recovery secret
+- the new device should generate its own long-term device slot key and signing private key locally
+- enrollment should not require using the recovery mnemonic key
 - enrollment should support a practical PC1 -> transfer channel or phone -> PC2 path without requiring the user to go back from PC2 to PC1
 - enrollment may use S3 presigned links as a transport mechanism for protected enrollment material
 - S3 and the transfer channel must be treated as untrusted; enrollment material must be protected by client-side cryptography
@@ -323,7 +326,7 @@ What the enrollment design should provide:
 What the enrollment design should avoid:
 
 - do not generate the new device's long-term private keys on another device, because private device identity should originate on the device that owns it
-- do not use the recovery secret for normal enrollment, because it is reserved for access recovery
+- do not use the recovery mnemonic key for normal enrollment, because it is reserved for access recovery
 - do not protect enrollment material directly with the master password, because captured enrollment material would allow offline guessing attacks against the master password
 - do not store plaintext vault data, plaintext sync credentials, or plaintext device private keys in S3 or in user-transferable enrollment material
 - avoid enrollment material that gives unlimited offline access to a captured vault snapshot where possible; if this tradeoff is accepted for usability, document it explicitly
