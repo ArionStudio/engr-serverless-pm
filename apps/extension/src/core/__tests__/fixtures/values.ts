@@ -29,6 +29,7 @@ export type CoreTestValues = ReturnType<typeof createCoreTestValues>;
 export function createCoreTestValues() {
   return {
     masterPassword: "master-password" as RawMasterPassword,
+    newMasterPassword: "new-master-password" as RawMasterPassword,
     vaultId: "vault-id",
     vaultDisplayName: "blue-river-4821",
     deviceId: "device-id",
@@ -53,6 +54,14 @@ export function createCoreTestValues() {
     protectedLocalKeys: {
       wrappedKey: b64("protected-local-keys"),
       wrappingNonce: b64("protected-local-keys-nonce"),
+    } satisfies SerializedWrapped<LocalKeysPayload>,
+    newMasterPasswordSalt: bytes<RandomBytes>(),
+    newLocalRootKey: bytes<LocalRootKey>(),
+    newLocalKeysProtectionSalt: bytes<RandomBytes>(),
+    newLocalKeysProtectionKey: bytes<ProtectionKeyFor<LocalKeysPayload>>(),
+    reprotectedLocalKeys: {
+      wrappedKey: b64("reprotected-local-keys"),
+      wrappingNonce: b64("reprotected-local-keys-nonce"),
     } satisfies SerializedWrapped<LocalKeysPayload>,
     protectedDeviceVaultMasterKey: {
       wrappedKey: b64("protected-device-vault-master-key"),

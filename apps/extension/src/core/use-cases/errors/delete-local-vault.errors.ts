@@ -1,6 +1,8 @@
-export class VaultMustBeUnlockedForLocalDeletionError extends Error {
+import { VaultMustBeUnlockedError } from "./vault-session.errors";
+
+export class VaultMustBeUnlockedForLocalDeletionError extends VaultMustBeUnlockedError {
   constructor(vaultId: string) {
-    super(`Vault "${vaultId}" must be unlocked before local deletion.`);
+    super(vaultId, "local deletion");
     this.name = "VaultMustBeUnlockedForLocalDeletionError";
   }
 }

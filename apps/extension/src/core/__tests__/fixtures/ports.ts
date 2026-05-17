@@ -41,13 +41,22 @@ export function createCoreTestPorts(
     generateVaultMasterKey: vi.fn(async () => values.vaultMasterKey),
     generateDeviceSlotKey: vi.fn(async () => values.deviceSlotKey),
     generateRecoveryKey: vi.fn(async () => values.recoverySecretKey),
-    generateMasterPasswordSalt: vi.fn(async () => values.masterPasswordSalt),
-    generateLocalKeysProtectionSalt: vi.fn(
-      async () => values.localKeysProtectionSalt,
-    ),
-    deriveLocalRootKey: vi.fn(async () => values.localRootKey),
-    deriveLocalKeysProtectionKey: vi.fn(
-      async () => values.localKeysProtectionKey,
+    generateMasterPasswordSalt: vi
+      .fn()
+      .mockResolvedValueOnce(values.masterPasswordSalt)
+      .mockResolvedValue(values.newMasterPasswordSalt),
+    generateLocalKeysProtectionSalt: vi
+      .fn()
+      .mockResolvedValueOnce(values.localKeysProtectionSalt)
+      .mockResolvedValue(values.newLocalKeysProtectionSalt),
+    deriveLocalRootKey: vi
+      .fn()
+      .mockResolvedValueOnce(values.localRootKey)
+      .mockResolvedValue(values.newLocalRootKey),
+    deriveLocalKeysProtectionKey: vi.fn(async (_localRootKey, salt) =>
+      salt === values.newLocalKeysProtectionSalt
+        ? values.newLocalKeysProtectionKey
+        : values.localKeysProtectionKey,
     ),
     deriveDeviceSlotVaultMasterKeyProtectionKey: vi.fn(
       async () => values.deviceSlotVaultMasterKeyProtectionKey,
@@ -55,7 +64,11 @@ export function createCoreTestPorts(
     deriveRecoveryVaultMasterKeyProtectionKey: vi.fn(
       async () => values.recoveryVaultMasterKeyProtectionKey,
     ),
-    wrapLocalKeysPayload: vi.fn(async () => values.protectedLocalKeys),
+    wrapLocalKeysPayload: vi.fn(async (_localKeysPayload, protectionKey) =>
+      protectionKey === values.newLocalKeysProtectionKey
+        ? values.reprotectedLocalKeys
+        : values.protectedLocalKeys,
+    ),
     unwrapLocalKeysPayload: vi.fn(async () => ({
       deviceSlotKey: values.deviceSlotKey,
       devicePrivateSignKey: values.devicePrivateSignKey,
