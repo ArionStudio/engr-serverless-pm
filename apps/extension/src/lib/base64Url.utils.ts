@@ -16,9 +16,6 @@
  * - https://datatracker.ietf.org/doc/html/rfc4648#section-5
  */
 
-declare const Base64UrlBytesBrand: unique symbol;
-export type Base64UrlBytes = string & { readonly [Base64UrlBytesBrand]: true };
-
 /**
  * Base64 alphabet (RFC 4648 §4).
  */
@@ -42,12 +39,12 @@ const B64REV: Int16Array = (() => {
  * Encode base64url string from a Uint8Array.
  *
  * - Produces unpadded base64url (no '=' at the end).
- * - Returns branded Base64UrlBytes type.
+ * - Returns DOM Base64URLString type.
  *
  * @param bytes - Data to encode
- * @returns Base64url encoded string (branded type)
+ * @returns Base64url encoded string
  */
-export function encodeBase64Url(bytes: Uint8Array): Base64UrlBytes {
+export function encodeBase64Url(bytes: Uint8Array): Base64URLString {
   const len = bytes.length;
   const end = len - (len % 3);
 
@@ -79,21 +76,21 @@ export function encodeBase64Url(bytes: Uint8Array): Base64UrlBytes {
   return parts
     .join("")
     .replace(/\+/g, "-")
-    .replace(/\//g, "_") as Base64UrlBytes;
+    .replace(/\//g, "_") as Base64URLString;
 }
 
 /**
  * Decode base64url string to a Uint8Array.
  *
- * - Accepts branded Base64UrlBytes type.
+ * - Accepts DOM Base64URLString type.
  * - Accepts base64url with or without '=' padding.
  * - Throws if the input contains invalid characters.
  *
- * @param b64url - Base64url encoded string (branded type)
+ * @param b64url - Base64url encoded string
  * @returns Decoded bytes
  * @throws Error if input is not valid base64/base64url
  */
-export function decodeBase64Url(b64url: Base64UrlBytes): BufferSource {
+export function decodeBase64Url(b64url: Base64URLString): BufferSource {
   // Normalize base64url -> base64
   const b64 = b64url.replace(/-/g, "+").replace(/_/g, "/");
 
