@@ -15,10 +15,14 @@ describe("InitializeVaultUseCase", () => {
 
     expect(result).toEqual({
       recoveryMnemonicKey: ctx.values.recoveryMnemonicKey,
+      vaultDisplayName: ctx.values.vaultDisplayName,
     });
 
     expect(ctx.ports.ids.generateId).toHaveBeenCalledTimes(2);
     expect(ctx.ports.clock.now).toHaveBeenCalledTimes(1);
+    expect(
+      ctx.ports.vaultDisplayName.generateVaultDisplayName,
+    ).toHaveBeenCalledTimes(1);
     expect(ctx.ports.bip39.recoveryKeyToMnemonic).toHaveBeenCalledWith(
       ctx.values.recoverySecretKey,
     );
@@ -77,12 +81,19 @@ describe("InitializeVaultUseCase", () => {
       ctx.values.vaultMasterKey,
     );
 
+    expect(ctx.saved.localVaultDescriptor).toEqual({
+      vaultId: ctx.values.vaultId,
+      displayName: ctx.values.vaultDisplayName,
+      createdAt: ctx.values.timestamp,
+    });
+
     expect(ctx.saved.deviceAccessMaterial).toEqual({
       vaultId: ctx.values.vaultId,
       deviceId: ctx.values.deviceId,
       algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
       masterPasswordSalt: ctx.values.masterPasswordSalt,
       localKeysProtectionSalt: ctx.values.localKeysProtectionSalt,
+      devicePublicSignKey: ctx.values.devicePublicSignKey,
       protectedLocalKeys: ctx.values.protectedLocalKeys,
     });
 
@@ -152,6 +163,9 @@ describe("InitializeVaultUseCase", () => {
     ).toHaveBeenCalledTimes(1);
     expect(
       ctx.ports.unlockedVaultRepository.saveUnlockedVault,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.removeLocalVaultDescriptor,
     ).not.toHaveBeenCalled();
     expect(
       ctx.ports.vaultLocalRepository.removeDeviceAccessMaterial,

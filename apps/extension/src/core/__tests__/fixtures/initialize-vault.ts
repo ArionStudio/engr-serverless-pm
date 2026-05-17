@@ -12,6 +12,7 @@ export function createInitializeVaultTestContext() {
     ports.unlockedVaultRepository,
     ports.ids,
     ports.clock,
+    ports.vaultDisplayName,
   );
 
   return {

@@ -30,6 +30,7 @@ export function createCoreTestValues() {
   return {
     masterPassword: "master-password" as RawMasterPassword,
     vaultId: "vault-id",
+    vaultDisplayName: "blue-river-4821",
     deviceId: "device-id",
     timestamp: 1_700_000_000_000,
     vaultMasterKey: bytes<VaultMasterKey>(),
@@ -65,6 +66,11 @@ export function createCoreTestValues() {
       ciphertext: b64("encrypted-vault"),
       encryptionNonce: b64("encrypted-vault-nonce"),
     } satisfies SerializedEncrypted<Vault>,
+    decryptedVault: {
+      entries: [],
+      registeredDevices: [],
+      tags: [],
+    } satisfies Vault,
     snapshotSignature: {
       signature: b64("snapshot-signature"),
     } satisfies SerializedSignatureOf<UnsignedVaultSnapshot>,

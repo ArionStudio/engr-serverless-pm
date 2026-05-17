@@ -7,12 +7,14 @@ import type {
   UnsignedVaultSnapshot,
   VaultSnapshot,
 } from "../domain/snapshot/vault-snapshot";
+import type { LocalVaultDescriptor } from "../domain/vault/local-vault-descriptor";
 import type { UnlockedVault } from "../domain/vault/unlocked-vault";
 import type { Vault } from "../domain/vault/vault";
 import type { Bip39Port } from "../ports/bip39.port";
 import type { ClockPort } from "../ports/clock.port";
 import type { CryptoPort } from "../ports/crypto.port";
 import type { IdPort } from "../ports/id.port";
+import type { VaultDisplayNamePort } from "../ports/vault-display-name.port";
 import type { UnlockedVaultRepositoryPort } from "../ports/unlocked-vault-repository.port";
 import type { VaultLocalRepositoryPort } from "../ports/vault-local-repository.port";
 
@@ -23,6 +25,7 @@ export type InitializeVaultCommandParams = {
 
 export type InitializeVaultResult = {
   recoveryMnemonicKey: RecoveryKeyMnemonic;
+  vaultDisplayName: string;
 };
 
 export class InitializeVaultUseCase {
@@ -32,6 +35,7 @@ export class InitializeVaultUseCase {
   private readonly unlockedVaultRepository: UnlockedVaultRepositoryPort;
   private readonly ids: IdPort;
   private readonly clock: ClockPort;
+  private readonly vaultDisplayName: VaultDisplayNamePort;
 
   constructor(
     crypto: CryptoPort,
@@ -40,6 +44,7 @@ export class InitializeVaultUseCase {
     unlockedVaultRepository: UnlockedVaultRepositoryPort,
     ids: IdPort,
     clock: ClockPort,
+    vaultDisplayName: VaultDisplayNamePort,
   ) {
     this.crypto = crypto;
     this.bip39 = bip39;
@@ -47,6 +52,7 @@ export class InitializeVaultUseCase {
     this.unlockedVaultRepository = unlockedVaultRepository;
     this.ids = ids;
     this.clock = clock;
+    this.vaultDisplayName = vaultDisplayName;
   }
 
   async execute(
@@ -55,6 +61,8 @@ export class InitializeVaultUseCase {
     const vaultId = await this.ids.generateId();
     const deviceId = await this.ids.generateId();
     const timestamp = this.clock.now();
+    const vaultDisplayName =
+      await this.vaultDisplayName.generateVaultDisplayName();
 
     const vaultMasterKey = await this.crypto.generateVaultMasterKey();
     const deviceSlotKey = await this.crypto.generateDeviceSlotKey();
@@ -163,7 +171,14 @@ export class InitializeVaultUseCase {
       algorithmSuiteId: this.crypto.algorithmSuite.id,
       masterPasswordSalt,
       localKeysProtectionSalt,
+      devicePublicSignKey: deviceSignKeyPair.publicKey,
       protectedLocalKeys,
+    };
+
+    const localVaultDescriptor: LocalVaultDescriptor = {
+      vaultId,
+      displayName: vaultDisplayName,
+      createdAt: timestamp,
     };
 
     const unlockedVault: UnlockedVault = {
@@ -174,6 +189,9 @@ export class InitializeVaultUseCase {
       devicePrivateSignKey: deviceSignKeyPair.privateKey,
     };
 
+    await this.vaultLocalRepository.saveLocalVaultDescriptor(
+      localVaultDescriptor,
+    );
     await this.vaultLocalRepository.saveDeviceAccessMaterial(
       deviceAccessMaterial,
     );
@@ -182,6 +200,7 @@ export class InitializeVaultUseCase {
 
     return {
       recoveryMnemonicKey,
+      vaultDisplayName,
     };
   }
 }

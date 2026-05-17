@@ -4,16 +4,19 @@ import type { RandomBytes } from "../../domain/crypto/brand-keys";
 import type { DeviceSignKeyPair } from "../../domain/device/brand-keys";
 import type { DeviceAccessMaterial } from "../../domain/device/device-access-material";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
+import type { LocalVaultDescriptor } from "../../domain/vault/local-vault-descriptor";
 import type { UnlockedVault } from "../../domain/vault/unlocked-vault";
 import type { Bip39Port } from "../../ports/bip39.port";
 import type { ClockPort } from "../../ports/clock.port";
 import type { CryptoPort } from "../../ports/crypto.port";
 import type { IdPort } from "../../ports/id.port";
+import type { VaultDisplayNamePort } from "../../ports/vault-display-name.port";
 import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault-local-repository.port";
 import { bytes, createCoreTestValues, type CoreTestValues } from "./values";
 
 export type SavedCoreRecords = {
+  localVaultDescriptor?: LocalVaultDescriptor;
   deviceAccessMaterial?: DeviceAccessMaterial;
   vaultSnapshot?: VaultSnapshot;
   unlockedVault?: UnlockedVault;
@@ -53,16 +56,19 @@ export function createCoreTestPorts(
       async () => values.recoveryVaultMasterKeyProtectionKey,
     ),
     wrapLocalKeysPayload: vi.fn(async () => values.protectedLocalKeys),
-    unwrapLocalKeysPayload: vi.fn(),
+    unwrapLocalKeysPayload: vi.fn(async () => ({
+      deviceSlotKey: values.deviceSlotKey,
+      devicePrivateSignKey: values.devicePrivateSignKey,
+    })),
     wrapVaultMasterKey: vi
       .fn()
       .mockResolvedValueOnce(values.protectedDeviceVaultMasterKey)
       .mockResolvedValueOnce(values.protectedRecoveryVaultMasterKey),
-    unwrapVaultMasterKey: vi.fn(),
+    unwrapVaultMasterKey: vi.fn(async () => values.vaultMasterKey),
     encryptVaultSnapshotContent: vi.fn(async () => values.encryptedVault),
-    decryptVaultSnapshotContent: vi.fn(),
+    decryptVaultSnapshotContent: vi.fn(async () => values.decryptedVault),
     signVaultSnapshot: vi.fn(async () => values.snapshotSignature),
-    verifyVaultSnapshotSignature: vi.fn(),
+    verifyVaultSnapshotSignature: vi.fn(async () => true),
   };
 
   const bip39: Bip39Port = {
@@ -71,15 +77,39 @@ export function createCoreTestPorts(
   };
 
   const vaultLocalRepository: VaultLocalRepositoryPort = {
+    saveLocalVaultDescriptor: vi.fn(async (descriptor) => {
+      saved.localVaultDescriptor = descriptor;
+    }),
+    getLocalVaultDescriptor: vi.fn(),
+    listLocalVaultDescriptors: vi.fn(),
+    removeLocalVaultDescriptor: vi.fn(),
     saveDeviceAccessMaterial: vi.fn(async (deviceAccessMaterial) => {
       saved.deviceAccessMaterial = deviceAccessMaterial;
     }),
-    getDeviceAccessMaterial: vi.fn(),
+    getDeviceAccessMaterial: vi.fn(async (vaultId) => {
+      const deviceAccessMaterial = saved.deviceAccessMaterial;
+
+      if (deviceAccessMaterial === undefined) {
+        return null;
+      }
+
+      return deviceAccessMaterial.vaultId === vaultId
+        ? deviceAccessMaterial
+        : null;
+    }),
     removeDeviceAccessMaterial: vi.fn(),
     saveVaultSnapshot: vi.fn(async (vaultSnapshot) => {
       saved.vaultSnapshot = vaultSnapshot;
     }),
-    getVaultSnapshot: vi.fn(),
+    getVaultSnapshot: vi.fn(async (vaultId) => {
+      const vaultSnapshot = saved.vaultSnapshot;
+
+      if (vaultSnapshot === undefined) {
+        return null;
+      }
+
+      return vaultSnapshot.metadata.id === vaultId ? vaultSnapshot : null;
+    }),
     removeVaultSnapshot: vi.fn(),
   };
 
@@ -87,7 +117,7 @@ export function createCoreTestPorts(
     saveUnlockedVault: vi.fn(async (unlockedVault) => {
       saved.unlockedVault = unlockedVault;
     }),
-    getUnlockedVault: vi.fn(),
+    getUnlockedVault: vi.fn(async () => saved.unlockedVault ?? null),
     removeUnlockedVault: vi.fn(),
   };
 
@@ -102,6 +132,10 @@ export function createCoreTestPorts(
     now: vi.fn(() => values.timestamp),
   };
 
+  const vaultDisplayName: VaultDisplayNamePort = {
+    generateVaultDisplayName: vi.fn(async () => values.vaultDisplayName),
+  };
+
   return {
     crypto,
     bip39,
@@ -109,6 +143,7 @@ export function createCoreTestPorts(
     unlockedVaultRepository,
     ids,
     clock,
+    vaultDisplayName,
     saved,
   };
 }
