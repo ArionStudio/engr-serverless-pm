@@ -6,10 +6,10 @@ import type { Vault } from "../domain/vault/vault";
 import type { CryptoPort } from "../ports/crypto.port";
 import type { UnlockedVaultRepositoryPort } from "../ports/unlocked-vault-repository.port";
 import type { VaultLocalRepositoryPort } from "../ports/vault-local-repository.port";
+import { UnsupportedAlgorithmSuiteError } from "./errors/algorithm-suite.errors";
 import {
   DeviceAccessMaterialNotFoundError,
   DeviceKeySlotNotFoundError,
-  UnsupportedAlgorithmSuiteError,
   VaultSnapshotNotFoundError,
   VaultSnapshotSignatureVerificationFailedError,
   VaultSnapshotSignerNotTrustedError,

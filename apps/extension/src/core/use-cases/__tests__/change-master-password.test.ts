@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createChangeMasterPasswordTestContext } from "../../__tests__/fixtures/change-master-password";
+import { UnsupportedAlgorithmSuiteError } from "../errors/algorithm-suite.errors";
 import {
   DeviceAccessMaterialNotFoundForMasterPasswordChangeError,
   VaultMustBeUnlockedForMasterPasswordChangeError,
@@ -128,6 +129,29 @@ describe("ChangeMasterPasswordUseCase", () => {
     );
 
     expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveDeviceAccessMaterial,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("fails when device access material uses unsupported algorithm suite", async () => {
+    const ctx = createChangeMasterPasswordTestContext();
+    ctx.saved.deviceAccessMaterial = {
+      ...ctx.deviceAccessMaterial,
+      algorithmSuiteId: "spm-unsupported",
+    };
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        currentMasterPassword: ctx.values.masterPassword,
+        newMasterPassword: ctx.values.newMasterPassword,
+      }),
+    ).rejects.toBeInstanceOf(UnsupportedAlgorithmSuiteError);
+
+    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.unwrapLocalKeysPayload).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.wrapLocalKeysPayload).not.toHaveBeenCalled();
     expect(
       ctx.ports.vaultLocalRepository.saveDeviceAccessMaterial,
     ).not.toHaveBeenCalled();

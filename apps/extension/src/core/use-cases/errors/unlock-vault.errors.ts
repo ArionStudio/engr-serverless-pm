@@ -30,20 +30,6 @@ export class VaultSnapshotSignerNotTrustedError extends Error {
   }
 }
 
-export class UnsupportedAlgorithmSuiteError extends Error {
-  constructor(params: {
-    vaultId: string;
-    artifact: string;
-    expectedAlgorithmSuiteId: string;
-    actualAlgorithmSuiteId: string;
-  }) {
-    super(
-      `Unsupported algorithm suite "${params.actualAlgorithmSuiteId}" for ${params.artifact} in vault "${params.vaultId}". Expected "${params.expectedAlgorithmSuiteId}".`,
-    );
-    this.name = "UnsupportedAlgorithmSuiteError";
-  }
-}
-
 export class DeviceKeySlotNotFoundError extends Error {
   constructor(vaultId: string, deviceId: string) {
     super(

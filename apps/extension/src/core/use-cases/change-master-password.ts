@@ -3,6 +3,7 @@ import type { RawMasterPassword } from "../domain/master-password";
 import type { CryptoPort } from "../ports/crypto.port";
 import type { UnlockedVaultRepositoryPort } from "../ports/unlocked-vault-repository.port";
 import type { VaultLocalRepositoryPort } from "../ports/vault-local-repository.port";
+import { UnsupportedAlgorithmSuiteError } from "./errors/algorithm-suite.errors";
 import {
   DeviceAccessMaterialNotFoundForMasterPasswordChangeError,
   VaultMustBeUnlockedForMasterPasswordChangeError,
@@ -43,6 +44,17 @@ export class ChangeMasterPasswordUseCase {
       throw new DeviceAccessMaterialNotFoundForMasterPasswordChangeError(
         params.vaultId,
       );
+    }
+
+    if (
+      deviceAccessMaterial.algorithmSuiteId !== this.crypto.algorithmSuite.id
+    ) {
+      throw new UnsupportedAlgorithmSuiteError({
+        vaultId: params.vaultId,
+        artifact: "device access material",
+        expectedAlgorithmSuiteId: this.crypto.algorithmSuite.id,
+        actualAlgorithmSuiteId: deviceAccessMaterial.algorithmSuiteId,
+      });
     }
 
     const currentLocalRootKey = await this.crypto.deriveLocalRootKey(

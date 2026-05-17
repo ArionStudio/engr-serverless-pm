@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import { UnsupportedAlgorithmSuiteError } from "../errors/algorithm-suite.errors";
 import {
   DeviceAccessMaterialNotFoundError,
   DeviceKeySlotNotFoundError,
-  UnsupportedAlgorithmSuiteError,
   VaultSnapshotNotFoundError,
   VaultSnapshotSignatureVerificationFailedError,
   VaultSnapshotSignerNotTrustedError,
