@@ -19,12 +19,12 @@
 - What it is used for: derive dedicated local protection subkeys for device-private-key protection and sync-credential protection
 - Protected by: derived from the `master password` and local `KDF salt and parameters`; not persisted directly
 
-#### recovery secret
+#### recovery key source and recovery mnemonic key
 
 - Security relevance: recovery of access to the vault
 - Where it lives: user memory / user-kept backup
 - What it is used for: recover access to the `vault master key` and re-establish local access
-- Protected by: system-generated high-entropy secret; not stored by the system
+- Protected by: system-generated high-entropy recovery key source material encoded as a BIP39 mnemonic for user display; neither raw source material nor mnemonic is stored by the system
 
 #### vault master key
 
@@ -33,32 +33,25 @@
 - What it is used for: encrypt and decrypt the canonical `vault snapshot`
 - Protected by: wrapped access slots: per-device wrapped slots and one recovery-wrapped slot
 
-#### device agreement private key
+#### device slot key
 
 - Security relevance: key unwrapping of device access; device trust
-- Where it lives: `IndexedDB`
+- Where it lives: protected inside local `device access material` in `IndexedDB`, active in runtime memory during unlock
 - What it is used for: unwrap this device's access slot for the `vault master key`
-- Protected by: `device agreement protection key`
+- Protected by: local keys protection key derived from the master password
 
 #### device signing private key
 
 - Security relevance: authentication, authorization, and signed update issuance
-- Where it lives: `IndexedDB`
+- Where it lives: protected inside local `device access material` in `IndexedDB`, active in `storage.session` while the vault is unlocked
 - What it is used for: authenticate trusted-device operations and signed vault-related updates
-- Protected by: `device signing protection key`
+- Protected by: local keys protection key derived from the master password while persisted; temporary unlocked-stage storage while active
 
-#### device agreement protection key
+#### local keys protection key
 
-- Security relevance: confidentiality of locally stored device-agreement key material
+- Security relevance: confidentiality of locally stored device access material
 - Where it lives: runtime memory during unlock
-- What it is used for: locally protect the persisted `device agreement private key`
-- Protected by: derived as a dedicated subkey from the `master-password root key`
-
-#### device signing protection key
-
-- Security relevance: confidentiality of locally stored device-signing key material
-- Where it lives: runtime memory during unlock
-- What it is used for: locally protect the persisted `device signing private key`
+- What it is used for: locally protect and unlock the persisted local keys payload containing device slot key and device signing private key
 - Protected by: derived as a dedicated subkey from the `master-password root key`
 
 #### vault snapshot
@@ -72,8 +65,22 @@
 
 - Security relevance: plaintext working state during the unlocked vault stage
 - Where it lives: `storage.session`
-- What it is used for: local unlocked working state used for CRUD, search, copy, and autofill-related reads
+- What it is used for: local unlocked working state used for CRUD, search, copy, and autofill-related reads; currently includes vault id, device id, plaintext vault, `vault master key`, and device private signing key
 - Protected by: temporary storage limited to the unlocked vault stage; removed on vault lock
+
+#### local vault descriptor
+
+- Security relevance: local non-secret vault selection metadata
+- Where it lives: `IndexedDB`
+- What it is used for: list vaults available on the current device before unlock using generated display names
+- Protected by: local storage integrity checks where available; does not contain raw secrets
+
+#### device access material
+
+- Security relevance: local unlock material for one vault on one device
+- Where it lives: `IndexedDB`
+- What it is used for: derive local access from the master password, verify the stored vault snapshot with the device public signing key, and unwrap local keys
+- Protected by: salts are non-secret metadata; local keys payload is wrapped with a master-password-derived local keys protection key
 
 #### entry metadata
 
@@ -117,13 +124,6 @@
 #### enrollment package
 
 [ Need further consultation on topic ]
-
-#### registered device agreement public keys
-
-- Security relevance: device trust and authorization context for key unwrapping
-- Where it lives: local vault state / cloud vault metadata
-- What it is used for: identify authorized device agreement keys for enrolled devices
-- Protected by: authenticated vault metadata / trusted-device update rules
 
 #### registered device signing public keys
 

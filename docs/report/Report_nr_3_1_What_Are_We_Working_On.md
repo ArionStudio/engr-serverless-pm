@@ -17,6 +17,7 @@ The main purpose of this part is to answer the first question: "What are we work
 #### In scope
 
 - Allow the user to create and use a vault locally without creating a cloud account.
+- Allow the user to list local vaults available on the current device.
 - Allow the user to unlock and lock the vault.
 - Allow the user to add, update, and remove password entries.
 - Allow the user to organize password entries using folders and tags.
@@ -161,97 +162,102 @@ Data stores touched: `IndexedDB`, runtime memory.
 
 **PR2 Vault initialization** \
 Trigger: User creates a new vault. \
-Purpose: Creates the initial vault state, generates the recovery secret, encrypts and authenticates the first vault snapshot, and persists it locally. \
-Data stores touched: `IndexedDB`, runtime memory.
-
-**PR3 Vault unlock** \
-Trigger: User enters the master password and requests unlock. \
-Purpose: Loads locally protected device state, derives protection keys, decrypts the stored vault snapshot, and creates the unlocked working state. \
+Purpose: Generates a local vault display name, creates the initial vault state, generates recovery key source material, returns the recovery key as a BIP39 mnemonic for one-time user display, encrypts and signs the first vault snapshot, persists the local vault descriptor, device access material, and snapshot locally, and stores the new unlocked vault state. \
 Data stores touched: `IndexedDB`, `storage.session`, runtime memory.
 
-**PR4 Vault lock** \
+**PR3 List local vaults** \
+Trigger: User opens the extension before selecting a vault to unlock. \
+Purpose: Lists non-secret local vault descriptors available on the current device so the user can choose a vault by generated display name. \
+Data stores touched: `IndexedDB`, runtime memory.
+
+**PR4 Vault unlock** \
+Trigger: User enters the master password and requests unlock. \
+Purpose: Loads device access material and the selected vault snapshot, verifies snapshot authenticity, derives protection keys from the master password, unwraps local keys and the vault master key, decrypts the stored vault snapshot, and creates the unlocked working state. \
+Data stores touched: `IndexedDB`, `storage.session`, runtime memory.
+
+**PR5 Vault lock** \
 Trigger: User locks the vault or the extension locks it automatically. \
 Purpose: Removes unlocked working state from session and runtime storage. Vault changes should already have created and persisted new encrypted vault snapshots before lock. \
 Data stores touched: `storage.session`, runtime memory.
 
-**PR5 Password entry CRUD** \
+**PR6 Password entry CRUD** \
 Trigger: User creates, updates, or removes password entries. \
 Purpose: Modifies the unlocked vault state during the active session, then creates and persists a new encrypted vault snapshot. \
 Data stores touched: `storage.session`, `IndexedDB`, runtime memory.
 
-**PR6 Password search** \
+**PR7 Password search** \
 Trigger: User searches or browses the vault. \
 Purpose: Reads the unlocked vault and returns matching entry metadata. \
 Data stores touched: `storage.session`, runtime memory.
 
-**PR7 Password generation** \
+**PR8 Password generation** \
 Trigger: User requests a generated password. \
 Purpose: Produces a secure random password according to selected rules. \
 Data stores touched: runtime memory.
 
-**PR8 Clipboard copy** \
+**PR9 Clipboard copy** \
 Trigger: User requests copying a credential value. \
 Purpose: Reads the selected secret from the unlocked vault and transfers it to the clipboard for temporary use. \
 Data stores touched: `storage.session`, runtime memory, clipboard.
 
-**PR9 Autofill** \
+**PR10 Autofill** \
 Trigger: User explicitly requests autofill on the current page. \
 Purpose: Searches the unlocked vault, selects the correct credentials, and passes only the required login and password to the content script. \
 Data stores touched: `storage.session`, runtime memory.
 
-**PR10 Setup cloud sync** \
+**PR11 Setup cloud sync** \
 Trigger: User configures the optional sync layer. \
 Purpose: Validates user-provided S3 configuration and AWS access credentials, then stores locally protected sync configuration and credentials. \
 Data stores touched: `IndexedDB`, `AWS S3 bucket`, runtime memory.
 
-**PR11 Sync upload** \
+**PR12 Sync upload** \
 Trigger: User or the extension starts a sync upload. \
 Purpose: Uploads the latest persisted encrypted vault snapshot and related metadata to cloud storage. \
 Data stores touched: `IndexedDB`, `AWS S3 bucket`, runtime memory.
 
-**PR12 Sync download** \
+**PR13 Sync download** \
 Trigger: User or the extension starts a sync download. \
 Purpose: Downloads the latest encrypted vault snapshot and related metadata from cloud storage and integrates it locally. \
 Data stores touched: `IndexedDB`, `AWS S3 bucket`, `storage.session`, runtime memory.
 
-**PR13 Sync conflict resolution** \
+**PR14 Sync conflict resolution** \
 Trigger: Sync detects conflicting local and remote state. \
 Purpose: Compares local and remote vault state, resolves differences, persists the resolved result, and optionally uploads it. \
 Data stores touched: `IndexedDB`, `storage.session`, runtime memory.
 
-**PR14 Remove files from cloud sync** \
+**PR15 Remove files from cloud sync** \
 Trigger: User requests deletion of remote vault files. \
 Purpose: Authenticates to the sync layer and deletes remote vault data while keeping the local vault available. \
 Data stores touched: `IndexedDB`, `AWS S3 bucket`, runtime memory.
 
-**PR15 Remove local sync credentials** \
+**PR16 Remove local sync credentials** \
 Trigger: User disables sync. \
 Purpose: Removes local sync state and locally protected cloud sync credentials after remote sync files are removed. \
 Data stores touched: `IndexedDB`, `AWS S3 bucket`, runtime memory.
 
-**PR16 Device enrollment initialization** \
+**PR17 Device enrollment initialization** \
 Trigger: User registers a new device from an already trusted device. \
 Purpose: Requires further consultation; the exact enrollment package and enrollment secret design is not finalized. \
 Data stores touched: `IndexedDB`, runtime memory.
 
-**PR17 Device enrollment perform** \
+**PR18 Device enrollment perform** \
 Trigger: User enrolls a new device into an existing synced vault. \
 Purpose: Requires further consultation; the exact process for using enrollment material to join an existing vault is not finalized. \
 Data stores touched: `IndexedDB`, `AWS S3 bucket`, runtime memory.
 
-**PR18 Device revocation** \
+**PR19 Device revocation** \
 Trigger: User revokes a registered device. \
 Purpose: Removes the revoked device from the trusted set, rotates access state, and updates the vault. \
 Data stores touched: `IndexedDB`, runtime memory.
 
-**PR19 Vault access recovery** \
-Trigger: User provides the recovery secret and a new local master password. \
+**PR20 Vault access recovery** \
+Trigger: User provides the recovery mnemonic key and a new local master password. \
 Purpose: Recovers access to the vault and re-establishes valid local device state. \
 Data stores touched: `IndexedDB`, runtime memory.
 
-**PR20 Vault deletion** \
+**PR21 Vault deletion** \
 Trigger: User requests deletion of the local vault from the device. \
-Purpose: Removes local vault data, local sync state, protected device state, and session state from the current device. \
+Purpose: Removes local vault descriptors, local vault data, local sync state, device access material, and session state from the current device. \
 Data stores touched: `IndexedDB`, `storage.session`, runtime memory.
 
 ---
@@ -262,7 +268,7 @@ Only places where data is stored or persisted are listed here.
 
 **D1 IndexedDB** \
 Type: local persistent storage. \
-What is stored there: Encrypted vault snapshot, protected device state, encrypted cloud sync credentials, local sync state, and related vault metadata. \
+What is stored there: Local vault descriptors, encrypted vault snapshots, device access material, encrypted cloud sync credentials, local sync state, and related vault metadata. \
 Trust level: untrusted local storage. \
 Persistence: long-lived.
 
@@ -308,7 +314,7 @@ Why it matters: It is the canonical persisted encrypted vault state.
 **A4 Unlocked vault** \
 Security relevance: confidentiality and integrity. \
 Where it exists: `storage.session`, runtime memory during active use. \
-Why it matters: It contains the plaintext working state used for search, CRUD, reveal, copy, and autofill.
+Why it matters: It contains the plaintext working state and active vault operation keys used for search, CRUD, reveal, copy, autofill, snapshot encryption, and snapshot signing.
 
 **A5 Device private keys** \
 Security relevance: confidentiality, authenticity, and authorization. \
@@ -320,31 +326,32 @@ Security relevance: confidentiality and authorization. \
 Where it exists: encrypted in `IndexedDB`, temporarily in runtime memory during sync setup and sync operations. \
 Why it matters: They authenticate to the sync layer and bind the device to the correct cloud location.
 
-**A7 Recovery secret** \
+**A7 Recovery key source and recovery mnemonic key** \
 Security relevance: confidentiality and recovery control. \
 Where it exists: user memory or user-kept backup only. \
-Why it matters: It allows recovery of access to the vault when the local master password is forgotten.
+Why it matters: The source key unwraps the recovery slot for the vault master key, while the BIP39 mnemonic is the user-facing backup representation.
 
 **A8 Enrollment package and enrollment secret** \
 Security relevance: confidentiality, authenticity, and device trust bootstrap. \
 Where it exists: user transfer channel, new-device input, and transient runtime handling. \
 Why it matters: They bootstrap a new trusted device into an existing synced vault.
 
-**A9 Vault metadata and registered device public keys** \
+**A9 Vault metadata, local vault descriptors, and registered device public keys** \
 Security relevance: integrity and authenticity. \
 Where it exists: local persisted metadata and synced metadata. \
-Why it matters: They define trusted devices, cryptographic context, versioning, and sync state.
+Why it matters: They define local vault selection, trusted devices, cryptographic context, versioning, and sync state.
 
 ### 6.1 Asset-to-store mapping
 
 Key asset-to-store mappings are:
 
-- `A2 Vault master key`: Stored only in wrapped form inside local and synced vault state. Used by `PR3 Vault unlock`, `PR11 Sync upload`, `PR12 Sync download`, `PR17 Device enrollment perform`, `PR18 Device revocation`, and `PR19 Vault access recovery`. Crosses trust boundaries: yes, because wrapped forms exist in `IndexedDB` and `AWS S3 bucket`.
-- `A3 Vault snapshot`: Stored in `D1 IndexedDB` and optionally `D3 AWS S3 bucket`. Used by `PR2 Vault initialization`, `PR3 Vault unlock`, `PR5 Password entry CRUD`, `PR11 Sync upload`, `PR12 Sync download`, and `PR13 Sync conflict resolution`. Crosses trust boundaries: yes.
-- `A4 Unlocked vault`: Stored in `D2 storage.session` and active `D4 Runtime memory`. Used by `PR3 Vault unlock`, `PR4 Vault lock`, `PR5 Password entry CRUD`, `PR6 Password search`, `PR8 Clipboard copy`, and `PR9 Autofill`. Crosses trust boundaries: yes, especially when secrets are copied to clipboard or sent to content scripts.
-- `A5 Device private keys`: Persisted in protected form in `D1 IndexedDB` and used in `D4 Runtime memory` during `PR3 Vault unlock`, `PR10 Setup cloud sync`, `PR17 Device enrollment perform`, `PR18 Device revocation`, and `PR19 Vault access recovery`. Crosses trust boundaries: no in plaintext, but protected forms are stored across a boundary.
-- `A6 Cloud sync credentials`: Stored encrypted in `D1 IndexedDB` and used in `D4 Runtime memory` during `PR10 Setup cloud sync`, `PR11 Sync upload`, `PR12 Sync download`, `PR14 Remove files from cloud sync`, and `PR15 Remove local sync credentials`. Crosses trust boundaries: yes, because they are used to authenticate to external cloud services.
-- `A8 Enrollment package and enrollment secret`: Exists outside normal local storage in the user transfer channel and new-device input path. Used by `PR16 Device enrollment initialization` and `PR17 Device enrollment perform`. Crosses trust boundaries: yes, because it moves between devices and the user-controlled transfer channel.
+- `A2 Vault master key`: Stored only in wrapped form inside local and synced vault state, and active in `D2 storage.session` only while unlocked. Used by `PR4 Vault unlock`, `PR12 Sync upload`, `PR13 Sync download`, `PR18 Device enrollment perform`, `PR19 Device revocation`, and `PR20 Vault access recovery`. Crosses trust boundaries: yes, because wrapped forms exist in `IndexedDB` and `AWS S3 bucket`, and active form exists in session state during unlock.
+- `A3 Vault snapshot`: Stored in `D1 IndexedDB` and optionally `D3 AWS S3 bucket`. Used by `PR2 Vault initialization`, `PR4 Vault unlock`, `PR6 Password entry CRUD`, `PR12 Sync upload`, `PR13 Sync download`, and `PR14 Sync conflict resolution`. Crosses trust boundaries: yes.
+- `A4 Unlocked vault`: Stored in `D2 storage.session` and active `D4 Runtime memory`. Used by `PR2 Vault initialization`, `PR4 Vault unlock`, `PR5 Vault lock`, `PR6 Password entry CRUD`, `PR7 Password search`, `PR9 Clipboard copy`, and `PR10 Autofill`. Crosses trust boundaries: yes, especially when secrets are copied to clipboard or sent to content scripts.
+- `A5 Device private keys`: Persisted in protected form in `D1 IndexedDB` and used in `D4 Runtime memory` during `PR4 Vault unlock`, `PR11 Setup cloud sync`, `PR18 Device enrollment perform`, `PR19 Device revocation`, and `PR20 Vault access recovery`. Crosses trust boundaries: no in plaintext, but protected forms are stored across a boundary.
+- `A6 Cloud sync credentials`: Stored encrypted in `D1 IndexedDB` and used in `D4 Runtime memory` during `PR11 Setup cloud sync`, `PR12 Sync upload`, `PR13 Sync download`, `PR15 Remove files from cloud sync`, and `PR16 Remove local sync credentials`. Crosses trust boundaries: yes, because they are used to authenticate to external cloud services.
+- `A8 Enrollment package and enrollment secret`: Exists outside normal local storage in the user transfer channel and new-device input path. Used by `PR17 Device enrollment initialization` and `PR18 Device enrollment perform`. Crosses trust boundaries: yes, because it moves between devices and the user-controlled transfer channel.
+- `A9 Vault metadata, local vault descriptors, and registered device public keys`: Stored in `D1 IndexedDB` and optionally `D3 AWS S3 bucket` for synced vault metadata. Used by `PR2 Vault initialization`, `PR3 List local vaults`, `PR4 Vault unlock`, `PR13 Sync download`, and device-management flows. Crosses trust boundaries: yes.
 
 ---
 
@@ -431,13 +438,13 @@ This section describes security-relevant data movement between external entities
   Protected by / validated by: UI confirmation, request validation, and sender validation at the service worker boundary.
 
 - `F2 Extension service worker -> IndexedDB`
-  Data transferred: Encrypted vault snapshot, protected device state, encrypted cloud sync credentials, local sync state.
+  Data transferred: Local vault descriptors, encrypted vault snapshots, device access material, encrypted cloud sync credentials, local sync state.
   Why the flow exists: Persists local state.
   Crosses trust boundary: yes.
   Protected by / validated by: Encryption, authentication, and structural validation on later reads.
 
 - `F3 IndexedDB -> Extension service worker`
-  Data transferred: Local password-protected device state, encrypted vault snapshot, sync configuration, and metadata.
+  Data transferred: Local vault descriptors, device access material, encrypted vault snapshot, sync configuration, and metadata.
   Why the flow exists: Supports unlock, sync, recovery, and device-management operations.
   Crosses trust boundary: yes.
   Protected by / validated by: Authenticity checks, structure checks, and freshness checks before use.
@@ -490,12 +497,12 @@ This section summarizes the most important flows that should be represented by t
 
 **S1 Local vault initialization** \
 Main components involved: `User`, `Popup`, `Options page`, `Extension service worker`, `IndexedDB`. \
-Main data involved: Master password, recovery secret, device-local keys, initial vault snapshot. \
+Main data involved: Master password, recovery mnemonic key, generated vault display name, device-local keys, initial vault snapshot. \
 Why it matters for security: Establishes the initial cryptographic trust model and persisted state.
 
 **S2 Vault unlock and lock** \
 Main components involved: `User`, `Popup`, `Extension service worker`, `IndexedDB`, `storage.session`. \
-Main data involved: Master password, protected device state, vault snapshot, unlocked vault. \
+Main data involved: Master password, device access material, vault snapshot, vault master key, device private signing key, unlocked vault. \
 Why it matters for security: This scenario moves the system between encrypted-at-rest and actively unlocked states.
 
 **S3 Local CRUD and search** \
@@ -525,7 +532,7 @@ Why it matters for security: Controls which devices are allowed to participate i
 
 **S8 Access recovery and vault deletion** \
 Main components involved: `User`, `Options page`, `Extension service worker`, `IndexedDB`, `storage.session`. \
-Main data involved: Recovery secret, new master password, protected device state, local vault state. \
+Main data involved: Recovery mnemonic key, new master password, device access material, local vault state. \
 Why it matters for security: Handles loss-of-access and destructive local cleanup operations.
 
 ---
@@ -550,7 +557,7 @@ This diagram should show the full password-manager system at the highest level, 
 #### Key flows shown
 
 - user-driven vault setup and unlock
-- local vault persistence and loading
+- local vault descriptor listing, persistence, and loading
 - optional cloud sync interaction
 - explicit autofill and clipboard interaction
 
@@ -569,7 +576,7 @@ Diagram pending.
 
 #### Purpose
 
-This diagram should detail local vault creation, unlock, lock, local CRUD operations, search, and local reads that happen without cloud interaction.
+This diagram should detail local vault creation, local vault listing, unlock, lock, local CRUD operations, search, and local reads that happen without cloud interaction.
 
 #### Elements included
 
@@ -580,8 +587,8 @@ This diagram should detail local vault creation, unlock, lock, local CRUD operat
 
 #### Key flows shown
 
-- vault initialization and recovery-secret display
-- vault unlock and lock
+- vault initialization, generated vault display name, and recovery mnemonic display
+- local vault listing, vault unlock, and vault lock
 - local entry CRUD, search, and reveal operations
 
 #### Diagram metadata
