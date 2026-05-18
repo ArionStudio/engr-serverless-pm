@@ -1,6 +1,6 @@
 import type { Device } from "../device/device";
-import type { PasswordEntry } from "../password-entry";
-import type { Tag } from "../tag";
+import type { PasswordEntry } from "../entry/password-entry.type";
+import type { Tag } from "../entry/tag.type";
 
 export interface Vault {
   entries: PasswordEntry[];
