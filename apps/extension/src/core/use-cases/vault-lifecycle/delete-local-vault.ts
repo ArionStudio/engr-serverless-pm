@@ -1,6 +1,6 @@
-import type { UnlockedVaultRepositoryPort } from "../ports/unlocked-vault-repository.port";
-import type { VaultLocalRepositoryPort } from "../ports/vault-local-repository.port";
-import { VaultMustBeUnlockedForLocalDeletionError } from "./errors/delete-local-vault.errors";
+import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
+import type { VaultLocalRepositoryPort } from "../../ports/vault-local-repository.port";
+import { VaultMustBeUnlockedForLocalDeletionError } from "../__errors/delete-local-vault.errors";
 
 export type DeleteLocalVaultCommandParams = {
   vaultId: string;

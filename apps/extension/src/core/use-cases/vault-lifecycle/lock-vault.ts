@@ -1,4 +1,4 @@
-import type { UnlockedVaultRepositoryPort } from "../ports/unlocked-vault-repository.port";
+import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
 
 export class LockVaultUseCase {
   private readonly unlockedVaultRepository: UnlockedVaultRepositoryPort;

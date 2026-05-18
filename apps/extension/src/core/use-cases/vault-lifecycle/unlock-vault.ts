@@ -1,19 +1,19 @@
-import type { LocalKeysPayload } from "../domain/local-protection/local-protection.type";
-import type { RawMasterPassword } from "../domain/master-password";
-import type { DeviceKeySlot } from "../domain/snapshot/key-slot";
-import type { UnlockedVault } from "../domain/vault/unlocked-vault";
-import type { Vault } from "../domain/vault/vault";
-import type { CryptoPort } from "../ports/crypto.port";
-import type { UnlockedVaultRepositoryPort } from "../ports/unlocked-vault-repository.port";
-import type { VaultLocalRepositoryPort } from "../ports/vault-local-repository.port";
-import { UnsupportedAlgorithmSuiteError } from "./errors/algorithm-suite.errors";
+import type { LocalKeysPayload } from "../../domain/local-protection/local-protection.type";
+import type { RawMasterPassword } from "../../domain/master-password";
+import type { DeviceKeySlot } from "../../domain/snapshot/key-slot";
+import type { UnlockedVault } from "../../domain/vault/unlocked-vault";
+import type { Vault } from "../../domain/vault/vault";
+import type { CryptoPort } from "../../ports/crypto.port";
+import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
+import type { VaultLocalRepositoryPort } from "../../ports/vault-local-repository.port";
+import { UnsupportedAlgorithmSuiteError } from "../__errors/algorithm-suite.errors";
 import {
   DeviceAccessMaterialNotFoundError,
   DeviceKeySlotNotFoundError,
   VaultSnapshotNotFoundError,
   VaultSnapshotSignatureVerificationFailedError,
   VaultSnapshotSignerNotTrustedError,
-} from "./errors/unlock-vault.errors";
+} from "../__errors/unlock-vault.errors";
 
 export type UnlockVaultCommandParams = {
   vaultId: string;

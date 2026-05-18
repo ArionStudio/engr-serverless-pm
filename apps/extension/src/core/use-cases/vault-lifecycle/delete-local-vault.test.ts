@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
-import { DeleteLocalVaultUseCase } from "../delete-local-vault";
-import { VaultMustBeUnlockedForLocalDeletionError } from "../errors/delete-local-vault.errors";
+import { DeleteLocalVaultUseCase } from "./delete-local-vault";
+import { VaultMustBeUnlockedForLocalDeletionError } from "../__errors/delete-local-vault.errors";
 
 function createContext() {
   const values = createCoreTestValues();

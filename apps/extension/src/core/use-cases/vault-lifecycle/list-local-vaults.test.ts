@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { LocalVaultDescriptor } from "../../domain/vault/local-vault-descriptor";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
-import { ListLocalVaultsUseCase } from "../list-local-vaults";
+import { ListLocalVaultsUseCase } from "./list-local-vaults";
 
 function createContext() {
   const values = createCoreTestValues();
