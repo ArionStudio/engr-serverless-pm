@@ -1,4 +1,4 @@
-1. Vault initialization
+1. [x] Vault initialization
    - starts from: `user`
    - uses: `Popup`, `Options page`, `Extension service workers`, `indexedDB`
    - flow:
@@ -15,7 +15,7 @@
    11. `extension service worker` returns vault creation success, generated vault display name, and the `recovery mnemonic key` to `options page` for one-time display
    12. `options page` shows vault creation success and displays the generated vault display name and `recovery mnemonic key` with backup instructions to `user`
 
-2. List local vaults
+2. [x] List local vaults
    - starts from: `user`
    - uses: `Popup`, `Extension service workers`, `indexedDB`
    - flow:
@@ -25,7 +25,7 @@
    4. `extension service worker` returns non-secret vault descriptors to `popup`
    5. `popup` shows generated vault display names so the user can choose which vault to unlock
 
-3. Vault unlock
+3. [x] Vault unlock
    - starts from: `user`
    - uses: `Popup`, `Extension service workers`, `indexedDB`, `storage.session`
    - flow:
@@ -41,7 +41,7 @@
    10. `extension service worker` confirms unlock success to `popup`
    11. `popup` shows unlocked vault state and search UI
 
-4. Browse and search password entries
+4. [x] Browse and search password entries
    - starts from: `user`
    - uses: `Popup`, `Extension service workers`, `storage.session`
    - flow:
@@ -51,7 +51,7 @@
    4. `extension service worker` returns matching entry metadata to `popup`
    5. `popup` shows matching entries to `user`
 
-5. Read password entry
+5. [x] Read password entry
    - starts from: `user`
    - uses: `Popup`, `Extension service workers`, `storage.session`
    - flow:
@@ -61,7 +61,7 @@
    4. `extension service worker` sends `entry details` to `popup`
    5. `popup` shows `entry details`
 
-6. Add new password entry
+6. [x] Add new password entry
    - starts from: `user`
    - uses: `Popup`, `Extension service workers`, `storage.session`, `indexedDB`
    - flow:
@@ -76,7 +76,7 @@
    9. `extension service worker` confirms success to `popup`
    10. `popup` shows updated vault state
 
-7. Update password entry
+7. [x] Update password entry
    - starts from: `user`
    - uses: `Popup`, `Extension service workers`, `storage.session`, `indexedDB`
    - flow:
@@ -91,7 +91,7 @@
    9. `extension service worker` confirms success to `popup`
    10. `popup` shows updated entry
 
-8. Remove password entry
+8. [x] Remove password entry
    - starts from: `user`
    - uses: `Popup`, `Extension service workers`, `storage.session`, `indexedDB`
    - flow:
@@ -106,7 +106,7 @@
    9. `extension service worker` confirms success to `popup`
    10. `popup` shows updated vault state
 
-9. Password generation
+9. [ ] Password generation
    - starts from: `user`
    - uses: `Popup`, `Extension service workers`
    - flow:
@@ -117,7 +117,7 @@
    5. `extension service worker` sends generated password back to `popup`
    6. `popup` shows generated password and allows `user` to accept it into a password entry form
 
-10. Reveal password
+10. [x] Reveal password
 
 - starts from: `user`
 - uses: `Popup`, `Extension service workers`, `storage.session`
@@ -129,7 +129,7 @@
 4.  `extension service worker` sends password value to `popup`
 5.  `popup` reveals the password value to `user`
 
-6.  Copy to clipboard
+6.  [ ] Copy to clipboard
     - starts from: `user`
     - uses: `Popup`, `Extension service workers`, `storage.session`, `Clipboard`
     - flow:
@@ -141,7 +141,7 @@
     6. `popup` shows copy confirmation
     7. `popup` schedules clipboard clear after configured timeout
 
-7.  Autofill password on page
+7.  [ ] Autofill password on page
     - starts from: `user`
     - uses: `Popup`, `Target web page`, `Content scripts`, `Extension service workers`, `storage.session`
     - flow:
@@ -156,7 +156,7 @@
     9. `extension service worker` reads only the login and password fields needed for autofill and sends them with fill instructions to `content script`
     10. `content script` fills the `Web Page` using the provided fill instructions
 
-8.  Setup sync layer
+8.  [ ] Setup sync layer
     - starts from: `user`
     - uses: `Options page`, `S3 bucket`, `indexedDB`, `Extension service workers`
     - flow:
@@ -171,7 +171,7 @@
     7. `extension service worker` creates initial local sync state
     8. `options page` informs `user` that sync setup succeeded or failed
 
-9.  Send update to sync layer
+9.  [ ] Send update to sync layer
     - starts from: `user` / `extension service worker`
     - uses: `Popup`, `S3 bucket`, `indexedDB`, `Extension service workers`
     - note: password entry changes persist a new encrypted `vault snapshot` to `indexedDB`; sync upload uses the latest persisted snapshot
@@ -184,7 +184,7 @@
     6. `extension service worker` updates local sync state in `indexedDB`
     7. [ `popup` ] receives sync result from `extension service worker`
 
-10. Get update from sync layer
+10. [ ] Get update from sync layer
     - starts from: `user` / `extension service worker`
     - uses: `Popup`, `S3 bucket`, `indexedDB`, `storage.session`, `Extension service workers`
     - flow:
@@ -198,7 +198,7 @@
     8. if conflict exists, `extension service worker` starts conflict resolution flow
     9. [ `popup` ] receives update result from `extension service worker`
 
-11. Resolve conflicts between cloud and local
+11. [ ] Resolve conflicts between cloud and local
     - starts from: `extension service worker`
     - uses: `Popup`, `indexedDB`, `storage.session`, `Extension service workers`
     - flow:
@@ -214,13 +214,13 @@
     9. `extension service worker` stores the resolved unlocked vault in `storage.session`
     10. `extension service worker` starts "Send update to sync layer" if resolution changed the vault state
 
-12. New device enrollment
+12. [ ] New device enrollment
     - starts from: `user`
     - uses: `Options page`, `S3 bucket`, `indexedDB`, `Extension service workers`
     - flow:
       [ Need further consultation on topic ]
 
-13. Device revocation
+13. [ ] Device revocation
     - starts from: `user`
     - uses: `Options page`, `indexedDB`, `Extension service workers`
     - flow:
@@ -234,7 +234,7 @@
     8. `extension service worker` starts "Send update to sync layer"
     9. `options page` informs `user` that the revoked device should not receive future updates but may still retain previously available local data
 
-14. Vault access recovery using recovery mnemonic key
+14. [ ] Vault access recovery using recovery mnemonic key
     - starts from: `user`
     - uses: `Options page`, `indexedDB`, `Extension service workers`
     - flow:
@@ -250,7 +250,7 @@
     10. [ if sync is enabled ] `extension service worker` may start "Send update to sync layer"
     11. `options page` informs `user` that local access was recovered
 
-15. Change master password
+15. [x] Change master password
     - starts from: `user`
     - uses: `Options page`, `indexedDB`, `Extension service workers`
     - flow:
@@ -264,7 +264,7 @@
     8. `extension service worker` stores updated local state in `indexedDB`
     9. `options page` informs `user` that the master password was changed on the current device
 
-16. Vault lock
+16. [x] Vault lock
     - starts from: `user` / `extension service worker`
     - uses: `Popup`, `indexedDB`, `storage.session`, `Extension service workers`
     - flow:
@@ -275,7 +275,7 @@
     5. `extension service worker` clears temporary runtime state
     6. [ `popup` ] receives locked state confirmation from `extension service worker`
 
-17. Remove files from cloud sync
+17. [ ] Remove files from cloud sync
     - starts from: `user`
     - uses: `Options page`, `S3 bucket`, `indexedDB`, `Extension service workers`
     - flow:
@@ -287,7 +287,7 @@
     6. `extension service worker` deletes remote vault data from `S3 bucket`
     7. `options page` informs `user` that files stored in cloud sync were removed, while the local vault and local sync configuration remain available
 
-18. Delete vault
+18. [x] Delete vault
     - starts from: `user`
     - uses: `Options page`, `indexedDB`, `storage.session`, `Extension service workers`
     - flow:
@@ -300,7 +300,7 @@
     7. `extension service worker` clears temporary runtime state
     8. `options page` informs `user` that the local vault was deleted from the device
 
-19. Remove local sync credentials
+19. [ ] Remove local sync credentials
     - starts from: `user`
     - uses: `Options page`, `S3 bucket`, `indexedDB`, `Extension service workers`
     - flow:
