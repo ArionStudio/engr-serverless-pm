@@ -1,4 +1,4 @@
-import { InitializeVaultUseCase } from "../../use-cases/initialize-vault";
+import { InitializeVaultUseCase } from "../../use-cases/vault-lifecycle/initialize-vault";
 import { createCoreTestPorts } from "./ports";
 import { createCoreTestValues } from "./values";
 

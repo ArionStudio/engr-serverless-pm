@@ -1,13 +1,13 @@
-import type { DeviceAccessMaterial } from "../domain/device/device-access-material";
-import type { RawMasterPassword } from "../domain/master-password";
-import type { CryptoPort } from "../ports/crypto.port";
-import type { UnlockedVaultRepositoryPort } from "../ports/unlocked-vault-repository.port";
-import type { VaultLocalRepositoryPort } from "../ports/vault-local-repository.port";
-import { UnsupportedAlgorithmSuiteError } from "./errors/algorithm-suite.errors";
+import type { DeviceAccessMaterial } from "../../domain/device/device-access-material";
+import type { RawMasterPassword } from "../../domain/master-password";
+import type { CryptoPort } from "../../ports/crypto.port";
+import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
+import type { VaultLocalRepositoryPort } from "../../ports/vault-local-repository.port";
+import { UnsupportedAlgorithmSuiteError } from "../__errors/algorithm-suite.errors";
 import {
   DeviceAccessMaterialNotFoundForMasterPasswordChangeError,
   VaultMustBeUnlockedForMasterPasswordChangeError,
-} from "./errors/change-master-password.errors";
+} from "../__errors/change-master-password.errors";
 
 export type ChangeMasterPasswordCommandParams = {
   vaultId: string;

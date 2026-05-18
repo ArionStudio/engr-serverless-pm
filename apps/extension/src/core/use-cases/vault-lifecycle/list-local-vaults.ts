@@ -1,5 +1,5 @@
-import type { LocalVaultDescriptor } from "../domain/vault/local-vault-descriptor";
-import type { VaultLocalRepositoryPort } from "../ports/vault-local-repository.port";
+import type { LocalVaultDescriptor } from "../../domain/vault/local-vault-descriptor";
+import type { VaultLocalRepositoryPort } from "../../ports/vault-local-repository.port";
 
 export type ListLocalVaultsResult = {
   vaults: LocalVaultDescriptor[];

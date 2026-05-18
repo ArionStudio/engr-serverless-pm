@@ -1,6 +1,6 @@
 import type { DeviceAccessMaterial } from "../../domain/device/device-access-material";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
-import { UnlockVaultUseCase } from "../../use-cases/unlock-vault";
+import { UnlockVaultUseCase } from "../../use-cases/vault-lifecycle/unlock-vault";
 import { createCoreTestPorts } from "./ports";
 import { createCoreTestValues } from "./values";
 

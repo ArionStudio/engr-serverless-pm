@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
-import { LockVaultUseCase } from "../lock-vault";
+import { LockVaultUseCase } from "./lock-vault";
 
 function createContext() {
   const values = createCoreTestValues();

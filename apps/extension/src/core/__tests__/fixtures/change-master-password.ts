@@ -1,5 +1,5 @@
 import type { DeviceAccessMaterial } from "../../domain/device/device-access-material";
-import { ChangeMasterPasswordUseCase } from "../../use-cases/change-master-password";
+import { ChangeMasterPasswordUseCase } from "../../use-cases/vault-lifecycle/change-master-password";
 import { createCoreTestPorts } from "./ports";
 import { createCoreTestValues } from "./values";
 import { vi } from "vitest";

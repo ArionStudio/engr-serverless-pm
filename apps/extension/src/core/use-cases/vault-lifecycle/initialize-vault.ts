@@ -1,22 +1,22 @@
-import type { DeviceAccessMaterial } from "../domain/device/device-access-material";
-import type { Device } from "../domain/device/device";
-import type { LocalKeysPayload } from "../domain/local-protection/local-protection.type";
-import type { RawMasterPassword } from "../domain/master-password";
-import type { RecoveryKeyMnemonic } from "../domain/recovery/bip39-mnemonic";
+import type { DeviceAccessMaterial } from "../../domain/device/device-access-material";
+import type { Device } from "../../domain/device/device";
+import type { LocalKeysPayload } from "../../domain/local-protection/local-protection.type";
+import type { RawMasterPassword } from "../../domain/master-password";
+import type { RecoveryKeyMnemonic } from "../../domain/recovery/bip39-mnemonic";
 import type {
   UnsignedVaultSnapshot,
   VaultSnapshot,
-} from "../domain/snapshot/vault-snapshot";
-import type { LocalVaultDescriptor } from "../domain/vault/local-vault-descriptor";
-import type { UnlockedVault } from "../domain/vault/unlocked-vault";
-import type { Vault } from "../domain/vault/vault";
-import type { Bip39Port } from "../ports/bip39.port";
-import type { ClockPort } from "../ports/clock.port";
-import type { CryptoPort } from "../ports/crypto.port";
-import type { IdPort } from "../ports/id.port";
-import type { VaultDisplayNamePort } from "../ports/vault-display-name.port";
-import type { UnlockedVaultRepositoryPort } from "../ports/unlocked-vault-repository.port";
-import type { VaultLocalRepositoryPort } from "../ports/vault-local-repository.port";
+} from "../../domain/snapshot/vault-snapshot";
+import type { LocalVaultDescriptor } from "../../domain/vault/local-vault-descriptor";
+import type { UnlockedVault } from "../../domain/vault/unlocked-vault";
+import type { Vault } from "../../domain/vault/vault";
+import type { Bip39Port } from "../../ports/bip39.port";
+import type { ClockPort } from "../../ports/clock.port";
+import type { CryptoPort } from "../../ports/crypto.port";
+import type { IdPort } from "../../ports/id.port";
+import type { VaultDisplayNamePort } from "../../ports/vault-display-name.port";
+import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
+import type { VaultLocalRepositoryPort } from "../../ports/vault-local-repository.port";
 
 export type InitializeVaultCommandParams = {
   masterPassword: RawMasterPassword;
