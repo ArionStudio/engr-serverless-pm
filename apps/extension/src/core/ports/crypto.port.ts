@@ -30,7 +30,7 @@ export interface CryptoPort {
   algorithmSuite: AlgorithmSuite;
 
   // Randomness
-  generateRandomBytes: () => Promise<RandomBytes>;
+  generateRandomBytes: (byteLength: number) => Promise<RandomBytes>;
 
   // Key generation
   generateDeviceSignKeyPair: () => Promise<DeviceSignKeyPair>;
