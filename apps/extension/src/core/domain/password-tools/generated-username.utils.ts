@@ -23,7 +23,10 @@ export async function generateUsernameValue(
       GENERATED_USERNAME_WORDS[
         await pickIndex(GENERATED_USERNAME_WORDS.length)
       ];
-    words.push(settings.capitalize ? capitalizeWord(word) : word);
+    const usernameWord = normalizeUsernameWord(word);
+    words.push(
+      settings.capitalize ? capitalizeWord(usernameWord) : usernameWord,
+    );
   }
 
   if (!settings.includeNumber) {
@@ -47,4 +50,8 @@ async function generateUsernameNumber(
 
 function capitalizeWord(word: string): string {
   return `${word.charAt(0).toUpperCase()}${word.slice(1)}`;
+}
+
+function normalizeUsernameWord(word: string): string {
+  return word.toLowerCase().replaceAll(/[^a-z0-9]/g, "");
 }

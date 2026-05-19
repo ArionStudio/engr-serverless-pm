@@ -64,6 +64,37 @@ describe("GenerateUsernameUseCase", () => {
     });
   });
 
+  it("keeps generated usernames alphanumeric when source words contain separators", async () => {
+    const hyphenatedSourceWordIndexes = [2008, 2527, 6639, 7747];
+
+    for (const wordIndex of hyphenatedSourceWordIndexes) {
+      const ctx = createContext([wordIndex, 0]);
+
+      const result = await ctx.useCase.execute({
+        includeNumber: false,
+      });
+
+      expect(result.username).toMatch(/^[a-z0-9]+$/);
+      expect(result.username.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("keeps generated usernames alphanumeric when source words contain separators and capitalization is enabled", async () => {
+    const hyphenatedSourceWordIndexes = [2008, 2527, 6639, 7747];
+
+    for (const wordIndex of hyphenatedSourceWordIndexes) {
+      const ctx = createContext([wordIndex, 0]);
+
+      const result = await ctx.useCase.execute({
+        capitalize: true,
+        includeNumber: false,
+      });
+
+      expect(result.username).toMatch(/^[A-Za-z0-9]+$/);
+      expect(result.username.length).toBeGreaterThan(0);
+    }
+  });
+
   it("rejects settings that do not match the username generator schema", async () => {
     const ctx = createContext();
 
