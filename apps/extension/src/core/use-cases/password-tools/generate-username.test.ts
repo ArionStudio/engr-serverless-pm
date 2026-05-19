@@ -64,6 +64,20 @@ describe("GenerateUsernameUseCase", () => {
     });
   });
 
+  it("keeps generated usernames alphanumeric when source words contain separators", async () => {
+    const hyphenatedSourceWordIndexes = [2008, 2527, 6639, 7747];
+
+    for (const wordIndex of hyphenatedSourceWordIndexes) {
+      const ctx = createContext([wordIndex, 0]);
+
+      const result = await ctx.useCase.execute({
+        includeNumber: false,
+      });
+
+      expect(result.username).toMatch(/^[a-z0-9]+$/);
+    }
+  });
+
   it("rejects settings that do not match the username generator schema", async () => {
     const ctx = createContext();
 
