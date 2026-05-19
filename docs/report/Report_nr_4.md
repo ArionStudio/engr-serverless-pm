@@ -17,3 +17,51 @@ Rework recovery as recovery-authorized device enrollment.
 In this model, the recovery key is used to recover the `vault master key`, and then the current device is added again as a trusted device with fresh local device access material.
 
 The important flaw is that recovery is not only recovery. It is also an enrollment/trust update operation.
+
+## 2. Session Vault Storage Budget
+
+### Current Limits
+
+`storage.session` hard limit is treated as `10 MiB`.
+
+For compatibility calculations we reserve `1 MiB` of headroom, so the working budget for the unlocked vault payload is `9 MiB`.
+
+Current password entry limits:
+
+- `id`: string, `1..128` characters
+- `password`: string, `1..512` characters
+- `login`: string, `0..128` characters
+- `tags`: up to `10` numeric tag ids
+- `sanitizedUrl`: string, `1..512` characters
+
+Current tag limits:
+
+- `id`: non-negative integer
+- `name`: string, `1..32` characters
+
+Stored entry URLs are sanitized before saving:
+
+- query string is stripped
+- hash is stripped
+- protocol, host, port, and path are kept
+
+### Compatibility Baseline
+
+For the current data model we calculated that the hard supported password entry baseline is `5000` worst-case entries.
+
+This is not only a one-time measurement. Future application versions should continue to pass this `5000` entry baseline so older vaults that fit the current model remain usable after upgrades.
+
+The compatibility test uses:
+
+- `5000` worst-case password entries
+- `250` max-size vault tags
+- `20` registered devices
+- session vault wrapper data, including vault id, device id, vault master key, and device private signing key placeholders
+
+Current measured result:
+
+- `5000` worst-case entries use about `6.63 MiB`
+- this is about `66.30%` of the `10 MiB` hard session limit
+- current estimated max within the `9 MiB` working budget is `6778` worst-case entries
+
+This means the current `5000` entry baseline has about `1778` worst-case entries of margin.

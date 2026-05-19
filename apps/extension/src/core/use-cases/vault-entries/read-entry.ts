@@ -1,3 +1,46 @@
+import type { PasswordEntry } from "../../domain/entry/password-entry.type";
+import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
+import { PasswordEntryNotFoundError } from "../__errors/vault-entry.errors";
+import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
+
+export type ReadEntryCommandParams = {
+  vaultId: string;
+  entryId: string;
+};
+
+export type ReadEntryResult = {
+  entry: Omit<PasswordEntry, "password">;
+};
+
 export class ReadEntryUseCase {
-  constructor() {}
+  private readonly unlockedVaultRepository: UnlockedVaultRepositoryPort;
+
+  constructor(unlockedVaultRepository: UnlockedVaultRepositoryPort) {
+    this.unlockedVaultRepository = unlockedVaultRepository;
+  }
+
+  async execute(params: ReadEntryCommandParams): Promise<ReadEntryResult> {
+    const unlockedVault = await this.unlockedVaultRepository.getUnlockedVault();
+
+    if (unlockedVault?.vaultId !== params.vaultId) {
+      throw new VaultMustBeUnlockedError(params.vaultId, "read entry");
+    }
+
+    const entry = unlockedVault.vault.entries.find(
+      (candidate) => candidate.id === params.entryId,
+    );
+
+    if (entry === undefined) {
+      throw new PasswordEntryNotFoundError(params.vaultId, params.entryId);
+    }
+
+    return {
+      entry: {
+        id: entry.id,
+        login: entry.login,
+        tags: entry.tags,
+        sanitizedUrl: entry.sanitizedUrl,
+      },
+    };
+  }
 }
