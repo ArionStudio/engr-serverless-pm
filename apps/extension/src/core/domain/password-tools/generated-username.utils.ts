@@ -53,5 +53,5 @@ function capitalizeWord(word: string): string {
 }
 
 function normalizeUsernameWord(word: string): string {
-  return word.replaceAll(/[^a-z0-9]/g, "");
+  return word.toLowerCase().replaceAll(/[^a-z0-9]/g, "");
 }
