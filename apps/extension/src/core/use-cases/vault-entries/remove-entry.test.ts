@@ -75,7 +75,18 @@ describe("RemoveEntryUseCase", () => {
     expect(ctx.saved.unlockedVault?.vault.entries).toEqual([secondEntry]);
     expect(ctx.persistUnlockedVault.execute).toHaveBeenCalledWith({
       vaultId: ctx.values.vaultId,
+      unlockedVault: expect.objectContaining({
+        vault: expect.objectContaining({
+          entries: ctx.saved.unlockedVault?.vault.entries,
+        }),
+      }),
     });
+    expect(
+      vi.mocked(ctx.persistUnlockedVault.execute).mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      vi.mocked(ctx.ports.unlockedVaultRepository.saveUnlockedVault).mock
+        .invocationCallOrder[0],
+    );
   });
 
   it("fails when the target vault is not unlocked", async () => {
@@ -104,5 +115,27 @@ describe("RemoveEntryUseCase", () => {
       ctx.ports.unlockedVaultRepository.saveUnlockedVault,
     ).not.toHaveBeenCalled();
     expect(ctx.persistUnlockedVault.execute).not.toHaveBeenCalled();
+  });
+
+  it("does not save the session vault when snapshot persistence fails", async () => {
+    const ctx = createContext();
+    vi.mocked(ctx.persistUnlockedVault.execute).mockRejectedValueOnce(
+      new Error("persist failed"),
+    );
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        entryId: firstEntry.id,
+      }),
+    ).rejects.toThrow("persist failed");
+
+    expect(
+      ctx.ports.unlockedVaultRepository.saveUnlockedVault,
+    ).not.toHaveBeenCalled();
+    expect(ctx.saved.unlockedVault?.vault.entries).toEqual([
+      firstEntry,
+      secondEntry,
+    ]);
   });
 });

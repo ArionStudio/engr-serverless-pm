@@ -15,4 +15,10 @@ describe("sanitizeEntryUrl", () => {
       "https://example.com:8443/accounts/login",
     );
   });
+
+  it("removes credentials from entry urls", () => {
+    expect(
+      sanitizeEntryUrl("https://user:password@example.com/accounts/login"),
+    ).toBe("https://example.com/accounts/login");
+  });
 });

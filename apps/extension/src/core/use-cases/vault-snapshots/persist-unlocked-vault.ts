@@ -2,19 +2,20 @@ import type {
   UnsignedVaultSnapshot,
   VaultSnapshot,
 } from "../../domain/snapshot/vault-snapshot";
+import type { UnlockedVault } from "../../domain/vault/unlocked-vault";
 import type { ClockPort } from "../../ports/clock.port";
 import type { CryptoPort } from "../../ports/crypto.port";
-import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault-local-repository.port";
 import { UnsupportedAlgorithmSuiteError } from "../__errors/algorithm-suite.errors";
 import {
   VaultSnapshotNotFoundError,
   VaultSnapshotSignerNotTrustedError,
 } from "../__errors/unlock-vault.errors";
-import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
+import { PersistedVaultMismatchError } from "../__errors/vault-snapshot.errors";
 
 export type PersistUnlockedVaultCommandParams = {
   vaultId: string;
+  unlockedVault: UnlockedVault;
 };
 
 export type PersistUnlockedVaultResult = {
@@ -27,27 +28,27 @@ export class PersistUnlockedVaultUseCase {
   private readonly crypto: CryptoPort;
   private readonly clock: ClockPort;
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
-  private readonly unlockedVaultRepository: UnlockedVaultRepositoryPort;
 
   constructor(
     crypto: CryptoPort,
     clock: ClockPort,
     vaultLocalRepository: VaultLocalRepositoryPort,
-    unlockedVaultRepository: UnlockedVaultRepositoryPort,
   ) {
     this.crypto = crypto;
     this.clock = clock;
     this.vaultLocalRepository = vaultLocalRepository;
-    this.unlockedVaultRepository = unlockedVaultRepository;
   }
 
   async execute(
     params: PersistUnlockedVaultCommandParams,
   ): Promise<PersistUnlockedVaultResult> {
-    const unlockedVault = await this.unlockedVaultRepository.getUnlockedVault();
+    const { unlockedVault } = params;
 
-    if (unlockedVault?.vaultId !== params.vaultId) {
-      throw new VaultMustBeUnlockedError(params.vaultId, "snapshot persist");
+    if (unlockedVault.vaultId !== params.vaultId) {
+      throw new PersistedVaultMismatchError(
+        params.vaultId,
+        unlockedVault.vaultId,
+      );
     }
 
     const currentVaultSnapshot =

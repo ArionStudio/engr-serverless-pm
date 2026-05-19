@@ -1,5 +1,5 @@
 import type { PasswordEntry } from "../../domain/entry/password-entry.type";
-import { passwordEntrySchema } from "../../domain/entry/password-entry.schema";
+import { passwordEntryInputSchema } from "../../domain/entry/password-entry.schema";
 import { sanitizeEntryUrl } from "../../domain/entry/sanitized-entry-url.utils";
 import type { IdPort } from "../../ports/id.port";
 import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
@@ -46,8 +46,6 @@ export class AddEntryUseCase {
       throw new VaultMustBeUnlockedError(params.vaultId, "add entry");
     }
 
-    const entryId = await this.ids.generateId();
-
     let sanitizedUrl: string;
 
     try {
@@ -56,31 +54,37 @@ export class AddEntryUseCase {
       throw new InvalidPasswordEntryError(error);
     }
 
-    const entryResult = passwordEntrySchema.safeParse({
-      id: entryId,
+    const entryPayloadResult = passwordEntryInputSchema.safeParse({
       password: params.entry.password,
       login: params.entry.login,
       tags: params.entry.tags,
       sanitizedUrl,
     });
 
-    if (!entryResult.success) {
-      throw new InvalidPasswordEntryError(entryResult.error);
+    if (!entryPayloadResult.success) {
+      throw new InvalidPasswordEntryError(entryPayloadResult.error);
     }
 
-    const entry: PasswordEntry = entryResult.data;
+    const entryId = await this.ids.generateId();
 
-    await this.unlockedVaultRepository.saveUnlockedVault({
+    const entry: PasswordEntry = {
+      id: entryId,
+      ...entryPayloadResult.data,
+    };
+    const updatedUnlockedVault = {
       ...unlockedVault,
       vault: {
         ...unlockedVault.vault,
         entries: [...unlockedVault.vault.entries, entry],
       },
-    });
+    };
 
     const persistedSnapshot = await this.persistUnlockedVault.execute({
       vaultId: params.vaultId,
+      unlockedVault: updatedUnlockedVault,
     });
+
+    await this.unlockedVaultRepository.saveUnlockedVault(updatedUnlockedVault);
 
     return {
       entryId,

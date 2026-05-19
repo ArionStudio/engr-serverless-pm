@@ -42,7 +42,7 @@ export class RemoveEntryUseCase {
       throw new PasswordEntryNotFoundError(params.vaultId, params.entryId);
     }
 
-    await this.unlockedVaultRepository.saveUnlockedVault({
+    const updatedUnlockedVault = {
       ...unlockedVault,
       vault: {
         ...unlockedVault.vault,
@@ -50,11 +50,14 @@ export class RemoveEntryUseCase {
           (entry) => entry.id !== params.entryId,
         ),
       },
-    });
+    };
 
     const persistedSnapshot = await this.persistUnlockedVault.execute({
       vaultId: params.vaultId,
+      unlockedVault: updatedUnlockedVault,
     });
+
+    await this.unlockedVaultRepository.saveUnlockedVault(updatedUnlockedVault);
 
     return {
       entryId: params.entryId,

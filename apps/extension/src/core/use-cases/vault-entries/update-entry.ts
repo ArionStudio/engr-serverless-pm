@@ -1,5 +1,5 @@
 import type { PasswordEntry } from "../../domain/entry/password-entry.type";
-import { passwordEntrySchema } from "../../domain/entry/password-entry.schema";
+import { passwordEntryInputSchema } from "../../domain/entry/password-entry.schema";
 import { sanitizeEntryUrl } from "../../domain/entry/sanitized-entry-url.utils";
 import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
 import {
@@ -62,33 +62,38 @@ export class UpdateEntryUseCase {
       throw new InvalidPasswordEntryError(error);
     }
 
-    const entryResult = passwordEntrySchema.safeParse({
-      id: params.entryId,
+    const entryPayloadResult = passwordEntryInputSchema.safeParse({
       password: params.entry.password,
       login: params.entry.login,
       tags: params.entry.tags,
       sanitizedUrl,
     });
 
-    if (!entryResult.success) {
-      throw new InvalidPasswordEntryError(entryResult.error);
+    if (!entryPayloadResult.success) {
+      throw new InvalidPasswordEntryError(entryPayloadResult.error);
     }
 
-    const entry: PasswordEntry = entryResult.data;
+    const entry: PasswordEntry = {
+      id: params.entryId,
+      ...entryPayloadResult.data,
+    };
     const entries = [...unlockedVault.vault.entries];
     entries[entryIndex] = entry;
 
-    await this.unlockedVaultRepository.saveUnlockedVault({
+    const updatedUnlockedVault = {
       ...unlockedVault,
       vault: {
         ...unlockedVault.vault,
         entries,
       },
-    });
+    };
 
     const persistedSnapshot = await this.persistUnlockedVault.execute({
       vaultId: params.vaultId,
+      unlockedVault: updatedUnlockedVault,
     });
+
+    await this.unlockedVaultRepository.saveUnlockedVault(updatedUnlockedVault);
 
     return {
       entryId: params.entryId,
