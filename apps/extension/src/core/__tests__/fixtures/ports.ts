@@ -13,7 +13,7 @@ import type { IdPort } from "../../ports/id.port";
 import type { VaultDisplayNamePort } from "../../ports/vault-display-name.port";
 import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault-local-repository.port";
-import { bytes, createCoreTestValues, type CoreTestValues } from "./values";
+import { createCoreTestValues, type CoreTestValues } from "./values";
 
 export type SavedCoreRecords = {
   localVaultDescriptor?: LocalVaultDescriptor;
@@ -36,7 +36,9 @@ export function createCoreTestPorts(
 
   const crypto: CryptoPort = {
     algorithmSuite: CURRENT_ALGORITHM_SUITE,
-    generateRandomBytes: vi.fn(async () => bytes<RandomBytes>()),
+    generateRandomBytes: vi.fn(
+      async (byteLength: number) => new ArrayBuffer(byteLength) as RandomBytes,
+    ),
     generateDeviceSignKeyPair: vi.fn(async () => deviceSignKeyPair),
     generateVaultMasterKey: vi.fn(async () => values.vaultMasterKey),
     generateDeviceSlotKey: vi.fn(async () => values.deviceSlotKey),
