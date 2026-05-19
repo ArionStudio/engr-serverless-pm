@@ -21,4 +21,16 @@ describe("sanitizeEntryUrl", () => {
       sanitizeEntryUrl("https://user:password@example.com/accounts/login"),
     ).toBe("https://example.com/accounts/login");
   });
+
+  it("rejects javascript entry urls", () => {
+    expect(() => sanitizeEntryUrl("javascript:alert(1)")).toThrow(
+      'Unsupported entry URL protocol "javascript:".',
+    );
+  });
+
+  it("rejects data entry urls", () => {
+    expect(() => sanitizeEntryUrl("data:text/html,<script></script>")).toThrow(
+      'Unsupported entry URL protocol "data:".',
+    );
+  });
 });
