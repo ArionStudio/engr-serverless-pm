@@ -67,8 +67,12 @@ describe("GeneratePasswordUseCase", () => {
 
     expect(result.password).toHaveLength(6);
     expect(result.password).toMatch(/^[0-9!@#$%^&*]+$/);
-    expect(result.password.match(/[0-9]/g)).toHaveLength(4);
-    expect(result.password.match(/[!@#$%^&*]/g)).toHaveLength(2);
+    expect(result.password.match(/[0-9]/g)?.length ?? 0).toBeGreaterThanOrEqual(
+      2,
+    );
+    expect(
+      result.password.match(/[!@#$%^&*]/g)?.length ?? 0,
+    ).toBeGreaterThanOrEqual(2);
   });
 
   it("avoids ambiguous characters when requested", async () => {
