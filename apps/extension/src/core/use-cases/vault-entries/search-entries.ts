@@ -4,6 +4,7 @@ import type { SearchEntryQuery } from "../../domain/entry/search-entry-query.typ
 import { entryMatchesSearchQuery } from "../../domain/entry/search-entry-query.utils";
 import type { VisiblePasswordEntryFields } from "../../domain/entry/password-entry.type";
 import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
+import { InvalidSearchEntryQueryError } from "../__errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
 
 export type SearchEntriesCommandParams = {
@@ -31,7 +32,13 @@ export class SearchEntriesUseCase {
       throw new VaultMustBeUnlockedError(params.vaultId, "search entries");
     }
 
-    const query = searchEntryQuerySchema.parse(params.query);
+    const queryResult = searchEntryQuerySchema.safeParse(params.query);
+
+    if (!queryResult.success) {
+      throw new InvalidSearchEntryQueryError(queryResult.error);
+    }
+
+    const query = queryResult.data;
     const entries = unlockedVault.vault.entries
       .filter((entry) =>
         entryMatchesSearchQuery(entry, unlockedVault.vault, query),

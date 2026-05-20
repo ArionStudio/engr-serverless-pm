@@ -5,7 +5,10 @@ import {
   saveUnlockedVaultWithEntries,
   secondPasswordEntry,
   standardPasswordEntries,
+  standardVaultTags,
 } from "../../__tests__/fixtures/vault-entries";
+import type { SearchEntryQuery } from "../../domain/entry/search-entry-query.type";
+import { InvalidSearchEntryQueryError } from "../__errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
 import { SearchEntriesUseCase } from "./search-entries";
 
@@ -13,7 +16,12 @@ function createContext() {
   const values = createCoreTestValues();
   const ports = createCoreTestPorts(values);
 
-  saveUnlockedVaultWithEntries(ports, values, standardPasswordEntries);
+  saveUnlockedVaultWithEntries(
+    ports,
+    values,
+    standardPasswordEntries,
+    standardVaultTags,
+  );
 
   return {
     values,
@@ -60,6 +68,43 @@ describe("SearchEntriesUseCase", () => {
     expect(result.entries).toHaveLength(2);
     expect(result.entries[0]).not.toHaveProperty("password");
     expect(result.entries[1]).not.toHaveProperty("password");
+  });
+
+  it("searches tag names in any mode", async () => {
+    const ctx = createContext();
+
+    const result = await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      query: {
+        mode: "any",
+        value: "personal",
+      },
+    });
+
+    expect(result.entries).toEqual([
+      {
+        id: secondPasswordEntry.id,
+        login: secondPasswordEntry.login,
+        tags: secondPasswordEntry.tags,
+        sanitizedUrl: secondPasswordEntry.sanitizedUrl,
+      },
+    ]);
+  });
+
+  it("fails with a domain error when search query validation fails", async () => {
+    const ctx = createContext();
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        query: {
+          mode: "fields",
+          login: "",
+          url: "",
+          tag: ["personal"],
+        } as unknown as SearchEntryQuery,
+      }),
+    ).rejects.toBeInstanceOf(InvalidSearchEntryQueryError);
   });
 
   it("fails when the target vault is not unlocked", async () => {

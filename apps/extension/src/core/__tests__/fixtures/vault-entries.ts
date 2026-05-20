@@ -7,7 +7,7 @@ import type { CoreTestPorts } from "./ports";
 import type { CoreTestValues } from "./values";
 
 export const singlePasswordEntry: PasswordEntry = {
-  id: "entry-1",
+  id: "single-entry",
   password: "secret-password",
   login: "user@example.com",
   tags: [1],
