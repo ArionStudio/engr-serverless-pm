@@ -1,53 +1,39 @@
 import { describe, expect, it } from "vitest";
-import type { PasswordEntry } from "../../domain/entry/password-entry.type";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
+import {
+  saveUnlockedVaultWithEntries,
+  singlePasswordEntry,
+} from "../../__tests__/fixtures/vault-entries";
 import { PasswordEntryNotFoundError } from "../__errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
-import { RevealEntryPasswordUseCase } from "./reveal-entry-password";
-
-const entry: PasswordEntry = {
-  id: "entry-1",
-  password: "secret-password",
-  login: "user@example.com",
-  tags: [1],
-  sanitizedUrl: "https://example.com/login",
-};
+import { GetEntryPasswordUseCase } from "./get-entry-password";
 
 function createContext() {
   const values = createCoreTestValues();
   const ports = createCoreTestPorts(values);
 
-  ports.saved.unlockedVault = {
-    vaultId: values.vaultId,
-    deviceId: values.deviceId,
-    vault: {
-      ...values.decryptedVault,
-      entries: [entry],
-    },
-    vaultMasterKey: values.vaultMasterKey,
-    devicePrivateSignKey: values.devicePrivateSignKey,
-  };
+  saveUnlockedVaultWithEntries(ports, values, [singlePasswordEntry]);
 
   return {
     values,
     ports,
     saved: ports.saved,
-    useCase: new RevealEntryPasswordUseCase(ports.unlockedVaultRepository),
+    useCase: new GetEntryPasswordUseCase(ports.unlockedVaultRepository),
   };
 }
 
-describe("RevealEntryPasswordUseCase", () => {
-  it("reveals password for an unlocked vault entry", async () => {
+describe("GetEntryPasswordUseCase", () => {
+  it("gets the password for an unlocked vault entry", async () => {
     const ctx = createContext();
 
     await expect(
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
-        entryId: entry.id,
+        entryId: singlePasswordEntry.id,
       }),
     ).resolves.toEqual({
-      password: entry.password,
+      password: singlePasswordEntry.password,
     });
   });
 
@@ -58,7 +44,7 @@ describe("RevealEntryPasswordUseCase", () => {
     await expect(
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
-        entryId: entry.id,
+        entryId: singlePasswordEntry.id,
       }),
     ).rejects.toBeInstanceOf(VaultMustBeUnlockedError);
   });

@@ -1,49 +1,23 @@
 import { describe, expect, it, vi } from "vitest";
-import type { PasswordEntry } from "../../domain/entry/password-entry.type";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
+import {
+  createPersistUnlockedVaultUseCaseMock,
+  firstPasswordEntry,
+  saveUnlockedVaultWithEntries,
+  secondPasswordEntry,
+  standardPasswordEntries,
+} from "../../__tests__/fixtures/vault-entries";
 import { PasswordEntryNotFoundError } from "../__errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
-import type { PersistUnlockedVaultUseCase } from "../vault-snapshots/persist-unlocked-vault";
 import { RemoveEntryUseCase } from "./remove-entry";
-
-const firstEntry: PasswordEntry = {
-  id: "entry-1",
-  password: "first-password",
-  login: "first@example.com",
-  tags: [1],
-  sanitizedUrl: "https://example.com/login",
-};
-
-const secondEntry: PasswordEntry = {
-  id: "entry-2",
-  password: "second-password",
-  login: "second@example.com",
-  tags: [2],
-  sanitizedUrl: "https://service.example.com/account",
-};
 
 function createContext() {
   const values = createCoreTestValues();
   const ports = createCoreTestPorts(values);
-  const persistUnlockedVault = {
-    execute: vi.fn(async () => ({
-      revision: 2,
-      revisionTimestamp: values.timestamp + 1,
-      deviceId: values.deviceId,
-    })),
-  } as unknown as PersistUnlockedVaultUseCase;
+  const persistUnlockedVault = createPersistUnlockedVaultUseCaseMock(values);
 
-  ports.saved.unlockedVault = {
-    vaultId: values.vaultId,
-    deviceId: values.deviceId,
-    vault: {
-      ...values.decryptedVault,
-      entries: [firstEntry, secondEntry],
-    },
-    vaultMasterKey: values.vaultMasterKey,
-    devicePrivateSignKey: values.devicePrivateSignKey,
-  };
+  saveUnlockedVaultWithEntries(ports, values, standardPasswordEntries);
 
   return {
     values,
@@ -63,16 +37,18 @@ describe("RemoveEntryUseCase", () => {
 
     const result = await ctx.useCase.execute({
       vaultId: ctx.values.vaultId,
-      entryId: firstEntry.id,
+      entryId: firstPasswordEntry.id,
     });
 
     expect(result).toEqual({
-      entryId: firstEntry.id,
+      entryId: firstPasswordEntry.id,
       revision: 2,
       revisionTimestamp: ctx.values.timestamp + 1,
       deviceId: ctx.values.deviceId,
     });
-    expect(ctx.saved.unlockedVault?.vault.entries).toEqual([secondEntry]);
+    expect(ctx.saved.unlockedVault?.vault.entries).toEqual([
+      secondPasswordEntry,
+    ]);
     expect(ctx.persistUnlockedVault.execute).toHaveBeenCalledWith({
       vaultId: ctx.values.vaultId,
       unlockedVault: expect.objectContaining({
@@ -96,7 +72,7 @@ describe("RemoveEntryUseCase", () => {
     await expect(
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
-        entryId: firstEntry.id,
+        entryId: firstPasswordEntry.id,
       }),
     ).rejects.toBeInstanceOf(VaultMustBeUnlockedError);
   });
@@ -126,7 +102,7 @@ describe("RemoveEntryUseCase", () => {
     await expect(
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
-        entryId: firstEntry.id,
+        entryId: firstPasswordEntry.id,
       }),
     ).rejects.toThrow("persist failed");
 
@@ -134,8 +110,8 @@ describe("RemoveEntryUseCase", () => {
       ctx.ports.unlockedVaultRepository.saveUnlockedVault,
     ).not.toHaveBeenCalled();
     expect(ctx.saved.unlockedVault?.vault.entries).toEqual([
-      firstEntry,
-      secondEntry,
+      firstPasswordEntry,
+      secondPasswordEntry,
     ]);
   });
 });

@@ -2,16 +2,16 @@ import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-rep
 import { PasswordEntryNotFoundError } from "../__errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
 
-export type RevealEntryPasswordCommandParams = {
+export type GetEntryPasswordCommandParams = {
   vaultId: string;
   entryId: string;
 };
 
-export type RevealEntryPasswordResult = {
+export type GetEntryPasswordResult = {
   password: string;
 };
 
-export class RevealEntryPasswordUseCase {
+export class GetEntryPasswordUseCase {
   private readonly unlockedVaultRepository: UnlockedVaultRepositoryPort;
 
   constructor(unlockedVaultRepository: UnlockedVaultRepositoryPort) {
@@ -19,15 +19,12 @@ export class RevealEntryPasswordUseCase {
   }
 
   async execute(
-    params: RevealEntryPasswordCommandParams,
-  ): Promise<RevealEntryPasswordResult> {
+    params: GetEntryPasswordCommandParams,
+  ): Promise<GetEntryPasswordResult> {
     const unlockedVault = await this.unlockedVaultRepository.getUnlockedVault();
 
     if (unlockedVault?.vaultId !== params.vaultId) {
-      throw new VaultMustBeUnlockedError(
-        params.vaultId,
-        "reveal entry password",
-      );
+      throw new VaultMustBeUnlockedError(params.vaultId, "get entry password");
     }
 
     const entry = unlockedVault.vault.entries.find(

@@ -1,14 +1,18 @@
-import type { PasswordEntry } from "../../domain/entry/password-entry.type";
+import { toVisiblePasswordEntryFields } from "../../domain/entry/password-entry.mapper";
+import { searchEntryQuerySchema } from "../../domain/entry/search-entry-query.schema";
+import type { SearchEntryQuery } from "../../domain/entry/search-entry-query.type";
+import { entryMatchesSearchQuery } from "../../domain/entry/search-entry-query.utils";
+import type { VisiblePasswordEntryFields } from "../../domain/entry/password-entry.type";
 import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
 import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
 
 export type SearchEntriesCommandParams = {
   vaultId: string;
-  query: string;
+  query: SearchEntryQuery;
 };
 
 export type SearchEntriesResult = {
-  entries: Array<Omit<PasswordEntry, "password">>;
+  entries: VisiblePasswordEntryFields[];
 };
 
 export class SearchEntriesUseCase {
@@ -27,24 +31,12 @@ export class SearchEntriesUseCase {
       throw new VaultMustBeUnlockedError(params.vaultId, "search entries");
     }
 
-    const normalizedQuery = params.query.trim().toLowerCase();
+    const query = searchEntryQuerySchema.parse(params.query);
     const entries = unlockedVault.vault.entries
-      .filter((entry) => {
-        if (normalizedQuery === "") {
-          return true;
-        }
-
-        return (
-          entry.login.toLowerCase().includes(normalizedQuery) ||
-          entry.sanitizedUrl.toLowerCase().includes(normalizedQuery)
-        );
-      })
-      .map((entry) => ({
-        id: entry.id,
-        login: entry.login,
-        tags: entry.tags,
-        sanitizedUrl: entry.sanitizedUrl,
-      }));
+      .filter((entry) =>
+        entryMatchesSearchQuery(entry, unlockedVault.vault, query),
+      )
+      .map(toVisiblePasswordEntryFields);
 
     return {
       entries,
