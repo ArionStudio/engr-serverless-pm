@@ -1,4 +1,5 @@
-import type { PasswordEntry } from "../../domain/entry/password-entry.type";
+import { toVisiblePasswordEntryFields } from "../../domain/entry/password-entry.mapper";
+import type { VisiblePasswordEntryFields } from "../../domain/entry/password-entry.type";
 import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
 import { PasswordEntryNotFoundError } from "../__errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
@@ -9,7 +10,7 @@ export type ReadEntryCommandParams = {
 };
 
 export type ReadEntryResult = {
-  entry: Omit<PasswordEntry, "password">;
+  entry: VisiblePasswordEntryFields;
 };
 
 export class ReadEntryUseCase {
@@ -35,12 +36,7 @@ export class ReadEntryUseCase {
     }
 
     return {
-      entry: {
-        id: entry.id,
-        login: entry.login,
-        tags: entry.tags,
-        sanitizedUrl: entry.sanitizedUrl,
-      },
+      entry: toVisiblePasswordEntryFields(entry),
     };
   }
 }

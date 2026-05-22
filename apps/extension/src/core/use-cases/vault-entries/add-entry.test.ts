@@ -1,31 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
+import {
+  createPersistUnlockedVaultUseCaseMock,
+  saveUnlockedVaultWithEntries,
+} from "../../__tests__/fixtures/vault-entries";
 import { InvalidPasswordEntryError } from "../__errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
 import { AddEntryUseCase } from "./add-entry";
-import type { PersistUnlockedVaultUseCase } from "../vault-snapshots/persist-unlocked-vault";
 
 function createContext() {
   const values = createCoreTestValues();
   const ports = createCoreTestPorts(values);
-  const persistUnlockedVault = {
-    execute: vi.fn(async () => ({
-      revision: 2,
-      revisionTimestamp: values.timestamp + 1,
-      deviceId: values.deviceId,
-    })),
-  } as unknown as PersistUnlockedVaultUseCase;
+  const persistUnlockedVault = createPersistUnlockedVaultUseCaseMock(values);
 
   vi.mocked(ports.ids.generateId).mockReset().mockResolvedValue("entry-id");
 
-  ports.saved.unlockedVault = {
-    vaultId: values.vaultId,
-    deviceId: values.deviceId,
-    vault: values.decryptedVault,
-    vaultMasterKey: values.vaultMasterKey,
-    devicePrivateSignKey: values.devicePrivateSignKey,
-  };
+  saveUnlockedVaultWithEntries(ports, values, []);
 
   const useCase = new AddEntryUseCase(
     ports.ids,

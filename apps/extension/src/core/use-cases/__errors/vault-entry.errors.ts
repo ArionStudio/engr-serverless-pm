@@ -5,6 +5,13 @@ export class InvalidPasswordEntryError extends Error {
   }
 }
 
+export class InvalidSearchEntryQueryError extends Error {
+  constructor(cause: unknown) {
+    super("Search entry query is invalid.", { cause });
+    this.name = "InvalidSearchEntryQueryError";
+  }
+}
+
 export class PasswordEntryNotFoundError extends Error {
   constructor(vaultId: string, entryId: string) {
     super(`Password entry "${entryId}" was not found in vault "${vaultId}".`);

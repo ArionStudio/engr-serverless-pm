@@ -1,40 +1,27 @@
 import { describe, expect, it } from "vitest";
-import type { PasswordEntry } from "../../domain/entry/password-entry.type";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
+import {
+  saveUnlockedVaultWithEntries,
+  secondPasswordEntry,
+  standardPasswordEntries,
+  standardVaultTags,
+} from "../../__tests__/fixtures/vault-entries";
+import type { SearchEntryQuery } from "../../domain/entry/search-entry-query.type";
+import { InvalidSearchEntryQueryError } from "../__errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
 import { SearchEntriesUseCase } from "./search-entries";
-
-const firstEntry: PasswordEntry = {
-  id: "entry-1",
-  password: "first-password",
-  login: "first@example.com",
-  tags: [1],
-  sanitizedUrl: "https://example.com/login",
-};
-
-const secondEntry: PasswordEntry = {
-  id: "entry-2",
-  password: "second-password",
-  login: "second@example.com",
-  tags: [2],
-  sanitizedUrl: "https://service.example.com/account",
-};
 
 function createContext() {
   const values = createCoreTestValues();
   const ports = createCoreTestPorts(values);
 
-  ports.saved.unlockedVault = {
-    vaultId: values.vaultId,
-    deviceId: values.deviceId,
-    vault: {
-      ...values.decryptedVault,
-      entries: [firstEntry, secondEntry],
-    },
-    vaultMasterKey: values.vaultMasterKey,
-    devicePrivateSignKey: values.devicePrivateSignKey,
-  };
+  saveUnlockedVaultWithEntries(
+    ports,
+    values,
+    standardPasswordEntries,
+    standardVaultTags,
+  );
 
   return {
     values,
@@ -50,15 +37,18 @@ describe("SearchEntriesUseCase", () => {
 
     const result = await ctx.useCase.execute({
       vaultId: ctx.values.vaultId,
-      query: "service",
+      query: {
+        mode: "any",
+        value: "service",
+      },
     });
 
     expect(result.entries).toEqual([
       {
-        id: secondEntry.id,
-        login: secondEntry.login,
-        tags: secondEntry.tags,
-        sanitizedUrl: secondEntry.sanitizedUrl,
+        id: secondPasswordEntry.id,
+        login: secondPasswordEntry.login,
+        tags: secondPasswordEntry.tags,
+        sanitizedUrl: secondPasswordEntry.sanitizedUrl,
       },
     ]);
     expect(result.entries[0]).not.toHaveProperty("password");
@@ -69,12 +59,52 @@ describe("SearchEntriesUseCase", () => {
 
     const result = await ctx.useCase.execute({
       vaultId: ctx.values.vaultId,
-      query: " ",
+      query: {
+        mode: "any",
+        value: " ",
+      },
     });
 
     expect(result.entries).toHaveLength(2);
     expect(result.entries[0]).not.toHaveProperty("password");
     expect(result.entries[1]).not.toHaveProperty("password");
+  });
+
+  it("searches tag names in any mode", async () => {
+    const ctx = createContext();
+
+    const result = await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      query: {
+        mode: "any",
+        value: "personal",
+      },
+    });
+
+    expect(result.entries).toEqual([
+      {
+        id: secondPasswordEntry.id,
+        login: secondPasswordEntry.login,
+        tags: secondPasswordEntry.tags,
+        sanitizedUrl: secondPasswordEntry.sanitizedUrl,
+      },
+    ]);
+  });
+
+  it("fails with a domain error when search query validation fails", async () => {
+    const ctx = createContext();
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        query: {
+          mode: "fields",
+          login: "",
+          url: "",
+          tag: ["personal"],
+        } as unknown as SearchEntryQuery,
+      }),
+    ).rejects.toBeInstanceOf(InvalidSearchEntryQueryError);
   });
 
   it("fails when the target vault is not unlocked", async () => {
@@ -84,7 +114,10 @@ describe("SearchEntriesUseCase", () => {
     await expect(
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
-        query: "example",
+        query: {
+          mode: "any",
+          value: "example",
+        },
       }),
     ).rejects.toBeInstanceOf(VaultMustBeUnlockedError);
   });
