@@ -27,29 +27,34 @@
 
 3. [x] Vault unlock
    - starts from: `user`
-   - uses: `Popup`, `Extension service workers`, `indexedDB`, `storage.session`
+   - uses: `Popup`, `Extension service workers`, `indexedDB`, `storage.session`, browser scheduled task primitive
    - flow:
-   1. `user` selects a local vault descriptor, enters master password, and clicks on "unlock vault" in `popup`
-   2. `popup` sends unlock request with selected vault id and master password to `extension service worker`
+   1. `user` selects a local vault descriptor, enters master password, selects vault lock delay, and clicks on "unlock vault" in `popup`
+   2. `popup` sends unlock request with selected vault id, master password, and lock delay to `extension service worker`
    3. `extension service worker` loads `device access material` for the selected vault from `indexedDB`
    4. `extension service worker` loads the selected `vault snapshot` from `indexedDB`
    5. `extension service worker` verifies the `vault snapshot` signature using the locally trusted device public signing key
    6. `extension service worker` derives the master-password root key, derives the local keys protection key, and unwraps local keys
    7. `extension service worker` finds the current device key slot, derives the device-slot protection key, and unwraps the `vault master key`
    8. `extension service worker` decrypts the `vault snapshot` content using the `vault master key`
-   9. `extension service worker` stores the unlocked vault runtime state in `storage.session`, including vault id, device id, plaintext vault, `vault master key`, and device private signing key
-   10. `extension service worker` confirms unlock success to `popup`
-   11. `popup` shows unlocked vault state and search UI
+   9. `extension service worker` stores pending vault lock task metadata containing action id, vault id, and expiry timestamp
+   10. `extension service worker` schedules automatic vault lock at `now + selected lock delay` using the pending task action id
+   11. `extension service worker` stores the unlocked vault runtime state in `storage.session`, including vault id, device id, plaintext vault, `vault master key`, and device private signing key
+   12. if storing unlocked state fails, `extension service worker` cancels the scheduled vault lock task and removes the pending vault lock task metadata
+   13. `extension service worker` confirms unlock success to `popup`
+   14. `popup` shows unlocked vault state and search UI
 
 4. [x] Browse and search password entries
    - starts from: `user`
    - uses: `Popup`, `Extension service workers`, `storage.session`
    - flow:
    1. `user` enters search query or opens the vault entry list in `popup`
-   2. `popup` sends browse/search request to `extension service worker`
+   2. `popup` sends browse/search request to `extension service worker` using either `any` search or field search
    3. `extension service worker` loads the unlocked vault from `storage.session`
-   4. `extension service worker` returns matching entry metadata to `popup`
-   5. `popup` shows matching entries to `user`
+   4. for `any` search, `extension service worker` matches across searchable fields using `OR` logic
+   5. for field search, `extension service worker` matches provided login, url, and tag id filters using `AND` logic; tag ids use `all` matching
+   6. `extension service worker` returns visible entry fields to `popup`
+   7. `popup` shows matching entries to `user`
 
 5. [x] Read password entry
    - starts from: `user`
@@ -57,9 +62,9 @@
    - flow:
    1. `user` clicks selected password entry in `popup`
    2. `popup` sends selected password entry id to `extension service worker`
-   3. `extension service worker` reads `entry details` from the unlocked vault in `storage.session`
-   4. `extension service worker` sends `entry details` to `popup`
-   5. `popup` shows `entry details`
+   3. `extension service worker` reads visible entry fields from the unlocked vault in `storage.session`
+   4. `extension service worker` sends visible entry fields to `popup`
+   5. `popup` shows entry details without the password value
 
 6. [x] Add new password entry
    - starts from: `user`
@@ -106,7 +111,7 @@
    9. `extension service worker` confirms success to `popup`
    10. `popup` shows updated vault state
 
-9. [ ] Password generation
+9. [x] Password generation
    - starts from: `user`
    - uses: `Popup`, `Extension service workers`
    - flow:
@@ -117,31 +122,60 @@
    5. `extension service worker` sends generated password back to `popup`
    6. `popup` shows generated password and allows `user` to accept it into a password entry form
 
-10. [x] Reveal password
+10. [x] Username generation
 
 - starts from: `user`
-- uses: `Popup`, `Extension service workers`, `storage.session`
+- uses: `Popup`, `Extension service workers`
 - flow:
 
-1.  `user` opens selected password entry and clicks "reveal password" in `popup`
-2.  `popup` sends password entry id to `extension service worker`
-3.  `extension service worker` reads the password value from the unlocked vault in `storage.session`
-4.  `extension service worker` sends password value to `popup`
-5.  `popup` reveals the password value to `user`
+1.  `user` opens username generator in `popup`
+2.  `user` selects generation options and clicks "generate"
+3.  `popup` sends generation parameters to `extension service worker`
+4.  `extension service worker` generates a random username using browser cryptographic randomness and the local word list
+5.  `extension service worker` sends generated username back to `popup`
+6.  `popup` shows generated username and allows `user` to accept it into a password entry form
 
-6.  [ ] Copy to clipboard
+7.  [x] Reveal password
     - starts from: `user`
-    - uses: `Popup`, `Extension service workers`, `storage.session`, `Clipboard`
+    - uses: `Popup`, `Extension service workers`, `storage.session`
     - flow:
-    1. `user` opens selected password entry and clicks "copy" in `popup`
+    1. `user` opens selected password entry and clicks "reveal password" in `popup`
     2. `popup` sends password entry id to `extension service worker`
     3. `extension service worker` reads the password value from the unlocked vault in `storage.session`
     4. `extension service worker` sends password value to `popup`
-    5. `popup` copies the password value to `Clipboard`
-    6. `popup` shows copy confirmation
-    7. `popup` schedules clipboard clear after configured timeout
+    5. `popup` reveals the password value to `user`
 
-7.  [ ] Autofill password on page
+8.  [x] Copy password to clipboard
+    - starts from: `user`
+    - uses: `Popup`, `Extension service workers`, `storage.session`, `Clipboard`, browser scheduled task primitive
+    - flow:
+    1. `user` opens selected password entry and clicks "copy" in `popup`
+    2. `popup` sends password entry id and selected clipboard clear delay to `extension service worker`
+    3. `extension service worker` loads the unlocked vault from `storage.session`
+    4. if a previous pending clipboard clear task exists, `extension service worker` clears the previous copied password only when the current clipboard value still matches that previous entry password
+    5. if a previous pending clipboard clear task exists, `extension service worker` cancels its scheduled clear task
+    6. `extension service worker` hashes the copied password value and stores a new pending clipboard clear task containing action id, copied value hash, and expiry timestamp
+    7. `extension service worker` schedules clipboard clear at `now + selected clear delay`
+    8. `extension service worker` writes the selected password value to `Clipboard`
+    9. if scheduling or clipboard write fails, `extension service worker` removes the pending clipboard clear task
+    10. `extension service worker` confirms copy success to `popup`
+    11. `popup` shows copy confirmation and clipboard warning information
+
+9.  [x] Clear copied password from clipboard
+    - starts from: `extension service worker`
+    - uses: `Extension service workers`, `storage.session`, `Clipboard`, browser scheduled task primitive
+    - flow:
+    1. browser scheduled task fires for pending clipboard clear action, or vault lock starts before the scheduled task fires
+    2. `extension service worker` loads pending clipboard clear task metadata
+    3. `extension service worker` ignores the action if the action id is stale
+    4. for scheduled clear, `extension service worker` ignores the action if the task expiry time has not been reached
+    5. `extension service worker` reads the current `Clipboard` value
+    6. `extension service worker` hashes the current clipboard value and compares it with the copied value hash stored in the pending task
+    7. if the hashes match, `extension service worker` writes an empty string to `Clipboard`
+    8. `extension service worker` removes the pending clipboard clear task
+    9. if vault lock caused the clear, `extension service worker` also cancels the scheduled clear task
+
+10. [ ] Autofill password on page
     - starts from: `user`
     - uses: `Popup`, `Target web page`, `Content scripts`, `Extension service workers`, `storage.session`
     - flow:
@@ -153,10 +187,10 @@
     6. `popup` shows matching entries to `user`
     7. `user` selects the proper entry and confirms autofill
     8. `popup` sends selected password entry id to `extension service worker`
-    9. `extension service worker` reads only the login and password fields needed for autofill and sends them with fill instructions to `content script`
+    9. `extension service worker` gets only the login and password fields needed for the selected entry and sends them with fill instructions to `content script`
     10. `content script` fills the `Web Page` using the provided fill instructions
 
-8.  [ ] Setup sync layer
+11. [ ] Setup sync layer
     - starts from: `user`
     - uses: `Options page`, `S3 bucket`, `indexedDB`, `Extension service workers`
     - flow:
@@ -171,7 +205,7 @@
     7. `extension service worker` creates initial local sync state
     8. `options page` informs `user` that sync setup succeeded or failed
 
-9.  [ ] Send update to sync layer
+12. [ ] Send update to sync layer
     - starts from: `user` / `extension service worker`
     - uses: `Popup`, `S3 bucket`, `indexedDB`, `Extension service workers`
     - note: password entry changes persist a new encrypted `vault snapshot` to `indexedDB`; sync upload uses the latest persisted snapshot
@@ -184,7 +218,7 @@
     6. `extension service worker` updates local sync state in `indexedDB`
     7. [ `popup` ] receives sync result from `extension service worker`
 
-10. [ ] Get update from sync layer
+13. [ ] Get update from sync layer
     - starts from: `user` / `extension service worker`
     - uses: `Popup`, `S3 bucket`, `indexedDB`, `storage.session`, `Extension service workers`
     - flow:
@@ -198,7 +232,7 @@
     8. if conflict exists, `extension service worker` starts conflict resolution flow
     9. [ `popup` ] receives update result from `extension service worker`
 
-11. [ ] Resolve conflicts between cloud and local
+14. [ ] Resolve conflicts between cloud and local
     - starts from: `extension service worker`
     - uses: `Popup`, `indexedDB`, `storage.session`, `Extension service workers`
     - flow:
@@ -214,13 +248,13 @@
     9. `extension service worker` stores the resolved unlocked vault in `storage.session`
     10. `extension service worker` starts "Send update to sync layer" if resolution changed the vault state
 
-12. [ ] New device enrollment
+15. [ ] New device enrollment
     - starts from: `user`
     - uses: `Options page`, `S3 bucket`, `indexedDB`, `Extension service workers`
     - flow:
       [ Need further consultation on topic ]
 
-13. [ ] Device revocation
+16. [ ] Device revocation
     - starts from: `user`
     - uses: `Options page`, `indexedDB`, `Extension service workers`
     - flow:
@@ -234,7 +268,7 @@
     8. `extension service worker` starts "Send update to sync layer"
     9. `options page` informs `user` that the revoked device should not receive future updates but may still retain previously available local data
 
-14. [ ] Vault access recovery using recovery mnemonic key
+17. [ ] Vault access recovery using recovery mnemonic key
     - starts from: `user`
     - uses: `Options page`, `indexedDB`, `Extension service workers`
     - flow:
@@ -250,7 +284,7 @@
     10. [ if sync is enabled ] `extension service worker` may start "Send update to sync layer"
     11. `options page` informs `user` that local access was recovered
 
-15. [x] Change master password
+18. [x] Change master password
     - starts from: `user`
     - uses: `Options page`, `indexedDB`, `Extension service workers`
     - flow:
@@ -264,18 +298,22 @@
     8. `extension service worker` stores updated local state in `indexedDB`
     9. `options page` informs `user` that the master password was changed on the current device
 
-16. [x] Vault lock
+19. [x] Vault lock
     - starts from: `user` / `extension service worker`
-    - uses: `Popup`, `indexedDB`, `storage.session`, `Extension service workers`
+    - uses: `Popup`, `indexedDB`, `storage.session`, `Clipboard`, `Extension service workers`, browser scheduled task primitive
     - flow:
-    1. `user` clicks "lock vault" in `popup` or `extension service worker` starts lock automatically
+    1. `user` clicks "lock vault" in `popup` or scheduled vault lock task fires with action id
     2. [ `popup` ] sends lock request to `extension service worker`
-    3. `extension service worker` removes the unlocked vault from `storage.session`
-    4. `extension service worker` clears temporary vault-unlock state that should not remain available after lock
-    5. `extension service worker` clears temporary runtime state
-    6. [ `popup` ] receives locked state confirmation from `extension service worker`
+    3. for scheduled lock, `extension service worker` compares action id with pending vault lock task and ignores stale actions
+    4. if a pending clipboard clear task exists, `extension service worker` runs the clear copied password flow without requiring expiry
+    5. if a pending clipboard clear task exists, `extension service worker` cancels its scheduled clear task
+    6. if a pending vault lock task exists, `extension service worker` cancels it and removes its metadata
+    7. `extension service worker` removes the unlocked vault from `storage.session`
+    8. `extension service worker` clears temporary vault-unlock state that should not remain available after lock
+    9. `extension service worker` clears temporary runtime state
+    10. [ `popup` ] receives locked state confirmation from `extension service worker`
 
-17. [ ] Remove files from cloud sync
+20. [ ] Remove files from cloud sync
     - starts from: `user`
     - uses: `Options page`, `S3 bucket`, `indexedDB`, `Extension service workers`
     - flow:
@@ -287,7 +325,7 @@
     6. `extension service worker` deletes remote vault data from `S3 bucket`
     7. `options page` informs `user` that files stored in cloud sync were removed, while the local vault and local sync configuration remain available
 
-18. [x] Delete vault
+21. [x] Delete vault
     - starts from: `user`
     - uses: `Options page`, `indexedDB`, `storage.session`, `Extension service workers`
     - flow:
@@ -300,7 +338,7 @@
     7. `extension service worker` clears temporary runtime state
     8. `options page` informs `user` that the local vault was deleted from the device
 
-19. [ ] Remove local sync credentials
+22. [ ] Remove local sync credentials
     - starts from: `user`
     - uses: `Options page`, `S3 bucket`, `indexedDB`, `Extension service workers`
     - flow:

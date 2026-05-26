@@ -32,6 +32,10 @@ export interface CryptoPort {
   // Randomness
   generateRandomBytes: (byteLength: number) => Promise<RandomBytes>;
 
+  // Secret comparison
+  hashSecretValue: (value: string) => Promise<string>;
+  compareSecretValueHash: (left: string, right: string) => Promise<boolean>;
+
   // Key generation
   generateDeviceSignKeyPair: () => Promise<DeviceSignKeyPair>;
   generateVaultMasterKey: () => Promise<VaultMasterKey>;

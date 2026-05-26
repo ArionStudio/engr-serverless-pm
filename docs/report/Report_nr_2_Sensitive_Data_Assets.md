@@ -101,7 +101,21 @@
 - Security relevance: temporary credential transfer outside protected storage
 - Where it lives: clipboard
 - What it is used for: temporary copy target for user credential use
-- Protected by: no encryption in clipboard
+- Protected by: no encryption in clipboard; extension can only clear the active clipboard value when it still matches the copied password
+
+#### pending clipboard clear task
+
+- Security relevance: runtime metadata used to clear a copied password later
+- Where it lives: short-lived unlocked-session storage, for example MV3 `storage.session` with trusted-context access
+- What it is used for: identify the scheduled clear action and copied clipboard value using action id, copied value hash, and expiry timestamp
+- Protected by: does not store the password value; stored only in storage appropriate for sensitive runtime state; removed after clear, replacement copy, or vault lock
+
+#### pending vault lock task
+
+- Security relevance: runtime metadata used to distinguish current scheduled vault lock from stale alarm delivery
+- Where it lives: short-lived extension runtime task storage
+- What it is used for: identify the scheduled lock action using action id, vault id, and expiry timestamp
+- Protected by: removed on vault lock, failed unlock rollback, or replacement unlock
 
 #### cloud sync credentials
 

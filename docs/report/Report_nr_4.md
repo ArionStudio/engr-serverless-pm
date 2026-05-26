@@ -65,3 +65,37 @@ Current measured result:
 - current estimated max within the `9 MiB` working budget is `6778` worst-case entries
 
 This means the current `5000` entry baseline has about `1778` worst-case entries of margin.
+
+## 3. Clipboard History Cannot Always Be Controlled From Browser Extension
+
+### Problem
+
+Copying a password to the system clipboard moves the secret outside the extension trust boundary.
+
+Clipboard auto-clear only targets the active clipboard value.
+
+Clipboard auto-clear does not clean copied values from:
+
+- operating system clipboard history
+- cloud clipboard synchronization
+- mobile keyboard clipboard history
+- desktop environment clipboard history
+- third-party clipboard managers
+
+Windows example:
+
+- native formats: `ExcludeClipboardContentFromMonitorProcessing`, `CanIncludeInClipboardHistory`, `CanUploadToCloudClipboard`
+- purpose: exclude clipboard content from Windows clipboard history or cloud clipboard
+- browser extension limitation: `navigator.clipboard.writeText()` and `document.execCommand("copy")` cannot reliably set this metadata
+
+Other systems can have different clipboard-history exclusion mechanisms or no reliable exclusion mechanism.
+
+The browser extension cannot implement proper clipboard-history cleaning.
+
+### Proposed Handling
+
+Mark this as a known platform limitation.
+
+The UI should inform the user after copying a secret that clipboard clearing is best effort and does not clean clipboard history or clipboard synchronization features outside the extension.
+
+The application must not present clipboard auto-clear as full clipboard-history protection.
