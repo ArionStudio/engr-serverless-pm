@@ -19,7 +19,7 @@ Hexagonal architecture. Serverless. All logic client-side, cloud only for encryp
 | State           | Zustand (planned)                 |
 | Local Storage   | IndexedDB via Dexie.js            |
 | Crypto          | WebCrypto API                     |
-| Cloud Sync      | AWS S3 + Cognito                  |
+| Cloud Sync      | AWS S3 with user-provided keys    |
 | Testing         | Vitest                            |
 | Package Manager | pnpm                              |
 
@@ -136,7 +136,7 @@ Other Device ← Extension UI ← Core (decrypt) ← Adapters ← IndexedDB
 | `ROADMAP.md`                              | Roadmap and task status   |
 | `docs/security/security-specification.md` | Detailed security model   |
 | `CONTRIBUTING.md`                         | Commit conventions        |
-| `docs/aws/s3-cognito/`                    | CloudFormation + AWS docs |
+| `docs/aws/s3/`                            | CloudFormation + AWS docs |
 | `apps/extension/`                         | Chrome extension source   |
 
 ---

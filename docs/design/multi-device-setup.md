@@ -99,10 +99,9 @@ interface S3SyncConfig {
   readonly provider: "aws-s3";
   readonly bucket: string;
   readonly region: string;
-  readonly userPoolId: string;
-  readonly userPoolClientId: string;
-  readonly identityPoolId: string; // Cognito Identity Pool ID
-  readonly prefix: string; // S3 key prefix (e.g., "user/")
+  readonly accessKeyId: string;
+  readonly secretAccessKey: string;
+  readonly prefix: string; // S3 key prefix (e.g., "vault/")
 }
 
 interface EnrollmentPackage {

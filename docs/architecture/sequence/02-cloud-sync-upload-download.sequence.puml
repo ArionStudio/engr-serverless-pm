@@ -15,7 +15,6 @@ skinparam sequence {
 actor User as user
 participant "Extension" as ext
 participant "Sync Adapter" as sync
-participant "Cognito" as cognito
 participant "S3" as s3
 database "IndexedDB\n(Primary)" as idb
 
@@ -35,16 +34,16 @@ ext -> ext : Sign envelope (Ed25519)
 
 ext -> sync : upload(signedEnvelope)
 
-sync -> cognito : Get credentials
-cognito --> sync : Temporary AWS creds\n(STS token)
+sync -> idb : Load encrypted sync config
+sync -> sync : Use configured AWS access keys
 
-sync -> s3 : PUT vaults/{cognitoId}/vault.enc
+sync -> s3 : PUT {prefix}/vault.enc
 note right of s3
     **Object Key Format:**
-    vaults/{cognitoId}/vault.enc
+    {prefix}/vault.enc
 
     Scoped by IAM policy
-    to user's prefix only
+    to configured prefix only
 end note
 
 s3 --> sync : 200 OK + ETag
@@ -60,17 +59,17 @@ ext --> user : Sync indicator updated
 user -> ext : Open extension / Manual sync
 ext -> sync : download()
 
-sync -> cognito : Get credentials
-cognito --> sync : Temporary AWS creds
+sync -> idb : Load encrypted sync config
+sync -> sync : Use configured AWS access keys
 
-sync -> s3 : HEAD vaults/{cognitoId}/vault.enc
+sync -> s3 : HEAD {prefix}/vault.enc
 s3 --> sync : ETag, Last-Modified
 
 sync -> idb : Get local ETag
 alt Remote unchanged (ETag match)
     sync --> ext : No changes
 else Remote is newer
-    sync -> s3 : GET vaults/{cognitoId}/vault.enc
+    sync -> s3 : GET {prefix}/vault.enc
     s3 --> sync : Signed envelope
 
     sync -> ext : Verify signature

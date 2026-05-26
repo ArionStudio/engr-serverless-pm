@@ -88,15 +88,15 @@ Po przejrzeniu dostępnych opcji wybrałem AWS S3 jako podstawowy provider.
 Główną przyczyną była łatwość konfiguracji dla użytkownika aplikacji.
 
 By tę konfigurację uprościć jak najbardziej, stworzyłem template CloudFormation do konfiguracji S3.
-Template znajduje się w folderze \texttt{docs/aws/s3-cognito}.
+Template znajduje się w folderze \texttt{docs/aws/s3}.
 Zawiera on konfigurację dla:
 \begin{itemize}
     \item Bucketu S3 
-    \item Identity Pool Cognito
-    \item Role IAM z uprawnieniami do S3
+    \item użytkownika IAM z kluczami dostępowymi
+    \item polityki IAM ograniczającej dostęp do wskazanego prefiksu S3
 \end{itemize}
 
-Dokładny opis użycia template znajduje się w pliku \texttt{docs/aws/s3-cognito/README.md}.
+Dokładny opis użycia template znajduje się w pliku \texttt{docs/aws/s3/README.md}.
 
 Użycie templatki zapewnia poprawną konfigurację bucketu S3 oraz ustawienie odpowiednich zakresów dostępu do niego.
 

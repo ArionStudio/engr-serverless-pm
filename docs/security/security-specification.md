@@ -239,7 +239,7 @@ IndexedDB stores:
 - `syncConfig` singleton record:
   - encrypted sync provider configuration
   - must be encrypted locally with `Sync Config Key`
-  - temporary AWS credentials must not be persisted
+  - user-provided AWS access keys must be persisted only in encrypted local sync configuration
 
 ### 7.2 Device Location History
 

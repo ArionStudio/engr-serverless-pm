@@ -4,8 +4,8 @@
 % - S3 reference implementation
 % - IaC: CloudFormation provisions:
 %   * S3 bucket (versioning, public access blocked)
-%   * Cognito Identity Pool
-%   * IAM least privilege (GetObject/PutObject in prefix)
+%   * IAM user with scoped access keys
+%   * IAM least privilege (list/read/write/delete in prefix)
 % - Alternative backends (and what changes):
 %   * GCS, Azure Blob, MinIO (S3-compatible), Storj (distinct adapter)
 % - Cost analysis for 1MB vault daily sync
