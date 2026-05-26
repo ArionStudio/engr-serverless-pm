@@ -1,3 +1,4 @@
+import { vi } from "vitest";
 import type { DeviceAccessMaterial } from "../../domain/device/device-access-material";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import { UnlockVaultUseCase } from "../../use-cases/vault-lifecycle/unlock-vault";
@@ -7,6 +8,8 @@ import { createCoreTestValues } from "./values";
 export function createUnlockVaultTestContext() {
   const values = createCoreTestValues();
   const ports = createCoreTestPorts(values);
+  vi.mocked(ports.ids.generateId).mockReset();
+  vi.mocked(ports.ids.generateId).mockResolvedValue(values.vaultLockActionId);
 
   const deviceAccessMaterial: DeviceAccessMaterial = {
     vaultId: values.vaultId,
@@ -55,8 +58,12 @@ export function createUnlockVaultTestContext() {
   ports.saved.vaultSnapshot = vaultSnapshot;
 
   const useCase = new UnlockVaultUseCase(
+    ports.clock,
     ports.crypto,
+    ports.ids,
+    ports.scheduledTasks,
     ports.vaultLocalRepository,
+    ports.vaultLockTasks,
     ports.unlockedVaultRepository,
   );
 

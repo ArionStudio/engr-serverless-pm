@@ -31,6 +31,7 @@ export function createCoreTestValues() {
     masterPassword: "master-password" as RawMasterPassword,
     newMasterPassword: "new-master-password" as RawMasterPassword,
     vaultId: "vault-id",
+    vaultLockActionId: "vault-lock-action-id",
     vaultDisplayName: "blue-river-4821",
     deviceId: "device-id",
     timestamp: 1_700_000_000_000,

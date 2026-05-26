@@ -10,7 +10,9 @@ import type { Bip39Port } from "../../ports/bip39.port";
 import type { ClockPort } from "../../ports/clock.port";
 import type { CryptoPort } from "../../ports/crypto.port";
 import type { IdPort } from "../../ports/id.port";
+import type { ScheduledTaskPort } from "../../ports/scheduled-task.port";
 import type { VaultDisplayNamePort } from "../../ports/vault-display-name.port";
+import type { VaultLockTaskRepositoryPort } from "../../ports/vault-lock-task-repository.port";
 import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault-local-repository.port";
 import { bytes, createCoreTestValues, type CoreTestValues } from "./values";
@@ -157,6 +159,17 @@ export function createCoreTestPorts(
     now: vi.fn(() => values.timestamp),
   };
 
+  const scheduledTasks: ScheduledTaskPort = {
+    scheduleTask: vi.fn(async () => undefined),
+    cancelTask: vi.fn(async () => undefined),
+  };
+
+  const vaultLockTasks: VaultLockTaskRepositoryPort = {
+    save: vi.fn(async () => undefined),
+    get: vi.fn(async () => null),
+    remove: vi.fn(async () => undefined),
+  };
+
   const vaultDisplayName: VaultDisplayNamePort = {
     generateVaultDisplayName: vi.fn(async () => values.vaultDisplayName),
   };
@@ -168,6 +181,8 @@ export function createCoreTestPorts(
     unlockedVaultRepository,
     ids,
     clock,
+    scheduledTasks,
+    vaultLockTasks,
     vaultDisplayName,
     saved,
   };

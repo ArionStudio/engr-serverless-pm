@@ -7,6 +7,7 @@ import {
   VaultSnapshotSignatureVerificationFailedError,
   VaultSnapshotSignerNotTrustedError,
 } from "../__errors/unlock-vault.errors";
+import { InvalidVaultLockDelayError } from "../__errors/vault-session.errors";
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
 
 describe("UnlockVaultUseCase", () => {
@@ -16,6 +17,7 @@ describe("UnlockVaultUseCase", () => {
     const result = await ctx.useCase.execute({
       vaultId: ctx.values.vaultId,
       masterPassword: ctx.values.masterPassword,
+      lockAfterMs: 600_000,
     });
 
     expect(result).toEqual({
@@ -63,6 +65,18 @@ describe("UnlockVaultUseCase", () => {
       vaultMasterKey: ctx.values.vaultMasterKey,
       devicePrivateSignKey: ctx.values.devicePrivateSignKey,
     });
+    expect(ctx.ports.vaultLockTasks.save).toHaveBeenCalledWith({
+      actionId: ctx.values.vaultLockActionId,
+      vaultId: ctx.values.vaultId,
+      expiresAt: ctx.values.timestamp + 600_000,
+    });
+    expect(ctx.ports.scheduledTasks.scheduleTask).toHaveBeenCalledWith({
+      task: {
+        name: "lockVault",
+        actionId: ctx.values.vaultLockActionId,
+      },
+      runAt: ctx.values.timestamp + 600_000,
+    });
   });
 
   it("fails when device access material is missing", async () => {
@@ -73,6 +87,7 @@ describe("UnlockVaultUseCase", () => {
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
         masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 600_000,
       }),
     ).rejects.toBeInstanceOf(DeviceAccessMaterialNotFoundError);
 
@@ -92,6 +107,7 @@ describe("UnlockVaultUseCase", () => {
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
         masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 600_000,
       }),
     ).rejects.toBeInstanceOf(VaultSnapshotNotFoundError);
 
@@ -114,6 +130,7 @@ describe("UnlockVaultUseCase", () => {
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
         masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 600_000,
       }),
     ).rejects.toBeInstanceOf(VaultSnapshotSignatureVerificationFailedError);
 
@@ -134,6 +151,7 @@ describe("UnlockVaultUseCase", () => {
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
         masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 600_000,
       }),
     ).rejects.toBeInstanceOf(UnsupportedAlgorithmSuiteError);
 
@@ -160,6 +178,7 @@ describe("UnlockVaultUseCase", () => {
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
         masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 600_000,
       }),
     ).rejects.toBeInstanceOf(UnsupportedAlgorithmSuiteError);
 
@@ -183,6 +202,7 @@ describe("UnlockVaultUseCase", () => {
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
         masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 600_000,
       }),
     ).rejects.toBeInstanceOf(VaultSnapshotSignerNotTrustedError);
 
@@ -209,6 +229,7 @@ describe("UnlockVaultUseCase", () => {
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
         masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 600_000,
       }),
     ).rejects.toBeInstanceOf(DeviceKeySlotNotFoundError);
 
@@ -216,5 +237,94 @@ describe("UnlockVaultUseCase", () => {
     expect(
       ctx.ports.unlockedVaultRepository.saveUnlockedVault,
     ).not.toHaveBeenCalled();
+  });
+
+  it("does not store runtime vault state when lock task cannot be scheduled", async () => {
+    const ctx = createUnlockVaultTestContext();
+    const error = new Error("schedule failed");
+
+    vi.mocked(ctx.ports.scheduledTasks.scheduleTask).mockRejectedValueOnce(
+      error,
+    );
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 600_000,
+      }),
+    ).rejects.toThrow(error);
+
+    expect(
+      ctx.ports.unlockedVaultRepository.saveUnlockedVault,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.vaultLockTasks.remove).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels scheduled lock task when runtime vault state cannot be stored", async () => {
+    const ctx = createUnlockVaultTestContext();
+    const error = new Error("save failed");
+
+    vi.mocked(
+      ctx.ports.unlockedVaultRepository.saveUnlockedVault,
+    ).mockRejectedValueOnce(error);
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 600_000,
+      }),
+    ).rejects.toThrow(error);
+
+    expect(ctx.ports.scheduledTasks.cancelTask).toHaveBeenCalledWith({
+      name: "lockVault",
+      actionId: ctx.values.vaultLockActionId,
+    });
+    expect(ctx.ports.vaultLockTasks.remove).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes lock task metadata when canceling scheduled lock task fails", async () => {
+    const ctx = createUnlockVaultTestContext();
+    const saveError = new Error("save failed");
+    const cancelError = new Error("cancel failed");
+
+    vi.mocked(
+      ctx.ports.unlockedVaultRepository.saveUnlockedVault,
+    ).mockRejectedValueOnce(saveError);
+    vi.mocked(ctx.ports.scheduledTasks.cancelTask).mockRejectedValueOnce(
+      cancelError,
+    );
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 600_000,
+      }),
+    ).rejects.toThrow(saveError);
+
+    expect(ctx.ports.scheduledTasks.cancelTask).toHaveBeenCalledWith({
+      name: "lockVault",
+      actionId: ctx.values.vaultLockActionId,
+    });
+    expect(ctx.ports.vaultLockTasks.remove).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails before reading vault data when lock delay is invalid", async () => {
+    const ctx = createUnlockVaultTestContext();
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 45_000 as never,
+      }),
+    ).rejects.toBeInstanceOf(InvalidVaultLockDelayError);
+
+    expect(
+      ctx.ports.vaultLocalRepository.getDeviceAccessMaterial,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.scheduledTasks.scheduleTask).not.toHaveBeenCalled();
   });
 });
