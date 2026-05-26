@@ -1,0 +1,30 @@
+{
+  "name": "@lfspm/core",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./domain": "./src/domain/index.ts",
+    "./domain/*": "./src/domain/*",
+    "./lib": "./src/lib/index.ts",
+    "./lib/*": "./src/lib/*",
+    "./ports": "./src/ports/index.ts",
+    "./ports/*": "./src/ports/*",
+    "./use-cases": "./src/use-cases/index.ts",
+    "./use-cases/*": "./src/use-cases/*",
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "test": "vitest",
+    "type-check": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.8",
+    "typescript": "~5.9.3",
+    "vitest": "^4.0.17"
+  }
+}

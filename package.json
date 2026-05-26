@@ -1,26 +1,28 @@
 {
-    "name": "serverless-pm",
-    "version": "1.0.0",
-    "private": true,
-    "scripts": {
-        "prepare": "husky",
-        "install:all": "pnpm install",
-        "lint-staged": "lint-staged",
-        "commitlint": "commitlint",
-        "ext:dev": "pnpm --filter serverless-pm-extension run dev",
-        "ext:build": "pnpm --filter serverless-pm-extension run build",
-        "ext:test": "pnpm --filter serverless-pm-extension run test",
-        "ext:lint": "pnpm --filter serverless-pm-extension run lint",
-        "ext:format": "pnpm --filter serverless-pm-extension run format",
-        "the:dev": "pnpm --filter serverless-pm-thesis run dev",
-        "the:build": "pnpm --filter serverless-pm-thesis run build",
-        "the:format": "pnpm --filter serverless-pm-thesis run format",
-        "the:clean": "pnpm --filter serverless-pm-thesis run clean"
-    },
-    "devDependencies": {
-        "@commitlint/cli": "^20.3.1",
-        "@commitlint/config-conventional": "^20.3.1",
-        "husky": "^9.1.7",
-        "lint-staged": "^16.2.7"
-    }
+  "name": "lfspm",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "prepare": "husky",
+    "install:all": "pnpm install",
+    "lint-staged": "lint-staged",
+    "commitlint": "commitlint",
+    "core:test": "pnpm --filter @lfspm/core run test",
+    "core:type-check": "pnpm --filter @lfspm/core run type-check",
+    "ext:dev": "pnpm --filter @lfspm/extension run dev",
+    "ext:build": "pnpm --filter @lfspm/extension run build",
+    "ext:test": "pnpm --filter @lfspm/extension run test",
+    "ext:lint": "pnpm --filter @lfspm/extension run lint",
+    "ext:format": "pnpm --filter @lfspm/extension run format",
+    "the:dev": "pnpm --filter @lfspm/thesis run dev",
+    "the:build": "pnpm --filter @lfspm/thesis run build",
+    "the:format": "pnpm --filter @lfspm/thesis run format",
+    "the:clean": "pnpm --filter @lfspm/thesis run clean"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^20.3.1",
+    "@commitlint/config-conventional": "^20.3.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7"
+  }
 }

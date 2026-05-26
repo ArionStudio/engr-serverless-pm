@@ -27,7 +27,7 @@ Each phase builds on previous phases. Do not skip dependencies.
 ### Completed
 
 - [x] Architecture diagrams in `docs/architecture/**`
-- [x] Core domain types and ports in `apps/extension/src/core/**`
+- [x] Core domain types and ports in `packages/core/src/**`
 - [x] Crypto adapter in `apps/extension/src/adapters/crypto/web-crypto-api.adapter.ts`
 - [x] Device key adapter in `apps/extension/src/adapters/device/web-crypto-device-key.adapter.ts` (partial — missing KDF on ECDH)
 - [x] Storage adapter in `apps/extension/src/adapters/storage/dexie-storage.adapter.ts`
@@ -74,11 +74,11 @@ Define pure domain contracts, no runtime dependencies.
 
 ### Checklist
 
-- [x] Crypto domain contracts (`apps/extension/src/core/crypto/**`)
-- [x] Vault contracts (`apps/extension/src/core/vault/**`)
-- [x] Device contracts (`apps/extension/src/core/device/**`)
-- [x] Storage contracts (`apps/extension/src/core/storage/**`)
-- [x] Sync contracts (`apps/extension/src/core/sync/**`)
+- [x] Crypto domain contracts (`packages/core/src/domain/crypto/**`)
+- [x] Vault contracts (`packages/core/src/domain/vault/**`)
+- [x] Device contracts (`packages/core/src/domain/device/**`)
+- [x] Storage contracts (`packages/core/src/ports/**`)
+- [x] Sync use cases (`packages/core/src/use-cases/sync/**`)
 - [x] Password/session/organization contracts
 - [x] Core constants + utils
 
@@ -212,10 +212,9 @@ Implement signed vault snapshot pipeline aligned with core vault types.
 
 ### Core Types Already Present
 
-- `apps/extension/src/core/vault/vault-snapshot.type.ts`
-- `apps/extension/src/core/vault/vault-envelope.type.ts`
-- `apps/extension/src/core/vault/vault-metadata.type.ts`
-- `apps/extension/src/core/vault/encrypted-payload.type.ts`
+- `packages/core/src/domain/snapshot/vault-snapshot.ts`
+- `packages/core/src/domain/crypto/protected-artifact.ts`
+- `packages/core/src/domain/vault/vault.ts`
 
 ### Checklist
 

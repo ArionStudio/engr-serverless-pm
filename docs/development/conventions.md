@@ -69,7 +69,7 @@ apps/extension/src/
 Ports in `core/` define what the app needs, not how it is implemented.
 
 ```typescript
-// apps/extension/src/core/storage/storage.port.ts
+// packages/core/src/ports/storage.port.ts
 export interface StoragePort {
   saveVault(vault: EncryptedVaultRecord): Promise<void>;
   loadVault(): Promise<EncryptedVaultRecord | null>;
@@ -95,7 +95,7 @@ export class DexieStorageAdapter implements StoragePort {
 Use plain TypeScript types/interfaces for domain modeling.
 
 ```typescript
-// apps/extension/src/core/storage/storage.type.ts
+// packages/core/src/domain/storage/storage.type.ts
 export interface EncryptedVaultRecord {
   readonly vaultId: string;
   readonly profileId: CryptoProfileId;

@@ -1,5 +1,5 @@
 {
-  "name": "serverless-pm-research",
+  "name": "@lfspm/research",
   "version": "1.0.0",
   "private": true,
   "scripts": {

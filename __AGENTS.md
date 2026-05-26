@@ -30,6 +30,8 @@ pnpm ext:dev      # Dev mode (already running in background - don't start)
 pnpm ext:build    # Build
 pnpm ext:lint     # Lint
 pnpm ext:test     # Test
+pnpm core:test     # Core package tests
+pnpm core:type-check # Core package type-check
 ```
 
 Run project commands from repo root unless a task explicitly requires a subdirectory.
@@ -72,7 +74,7 @@ Run project commands from repo root unless a task explicitly requires a subdirec
 │  (apps/extension/src/adapters/)     │
 ├─────────────────────────────────────┤
 │          Core Layer                 │  Types + Ports (NO dependencies)
-│  (apps/extension/src/core/)         │
+│  (packages/core/src/)               │
 └─────────────────────────────────────┘
 ```
 
