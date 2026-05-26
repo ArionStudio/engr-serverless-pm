@@ -1,18 +1,47 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
+import {
+  saveUnlockedVaultWithEntries,
+  singlePasswordEntry,
+} from "../../__tests__/fixtures/vault-entries";
+import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard-clear-task-repository.port";
+import type { ClipboardPort } from "../../ports/clipboard.port";
 import type { ScheduledTaskPort } from "../../ports/scheduled-task.port";
+import { ClearClipboardTaskUseCase } from "../clipboard/clear-clipboard-task";
 import { LockVaultUseCase } from "./lock-vault";
 
 function createContext() {
   const values = createCoreTestValues();
   const ports = createCoreTestPorts(values);
 
+  saveUnlockedVaultWithEntries(ports, values, [singlePasswordEntry]);
+
+  const clipboard: ClipboardPort = {
+    readText: vi.fn(async () => singlePasswordEntry.password),
+    writeText: vi.fn(async () => undefined),
+  };
+  const clipboardClearTasks: ClipboardClearTaskRepositoryPort = {
+    save: vi.fn(async () => undefined),
+    get: vi.fn(async () => null),
+    remove: vi.fn(async () => undefined),
+  };
+  const clock = {
+    now: vi.fn(() => values.timestamp),
+  };
   const scheduledTasks: ScheduledTaskPort = {
     scheduleTask: vi.fn(async () => undefined),
     cancelTask: vi.fn(async () => undefined),
   };
+  const clearClipboardTask = new ClearClipboardTaskUseCase(
+    clipboard,
+    clipboardClearTasks,
+    clock,
+    ports.crypto,
+  );
   const useCase = new LockVaultUseCase(
+    clearClipboardTask,
+    clipboardClearTasks,
     scheduledTasks,
     ports.vaultLockTasks,
     ports.unlockedVaultRepository,
@@ -21,6 +50,8 @@ function createContext() {
   return {
     values,
     ports,
+    clipboard,
+    clipboardClearTasks,
     scheduledTasks,
     useCase,
   };
@@ -92,6 +123,7 @@ describe("LockVaultUseCase", () => {
       }),
     ).resolves.toBeUndefined();
 
+    expect(ctx.clipboardClearTasks.get).not.toHaveBeenCalled();
     expect(ctx.scheduledTasks.cancelTask).not.toHaveBeenCalled();
     expect(
       ctx.ports.unlockedVaultRepository.removeUnlockedVault,
@@ -131,6 +163,64 @@ describe("LockVaultUseCase", () => {
       ctx.ports.unlockedVaultRepository.removeUnlockedVault,
     ).toHaveBeenCalledTimes(1);
     expect(ctx.ports.vaultLockTasks.remove).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears pending copied password before removing unlocked vault state", async () => {
+    const ctx = createContext();
+    vi.mocked(ctx.clipboardClearTasks.get).mockResolvedValueOnce({
+      actionId: "clipboard-action-id",
+      copiedValueHash: `hash:${singlePasswordEntry.password}`,
+      expiresAt: ctx.values.timestamp + 60_000,
+    });
+
+    await expect(ctx.useCase.execute()).resolves.toBeUndefined();
+
+    expect(ctx.clipboard.readText).toHaveBeenCalledTimes(1);
+    expect(ctx.clipboard.writeText).toHaveBeenCalledWith("");
+    expect(ctx.clipboardClearTasks.remove).toHaveBeenCalledTimes(1);
+    expect(ctx.scheduledTasks.cancelTask).toHaveBeenCalledWith({
+      name: "clearClipboard",
+      actionId: "clipboard-action-id",
+    });
+    expect(
+      ctx.ports.unlockedVaultRepository.removeUnlockedVault,
+    ).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes unlocked vault state when clipboard cleanup fails", async () => {
+    const ctx = createContext();
+    const error = new Error("clipboard unavailable");
+
+    vi.mocked(ctx.clipboardClearTasks.get).mockResolvedValueOnce({
+      actionId: "clipboard-action-id",
+      copiedValueHash: `hash:${singlePasswordEntry.password}`,
+      expiresAt: ctx.values.timestamp + 60_000,
+    });
+    vi.mocked(ctx.clipboard.readText).mockRejectedValueOnce(error);
+
+    await expect(ctx.useCase.execute()).rejects.toThrow(error);
+
+    expect(
+      ctx.ports.unlockedVaultRepository.removeUnlockedVault,
+    ).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes unlocked vault state when clipboard clear task cancellation fails", async () => {
+    const ctx = createContext();
+    const error = new Error("cancel failed");
+
+    vi.mocked(ctx.clipboardClearTasks.get).mockResolvedValueOnce({
+      actionId: "clipboard-action-id",
+      copiedValueHash: `hash:${singlePasswordEntry.password}`,
+      expiresAt: ctx.values.timestamp + 60_000,
+    });
+    vi.mocked(ctx.scheduledTasks.cancelTask).mockRejectedValueOnce(error);
+
+    await expect(ctx.useCase.execute()).rejects.toThrow(error);
+
+    expect(
+      ctx.ports.unlockedVaultRepository.removeUnlockedVault,
+    ).toHaveBeenCalledTimes(1);
   });
 
   it("bubbles repository errors", async () => {
