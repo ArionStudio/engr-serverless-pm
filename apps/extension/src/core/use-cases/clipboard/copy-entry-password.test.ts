@@ -228,6 +228,38 @@ describe("CopyEntryPasswordUseCase", () => {
     );
   });
 
+  it("cancels previous scheduled clear when previous clipboard cleanup fails", async () => {
+    const ctx = createContext();
+    const error = new Error("clipboard unavailable");
+    const previousClipboardClearTask = {
+      actionId: "previous-action-id",
+      copiedValueHash: `hash:${singlePasswordEntry.password}`,
+      expiresAt: 2_000,
+    };
+
+    vi.mocked(ctx.clipboardClearTasks.get).mockResolvedValueOnce(
+      previousClipboardClearTask,
+    );
+    vi.mocked(ctx.clipboard.readText).mockRejectedValueOnce(error);
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        entryId: singlePasswordEntry.id,
+        clearAfterMs: 60_000,
+      }),
+    ).rejects.toThrow(error);
+
+    expect(ctx.scheduledTasks.cancelTask).toHaveBeenCalledWith({
+      name: "clearClipboard",
+      actionId: "previous-action-id",
+    });
+    expect(ctx.clipboardClearTasks.save).not.toHaveBeenCalled();
+    expect(ctx.clipboard.writeText).not.toHaveBeenCalledWith(
+      singlePasswordEntry.password,
+    );
+  });
+
   it("fails before reading the password when clear delay is invalid", async () => {
     const ctx = createContext();
 

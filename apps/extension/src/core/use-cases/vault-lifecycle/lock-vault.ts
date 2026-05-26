@@ -43,16 +43,22 @@ export class LockVaultUseCase {
     const clipboardClearTask = await this.clipboardClearTasks.get();
 
     try {
-      await this.clearClipboardTask.execute({
-        task: clipboardClearTask,
-        requireExpired: false,
-      });
+      let cleanupError: unknown;
 
-      if (clipboardClearTask !== null) {
-        await this.scheduledTasks.cancelTask({
-          name: "clearClipboard",
-          actionId: clipboardClearTask.actionId,
+      try {
+        await this.clearClipboardTask.execute({
+          task: clipboardClearTask,
+          requireExpired: false,
         });
+
+        if (clipboardClearTask !== null) {
+          await this.scheduledTasks.cancelTask({
+            name: "clearClipboard",
+            actionId: clipboardClearTask.actionId,
+          });
+        }
+      } catch (error) {
+        cleanupError = error;
       }
 
       if (vaultLockTask !== null) {
@@ -64,6 +70,10 @@ export class LockVaultUseCase {
         } finally {
           await this.vaultLockTasks.remove();
         }
+      }
+
+      if (cleanupError !== undefined) {
+        throw cleanupError;
       }
     } finally {
       await this.unlockedVaultRepository.removeUnlockedVault();

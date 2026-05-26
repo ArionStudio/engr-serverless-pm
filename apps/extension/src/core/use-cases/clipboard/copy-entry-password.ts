@@ -74,15 +74,36 @@ export class CopyEntryPasswordUseCase {
     const clearScheduledAt = this.clock.now() + params.clearAfterMs;
     const previousClipboardClearTask = await this.clipboardClearTasks.get();
 
-    await this.clearClipboardTask.execute({
-      task: previousClipboardClearTask,
-      requireExpired: false,
-    });
-
     if (previousClipboardClearTask !== null) {
-      await this.scheduledTasks.cancelTask({
-        name: "clearClipboard",
-        actionId: previousClipboardClearTask.actionId,
+      let previousClearError: unknown;
+
+      try {
+        await this.clearClipboardTask.execute({
+          task: previousClipboardClearTask,
+          requireExpired: false,
+        });
+      } catch (error) {
+        previousClearError = error;
+      }
+
+      try {
+        await this.scheduledTasks.cancelTask({
+          name: "clearClipboard",
+          actionId: previousClipboardClearTask.actionId,
+        });
+      } catch (error) {
+        if (previousClearError === undefined) {
+          throw error;
+        }
+      }
+
+      if (previousClearError !== undefined) {
+        throw previousClearError;
+      }
+    } else {
+      await this.clearClipboardTask.execute({
+        task: previousClipboardClearTask,
+        requireExpired: false,
       });
     }
 

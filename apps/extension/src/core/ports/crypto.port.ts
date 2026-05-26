@@ -34,6 +34,7 @@ export interface CryptoPort {
 
   // Secret comparison
   hashSecretValue: (value: string) => Promise<string>;
+  compareSecretValueHash: (left: string, right: string) => Promise<boolean>;
 
   // Key generation
   generateDeviceSignKeyPair: () => Promise<DeviceSignKeyPair>;

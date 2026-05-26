@@ -1,5 +1,7 @@
-import type { ClipboardClearTask } from "../../ports/clipboard-clear-task-repository.port";
-import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard-clear-task-repository.port";
+import type {
+  ClipboardClearTask,
+  ClipboardClearTaskRepositoryPort,
+} from "../../ports/clipboard-clear-task-repository.port";
 import type { ClipboardPort } from "../../ports/clipboard.port";
 import type { ClockPort } from "../../ports/clock.port";
 import type { CryptoPort } from "../../ports/crypto.port";
@@ -75,7 +77,12 @@ export class ClearClipboardTaskUseCase {
       currentClipboardValue,
     );
 
-    if (currentClipboardValueHash !== task.copiedValueHash) {
+    const isCopiedValueStillPresent = await this.crypto.compareSecretValueHash(
+      currentClipboardValueHash,
+      task.copiedValueHash,
+    );
+
+    if (!isCopiedValueStillPresent) {
       await this.clipboardClearTasks.remove();
 
       return {

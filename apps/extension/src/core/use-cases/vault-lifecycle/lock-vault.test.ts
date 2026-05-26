@@ -209,6 +209,11 @@ describe("LockVaultUseCase", () => {
     const ctx = createContext();
     const error = new Error("cancel failed");
 
+    vi.mocked(ctx.ports.vaultLockTasks.get).mockResolvedValueOnce({
+      actionId: ctx.values.vaultLockActionId,
+      vaultId: ctx.values.vaultId,
+      expiresAt: ctx.values.timestamp + 60_000,
+    });
     vi.mocked(ctx.clipboardClearTasks.get).mockResolvedValueOnce({
       actionId: "clipboard-action-id",
       copiedValueHash: `hash:${singlePasswordEntry.password}`,
@@ -218,6 +223,15 @@ describe("LockVaultUseCase", () => {
 
     await expect(ctx.useCase.execute()).rejects.toThrow(error);
 
+    expect(ctx.scheduledTasks.cancelTask).toHaveBeenCalledWith({
+      name: "clearClipboard",
+      actionId: "clipboard-action-id",
+    });
+    expect(ctx.scheduledTasks.cancelTask).toHaveBeenCalledWith({
+      name: "lockVault",
+      actionId: ctx.values.vaultLockActionId,
+    });
+    expect(ctx.ports.vaultLockTasks.remove).toHaveBeenCalledTimes(1);
     expect(
       ctx.ports.unlockedVaultRepository.removeUnlockedVault,
     ).toHaveBeenCalledTimes(1);
