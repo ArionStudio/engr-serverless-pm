@@ -27,10 +27,13 @@ When users register a device, we capture environment information to help them re
 
 ## Detection Heuristics
 
+// TODO: implement it
+// should be splited to adapter and core
+
 ### Device Type from Screen Width
 
 ```typescript
-import { DEVICE_TYPE_BREAKPOINTS } from "@/core/device/device-environment.const";
+import { DEVICE_TYPE_BREAKPOINTS } from "@lfspm/core";
 
 function detectDeviceType(): "desktop" | "tablet" | "mobile" {
   const width = window.screen.width;
@@ -75,7 +78,7 @@ function detectOSAndBrowser(): {
 ### Implementation
 
 ```typescript
-import { GEOLOCATION_API_URL } from "@/core/device/device-environment.const";
+import { GEOLOCATION_API_URL } from "@lfspm/core";
 
 interface IpInfoResponse {
   city?: string;
@@ -124,7 +127,7 @@ async function getLocation(): Promise<string | null> {
 
 ## Core Types
 
-See `apps/extension/src/core/device/device-environment.type.ts`:
+See the device environment contracts in `packages/core/src/domain/device/**`:
 
 - `DeviceEnvironment` - Stored with device registry entry
 - `DetectedEnvironment` - Auto-detected values before user customization
@@ -135,8 +138,7 @@ See `apps/extension/src/core/device/device-environment.type.ts`:
 The adapter layer should implement `DeviceEnvironmentPort`:
 
 ```typescript
-import type { DeviceEnvironmentPort } from "@/core/device/device-environment.port";
-import type { DetectedEnvironment } from "@/core/device/device-environment.type";
+import type { DeviceEnvironmentPort, DetectedEnvironment } from "@lfspm/core";
 
 export class BrowserDeviceEnvironmentAdapter implements DeviceEnvironmentPort {
   async detect(): Promise<DetectedEnvironment> {

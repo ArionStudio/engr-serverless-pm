@@ -783,7 +783,7 @@ We choose Pure Hexagonal (Ports & Adapters) for the SPM extension.
 
 3. **Contributor-friendly for the right tasks**: Adding a sync provider is 2-3 files with a clear pattern. The interface contract serves as documentation.
 
-4. **Entry points share code cleanly**: Popup, Options, and Background all import from the same `core/` and `adapters/`.
+4. **Entry points share code cleanly**: Popup, Options, and Background all import from the same shared core package and app-local adapters.
 
 ### Trade-off Accepted
 
@@ -792,7 +792,7 @@ We choose Pure Hexagonal (Ports & Adapters) for the SPM extension.
 ### How We Mitigate
 
 - **Lightweight variant**: No use-case classes. Core contains ports and types; business logic lives in hooks that consume ports.
-- **Barrel exports**: `index.ts` files hide internal structure. Consumers import from `@/core/crypto`, not individual files.
+- **Barrel exports**: `index.ts` files hide internal structure. Consumers import shared contracts from `@lfspm/core`, not individual app files.
 - **Consistent pattern**: Every feature follows the same structure. Learn once, apply everywhere.
 
 ---

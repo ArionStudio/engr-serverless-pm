@@ -99,3 +99,8 @@ Mark this as a known platform limitation.
 The UI should inform the user after copying a secret that clipboard clearing is best effort and does not clean clipboard history or clipboard synchronization features outside the extension.
 
 The application must not present clipboard auto-clear as full clipboard-history protection.
+
+## 4. Project name:
+
+eng: Local-First Serverless Password Manager as a WebExtension
+polish: Lokalny menedżer haseł w architekturze bezserwerowej jako rozszerzenie przeglądarki
