@@ -34,11 +34,14 @@ export class LockVaultUseCase {
 
     try {
       if (vaultLockTask !== null) {
-        await this.scheduledTasks.cancelTask({
-          name: "lockVault",
-          actionId: vaultLockTask.actionId,
-        });
-        await this.vaultLockTasks.remove();
+        try {
+          await this.scheduledTasks.cancelTask({
+            name: "lockVault",
+            actionId: vaultLockTask.actionId,
+          });
+        } finally {
+          await this.vaultLockTasks.remove();
+        }
       }
     } finally {
       await this.unlockedVaultRepository.removeUnlockedVault();

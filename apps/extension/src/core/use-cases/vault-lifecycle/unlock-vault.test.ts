@@ -261,6 +261,32 @@ describe("UnlockVaultUseCase", () => {
     expect(ctx.ports.vaultLockTasks.remove).toHaveBeenCalledTimes(1);
   });
 
+  it("preserves schedule failure when lock task metadata cleanup fails", async () => {
+    const ctx = createUnlockVaultTestContext();
+    const scheduleError = new Error("schedule failed");
+    const removeError = new Error("remove failed");
+
+    vi.mocked(ctx.ports.scheduledTasks.scheduleTask).mockRejectedValueOnce(
+      scheduleError,
+    );
+    vi.mocked(ctx.ports.vaultLockTasks.remove).mockRejectedValueOnce(
+      removeError,
+    );
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 600_000,
+      }),
+    ).rejects.toThrow(scheduleError);
+
+    expect(
+      ctx.ports.unlockedVaultRepository.saveUnlockedVault,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.vaultLockTasks.remove).toHaveBeenCalledTimes(1);
+  });
+
   it("cancels scheduled lock task when runtime vault state cannot be stored", async () => {
     const ctx = createUnlockVaultTestContext();
     const error = new Error("save failed");

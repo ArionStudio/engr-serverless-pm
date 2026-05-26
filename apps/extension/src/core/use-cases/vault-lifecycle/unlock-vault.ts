@@ -190,7 +190,11 @@ export class UnlockVaultUseCase {
         runAt: lockScheduledAt,
       });
     } catch (error) {
-      await this.vaultLockTasks.remove();
+      try {
+        await this.vaultLockTasks.remove();
+      } catch {
+        // Preserve the schedule failure.
+      }
       throw error;
     }
 
