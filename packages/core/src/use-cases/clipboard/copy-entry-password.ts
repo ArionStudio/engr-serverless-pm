@@ -100,11 +100,6 @@ export class CopyEntryPasswordUseCase {
       if (previousClearError !== undefined) {
         throw previousClearError;
       }
-    } else {
-      await this.clearClipboardTask.execute({
-        task: previousClipboardClearTask,
-        requireExpired: false,
-      });
     }
 
     const actionId = await this.ids.generateId();

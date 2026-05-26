@@ -1,4 +1,4 @@
-import { readdirSync, statSync } from "node:fs";
+import { lstatSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react-swc";
@@ -11,13 +11,29 @@ const coreSourceRoot = resolve(workspaceRoot, "packages/core/src");
 function collectFiles(directory: string): string[] {
   return readdirSync(directory).flatMap((entry) => {
     const filePath = join(directory, entry);
-    const stats = statSync(filePath);
+    const stats = lstatSync(filePath);
+
+    if (stats.isSymbolicLink()) {
+      return [];
+    }
 
     if (stats.isDirectory()) {
+      if (entry === "__tests__") {
+        return [];
+      }
+
       return collectFiles(filePath);
     }
 
-    return stats.isFile() ? [filePath] : [];
+    if (!stats.isFile()) {
+      return [];
+    }
+
+    if (!entry.endsWith(".ts") || entry.endsWith(".test.ts")) {
+      return [];
+    }
+
+    return [filePath];
   });
 }
 

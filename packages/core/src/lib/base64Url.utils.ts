@@ -96,6 +96,14 @@ export function decodeBase64Url(b64url: Base64UrlString): Uint8Array {
   // Normalize base64url -> base64
   const b64 = b64url.replace(/-/g, "+").replace(/_/g, "/");
 
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(b64)) {
+    throw new Error("Invalid base64/base64url character");
+  }
+
+  if (b64.includes("=") && b64.length % 4 !== 0) {
+    throw new Error("Invalid base64/base64url padding");
+  }
+
   // Base64 length cannot be mod 4 == 1 (unpadded). Reject early.
   if (b64.length % 4 === 1) {
     throw new Error("Invalid base64/base64url length");
