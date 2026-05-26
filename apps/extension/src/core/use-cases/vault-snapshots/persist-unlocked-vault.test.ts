@@ -232,6 +232,10 @@ describe("PersistUnlockedVaultUseCase", () => {
       }),
     ).rejects.toThrow(error);
 
+    expect(ctx.ports.crypto.encryptVaultSnapshotContent).toHaveBeenCalledWith(
+      ctx.unlockedVault.vault,
+      ctx.values.vaultMasterKey,
+    );
     expect(
       ctx.ports.vaultLocalRepository.saveVaultSnapshot,
     ).not.toHaveBeenCalled();
