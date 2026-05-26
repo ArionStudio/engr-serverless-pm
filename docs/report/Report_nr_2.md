@@ -20,8 +20,9 @@ My system goal is to provide a password manager that:
 - Allow user to list local vaults available on the current device
 - Allow user to unlock and lock its vault
 - Allow user to add, update and remove password entries
-- Allow user to organize password entries using folders and tags
+- Allow user to organize password entries using tags
 - Allow user to search for password entries
+- Allow user to reveal password values from an unlocked vault
 - Allow user to copy password entries to clipboard
 - Allow user to generate strong passwords
 - Allow user to autofill password from popup
@@ -77,11 +78,11 @@ Content scripts receive only the login and password required for an explicit aut
 
 - vault unlock: \
   requires: `vault initialization` \
-  use the selected vault id and master password to load `device access material`, verify the persisted `vault snapshot`, unwrap local keys, unwrap the `vault master key` through the current device key slot, decrypt the stored vault state, create the unlocked working state, and store the unlocked vault in `storage.session`
+  use the selected vault id and master password to load `device access material`, verify the persisted `vault snapshot`, unwrap local keys, unwrap the `vault master key` through the current device key slot, decrypt the stored vault state, create the unlocked working state, store a pending vault lock task with action id, schedule automatic vault lock at the user-selected lock time, and store the unlocked vault in `storage.session`
 
 - vault lock: \
   requires: `vault unlock` \
-  remove unlocked working state from `storage.session` and clear temporary runtime state;
+  clear any active clipboard password copy, cancel its pending clear task, remove unlocked working state from `storage.session`, and clear temporary runtime state;
   There should be no unpersisted vault changes at this step because each vault change automatically creates a new encrypted `vault snapshot`.
 
 - password entry CRUD: \
@@ -92,8 +93,7 @@ Content scripts receive only the login and password required for an explicit aut
 
 - password search: \
   requires: `vault unlock` \
-  access the unlocked vault state from `storage.session` and search for matching
-  password entries
+  access the unlocked vault state from `storage.session` and search for matching password entries using either an `any` matcher across searchable fields or a field matcher where provided fields are combined with `AND` logic
 
 - password generation: \
   generate a secure random password according to selected password rules
@@ -103,12 +103,15 @@ Content scripts receive only the login and password required for an explicit aut
 
 - clipboard copy: \
   requires: `vault unlock` \
-  copy selected credential data to the clipboard and attempt to clear it after a timeout
+  copy selected password value to the clipboard, clear any previous active copied password if it is still present, store a pending clipboard clear task, and schedule clipboard clear at the user-selected clear time
+
+- clipboard clear: \
+  requires: `vault unlock` or pending copied password state \
+  run from a scheduled task or vault lock, clear the clipboard only when the active clipboard value still matches the copied password, then remove the pending clipboard clear task
 
 - autofill: \
   requires: `vault unlock` \
-  after explicit user action, pass only the required login and password to the content
-  script and fill the appropriate fields on the target page
+  after explicit user action, get only the login and password needed for the selected entry, pass them to the content script, and fill the appropriate fields on the target page
 
 - setup cloud sync: \
   requires: `vault unlock` \
@@ -189,8 +192,12 @@ Notes:
 Definitions:
 
 - `entry details` - password entry data without password value
-- `full entry details` - password entry data with password value
+- `visible entry fields` - password entry fields returned for list and details views without the password value
+- `full entry details` - password entry data with password value, used only for create/update input and explicit password access flows
 - `entry identifications` - entry name, matched site/domain, and login identifier needed to let the user choose the correct entry
+- `password search query` - discriminated query shape; `any` matches login, sanitized url, or tag names with `OR` logic, while field query combines login, url, and tag id filters with `AND` logic; field query tag ids use `all` matching
+- `pending clipboard clear task` - short-lived unlocked-session metadata containing action id, copied value hash, and expiry timestamp; it does not store the password value and must be stored only in storage appropriate for sensitive runtime state
+- `pending vault lock task` - short-lived task metadata containing action id, vault id, and expiry timestamp; scheduled vault lock uses it to ignore stale alarm executions
 - `cloud sync credentials` - user-provided AWS access keys and S3 configuration, such as bucket, region, and object prefix, used to access the configured `S3 bucket`; stored locally encrypted with a dedicated master-password-derived protection key
 - `local vault descriptor` - non-secret local metadata for a vault available on the current device, including vault id, generated display name, creation time, and optional last-unlocked time
 - `device access material` - local persisted material needed to unlock one vault from the current device; contains salts, public signing key, and protected local keys, but no raw vault master key or raw recovery key
@@ -291,6 +298,7 @@ High-risk interaction zone:
   After research we come to conclusion that unlocked vault should live in `storage.session` with [setAccessLevel()](https://developer.chrome.com/docs/extensions/reference/api/storage/StorageArea#method-StorageArea-setAccessLevel) seted to default "TRUSTED_CONTEXTS"
 
 2. How to implement properly copy to clipboard and clear clipboard after timeout?
+   Use an extension scheduled task/alarm instead of plain `setTimeout`. The core stores only pending clear metadata and validates the current clipboard value against the unlocked vault entry before clearing it.
 3. How should device revocation work exactly: remove only device keys, or rotate VaultKey and secret key too?
    Device revocation should rotate vault key so new items can't be accuired using old keys, secret key also need to be revoked because it slot need to be encrypted again. NOT-SURE: RECRYPT OR ROTATE
 4. What exact data should be stored in runtime unlocked state and how should UI read it in MV3?
@@ -301,11 +309,10 @@ High-risk interaction zone:
 
 ### Implementation ideas
 
-- for password search we use:
-  - `#` for tags
-  - `@` for emails
-  - `?` for urls
-  - `/` for folders
+- password search uses structured query input:
+  - `any`: free-text matcher across searchable entry fields using `OR` logic
+  - field query: login, url, and tag id filters combined with `AND` logic
+  - tag filtering uses tag ids, not tag names
 - conflict resolution should work like git merge on decrypted vault state
 - `extension service worker` should compare local and remote decrypted entries and detect added, removed and updated entries
 - `popup` should show conflict list with entry diffs
