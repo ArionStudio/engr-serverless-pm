@@ -1,0 +1,7 @@
+export const AVAILABLE_CLIPBOARD_CLEAR_DELAYS_MS = [
+  30_000, 60_000, 120_000, 300_000,
+] as const;
+
+export const AVAILABLE_VAULT_LOCK_DELAYS_MS = [
+  60_000, 300_000, 600_000, 1_800_000, 3_600_000,
+] as const;

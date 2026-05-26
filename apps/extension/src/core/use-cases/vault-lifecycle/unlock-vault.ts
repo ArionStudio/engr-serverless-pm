@@ -1,11 +1,17 @@
 import type { LocalKeysPayload } from "../../domain/local-protection/local-protection.type";
 import type { RawMasterPassword } from "../../domain/master-password";
+import { vaultLockDelayMsSchema } from "../../domain/scheduled-task/scheduled-task-delay.schema";
+import type { VaultLockDelayMs } from "../../domain/scheduled-task/scheduled-task-delay.type";
 import type { DeviceKeySlot } from "../../domain/snapshot/key-slot";
 import type { UnlockedVault } from "../../domain/vault/unlocked-vault";
 import type { Vault } from "../../domain/vault/vault";
+import type { ClockPort } from "../../ports/clock.port";
 import type { CryptoPort } from "../../ports/crypto.port";
+import type { IdPort } from "../../ports/id.port";
+import type { ScheduledTaskPort } from "../../ports/scheduled-task.port";
 import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault-local-repository.port";
+import type { VaultLockTaskRepositoryPort } from "../../ports/vault-lock-task-repository.port";
 import { UnsupportedAlgorithmSuiteError } from "../__errors/algorithm-suite.errors";
 import {
   DeviceAccessMaterialNotFoundError,
@@ -14,10 +20,12 @@ import {
   VaultSnapshotSignatureVerificationFailedError,
   VaultSnapshotSignerNotTrustedError,
 } from "../__errors/unlock-vault.errors";
+import { InvalidVaultLockDelayError } from "../__errors/vault-session.errors";
 
 export type UnlockVaultCommandParams = {
   vaultId: string;
   masterPassword: RawMasterPassword;
+  lockAfterMs: VaultLockDelayMs;
 };
 
 export type UnlockVaultResult = {
@@ -25,21 +33,35 @@ export type UnlockVaultResult = {
 };
 
 export class UnlockVaultUseCase {
+  private readonly clock: ClockPort;
   private readonly crypto: CryptoPort;
+  private readonly ids: IdPort;
+  private readonly scheduledTasks: ScheduledTaskPort;
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
+  private readonly vaultLockTasks: VaultLockTaskRepositoryPort;
   private readonly unlockedVaultRepository: UnlockedVaultRepositoryPort;
 
   constructor(
+    clock: ClockPort,
     crypto: CryptoPort,
+    ids: IdPort,
+    scheduledTasks: ScheduledTaskPort,
     vaultLocalRepository: VaultLocalRepositoryPort,
+    vaultLockTasks: VaultLockTaskRepositoryPort,
     unlockedVaultRepository: UnlockedVaultRepositoryPort,
   ) {
+    this.clock = clock;
     this.crypto = crypto;
+    this.ids = ids;
+    this.scheduledTasks = scheduledTasks;
     this.vaultLocalRepository = vaultLocalRepository;
+    this.vaultLockTasks = vaultLockTasks;
     this.unlockedVaultRepository = unlockedVaultRepository;
   }
 
   async execute(params: UnlockVaultCommandParams): Promise<UnlockVaultResult> {
+    assertValidVaultLockDelay(params.lockAfterMs);
+
     const deviceAccessMaterial =
       await this.vaultLocalRepository.getDeviceAccessMaterial(params.vaultId);
 
@@ -140,6 +162,9 @@ export class UnlockVaultUseCase {
       vaultMasterKey,
     );
 
+    const lockVaultActionId = await this.ids.generateId();
+    const lockScheduledAt = this.clock.now() + params.lockAfterMs;
+
     const unlockedVault: UnlockedVault = {
       vaultId: params.vaultId,
       deviceId: deviceAccessMaterial.deviceId,
@@ -148,10 +173,57 @@ export class UnlockVaultUseCase {
       devicePrivateSignKey: localKeysPayload.devicePrivateSignKey,
     };
 
-    await this.unlockedVaultRepository.saveUnlockedVault(unlockedVault);
+    const lockVaultTask = {
+      name: "lockVault",
+      actionId: lockVaultActionId,
+    } as const;
+
+    await this.vaultLockTasks.save({
+      actionId: lockVaultActionId,
+      vaultId: params.vaultId,
+      expiresAt: lockScheduledAt,
+    });
+
+    try {
+      await this.scheduledTasks.scheduleTask({
+        task: lockVaultTask,
+        runAt: lockScheduledAt,
+      });
+    } catch (error) {
+      try {
+        await this.vaultLockTasks.remove();
+      } catch {
+        // Preserve the schedule failure.
+      }
+      throw error;
+    }
+
+    try {
+      await this.unlockedVaultRepository.saveUnlockedVault(unlockedVault);
+    } catch (error) {
+      try {
+        await this.scheduledTasks.cancelTask(lockVaultTask);
+      } catch {
+        // Preserve the save failure; repository cleanup still needs to run.
+      }
+      try {
+        await this.vaultLockTasks.remove();
+      } catch {
+        // Preserve the save failure.
+      }
+      throw error;
+    }
 
     return {
       vault,
     };
+  }
+}
+
+function assertValidVaultLockDelay(lockAfterMs: number): void {
+  const lockDelayResult = vaultLockDelayMsSchema.safeParse(lockAfterMs);
+
+  if (!lockDelayResult.success) {
+    throw new InvalidVaultLockDelayError(lockDelayResult.error);
   }
 }
