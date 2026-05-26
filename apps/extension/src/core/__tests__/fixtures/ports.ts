@@ -41,6 +41,7 @@ export function createCoreTestPorts(
     generateRandomBytes: vi.fn(
       async (byteLength: number) => new ArrayBuffer(byteLength) as RandomBytes,
     ),
+    hashSecretValue: vi.fn(async (value) => `hash:${value}`),
     generateDeviceSignKeyPair: vi.fn(async () => deviceSignKeyPair),
     generateVaultMasterKey: vi.fn(async () => values.vaultMasterKey),
     generateDeviceSlotKey: vi.fn(async () => values.deviceSlotKey),
