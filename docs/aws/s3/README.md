@@ -172,6 +172,10 @@ no longer be trusted:
 3. Confirm sync works with the new key.
 4. Delete or deactivate the old IAM access key.
 
+Keep this order. Deleting or deactivating the old key before every trusted
+device has the replacement key will break sync for devices that still use the
+old configuration.
+
 To revoke cloud sync completely, delete or deactivate the IAM access key, delete
 the IAM user, or delete the CloudFormation stack. Device revocation inside the
 vault still requires vault-key rotation and re-slotting trusted devices; S3 key
