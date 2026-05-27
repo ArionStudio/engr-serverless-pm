@@ -1,0 +1,153 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Private S3 bucket and scoped IAM user for browser extension sync
+
+Parameters:
+  BucketName:
+    Type: String
+    Description: Globally unique S3 bucket name
+  ExtensionOrigins:
+    Type: CommaDelimitedList
+    Description: Comma-separated list of allowed CORS origins (e.g., chrome-extension://id,https://your.site)
+  ObjectPrefix:
+    Type: String
+    Default: "vault/"
+    Description: S3 object key prefix to scope extension access (e.g., vault/)
+  IamUserName:
+    Type: String
+    Default: "spm-s3-sync-user"
+    Description: IAM user name for the extension sync credentials
+  LifecycleEnabled:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "true"
+    Description: Enable S3 Lifecycle to clean up noncurrent versions and incomplete uploads
+  NoncurrentVersionExpirationDays:
+    Type: Number
+    Default: 30
+    Description: Days after which noncurrent object versions are permanently deleted
+  AbortIncompleteMultipartUploadDays:
+    Type: Number
+    Default: 7
+    Description: Days after which incomplete multipart uploads are aborted
+
+Conditions:
+  IsLifecycleEnabled: !Equals [!Ref LifecycleEnabled, "true"]
+
+Resources:
+  DataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: "AES256"
+      CorsConfiguration:
+        CorsRules:
+          - AllowedMethods: [GET, PUT, DELETE, HEAD]
+            AllowedOrigins: !Ref ExtensionOrigins
+            AllowedHeaders: ["*"]
+            ExposedHeaders: ["ETag", "x-amz-version-id"]
+            MaxAge: 300
+      LifecycleConfiguration: !If
+        - IsLifecycleEnabled
+        - Rules:
+            - Id: CleanupNoncurrentVersions
+              Status: Enabled
+              Prefix: !Ref ObjectPrefix
+              NoncurrentVersionExpiration:
+                NoncurrentDays: !Ref NoncurrentVersionExpirationDays
+            - Id: AbortIncompleteMultipartUploads
+              Status: Enabled
+              Prefix: !Ref ObjectPrefix
+              AbortIncompleteMultipartUpload:
+                DaysAfterInitiation: !Ref AbortIncompleteMultipartUploadDays
+        - !Ref "AWS::NoValue"
+
+  DataBucketPolicyTLS:
+    Type: AWS::S3::BucketPolicy
+    DependsOn: DataBucket
+    Properties:
+      Bucket: !Ref DataBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyNonTLS
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !Sub "arn:aws:s3:::${DataBucket}"
+              - !Sub "arn:aws:s3:::${DataBucket}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+
+  SyncUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: !Ref IamUserName
+
+  SyncUserPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub "${AWS::StackName}-S3SyncAccess"
+      Users:
+        - !Ref SyncUser
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: ListConfiguredPrefix
+            Effect: Allow
+            Action:
+              - "s3:ListBucket"
+              - "s3:ListBucketVersions"
+            Resource: !Sub "arn:aws:s3:::${DataBucket}"
+            Condition:
+              StringLike:
+                s3:prefix:
+                  - !Ref ObjectPrefix
+                  - !Sub "${ObjectPrefix}*"
+          - Sid: ReadWriteConfiguredPrefix
+            Effect: Allow
+            Action:
+              - "s3:GetObject"
+              - "s3:GetObjectVersion"
+              - "s3:PutObject"
+              - "s3:DeleteObject"
+            Resource: !Sub "arn:aws:s3:::${DataBucket}/${ObjectPrefix}*"
+
+Outputs:
+  BucketNameOut:
+    Description: S3 bucket name
+    Value: !Ref BucketName
+    Export:
+      Name: !Sub "${AWS::StackName}-BucketName"
+  RegionOut:
+    Description: Deployment region
+    Value: !Ref "AWS::Region"
+    Export:
+      Name: !Sub "${AWS::StackName}-Region"
+  PrefixOut:
+    Description: S3 object key prefix scoped by policy
+    Value: !Ref ObjectPrefix
+    Export:
+      Name: !Sub "${AWS::StackName}-Prefix"
+  IamUserNameOut:
+    Description: IAM user name for S3 sync
+    Value: !Ref SyncUser
+    Export:
+      Name: !Sub "${AWS::StackName}-IamUserName"
+  TemplateVersion:
+    Description: Template version
+    Value: "v7-s3-only-user-managed-key"

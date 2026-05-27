@@ -38,7 +38,7 @@ database "IndexedDB\n(Hostile Disk)" as idb #FFE0B2
 ' Remote Storage (Hostile)
 cloud "AWS Cloud" {
     database "S3 Bucket\n(Hostile Storage)" as s3 #FFCCBC
-    component "Cognito\n(Auth)" as cognito
+    component "IAM\n(S3 Access Keys)" as iam
 }
 
 ' Other Device
@@ -63,8 +63,8 @@ crypto --> core : Vault Key\n(memory only)
 storage <--> idb : Encrypted Blobs\n+ Wrapped Keys
 
 ' Sync flow (optional)
-sync --> cognito : Get Temp\nCredentials
-sync <--> s3 : Signed\nEnvelopes\n(if sync enabled)
+sync --> iam : Use configured\naccess keys
+sync <--> s3 : Encrypted Signed\nEnvelopes\n(if sync enabled)
 
 ' Cross-device sync (optional)
 s3 <..> otherExt : Sync via S3\n(optional)

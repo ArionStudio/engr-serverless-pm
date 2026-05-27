@@ -239,7 +239,34 @@ IndexedDB stores:
 - `syncConfig` singleton record:
   - encrypted sync provider configuration
   - must be encrypted locally with `Sync Config Key`
-  - temporary AWS credentials must not be persisted
+  - user-provided AWS access keys must be persisted only in encrypted local sync configuration
+  - AWS access keys are long-lived user-owned storage credentials and must be rotated or revoked by the user in AWS if exposed
+
+### 7.1.1 Sync Credential Tradeoff
+
+Cloud sync uses user-provided, prefix-scoped S3 access keys instead of
+service-issued temporary credentials. This is an explicit local-first tradeoff:
+the project does not operate a backend that can safely issue refresh tokens,
+exchange Cognito identities, or revoke provider credentials on the user's
+behalf.
+
+Temporary S3 credentials would not remove the extension-side storage problem.
+While the vault is unlocked, those credentials would be kept in the same browser
+extension trust boundary as the decrypted sync configuration and unlocked vault
+state. A refresh flow would also require another long-lived authority, which
+would make onboarding more complex and could obscure user AWS configuration
+errors without adding meaningful protection in the local-only threat model.
+
+The security boundary is therefore:
+
+- the vault remains encrypted and signed before it reaches S3
+- the S3 key is scoped to the configured object prefix
+- the configured prefix is treated as one user's sync namespace, not a
+  multi-tenant storage area
+- all devices holding the same S3 key have equivalent storage access under that
+  prefix
+- rotation and revocation happen in the user's AWS account by replacing,
+  disabling, or deleting the IAM access key
 
 ### 7.2 Device Location History
 

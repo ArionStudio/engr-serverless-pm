@@ -93,7 +93,6 @@ In my current implementation, I named this `suite-v1` for future reference and d
 More details for this part are described in:
 
 - [Security specification](../security/security-specification.md)
-- [Roadmap and implementation state](../../ROADMAP.md)
 
 ## 4. Current implementation status
 
