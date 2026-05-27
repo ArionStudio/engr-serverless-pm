@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Private S3 bucket and scoped IAM access keys for browser extension sync
+Description: Private S3 bucket and scoped IAM user for browser extension sync
 
 Parameters:
   BucketName:
@@ -15,7 +15,7 @@ Parameters:
   IamUserName:
     Type: String
     Default: "spm-s3-sync-user"
-    Description: IAM user name for the extension sync access key
+    Description: IAM user name for the extension sync credentials
   LifecycleEnabled:
     Type: String
     AllowedValues: ["true", "false"]
@@ -98,12 +98,6 @@ Resources:
     Properties:
       UserName: !Ref IamUserName
 
-  SyncUserAccessKey:
-    Type: AWS::IAM::AccessKey
-    Properties:
-      UserName: !Ref SyncUser
-      Status: Active
-
   SyncUserPolicy:
     Type: AWS::IAM::Policy
     Properties:
@@ -154,12 +148,6 @@ Outputs:
     Value: !Ref SyncUser
     Export:
       Name: !Sub "${AWS::StackName}-IamUserName"
-  AccessKeyIdOut:
-    Description: AWS access key id for S3 sync
-    Value: !Ref SyncUserAccessKey
-  SecretAccessKeyOut:
-    Description: AWS secret access key for S3 sync. Store it in the extension once; CloudFormation can reveal it only from stack outputs.
-    Value: !GetAtt SyncUserAccessKey.SecretAccessKey
   TemplateVersion:
     Description: Template version
-    Value: "v6-s3-only"
+    Value: "v7-s3-only-user-managed-key"

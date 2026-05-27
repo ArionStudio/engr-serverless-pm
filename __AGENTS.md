@@ -125,7 +125,6 @@ Other Device ← Extension UI ← Core (decrypt) ← Adapters ← IndexedDB
 - [ ] `pnpm ext:build` succeeds
 - [ ] No unused imports/variables
 - [ ] Type-only imports use `import type`
-- [ ] Update `ROADMAP.md` if task status changed
 
 ---
 
@@ -133,7 +132,6 @@ Other Device ← Extension UI ← Core (decrypt) ← Adapters ← IndexedDB
 
 | File                                      | Purpose                   |
 | ----------------------------------------- | ------------------------- |
-| `ROADMAP.md`                              | Roadmap and task status   |
 | `docs/security/security-specification.md` | Detailed security model   |
 | `CONTRIBUTING.md`                         | Commit conventions        |
 | `docs/aws/s3/`                            | CloudFormation + AWS docs |

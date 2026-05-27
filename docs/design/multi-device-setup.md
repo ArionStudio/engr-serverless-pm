@@ -116,11 +116,24 @@ interface EnrollmentPackage {
 }
 ```
 
+The S3 credentials are user-provided storage credentials, not service-issued
+application credentials. In the local-first design there is no project backend
+that can issue temporary credentials or recover from provider misconfiguration.
+Keeping this as a direct, scoped S3 configuration avoids an onboarding flow that
+could hide AWS setup flaws behind additional moving parts.
+
+Temporary S3 credentials would still need to be stored by the browser extension
+beside the encrypted sync configuration and the unlocked vault state while the
+vault is in use. Without a separate trusted backend to refresh them, they do not
+materially improve the extension's local storage trust boundary.
+
 **Security:**
 
 - File encrypted — useless without one-time enrollment secret
 - User responsible for secure transfer
 - Can set expiration on exported package
+- S3 access keys should be rotated in AWS if the enrollment package or sync
+  configuration is exposed
 
 ### Method 3: Manual Configuration
 
