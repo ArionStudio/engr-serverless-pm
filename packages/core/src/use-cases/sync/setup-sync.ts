@@ -32,7 +32,7 @@ export class SetupSyncUseCase {
       throw new VaultMustBeUnlockedError(params.vaultId, "setup sync");
     }
 
-    let syncConfig;
+    let syncConfig: SyncConfig;
 
     try {
       syncConfig = await this.syncProvider.setup(params.syncConfig);
