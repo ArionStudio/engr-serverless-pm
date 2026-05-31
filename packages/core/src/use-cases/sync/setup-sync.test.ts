@@ -140,4 +140,21 @@ describe("SetupSyncUseCase", () => {
     ).toHaveBeenCalled();
     expect(ctx.saved.unlockedVault).toBeUndefined();
   });
+
+  it("preserves the session save error when cleanup also fails", async () => {
+    const ctx = createContext();
+    vi.mocked(
+      ctx.ports.unlockedVaultRepository.saveUnlockedVault,
+    ).mockRejectedValueOnce(new Error("session save failed"));
+    vi.mocked(
+      ctx.ports.unlockedVaultRepository.removeUnlockedVault,
+    ).mockRejectedValueOnce(new Error("cleanup failed"));
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        syncConfig: ctx.values.syncConfigInput,
+      }),
+    ).rejects.toThrow("session save failed");
+  });
 });
