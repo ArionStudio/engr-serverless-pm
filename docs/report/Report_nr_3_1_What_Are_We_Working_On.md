@@ -207,7 +207,7 @@ Data stores touched: `storage.session`, runtime memory.
 
 **PR11 Setup cloud sync** \
 Trigger: User configures the optional sync layer. \
-Purpose: Validates user-provided S3 configuration and AWS access credentials, then stores locally protected sync configuration and credentials. \
+Purpose: Validates user-provided S3 configuration and AWS access credentials, then stores sync configuration and credentials inside the encrypted vault payload. \
 Data stores touched: `IndexedDB`, `AWS S3 bucket`, runtime memory.
 
 **PR12 Sync upload** \
@@ -232,17 +232,17 @@ Data stores touched: `IndexedDB`, `AWS S3 bucket`, runtime memory.
 
 **PR16 Remove local sync credentials** \
 Trigger: User disables sync. \
-Purpose: Removes local sync state and locally protected cloud sync credentials after remote sync files are removed. \
+Purpose: Removes local sync state and removes cloud sync credentials from the encrypted vault payload after remote sync files are removed. \
 Data stores touched: `IndexedDB`, `AWS S3 bucket`, runtime memory.
 
 **PR17 Device enrollment initialization** \
 Trigger: User registers a new device from an already trusted device. \
-Purpose: Requires further consultation; the exact enrollment package and enrollment secret design is not finalized. \
+Purpose: Creates a small encrypted enrollment package containing vault id, trusted public device keys, and a digest-bound source descriptor for a separate encrypted vault snapshot, then shows safe-handling instructions for transferring enrollment data. \
 Data stores touched: `IndexedDB`, runtime memory.
 
 **PR18 Device enrollment perform** \
 Trigger: User enrolls a new device into an existing synced vault. \
-Purpose: Requires further consultation; the exact process for using enrollment material to join an existing vault is not finalized. \
+Purpose: Decrypts the enrollment package, obtains the separate encrypted vault snapshot by file or short-lived link, verifies its digest and signature, unlocks it locally, then registers the new device. \
 Data stores touched: `IndexedDB`, `AWS S3 bucket`, runtime memory.
 
 **PR19 Device revocation** \
@@ -268,7 +268,7 @@ Only places where data is stored or persisted are listed here.
 
 **D1 IndexedDB** \
 Type: local persistent storage. \
-What is stored there: Local vault descriptors, encrypted vault snapshots, device access material, encrypted cloud sync credentials, local sync state, and related vault metadata. \
+What is stored there: Local vault descriptors, encrypted vault snapshots, device access material, local sync state, and related vault metadata. Cloud sync credentials exist only inside encrypted vault snapshots. \
 Trust level: untrusted local storage. \
 Persistence: long-lived.
 
@@ -323,7 +323,7 @@ Why it matters: They unlock device access to the vault and authenticate trusted-
 
 **A6 Cloud sync credentials** \
 Security relevance: confidentiality and authorization. \
-Where it exists: encrypted in `IndexedDB`, temporarily in runtime memory during sync setup and sync operations. \
+Where it exists: encrypted inside the vault payload in `IndexedDB` and optional cloud sync storage; temporarily in runtime memory after vault unlock during sync setup and sync operations. \
 Why it matters: They authenticate to the sync layer and bind the device to the correct cloud location.
 
 **A7 Recovery key source and recovery mnemonic key** \
@@ -334,7 +334,7 @@ Why it matters: The source key unwraps the recovery slot for the vault master ke
 **A8 Enrollment package and enrollment secret** \
 Security relevance: confidentiality, authenticity, and device trust bootstrap. \
 Where it exists: user transfer channel, new-device input, and transient runtime handling. \
-Why it matters: They bootstrap a new trusted device into an existing synced vault.
+Why it matters: They bootstrap a new trusted device into an existing synced vault without embedding the full vault snapshot or plaintext sync credentials in the enrollment package.
 
 **A9 Vault metadata, local vault descriptors, and registered device public keys** \
 Security relevance: integrity and authenticity. \
@@ -349,8 +349,8 @@ Key asset-to-store mappings are:
 - `A3 Vault snapshot`: Stored in `D1 IndexedDB` and optionally `D3 AWS S3 bucket`. Used by `PR2 Vault initialization`, `PR4 Vault unlock`, `PR6 Password entry CRUD`, `PR12 Sync upload`, `PR13 Sync download`, and `PR14 Sync conflict resolution`. Crosses trust boundaries: yes.
 - `A4 Unlocked vault`: Stored in `D2 storage.session` and active `D4 Runtime memory`. Used by `PR2 Vault initialization`, `PR4 Vault unlock`, `PR5 Vault lock`, `PR6 Password entry CRUD`, `PR7 Password search`, `PR9 Clipboard copy`, and `PR10 Autofill`. Crosses trust boundaries: yes, especially when secrets are copied to clipboard or sent to content scripts.
 - `A5 Device private keys`: Persisted in protected form in `D1 IndexedDB` and used in `D4 Runtime memory` during `PR4 Vault unlock`, `PR11 Setup cloud sync`, `PR18 Device enrollment perform`, `PR19 Device revocation`, and `PR20 Vault access recovery`. Crosses trust boundaries: no in plaintext, but protected forms are stored across a boundary.
-- `A6 Cloud sync credentials`: Stored encrypted in `D1 IndexedDB` and used in `D4 Runtime memory` during `PR11 Setup cloud sync`, `PR12 Sync upload`, `PR13 Sync download`, `PR15 Remove files from cloud sync`, and `PR16 Remove local sync credentials`. Crosses trust boundaries: yes, because they are used to authenticate to external cloud services.
-- `A8 Enrollment package and enrollment secret`: Exists outside normal local storage in the user transfer channel and new-device input path. Used by `PR17 Device enrollment initialization` and `PR18 Device enrollment perform`. Crosses trust boundaries: yes, because it moves between devices and the user-controlled transfer channel.
+- `A6 Cloud sync credentials`: Stored as encrypted vault payload data in `D1 IndexedDB` and optionally `D3 AWS S3 bucket`; used in `D4 Runtime memory` only after vault unlock during `PR11 Setup cloud sync`, `PR12 Sync upload`, `PR13 Sync download`, `PR15 Remove files from cloud sync`, and `PR16 Remove local sync credentials`. Crosses trust boundaries: yes, because they are used to authenticate to external cloud services.
+- `A8 Enrollment package and enrollment secret`: Exists outside normal local storage in the user transfer channel and new-device input path. Used by `PR17 Device enrollment initialization` and `PR18 Device enrollment perform`. Crosses trust boundaries: yes, because it moves between devices and the user-controlled transfer channel. The enrollment package carries only bootstrap metadata and a snapshot digest/source descriptor; the encrypted vault snapshot is transferred separately.
 - `A9 Vault metadata, local vault descriptors, and registered device public keys`: Stored in `D1 IndexedDB` and optionally `D3 AWS S3 bucket` for synced vault metadata. Used by `PR2 Vault initialization`, `PR3 List local vaults`, `PR4 Vault unlock`, `PR13 Sync download`, and device-management flows. Crosses trust boundaries: yes.
 
 ---
@@ -438,13 +438,13 @@ This section describes security-relevant data movement between external entities
   Protected by / validated by: UI confirmation, request validation, and sender validation at the service worker boundary.
 
 - `F2 Extension service worker -> IndexedDB`
-  Data transferred: Local vault descriptors, encrypted vault snapshots, device access material, encrypted cloud sync credentials, local sync state.
+  Data transferred: Local vault descriptors, encrypted vault snapshots, device access material, local sync state.
   Why the flow exists: Persists local state.
   Crosses trust boundary: yes.
   Protected by / validated by: Encryption, authentication, and structural validation on later reads.
 
 - `F3 IndexedDB -> Extension service worker`
-  Data transferred: Local vault descriptors, device access material, encrypted vault snapshot, sync configuration, and metadata.
+  Data transferred: Local vault descriptors, device access material, encrypted vault snapshot, local sync state, and metadata.
   Why the flow exists: Supports unlock, sync, recovery, and device-management operations.
   Crosses trust boundary: yes.
   Protected by / validated by: Authenticity checks, structure checks, and freshness checks before use.
@@ -480,10 +480,10 @@ This section describes security-relevant data movement between external entities
   Protected by / validated by: Encryption, authenticity verification, and sync-state comparison.
 
 - `F9 Trusted device -> User transfer channel -> New device`
-  Data transferred: Enrollment package and enrollment secret.
+  Data transferred: Enrollment package, enrollment secret, and separate encrypted vault snapshot file or short-lived snapshot link.
   Why the flow exists: Bootstraps a new trusted device into an existing synced vault.
   Crosses trust boundary: yes.
-  Protected by / validated by: Requires further consultation because the enrollment design is not finalized.
+  Protected by / validated by: Enrollment package encryption, separate one-time enrollment secret, snapshot digest check, vault envelope signature verification, and normal vault unlock material.
 
 ### 8.1 Notes on data flow granularity
 
@@ -527,7 +527,7 @@ Why it matters for security: Determines how local and remote vault state are syn
 
 **S7 Device enrollment and device revocation** \
 Main components involved: `User`, `Options page`, `Extension service worker`, `AWS S3 bucket`, `IndexedDB`. \
-Main data involved: Enrollment package, enrollment secret, trusted device public keys, wrapped access slots. \
+Main data involved: Enrollment package, enrollment secret, separate encrypted vault snapshot, trusted device public keys, wrapped access slots. \
 Why it matters for security: Controls which devices are allowed to participate in the trusted vault set.
 
 **S8 Access recovery and vault deletion** \

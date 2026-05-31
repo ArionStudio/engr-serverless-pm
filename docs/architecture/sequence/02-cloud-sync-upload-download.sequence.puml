@@ -26,16 +26,16 @@ end note
 
 == UPLOAD (Save to Cloud - If Sync Enabled) ==
 
-user -> ext : Trigger sync / Auto-save
+user -> ext : Unlock vault / trigger sync
 ext -> ext : Encrypt vault
 ext -> ext : Increment revision
 ext -> ext : Update timestamp
 ext -> ext : Sign envelope (Ed25519)
+ext -> ext : Read sync config from unlocked vault
 
 ext -> sync : upload(signedEnvelope)
 
-sync -> idb : Load encrypted sync config
-sync -> sync : Use configured AWS access keys
+sync -> sync : Use AWS access keys from unlocked vault
 
 sync -> s3 : PUT {prefix}/vault.enc
 note right of s3
@@ -56,11 +56,11 @@ ext --> user : Sync indicator updated
 
 == DOWNLOAD (Sync from Cloud - If Sync Enabled) ==
 
-user -> ext : Open extension / Manual sync
+user -> ext : Unlock vault / manual sync
+ext -> ext : Read sync config from unlocked vault
 ext -> sync : download()
 
-sync -> idb : Load encrypted sync config
-sync -> sync : Use configured AWS access keys
+sync -> sync : Use AWS access keys from unlocked vault
 
 sync -> s3 : HEAD {prefix}/vault.enc
 s3 --> sync : ETag, Last-Modified

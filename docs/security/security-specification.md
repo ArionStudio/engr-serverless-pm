@@ -27,7 +27,7 @@ A serverless password manager where **confidentiality and tamper-detection** are
 
 - **Vault Key (DEK):** AES-256-GCM key encrypting the vault data.
 - **Master KEK:** PBKDF2-derived key (master password + salt) used to wrap private keys.
-- **Sync Config Key:** key derived from Master KEK via domain separation, used only to encrypt local sync configuration.
+- **Sync Credentials:** optional provider configuration and credentials stored inside the encrypted vault data, not in a standalone local credential blob.
 - **Device Signing Key Pair:** Ed25519 (sign/verify).
 - **Device Exchange Key Pair:** ECDH P-256 (derive secrets for per-device key slots).
 - **Key Slot:** An encrypted copy of the Vault Key for a recipient.
@@ -223,6 +223,7 @@ IndexedDB stores:
   - `vaultId`
   - `profileId` (crypto profile used for this snapshot)
   - `data` (serialized encrypted snapshot bytes)
+  - encrypted vault payload includes password entries, device registry, and optional sync provider configuration/credentials
   - `lastModified`
   - `lastSyncTimestamp` (nullable)
 - `deviceState` singleton record:
@@ -236,13 +237,8 @@ IndexedDB stores:
   - `createdAt`, `lastSyncTimestamp` (nullable)
 - `pendingSync` queue records:
   - `id`, `operation`, `entryId`, `timestamp`, `retryCount`
-- `syncConfig` singleton record:
-  - encrypted sync provider configuration
-  - must be encrypted locally with `Sync Config Key`
-  - user-provided AWS access keys must be persisted only in encrypted local sync configuration
-  - AWS access keys are long-lived user-owned storage credentials and must be rotated or revoked by the user in AWS if exposed
 
-### 7.1.1 Sync Credential Tradeoff
+### 7.1.1 Sync Credential Storage Model
 
 Cloud sync uses user-provided, prefix-scoped S3 access keys instead of
 service-issued temporary credentials. This is an explicit local-first tradeoff:
@@ -250,16 +246,26 @@ the project does not operate a backend that can safely issue refresh tokens,
 exchange Cognito identities, or revoke provider credentials on the user's
 behalf.
 
-Temporary S3 credentials would not remove the extension-side storage problem.
-While the vault is unlocked, those credentials would be kept in the same browser
-extension trust boundary as the decrypted sync configuration and unlocked vault
-state. A refresh flow would also require another long-lived authority, which
-would make onboarding more complex and could obscure user AWS configuration
-errors without adding meaningful protection in the local-only threat model.
+Sync provider configuration and credentials are stored as encrypted vault data.
+There is no standalone `syncConfig` IndexedDB record and no dedicated
+master-password-derived sync-credential protection key. After the local vault is
+unlocked, decrypting the vault payload makes the sync credentials available in
+the unlocked vault session. While the vault is locked, sync cannot authenticate
+to S3.
+
+This matches the local-first bootstrap rule: every device must first obtain and
+unlock a local encrypted vault snapshot. Sync is then an optional operation
+performed from that unlocked state. Temporary S3 credentials would not remove the
+extension-side storage problem; while the vault is unlocked, any temporary
+credential would live in the same runtime trust boundary as the unlocked vault
+state. A refresh flow would also require another long-lived authority, adding
+complexity without strengthening the local-only threat model.
 
 The security boundary is therefore:
 
 - the vault remains encrypted and signed before it reaches S3
+- sync credentials are encrypted by the Vault Key as part of the vault payload
+- sync credentials are available only after local vault unlock
 - the S3 key is scoped to the configured object prefix
 - the configured prefix is treated as one user's sync namespace, not a
   multi-tenant storage area
@@ -300,18 +306,20 @@ Since JS Garbage Collection is unpredictable:
 3.  **Generation:** Create VaultKey, DeviceKeys.
 4.  **Secret Key:** Generate random 256-bit secret key, display to user (save offline). Wrap VaultKey with secret key → secret key slot. `secureWipe(secretKey)`. The secret key is used for disaster recovery and vault access on a new device.
 5.  **Persistence:** Wrap Device Keys with MasterKEK → Store in IndexedDB.
-6.  **Sync Config Protection:** If sync is enabled, derive `SyncConfigKey` from `MasterKEK` and use it only for local sync configuration encryption.
-7.  **Genesis Save:** Encrypt, Sign, Upload.
+6.  **Sync Configuration:** If sync is enabled, validate the provider configuration and store it inside the vault payload before encryption.
+7.  **Genesis Save:** Encrypt, sign, save locally, and upload if sync is enabled.
 
 ### 8.2 Login (Unlock)
 
 1.  **Input:** User enters Password.
 2.  **Derive:** Re-compute MasterKEK from password and stored salt.
 3.  **Unwrap Identity:** Unwrap Device Keys from IndexedDB.
-4.  **Download & Verify:** Fetch Vault. Verify Ed25519 signature.
-5.  **Rollback Check:** If `vault.timestamp < local.lastSeenTimestamp`, Warn User.
-6.  **Decrypt:** Unwrap Vault Key via device key slot (ECDH) → Decrypt Data. Secret key slot is used for disaster recovery and new-device vault access.
-7.  **Wipe:** `passwordBuffer.fill(0)` immediately.
+4.  **Load Local Snapshot:** Read the local encrypted vault snapshot from IndexedDB.
+5.  **Verify:** Verify Ed25519 signature on the local snapshot.
+6.  **Rollback Check:** If `vault.timestamp < local.lastSeenTimestamp`, warn user.
+7.  **Decrypt:** Unwrap Vault Key via device key slot (ECDH) → decrypt data. Secret key slot is used for disaster recovery and new-device vault access.
+8.  **Enable Sync:** If the decrypted vault contains sync credentials and sync is enabled, authenticated S3 sync may run from the unlocked session.
+9.  **Wipe:** `passwordBuffer.fill(0)` immediately.
 
 ### 8.3 Safe Save (Debounced)
 
@@ -330,24 +338,29 @@ Since JS Garbage Collection is unpredictable:
 
 ### 8.5 Device Enrollment
 
-A new device joins the vault using bootstrap material created by an already trusted device. The user needs: enrollment package + one-time enrollment secret + master password + secret key.
+A new device joins the vault using bootstrap material created by an already trusted device. The user needs: enrollment package + encrypted vault snapshot transfer + one-time enrollment secret + master password + secret key.
 
-1.  **Create Package:** Trusted device creates enrollment package containing sync configuration, vault id, and trusted public device keys.
+1.  **Create Package:** Trusted device creates enrollment package containing vault id, trusted public device keys, and an encrypted vault snapshot source descriptor (external file or short-lived URL) with expected digest. Plaintext sync credentials and full vault snapshot bytes are not included; sync credentials remain encrypted inside the vault snapshot.
 2.  **Protect Package:** Enrollment package is encrypted with a random one-time enrollment secret and transferred to the user.
-3.  **Import Package:** User provides enrollment package + one-time enrollment secret on the new device.
-4.  **Decrypt Package:** New device decrypts and verifies enrollment package.
-5.  **Input:** User enters master password + secret key.
-6.  **Download:** Download vault from S3 using sync configuration from the enrollment package.
-7.  **Verify:** Verify envelope signature against trusted public device keys from the enrollment package.
-8.  **Unwrap:** Unwrap VaultKey from secret key slot (A256GCMKW).
-9.  **Generate:** Generate device keys (Ed25519 + ECDH P-256).
-10. **Create Slot:** Create own ECDH device key slot (wrapping VaultKey).
-11. **Register:** Add self to device registry in vault data.
-12. **Derive:** Derive MasterKEK from password → wrap device private keys and derive `SyncConfigKey` for local sync configuration storage.
-13. **Sign:** Sign updated envelope (Ed25519).
-14. **Upload:** Upload updated vault to S3.
-15. **Persist:** Store wrapped keys + device state + encrypted sync configuration in IndexedDB.
-16. **Wipe:** `secureWipe(secretKey, passwordBuffer, enrollmentSecretBuffer)`.
+3.  **Instruct User:** Registered device shows handling guidance: use only trusted personal devices/channels, keep package and enrollment secret separate when possible, do not paste enrollment material into public/shared/AI tools, delete temporary copies after enrollment, and cancel enrollment if exposure is suspected.
+4.  **Import Package:** User provides enrollment package + one-time enrollment secret on the new device.
+5.  **Decrypt Package:** New device decrypts and verifies enrollment package.
+6.  **Acquire Snapshot:** User imports the separate encrypted vault snapshot file, or the new device fetches it from the short-lived URL in the package.
+7.  **Verify Snapshot Digest:** Hash the encrypted snapshot bytes and compare against the digest from the enrollment package.
+8.  **Persist Bootstrap Snapshot:** Store the encrypted vault snapshot locally in IndexedDB as the device's starting local vault copy.
+9.  **Input:** User enters master password + secret key.
+10. **Verify:** Verify envelope signature against trusted public device keys from the enrollment package.
+11. **Unwrap:** Unwrap VaultKey from secret key slot (A256GCMKW).
+12. **Decrypt:** Decrypt local vault data; sync credentials become available from the unlocked vault if sync is configured.
+13. **Generate:** Generate device keys (Ed25519 + ECDH P-256).
+14. **Create Slot:** Create own ECDH device key slot (wrapping VaultKey).
+15. **Register:** Add self to device registry in vault data.
+16. **Derive:** Derive MasterKEK from password → wrap device private keys for local device access.
+17. **Optional Refresh:** If sync is configured, download the latest remote snapshot using credentials from the unlocked vault and resolve freshness/conflicts before upload.
+18. **Sign:** Sign updated envelope (Ed25519).
+19. **Upload:** Upload updated vault to S3 if sync is configured.
+20. **Persist:** Store wrapped keys + device state + updated encrypted vault snapshot in IndexedDB.
+21. **Wipe:** `secureWipe(secretKey, passwordBuffer, enrollmentSecretBuffer)`.
 
 ---
 
@@ -416,6 +429,7 @@ Strict CSP required in manifest.json:
 - [ ] **Revision Monotonicity:** Every "Safe Save" operation increments the revision counter and updates the timestamp.
 - [ ] **Rollback Warning:** The app warns the user if the loaded vault's timestamp is older than the last locally seen timestamp.
 - [ ] **Signature Verification:** The app rejects any vault where the Ed25519 signature does not match the signerId public key.
+- [ ] **Sync Credential Boundary:** Sync credentials are stored only inside encrypted vault data and are usable only after local vault unlock.
 
 ### Platform Security
 

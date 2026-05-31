@@ -34,23 +34,28 @@ keys.
 ## Credential Model
 
 This setup intentionally uses user-created AWS access keys instead of a
-managed Cognito/STS flow. The password manager is local-first: the vault,
-device state, and sync configuration live in the browser extension, and the
-project does not operate a backend that can issue, refresh, or revoke
-provider-specific credentials for the user.
+managed Cognito/STS flow. The password manager is local-first: the encrypted
+vault and device state live in the browser extension, and the project does not
+operate a backend that can issue, refresh, or revoke provider-specific
+credentials for the user.
 
 The CloudFormation stack creates only the bucket, IAM user, and scoped policy.
 It does not create or output an access key. The user creates the access key after
 deployment, so AWS reveals the secret access key only during key creation instead
 of persisting it in stack outputs.
 
+The extension stores the S3 provider configuration and AWS key pair inside the
+encrypted vault payload. They are not persisted as a separate local credential
+blob. Unlocking the local vault snapshot decrypts the vault data and makes the
+sync credentials available to the unlocked session; while the vault is locked,
+S3 sync cannot authenticate.
+
 Adding temporary credentials would make onboarding more complex without giving
-the extension a stronger trust boundary: temporary keys still have to be stored
-in the same encrypted browser-extension storage as the unlocked vault and sync
-configuration, and refresh requires another long-lived authority. For this
-local-first architecture, the simpler model is to store one scoped key pair
-locally, document its exposure clearly, and let the user rotate or revoke it in
-their own AWS account.
+the extension a stronger trust boundary: temporary keys still have to live in
+the same runtime trust boundary as the unlocked vault state, and refresh
+requires another long-lived authority. For this local-first architecture, the
+simpler model is to store one scoped key pair inside the vault, document its
+exposure clearly, and let the user rotate or revoke it in their own AWS account.
 
 ## Deploy
 
@@ -149,9 +154,9 @@ aws iam create-access-key \
 ```
 
 The command returns `AccessKeyId` and `SecretAccessKey`. AWS shows the secret
-access key only at creation time. Store both values directly in the extension's
-locally encrypted sync configuration. Do not commit them to the repository or
-store them in CloudFormation outputs.
+access key only at creation time. Store both values in the extension's vault
+sync settings so they are encrypted as part of the vault payload. Do not commit
+them to the repository or store them in CloudFormation outputs.
 
 The extension sync setup needs:
 
@@ -167,14 +172,17 @@ Rotate the sync key if it was exposed, copied into an unsafe location, or should
 no longer be trusted:
 
 1. Create a new access key for `IamUserName` in IAM.
-2. Copy the new access key id and secret access key into the extension sync
-   configuration on each trusted device.
-3. Confirm sync works with the new key.
-4. Delete or deactivate the old IAM access key.
+2. Unlock the vault on one trusted device and replace the key id and secret
+   access key in the vault's sync settings.
+3. Sync/upload the updated encrypted vault while the old key still works.
+4. Let each trusted device unlock and sync so it receives the new key from the
+   vault.
+5. Confirm sync works with the new key on trusted devices.
+6. Delete or deactivate the old IAM access key.
 
 Keep this order. Deleting or deactivating the old key before every trusted
-device has the replacement key will break sync for devices that still use the
-old configuration.
+device has synced the replacement key will break sync for devices that still
+only have the old key inside their local vault copy.
 
 To revoke cloud sync completely, delete or deactivate the IAM access key, delete
 the IAM user, or delete the CloudFormation stack. Device revocation inside the
@@ -188,7 +196,7 @@ revocation only removes that key pair's storage access.
 - CORS origins must match exactly.
 - Lifecycle rules apply only to `ObjectPrefix`.
 - The IAM policy allows list/read/write/delete only within the configured prefix.
-- The configured prefix is intended for one user's vault storage. Devices that share the same access key have the same S3 permissions under that prefix.
+- The configured prefix is intended for one user's vault storage. Devices that unlock the same synced vault receive the same S3 permissions under that prefix.
 - The template does not create access keys or store secret keys in CloudFormation outputs.
 - AWS reveals the secret access key only when the user creates the key. Treat it as sensitive and rotate it if exposed.
 

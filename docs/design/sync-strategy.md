@@ -10,6 +10,10 @@
 
 **Local-first, user-controlled sync** — vault works fully offline, sync is optional.
 
+**Sync after unlock** — provider configuration and credentials are encrypted vault
+contents. The app must unlock the local vault snapshot before it can authenticate
+to the sync provider.
+
 **User-controlled conflict resolution** — no auto-merge for security-critical data.
 
 Why:
@@ -21,7 +25,26 @@ Why:
 
 ---
 
-## 2. Sync Flow
+## 2. Credential Model
+
+Sync credentials are stored inside the encrypted vault payload, alongside the
+password entries and device registry. There is no separate local encrypted
+`syncConfig` blob and no master-password-derived purpose key for sync
+credentials.
+
+Consequences:
+
+- locked vault means no sync credentials are available
+- sync upload/download requires an unlocked local vault session
+- enrollment obtains a local encrypted vault snapshot first through a separate
+  file or short-lived link; after unlock, the target device reads sync
+  credentials from that vault
+- rotating cloud credentials is a vault update that must be synced before the
+  old cloud key is revoked
+
+---
+
+## 3. Sync Flow
 
 ### 6-Step Process
 
@@ -31,11 +54,11 @@ Why:
 │              Requires: Sync enabled + Network access                │
 └─────────────────────────────────────────────────────────────────────┘
 
-Step 1: User initiates sync (manual or scheduled)
+Step 1: User unlocks local vault, then initiates sync (manual or scheduled)
          │
          ▼
-Step 2: If sync enabled, download remote vault snapshot
-         (Skip if local-only mode)
+Step 2: If sync enabled, read credentials from unlocked vault
+         and download remote vault snapshot
          │
          ▼
 Step 3: Compare local vs remote
@@ -56,18 +79,18 @@ Step 6: Upload merged vault, update local
 
 > **Note:** This flow only applies when sync is enabled. The vault works fully offline using IndexedDB as primary storage.
 
-| Step | Action                                                   | User Involvement             |
-| ---- | -------------------------------------------------------- | ---------------------------- |
-| 1    | Trigger sync (requires sync to be enabled)               | Click button or auto-trigger |
-| 2    | Fetch `vault.encrypted` from cloud (if sync enabled)     | None (background)            |
-| 3    | Decrypt both vaults with master key, run diff algorithm  | None (background)            |
-| 4    | If conflicts exist, pause and show diff UI               | **Required**                 |
-| 5    | User picks local/remote/skip for each conflict           | **Required**                 |
-| 6    | Encrypt merged vault, save to IndexedDB, upload to cloud | None (background)            |
+| Step | Action                                                                 | User Involvement             |
+| ---- | ---------------------------------------------------------------------- | ---------------------------- |
+| 1    | Trigger sync from an unlocked vault session                            | Click button or auto-trigger |
+| 2    | Read sync credentials from decrypted vault and fetch `vault.encrypted` | None (background)            |
+| 3    | Decrypt remote snapshot with the Vault Key, run diff algorithm         | None (background)            |
+| 4    | If conflicts exist, pause and show diff UI                             | **Required**                 |
+| 5    | User picks local/remote/skip for each conflict                         | **Required**                 |
+| 6    | Encrypt merged vault, save to IndexedDB, upload to cloud               | None (background)            |
 
 ---
 
-## 3. Conflict Detection Types
+## 4. Conflict Detection Types
 
 | Change Type  | Local     | Remote    | Result                        |
 | ------------ | --------- | --------- | ----------------------------- |
@@ -83,7 +106,7 @@ Step 6: Upload merged vault, update local
 
 ---
 
-## 4. Diff UI Design
+## 5. Diff UI Design
 
 ### Conflict Resolution Screen
 
@@ -149,7 +172,7 @@ Step 6: Upload merged vault, update local
 
 ---
 
-## 5. Architecture Types
+## 6. Architecture Types
 
 ### Sync Diff Types
 
@@ -216,6 +239,7 @@ export interface SyncPort {
   disconnect(): Promise<void>;
 }
 
+// Sync adapter credentials are supplied from the unlocked vault session.
 // Diff logic lives in core domain, not in port
 // core/sync/sync.service.ts handles:
 // - computeDiff(local, remote): SyncDiff
@@ -224,7 +248,7 @@ export interface SyncPort {
 
 ---
 
-## 6. Sync States
+## 7. Sync States
 
 ```typescript
 export type SyncStatus =
@@ -248,19 +272,21 @@ export interface SyncSummary {
 
 ---
 
-## 7. Edge Cases
+## 8. Edge Cases
 
-| Scenario                                  | Handling                                |
-| ----------------------------------------- | --------------------------------------- |
-| Offline during sync                       | Show error, retry when online           |
-| Master password changed on another device | Prompt for new password, re-derive keys |
-| Vault corrupted in cloud                  | Option to overwrite with local or abort |
-| Sync interrupted mid-upload               | Atomic upload - temp file, then rename  |
-| Very large vault (1000+ entries)          | Paginated diff UI, progress indicator   |
+| Scenario                                  | Handling                                   |
+| ----------------------------------------- | ------------------------------------------ |
+| Vault locked when scheduled sync fires    | Defer sync until next unlock               |
+| Offline during sync                       | Show error, retry when online              |
+| Master password changed on another device | Prompt for new password, re-derive keys    |
+| Vault corrupted in cloud                  | Option to overwrite with local or abort    |
+| Sync interrupted mid-upload               | Atomic upload - temp file, then rename     |
+| Cloud credentials rotated in vault        | Keep old key active until all devices sync |
+| Very large vault (1000+ entries)          | Paginated diff UI, progress indicator      |
 
 ---
 
-## 8. Implementation Priority
+## 9. Implementation Priority
 
 1. **Phase 1**: Manual sync button (no auto-sync)
 2. **Phase 2**: Basic diff detection (modified only)

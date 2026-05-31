@@ -120,24 +120,30 @@
 #### cloud sync credentials
 
 - Security relevance: authentication and authorization for the sync layer; cloud location binding
-- Where it lives: `IndexedDB`, encrypted
+- Where it lives: encrypted inside the vault payload stored in `IndexedDB` and optionally in cloud sync storage
 - What it is used for: authenticate to AWS S3 bucket and identify/access the correct cloud sync location
-- Protected by: `cloud sync credentials protection key`
+- Protected by: the Vault Key as part of normal vault encryption
 
-#### cloud sync credentials protection key
+#### cloud sync credential runtime access
 
-- Security relevance: confidentiality of locally stored sync credentials
-- Where it lives: runtime memory during unlock
-- What it is used for: locally protect the persisted `cloud sync credentials`
-- Protected by: derived as a dedicated subkey from the `master-password root key`
+- Security relevance: controls when sync credentials become usable
+- Where it lives: unlocked vault runtime state during an active session
+- What it is used for: provide provider configuration and credentials to the sync adapter
+- Protected by: vault lock clears unlocked vault state; locked vault state has no usable sync credentials
 
 #### enrollment secret
 
-[ Need further consultation on topic ]
+- Security relevance: protects the enrollment package while it is in the user transfer channel
+- Where it lives: user transfer channel and transient new-device input
+- What it is used for: decrypt the enrollment package once
+- Protected by: high entropy, one-time use, transferred separately from the enrollment package
 
 #### enrollment package
 
-[ Need further consultation on topic ]
+- Security relevance: trusted-device bootstrap metadata for adding a new device
+- Where it lives: user transfer channel and transient runtime handling
+- What it is used for: provide vault id, trusted public device keys, and a digest-bound source descriptor for the separate encrypted vault snapshot
+- Protected by: encrypted with the enrollment secret; does not include full vault snapshot bytes, plaintext vault data, plaintext sync credentials, or device private keys
 
 #### registered device signing public keys
 

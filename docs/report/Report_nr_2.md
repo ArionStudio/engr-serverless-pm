@@ -115,19 +115,17 @@ Content scripts receive only the login and password required for an explicit aut
 
 - setup cloud sync: \
   requires: `vault unlock` \
-  validate user-provided S3 configuration and AWS access credentials, then store locally protected sync configuration and credentials
+  validate user-provided S3 configuration and AWS access credentials, then store sync configuration and credentials inside the encrypted vault payload
 
 - sync upload: \
   requires: `setup cloud sync` \
-  upload the latest persisted encrypted vault snapshot and related metadata to S3 using locally
-  protected sync configuration \
-  note: action should trigger automatically on vault lock
+  upload the latest persisted encrypted vault snapshot and related metadata to S3 using sync credentials from the unlocked vault \
+  note: action should trigger automatically before vault lock clears the unlocked vault state
 
 - sync download: \
   requires: `setup cloud sync` \
-  download the latest encrypted vault snapshot and related metadata from S3 using locally
-  protected sync configuration \
-  note: action should trigger automatically on vault unlock
+  download the latest encrypted vault snapshot and related metadata from S3 using sync credentials from the unlocked vault \
+  note: action should trigger automatically after vault unlock
 
 - sync conflict resolution: \
   requires: `vault unlock` \
@@ -145,15 +143,15 @@ Content scripts receive only the login and password required for an explicit aut
 - remove local sync credentials: \
   requires: `setup cloud sync` \
   may trigger: `remove files from cloud sync` \
-  remove local sync state and locally protected sync credentials to disable sync while
+  remove local sync state and sync credentials from the encrypted vault payload to disable sync while
   keeping the local vault available; if cloud files still exist, remove them first so
   orphaned remote files do not remain in the cloud
 
 - device enrollment initialization: \
-  [ Need further consultation on topic ]
+  from an already trusted device, create a small encrypted enrollment package with vault id, trusted public device keys, and a digest-bound source descriptor for a separate encrypted vault snapshot; transfer the one-time enrollment secret separately
 
 - device enrollment perform: \
-  [ Need further consultation on topic ]
+  on the new device, decrypt the enrollment package, obtain the separate encrypted vault snapshot, verify its digest and signature, unlock it with normal vault unlock material, create local device keys, register the device, and sync if configured
 
 - device revocation: \
   requires: `device enrollment perform` \
@@ -198,15 +196,15 @@ Definitions:
 - `password search query` - discriminated query shape; `any` matches login, sanitized url, or tag names with `OR` logic, while field query combines login, url, and tag id filters with `AND` logic; field query tag ids use `all` matching
 - `pending clipboard clear task` - short-lived unlocked-session metadata containing action id, copied value hash, and expiry timestamp; it does not store the password value and must be stored only in storage appropriate for sensitive runtime state
 - `pending vault lock task` - short-lived task metadata containing action id, vault id, and expiry timestamp; scheduled vault lock uses it to ignore stale alarm executions
-- `cloud sync credentials` - user-provided AWS access keys and S3 configuration, such as bucket, region, and object prefix, used to access the configured `S3 bucket`; stored locally encrypted with a dedicated master-password-derived protection key
+- `cloud sync credentials` - user-provided AWS access keys and S3 configuration, such as bucket, region, and object prefix, used to access the configured `S3 bucket`; stored inside the encrypted vault payload and available only after local vault unlock
 - `local vault descriptor` - non-secret local metadata for a vault available on the current device, including vault id, generated display name, creation time, and optional last-unlocked time
 - `device access material` - local persisted material needed to unlock one vault from the current device; contains salts, public signing key, and protected local keys, but no raw vault master key or raw recovery key
 - `vault snapshot` - canonical encrypted and authenticated vault state stored locally and optionally in the sync layer
 - `local sync state` - locally stored information needed to compare local and remote vault states
 - `trusted device` - device registered in the vault and allowed to decrypt, verify, sign, and extend device trust
 - `trusted public device keys` - registered public signing keys of devices trusted by the vault
-- `enrollment package` - [ Need further consultation on topic ]
-- `enrollment secret` - [ Need further consultation on topic ]
+- `enrollment package` - encrypted bootstrap metadata from an already trusted device; contains vault id, trusted public device keys, and a digest-bound source descriptor for a separate encrypted vault snapshot, but not the full snapshot, plaintext vault data, plaintext sync credentials, or device private keys
+- `enrollment secret` - high-entropy one-time secret used to decrypt the enrollment package; transferred separately from the package
 
 ### Trust boundaries
 
@@ -269,7 +267,7 @@ High-risk interaction zone:
 - `Chrome extension isolation` is assumed to work correctly, so other websites and other extensions cannot directly read the `extension service worker` memory.
 - The `browser extension permission model` is assumed to be correctly enforced by Chrome.
 - `WebCrypto API` and `crypto.getRandomValues()` are assumed to be correctly implemented by the browser.
-- New-device enrollment trust assumptions: [ Need further consultation on topic ]
+- New-device enrollment trust assumptions: an already trusted device authorizes enrollment; the enrollment package is protected by a one-time secret; the encrypted vault snapshot is transferred separately and must match the digest in the package; normal vault unlock material is still required.
 - The browser, operating system, and device running the extension are assumed not to be compromised by malware, a malicious browser binary, or memory-extraction attacks.
 
 #### Security consequences of boundary crossings
@@ -279,12 +277,12 @@ High-risk interaction zone:
 - The `message-passing boundary` between `popup`, `options page`, `content script`, and `extension service worker` is not trusted by default; privileged operations must depend on explicit validation of the sender and request type.
 - Once a secret is copied to the `clipboard`, it is outside the trusted boundary and may be retained by clipboard managers, OS-level clipboard history, or other local applications.
 - Once a secret is autofilled into a web page, it is outside the trusted boundary and becomes exposed to the security posture of the target page.
-- New-device enrollment boundary consequences: [ Need further consultation on topic ]
+- New-device enrollment boundary consequences: enrollment package, enrollment secret, and encrypted snapshot transfer cross an untrusted user-controlled channel; the package must be encrypted, the snapshot digest must match, and the snapshot signature must verify before trust is extended.
 
 ### Assumptions and security-relevant constraints
 
 - The network is not trusted for vault confidentiality or integrity; these properties must be provided by client-side cryptography.
-- User-controlled device enrollment assumptions: [ Need further consultation on topic ]
+- User-controlled device enrollment assumptions: the user can transfer the enrollment package, one-time secret, and encrypted snapshot file/link through separate channels and can provide the master password plus secret key on the new device.
 - `Remote freshness` cannot be assumed from cloud state alone; remote data may be stale, replayed, or rolled back.
 - `Deletion` from `IndexedDB` or `AWS S3` is assumed to remove logical access only, not guarantee physical erasure from underlying storage media.
 - The user is assumed to choose a strong and unique master password.
@@ -317,7 +315,7 @@ High-risk interaction zone:
 - `extension service worker` should compare local and remote decrypted entries and detect added, removed and updated entries
 - `popup` should show conflict list with entry diffs
 - when one entry was updated differently on two devices `popup` should show field-level diffs and allow `user` to choose, combine or change entry content
-- local <u>sync credentials</u> should be encrypted with dedicated master-password-derived config key, not with device keys
+- local <u>sync credentials</u> should be encrypted as part of the vault payload, not as a standalone IndexedDB credential blob protected by a separate master-password-derived key
 
 ### New device enrollment notes
 
@@ -327,8 +325,10 @@ What the enrollment design should provide:
 - the new device should generate its own long-term device slot key and signing private key locally
 - enrollment should not require using the recovery mnemonic key
 - enrollment should support a practical PC1 -> transfer channel or phone -> PC2 path without requiring the user to go back from PC2 to PC1
-- enrollment may use S3 presigned links as a transport mechanism for protected enrollment material
-- S3 and the transfer channel must be treated as untrusted; enrollment material must be protected by client-side cryptography
+- enrollment package should stay small enough for QR/manual transfer and must not embed the full encrypted vault snapshot
+- encrypted vault snapshot transfer should happen separately, either as a file or through a short-lived presigned link whose bytes are digest-bound by the enrollment package
+- S3 and the transfer channel must be treated as untrusted; enrollment material and snapshot transfer must be protected by client-side cryptography
+- the registered-device enrollment screen must show handling instructions: use trusted personal devices/channels, keep the enrollment secret separate when possible, avoid public/shared/AI tools, delete temporary copies, and cancel if exposure is suspected
 
 What the enrollment design should avoid:
 
@@ -336,11 +336,11 @@ What the enrollment design should avoid:
 - do not use the recovery mnemonic key for normal enrollment, because it is reserved for access recovery
 - do not protect enrollment material directly with the master password, because captured enrollment material would allow offline guessing attacks against the master password
 - do not store plaintext vault data, plaintext sync credentials, or plaintext device private keys in S3 or in user-transferable enrollment material
-- avoid enrollment material that gives unlimited offline access to a captured vault snapshot where possible; if this tradeoff is accepted for usability, document it explicitly
+- do not embed the full encrypted vault snapshot in the enrollment package; QR-sized enrollment should carry only a snapshot source descriptor and expected digest
 
 Available enrollment options:
 
-- package-based enrollment: an already trusted device creates an encrypted enrollment package, optionally transported through a short-lived S3 presigned link; this is the most usable option, but package compromise can have high impact depending on package contents
+- package-based enrollment: an already trusted device creates an encrypted enrollment package and separately provides the encrypted vault snapshot as a file or short-lived presigned link; this is the most usable option while keeping QR/package size bounded
 - device-bound enrollment: the new device creates public keys first and enrollment material is encrypted to those public keys; this reduces transfer-channel risk but requires a more complex pairing flow
 - trusted-phone enrollment: a phone that is already a trusted vault device approves PC2 and encrypts bootstrap data to PC2's public key; this is a strong future option, but requires a phone app and phone-as-device support
 - asynchronous request/approval through S3: the new device posts a public enrollment request and an existing trusted device approves it later; this is safer than a generic package but less usable for v1

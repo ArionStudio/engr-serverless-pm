@@ -63,7 +63,7 @@ crypto --> core : Vault Key\n(memory only)
 storage <--> idb : Encrypted Blobs\n+ Wrapped Keys
 
 ' Sync flow (optional)
-sync --> iam : Use configured\naccess keys
+sync --> iam : Use access keys from\nunlocked vault
 sync <--> s3 : Encrypted Signed\nEnvelopes\n(if sync enabled)
 
 ' Cross-device sync (optional)
@@ -73,6 +73,7 @@ s3 <..> otherExt : Sync via S3\n(optional)
 note right of idb
     **Primary Storage (Hostile)**
     - Encrypted vault (AES-256-GCM)
+    - Sync credentials inside encrypted vault
     - Wrapped device keys (AES-256-GCM)
     - Salt + device metadata
     - Works fully offline

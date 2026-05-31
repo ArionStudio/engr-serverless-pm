@@ -93,6 +93,7 @@ Never violate this flow. Core is pure, adapters implement core, UI consumes adap
 - **Signing**: Ed25519 for device identity
 - **Key Exchange**: ECDH P-256 for device key slots
 - **Key Storage**: Encrypted vault + wrapped device keys in IndexedDB; Vault Key in memory only
+- **Sync Credentials**: Stored inside encrypted vault data; sync requires an unlocked local vault
 
 ### Serverless Constraints
 

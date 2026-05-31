@@ -195,15 +195,16 @@
     - uses: `Options page`, `S3 bucket`, `indexedDB`, `Extension service workers`
     - flow:
       [ `user` should complete S3 configuration before this flow ]
-      [ `vault` should be unlocked so the master-password-derived sync-credentials protection key is available in runtime memory ]
+      [ `vault` should be unlocked so sync credentials can be stored inside the encrypted vault payload ]
     1. `user` clicks "setup sync" in `options page`
     2. `options page` shows sync configuration form
     3. `user` provides `cloud sync credentials` and submits the form
     4. `options page` sends sync configuration to `extension service worker`
     5. `extension service worker` uses AWS credentials to verify that the configured `AWS S3 bucket` is reachable and usable for sync
-    6. `extension service worker` encrypts `cloud sync credentials` with the dedicated master-password-derived protection key and stores them in `indexedDB`
-    7. `extension service worker` creates initial local sync state
-    8. `options page` informs `user` that sync setup succeeded or failed
+    6. `extension service worker` stores `cloud sync credentials` inside the unlocked vault state
+    7. `extension service worker` persists a new encrypted `vault snapshot` to `indexedDB`
+    8. `extension service worker` creates initial local sync state
+    9. `options page` informs `user` that sync setup succeeded or failed
 
 12. [ ] Send update to sync layer
     - starts from: `user` / `extension service worker`
@@ -213,7 +214,7 @@
     1. `user` clicks "sync with cloud" in `popup` or `extension service worker` starts sync automatically
     2. [ `popup` ] sends sync request to `extension service worker`
     3. `extension service worker` loads the latest persisted encrypted local `vault snapshot` from `indexedDB`
-    4. `extension service worker` loads `cloud sync credentials` and local sync state from `indexedDB`
+    4. `extension service worker` reads `cloud sync credentials` from the unlocked vault state and loads local sync state from `indexedDB`
     5. `extension service worker` uploads the latest persisted encrypted `vault snapshot` and related metadata to `S3 bucket`
     6. `extension service worker` updates local sync state in `indexedDB`
     7. [ `popup` ] receives sync result from `extension service worker`
@@ -224,13 +225,12 @@
     - flow:
     1. `user` clicks "get cloud update" in `popup` or `extension service worker` starts sync automatically
     2. [ `popup` ] sends cloud update request to `extension service worker`
-    3. `extension service worker` loads `cloud sync credentials` and local sync state from `indexedDB`
+    3. `extension service worker` reads `cloud sync credentials` from the unlocked vault state and loads local sync state from `indexedDB`
     4. `extension service worker` downloads the latest encrypted `vault snapshot` and related metadata from `S3 bucket`
     5. `extension service worker` verifies downloaded data and compares it with local sync state
-    6. if no conflict exists and the vault is locked, `extension service worker` stores the remote canonical vault state locally in `indexedDB`
-    7. if no conflict exists and the vault is unlocked, `extension service worker` decrypts the remote snapshot, stores the unlocked vault in `storage.session`, and stores the canonical encrypted vault state in `indexedDB`
-    8. if conflict exists, `extension service worker` starts conflict resolution flow
-    9. [ `popup` ] receives update result from `extension service worker`
+    6. if no conflict exists, `extension service worker` decrypts the remote snapshot, stores the unlocked vault in `storage.session`, and stores the canonical encrypted vault state in `indexedDB`
+    7. if conflict exists, `extension service worker` starts conflict resolution flow
+    8. [ `popup` ] receives update result from `extension service worker`
 
 14. [ ] Resolve conflicts between cloud and local
     - starts from: `extension service worker`
@@ -252,7 +252,17 @@
     - starts from: `user`
     - uses: `Options page`, `S3 bucket`, `indexedDB`, `Extension service workers`
     - flow:
-      [ Need further consultation on topic ]
+    1. on an already trusted device, `user` opens "add device"
+    2. `extension service worker` creates a small encrypted enrollment package with vault id, trusted public device keys, and an expected digest/source descriptor for a separate encrypted `vault snapshot`
+    3. trusted device shows transfer instructions explaining how to handle enrollment data safely, where not to paste it, and when to cancel enrollment
+    4. trusted device gives `user` the enrollment package and one-time enrollment secret through separate transfer paths
+    5. trusted device also provides the encrypted `vault snapshot` as a separate file or short-lived snapshot link
+    6. on the new device, `user` imports the enrollment package, enrollment secret, and encrypted snapshot file/link
+    7. `extension service worker` decrypts the enrollment package, obtains the encrypted snapshot, and verifies its digest
+    8. `extension service worker` stores the encrypted snapshot locally in `indexedDB`
+    9. `user` enters master password and secret key
+    10. `extension service worker` verifies the snapshot signature, unwraps the `vault master key`, and decrypts the local vault
+    11. `extension service worker` reads sync credentials from the unlocked vault if configured, creates local device keys, adds the new device to the vault, persists a new encrypted snapshot, and syncs if possible
 
 16. [ ] Device revocation
     - starts from: `user`
@@ -321,7 +331,7 @@
     2. `options page` shows destructive action warning and asks `user` for confirmation
     3. `user` confirms cloud file removal
     4. `options page` sends cloud file removal request to `extension service worker`
-    5. `extension service worker` loads `cloud sync credentials` from `indexedDB`
+    5. `extension service worker` reads `cloud sync credentials` from the unlocked vault state
     6. `extension service worker` deletes remote vault data from `S3 bucket`
     7. `options page` informs `user` that files stored in cloud sync were removed, while the local vault and local sync configuration remain available
 
@@ -347,5 +357,5 @@
     3. `user` confirms sync removal
     4. `options page` sends sync removal request to `extension service worker`
     5. `extension service worker` starts "Remove files from cloud sync"
-    6. after cloud file removal succeeds, `extension service worker` removes local sync state and encrypted `cloud sync credentials` from `indexedDB`
-    7. `options page` informs `user` that local sync credentials were removed, sync is disabled until it is set up again, and the local vault remains available
+    6. after cloud file removal succeeds, `extension service worker` removes `cloud sync credentials` from the unlocked vault state, persists a new encrypted `vault snapshot`, and removes local sync state from `indexedDB`
+    7. `options page` informs `user` that sync credentials were removed from the vault, sync is disabled until it is set up again, and the local vault remains available

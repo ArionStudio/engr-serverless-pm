@@ -19,6 +19,7 @@ Browser extension context creates unique constraints:
 | Secret key                 | **User saves offline**    | 256-bit, needed for vault recovery on new device  |
 | Enrollment package         | Transfer mechanism        | Encrypted bootstrap payload from trusted device   |
 | One-time enrollment secret | Transfer mechanism        | High-entropy secret used only for package decrypt |
+| Encrypted vault snapshot   | Separate file/link        | Local-first starting copy for the new device      |
 | Encryption salt            | In vault envelope (cloud) | Also stored locally in IndexedDB                  |
 | Device ID                  | Generated locally         | Each device has unique ID                         |
 
@@ -28,7 +29,7 @@ Browser extension context creates unique constraints:
 
 These methods transfer **enrollment bootstrap data** from an already trusted device. The actual vault unlock still uses master password + secret key on the new device.
 
-New device enrollment: import enrollment package + enter one-time enrollment secret + enter master password + secret key → download vault → verify against trusted device keys from package → unwrap VaultKey from secret key slot → self-register.
+New device enrollment: import enrollment package + obtain the encrypted vault snapshot from a separate file or short-lived link + enter one-time enrollment secret + enter master password + secret key → verify snapshot digest/signature against trusted data from package → unwrap VaultKey from secret key slot → decrypt local vault → read sync credentials from the vault if configured → self-register and sync.
 
 ### Method 1: QR Code Transfer (Recommended for Same Location)
 
@@ -45,7 +46,7 @@ When user has access to both devices simultaneously:
 │         │  ██ ▄▄▄▄▄ █ ▄ █ ▄▄▄ ██  │                             │
 │         │  ██ █   █ █▄▄▄█▄█   ██  │  <- QR contains encrypted │
 │         │  ██ █▄▄▄█ █ ▄▄ █ ▄▄▄██  │     enrollment package:   │
-│         │  ██▄▄▄▄▄▄▄█▄█ █▄█▄█▄██  │     - sync config         │
+│         │  ██▄▄▄▄▄▄▄█▄█ █▄█▄█▄██  │     - snapshot reference  │
 │         │  ██ ▄▄ ▄▄▄ ▄▄▄█▄▄ ▄ ██  │     - vault id            │
 │         └─────────────────────────┘     - trusted device keys │
 │                                                                 │
@@ -74,20 +75,42 @@ When user has access to both devices simultaneously:
 **Security:**
 
 - QR code expires after 5 minutes
-- Contains encrypted enrollment package
+- Contains encrypted enrollment package, not the full vault snapshot
 - One-time enrollment secret is transferred separately
 - Does NOT contain master password
+- Snapshot is transferred separately or fetched through a short-lived link, and
+  the package contains the expected snapshot digest
 
-### Method 2: Configuration Export File
+**User instructions shown on registered device:**
+
+The "Add Another Device" screen must show handling guidance beside the QR/export
+controls:
+
+- scan the QR or copy the enrollment text only on a device you control
+- do not paste the enrollment text, AWS keys, or enrollment secret into public
+  websites, chat rooms, shared documents, issue trackers, or AI tools
+- do not screenshot or save the enrollment secret unless the user intentionally
+  accepts the risk
+- transfer the enrollment secret separately from the enrollment package when
+  possible
+- delete temporary messages/files after the new device is enrolled
+- cancel enrollment if the QR, package, or secret may have been seen by someone
+  else
+
+### Method 2: Enrollment Export File
 
 For devices that can't be in same location:
 
 ```text
-Device A: Settings → Sync → Export Enrollment Package → Downloads "spm-enrollment.encrypted"
-          ↓
-          (Transfer via secure channel: email to self, USB, cloud drive)
-          ↓
-Device B: Settings → Sync → Connect Existing Vault → Select file → Enter one-time enrollment secret
+Device A: Settings → Sync → Export Enrollment Package
+          → Downloads "spm-enrollment.encrypted"
+          → Downloads "spm-vault-snapshot.enc" or creates short-lived snapshot link
+	      ↓
+	      (Transfer via secure channel: email to self, USB, cloud drive)
+	      ↓
+Device B: Settings → Sync → Connect Existing Vault
+          → Select enrollment package and snapshot file/link
+          → Enter one-time enrollment secret
 ```
 
 **File contents (encrypted with one-time enrollment secret):**
@@ -95,45 +118,58 @@ Device B: Settings → Sync → Connect Existing Vault → Select file → Enter
 ```typescript
 // enrollment package shape
 
-interface S3SyncConfig {
-  readonly provider: "aws-s3";
-  readonly bucket: string;
-  readonly region: string;
-  readonly accessKeyId: string;
-  readonly secretAccessKey: string;
-  readonly prefix: string; // S3 key prefix (e.g., "vault/")
-}
+type SnapshotTransport =
+  | {
+      readonly type: "external-file";
+      readonly sha256: string;
+      readonly sizeBytes: number;
+    }
+  | {
+      readonly type: "presigned-url";
+      readonly url: string;
+      readonly sha256: string;
+      readonly sizeBytes: number;
+      readonly expiresAt: number;
+    };
 
 interface EnrollmentPackage {
   readonly version: 1;
   readonly vaultId: string;
-  readonly syncConfig: S3SyncConfig;
+  readonly snapshot: SnapshotTransport;
   readonly trustedSigningKeys: readonly string[];
   readonly trustedAgreementKeys: readonly string[];
   readonly createdAt: number; // Unix ms
   readonly expiresAt: number | null;
-  // Note: vault data NOT included
+  // Note: vault snapshot bytes, plaintext vault data, and plaintext sync credentials are NOT included
 }
 ```
 
 The S3 credentials are user-provided storage credentials, not service-issued
 application credentials. In the local-first design there is no project backend
 that can issue temporary credentials or recover from provider misconfiguration.
-Keeping this as a direct, scoped S3 configuration avoids an onboarding flow that
-could hide AWS setup flaws behind additional moving parts.
+They are stored inside the encrypted vault payload together with the rest of the
+vault data. Unlocking the local vault snapshot makes the sync configuration
+available to the current trusted device.
 
-Temporary S3 credentials would still need to be stored by the browser extension
-beside the encrypted sync configuration and the unlocked vault state while the
-vault is in use. Without a separate trusted backend to refresh them, they do not
-materially improve the extension's local storage trust boundary.
+Enrollment packages therefore do not need to expose plaintext S3 configuration
+or carry the full encrypted vault snapshot. The package only describes how the
+new device obtains the encrypted snapshot and what digest it must match. After
+the new device stores that snapshot locally and unlocks it with the user's normal
+vault unlock material, it can use the sync credentials already stored in the
+vault. Temporary S3 credentials would still need to live beside the unlocked
+vault state while the vault is in use. Without a separate trusted backend to
+refresh them, they do not materially improve the extension's local storage trust
+boundary.
 
 **Security:**
 
-- File encrypted — useless without one-time enrollment secret
+- Enrollment package encrypted — useless without one-time enrollment secret
+- Separate vault snapshot remains encrypted with the VaultKey
+- Snapshot digest from package must match before trusting the snapshot
 - User responsible for secure transfer
 - Can set expiration on exported package
-- S3 access keys should be rotated in AWS if the enrollment package or sync
-  configuration is exposed
+- S3 access keys should be rotated in AWS if the unlocked vault or sync
+  credentials are exposed
 
 ### Method 3: Manual Configuration
 
@@ -261,4 +297,4 @@ Users can view location history per device in the device list UI.
 | Secret key compromised | Rotate VaultKey + generate new secret key from any trusted device       |
 | Unknown device added   | Notification shown on sync. User can revoke if unauthorized.            |
 | Man-in-the-middle      | Cloud providers use TLS, vault encrypted with device-specific key slots |
-| Credential exposure    | Cloud credentials have minimal permissions (single bucket)              |
+| Credential exposure    | Cloud credentials are vault-encrypted and have minimal permissions      |
