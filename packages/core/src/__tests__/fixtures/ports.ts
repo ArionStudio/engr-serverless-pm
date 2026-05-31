@@ -150,7 +150,9 @@ export function createCoreTestPorts(
       saved.unlockedVault = unlockedVault;
     }),
     getUnlockedVault: vi.fn(async () => saved.unlockedVault ?? null),
-    removeUnlockedVault: vi.fn(),
+    removeUnlockedVault: vi.fn(async () => {
+      saved.unlockedVault = undefined;
+    }),
   };
 
   const ids: IdPort = {

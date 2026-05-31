@@ -53,6 +53,13 @@ export class SetupSyncUseCase {
       unlockedVault: updatedUnlockedVault,
     });
 
-    await this.unlockedVaultRepository.saveUnlockedVault(updatedUnlockedVault);
+    try {
+      await this.unlockedVaultRepository.saveUnlockedVault(
+        updatedUnlockedVault,
+      );
+    } catch (error) {
+      await this.unlockedVaultRepository.removeUnlockedVault();
+      throw error;
+    }
   }
 }

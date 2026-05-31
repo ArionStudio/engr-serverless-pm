@@ -120,4 +120,24 @@ describe("SetupSyncUseCase", () => {
     ).not.toHaveBeenCalled();
     expect(ctx.saved.unlockedVault?.vault.syncConfig).toBeUndefined();
   });
+
+  it("clears the session vault when session save fails after snapshot persistence", async () => {
+    const ctx = createContext();
+    vi.mocked(
+      ctx.ports.unlockedVaultRepository.saveUnlockedVault,
+    ).mockRejectedValueOnce(new Error("session save failed"));
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        syncConfig: ctx.values.syncConfigInput,
+      }),
+    ).rejects.toThrow("session save failed");
+
+    expect(ctx.persistUnlockedVault.execute).toHaveBeenCalled();
+    expect(
+      ctx.ports.unlockedVaultRepository.removeUnlockedVault,
+    ).toHaveBeenCalled();
+    expect(ctx.saved.unlockedVault).toBeUndefined();
+  });
 });
