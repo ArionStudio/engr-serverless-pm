@@ -5,6 +5,7 @@ export * from "./clock.port";
 export * from "./crypto.port";
 export * from "./id.port";
 export * from "./scheduled-task.port";
+export * from "./sync-provider.port";
 export * from "./unlocked-vault-repository.port";
 export * from "./vault-display-name.port";
 export * from "./vault-local-repository.port";

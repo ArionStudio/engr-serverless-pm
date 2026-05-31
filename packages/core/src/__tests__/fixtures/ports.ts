@@ -11,6 +11,7 @@ import type { ClockPort } from "../../ports/clock.port";
 import type { CryptoPort } from "../../ports/crypto.port";
 import type { IdPort } from "../../ports/id.port";
 import type { ScheduledTaskPort } from "../../ports/scheduled-task.port";
+import type { SyncProviderPort } from "../../ports/sync-provider.port";
 import type { VaultDisplayNamePort } from "../../ports/vault-display-name.port";
 import type { VaultLockTaskRepositoryPort } from "../../ports/vault-lock-task-repository.port";
 import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
@@ -149,7 +150,9 @@ export function createCoreTestPorts(
       saved.unlockedVault = unlockedVault;
     }),
     getUnlockedVault: vi.fn(async () => saved.unlockedVault ?? null),
-    removeUnlockedVault: vi.fn(),
+    removeUnlockedVault: vi.fn(async () => {
+      saved.unlockedVault = undefined;
+    }),
   };
 
   const ids: IdPort = {
@@ -166,6 +169,10 @@ export function createCoreTestPorts(
   const scheduledTasks: ScheduledTaskPort = {
     scheduleTask: vi.fn(async () => undefined),
     cancelTask: vi.fn(async () => undefined),
+  };
+
+  const syncProvider: SyncProviderPort = {
+    setup: vi.fn(async () => values.syncConfig),
   };
 
   const vaultLockTasks: VaultLockTaskRepositoryPort = {
@@ -186,6 +193,7 @@ export function createCoreTestPorts(
     ids,
     clock,
     scheduledTasks,
+    syncProvider,
     vaultLockTasks,
     vaultDisplayName,
     saved,
