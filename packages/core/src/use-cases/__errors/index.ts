@@ -4,6 +4,7 @@ export * from "./clipboard.errors";
 export * from "./delete-local-vault.errors";
 export * from "./generate-password.errors";
 export * from "./generate-username.errors";
+export * from "./sync.errors";
 export * from "./unlock-vault.errors";
 export * from "./vault-entry.errors";
 export * from "./vault-session.errors";

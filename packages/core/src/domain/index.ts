@@ -7,5 +7,6 @@ export * from "./password-tools";
 export * from "./recovery";
 export * from "./scheduled-task";
 export * from "./snapshot";
+export * from "./sync";
 export * from "./vault";
 export * from "./master-password";

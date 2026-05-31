@@ -19,6 +19,7 @@ import type { RawMasterPassword } from "../../domain/master-password";
 import type { RecoveryKeyMnemonic } from "../../domain/recovery/bip39-mnemonic";
 import type { RecoverySecretKey } from "../../domain/recovery/brand-keys";
 import type { VaultMasterKey } from "../../domain/snapshot/brand-keys";
+import type { SyncConfig } from "../../domain/sync/sync-config.type";
 import type { UnsignedVaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import type { Vault } from "../../domain/vault/vault";
 
@@ -35,6 +36,19 @@ export function createCoreTestValues() {
     vaultLockActionId: "vault-lock-action-id",
     vaultDisplayName: "blue-river-4821",
     deviceId: "device-id",
+    syncConfig: {
+      provider: "aws-s3-v1",
+      providerConfig: {
+        normalized: true,
+      },
+    } satisfies SyncConfig,
+    syncConfigInput: {
+      provider: "aws-s3-v1",
+      providerConfig: {
+        bucket: "bucket",
+        region: "eu-central-1",
+      },
+    } satisfies SyncConfig,
     timestamp: 1_700_000_000_000,
     vaultMasterKey: bytes<VaultMasterKey>(),
     deviceSlotKey: bytes<DeviceSlotKey>(),
