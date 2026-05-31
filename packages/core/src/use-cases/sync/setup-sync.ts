@@ -58,7 +58,11 @@ export class SetupSyncUseCase {
         updatedUnlockedVault,
       );
     } catch (error) {
-      await this.unlockedVaultRepository.removeUnlockedVault();
+      try {
+        await this.unlockedVaultRepository.removeUnlockedVault();
+      } catch {
+        // Preserve the session save failure as the root cause.
+      }
       throw error;
     }
   }

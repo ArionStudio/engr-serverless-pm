@@ -93,7 +93,18 @@ export class UpdateEntryUseCase {
       unlockedVault: updatedUnlockedVault,
     });
 
-    await this.unlockedVaultRepository.saveUnlockedVault(updatedUnlockedVault);
+    try {
+      await this.unlockedVaultRepository.saveUnlockedVault(
+        updatedUnlockedVault,
+      );
+    } catch (error) {
+      try {
+        await this.unlockedVaultRepository.removeUnlockedVault();
+      } catch {
+        // Preserve the session save failure as the root cause.
+      }
+      throw error;
+    }
 
     return {
       entryId: params.entryId,

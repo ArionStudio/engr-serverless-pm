@@ -146,4 +146,51 @@ describe("AddEntryUseCase", () => {
     ).not.toHaveBeenCalled();
     expect(ctx.saved.unlockedVault?.vault.entries).toEqual([]);
   });
+
+  it("clears the session vault when session save fails after snapshot persistence", async () => {
+    const ctx = createContext();
+    vi.mocked(
+      ctx.ports.unlockedVaultRepository.saveUnlockedVault,
+    ).mockRejectedValueOnce(new Error("session save failed"));
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        entry: {
+          password: "secret-password",
+          login: "user@example.com",
+          tags: [],
+          url: "https://example.com/login",
+        },
+      }),
+    ).rejects.toThrow("session save failed");
+
+    expect(ctx.persistUnlockedVault.execute).toHaveBeenCalled();
+    expect(
+      ctx.ports.unlockedVaultRepository.removeUnlockedVault,
+    ).toHaveBeenCalled();
+    expect(ctx.saved.unlockedVault).toBeUndefined();
+  });
+
+  it("preserves the session save error when cleanup also fails", async () => {
+    const ctx = createContext();
+    vi.mocked(
+      ctx.ports.unlockedVaultRepository.saveUnlockedVault,
+    ).mockRejectedValueOnce(new Error("session save failed"));
+    vi.mocked(
+      ctx.ports.unlockedVaultRepository.removeUnlockedVault,
+    ).mockRejectedValueOnce(new Error("cleanup failed"));
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        entry: {
+          password: "secret-password",
+          login: "user@example.com",
+          tags: [],
+          url: "https://example.com/login",
+        },
+      }),
+    ).rejects.toThrow("session save failed");
+  });
 });
