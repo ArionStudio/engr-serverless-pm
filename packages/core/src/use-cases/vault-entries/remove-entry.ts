@@ -2,6 +2,7 @@ import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-rep
 import { PasswordEntryNotFoundError } from "../__errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
 import type { PersistUnlockedVaultUseCase } from "../vault-snapshots/persist-unlocked-vault";
+import { saveUnlockedVaultOrCleanup } from "../vault-snapshots/save-unlocked-vault-or-cleanup";
 
 export type RemoveEntryCommandParams = {
   vaultId: string;
@@ -57,18 +58,10 @@ export class RemoveEntryUseCase {
       unlockedVault: updatedUnlockedVault,
     });
 
-    try {
-      await this.unlockedVaultRepository.saveUnlockedVault(
-        updatedUnlockedVault,
-      );
-    } catch (error) {
-      try {
-        await this.unlockedVaultRepository.removeUnlockedVault();
-      } catch {
-        // Preserve the session save failure as the root cause.
-      }
-      throw error;
-    }
+    await saveUnlockedVaultOrCleanup(
+      this.unlockedVaultRepository,
+      updatedUnlockedVault,
+    );
 
     return {
       entryId: params.entryId,

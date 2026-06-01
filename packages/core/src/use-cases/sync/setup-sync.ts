@@ -4,6 +4,7 @@ import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-rep
 import { InvalidSyncConfigError } from "../__errors/sync.errors";
 import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
 import type { PersistUnlockedVaultUseCase } from "../vault-snapshots/persist-unlocked-vault";
+import { saveUnlockedVaultOrCleanup } from "../vault-snapshots/save-unlocked-vault-or-cleanup";
 
 export type SetupSyncCommandParams = {
   readonly vaultId: string;
@@ -53,17 +54,9 @@ export class SetupSyncUseCase {
       unlockedVault: updatedUnlockedVault,
     });
 
-    try {
-      await this.unlockedVaultRepository.saveUnlockedVault(
-        updatedUnlockedVault,
-      );
-    } catch (error) {
-      try {
-        await this.unlockedVaultRepository.removeUnlockedVault();
-      } catch {
-        // Preserve the session save failure as the root cause.
-      }
-      throw error;
-    }
+    await saveUnlockedVaultOrCleanup(
+      this.unlockedVaultRepository,
+      updatedUnlockedVault,
+    );
   }
 }
