@@ -43,6 +43,7 @@ export class LockVaultUseCase {
     const clipboardClearTask = await this.clipboardClearTasks.get();
 
     let executionError: unknown;
+    let sessionRemovalError: unknown;
 
     try {
       let cleanupError: unknown;
@@ -84,13 +85,17 @@ export class LockVaultUseCase {
         await this.removeUnlockedVaultSession.remove();
       } catch (error) {
         if (executionError === undefined) {
-          throw error;
+          sessionRemovalError = error;
         }
       }
     }
 
     if (executionError !== undefined) {
       throw executionError;
+    }
+
+    if (sessionRemovalError !== undefined) {
+      throw sessionRemovalError;
     }
   }
 }
