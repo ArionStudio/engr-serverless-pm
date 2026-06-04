@@ -19,7 +19,7 @@ describe("ChangeMasterPasswordUseCase", () => {
     ).resolves.toBeUndefined();
 
     expect(
-      ctx.ports.unlockedVaultRepository.getUnlockedVaultSession,
+      ctx.ports.sessionUseCases.getUnlockedVaultSession.execute,
     ).toHaveBeenCalledTimes(1);
     expect(
       ctx.ports.vaultLocalRepository.getDeviceAccessMaterial,

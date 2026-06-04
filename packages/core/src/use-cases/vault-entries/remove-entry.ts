@@ -1,7 +1,7 @@
-import type { UnlockedVaultRepositoryPort } from "../../ports/vault/unlocked-vault-repository.port";
 import { PasswordEntryNotFoundError } from "../__errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
 import type { CommitUnlockedVaultSessionUseCase } from "../vault-session/commit-unlocked-vault-session";
+import type { GetUnlockedVaultSessionUseCase } from "../vault-session/get-unlocked-vault-session";
 import type { PersistUnlockedVaultUseCase } from "../vault-snapshots/persist-unlocked-vault";
 
 export type RemoveEntryCommandParams = {
@@ -17,23 +17,22 @@ export type RemoveEntryResult = {
 };
 
 export class RemoveEntryUseCase {
-  private readonly unlockedVaultRepository: UnlockedVaultRepositoryPort;
+  private readonly getUnlockedVaultSession: GetUnlockedVaultSessionUseCase;
   private readonly persistUnlockedVault: PersistUnlockedVaultUseCase;
   private readonly commitUnlockedVaultSession: CommitUnlockedVaultSessionUseCase;
 
   constructor(
-    unlockedVaultRepository: UnlockedVaultRepositoryPort,
+    getUnlockedVaultSession: GetUnlockedVaultSessionUseCase,
     persistUnlockedVault: PersistUnlockedVaultUseCase,
     commitUnlockedVaultSession: CommitUnlockedVaultSessionUseCase,
   ) {
-    this.unlockedVaultRepository = unlockedVaultRepository;
+    this.getUnlockedVaultSession = getUnlockedVaultSession;
     this.persistUnlockedVault = persistUnlockedVault;
     this.commitUnlockedVaultSession = commitUnlockedVaultSession;
   }
 
   async execute(params: RemoveEntryCommandParams): Promise<RemoveEntryResult> {
-    const unlockedVaultSession =
-      await this.unlockedVaultRepository.getUnlockedVaultSession();
+    const unlockedVaultSession = await this.getUnlockedVaultSession.execute();
     const unlockedVault = unlockedVaultSession?.unlockedVault;
 
     if (unlockedVault?.vaultId !== params.vaultId) {

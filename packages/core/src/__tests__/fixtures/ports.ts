@@ -9,6 +9,7 @@ import type {
   EncryptedUnlockedVaultSessionPayload,
   UnlockedVaultSession,
   UnlockedVaultSessionMaterial,
+  UnlockedVaultSessionPayload,
 } from "../../domain/vault/unlocked-vault-session";
 import type { Bip39Port } from "../../ports/crypto/bip39.port";
 import type { ClockPort } from "../../ports/system/clock.port";
@@ -19,9 +20,13 @@ import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { VaultDisplayNamePort } from "../../ports/vault/vault-display-name.port";
 import type { VaultLockTaskRepositoryPort } from "../../ports/vault/vault-lock-task-repository.port";
-import type { UnlockedVaultRepositoryPort } from "../../ports/vault/unlocked-vault-repository.port";
 import type { UnlockedVaultSessionMaterialRepositoryPort } from "../../ports/vault/unlocked-vault-session-material-repository.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
+import { GetUnlockedVaultSessionUseCase } from "../../use-cases/vault-session/get-unlocked-vault-session";
+import { ProtectUnlockedVaultSessionUseCase } from "../../use-cases/vault-session/protect-unlocked-vault-session";
+import { RemoveUnlockedVaultSessionUseCase } from "../../use-cases/vault-session/remove-unlocked-vault-session";
+import { RestoreUnlockedVaultSessionUseCase } from "../../use-cases/vault-session/restore-unlocked-vault-session";
+import { SaveUnlockedVaultSessionUseCase } from "../../use-cases/vault-session/save-unlocked-vault-session";
 import { createCoreTestValues, type CoreTestValues } from "./values";
 
 export type SavedCoreRecords = {
@@ -31,6 +36,7 @@ export type SavedCoreRecords = {
   unlockedVaultSession?: UnlockedVaultSession;
   unlockedVaultSessionMaterial?: UnlockedVaultSessionMaterial;
   encryptedUnlockedVaultSessionPayload?: EncryptedUnlockedVaultSessionPayload;
+  unlockedVaultSessionPayload?: UnlockedVaultSessionPayload;
 };
 
 export type CoreTestPorts = ReturnType<typeof createCoreTestPorts>;
@@ -39,6 +45,52 @@ export function createCoreTestPorts(
   values: CoreTestValues = createCoreTestValues(),
 ) {
   const saved: SavedCoreRecords = {};
+  let unlockedVaultSessionMirror: UnlockedVaultSession | undefined;
+
+  function writeSplitUnlockedVaultSessionRecords(
+    session: UnlockedVaultSession,
+  ): void {
+    const context = {
+      sessionId: values.sessionId,
+      vaultId: session.unlockedVault.vaultId,
+      sourceSnapshotRevision: session.sourceSnapshotRevision,
+    };
+
+    saved.unlockedVaultSessionMaterial = {
+      ...context,
+      deviceId: session.unlockedVault.deviceId,
+      vaultMasterKey: session.unlockedVault.vaultMasterKey,
+      devicePrivateSignKey: session.unlockedVault.devicePrivateSignKey,
+      payloadKey: values.unlockedVaultSessionPayloadKey,
+    };
+    saved.encryptedUnlockedVaultSessionPayload = {
+      ...context,
+      content: values.encryptedUnlockedVaultSessionPayload,
+    };
+    saved.unlockedVaultSessionPayload = {
+      vault: session.unlockedVault.vault,
+    };
+  }
+
+  function clearSplitUnlockedVaultSessionRecords(): void {
+    saved.unlockedVaultSessionMaterial = undefined;
+    saved.encryptedUnlockedVaultSessionPayload = undefined;
+    saved.unlockedVaultSessionPayload = undefined;
+  }
+
+  Object.defineProperty(saved, "unlockedVaultSession", {
+    get: () => unlockedVaultSessionMirror,
+    set: (session: UnlockedVaultSession | undefined) => {
+      unlockedVaultSessionMirror = session;
+
+      if (session === undefined) {
+        clearSplitUnlockedVaultSessionRecords();
+        return;
+      }
+
+      writeSplitUnlockedVaultSessionRecords(session);
+    },
+  });
 
   const deviceSignKeyPair: DeviceSignKeyPair = {
     publicKey: values.devicePublicSignKey,
@@ -98,12 +150,17 @@ export function createCoreTestPorts(
     unwrapVaultMasterKey: vi.fn(async () => values.vaultMasterKey),
     encryptVaultSnapshotContent: vi.fn(async () => values.encryptedVault),
     decryptVaultSnapshotContent: vi.fn(async () => values.decryptedVault),
-    encryptUnlockedVaultSessionPayload: vi.fn(
-      async () => values.encryptedUnlockedVaultSessionPayload,
+    encryptUnlockedVaultSessionPayload: vi.fn(async (payload) => {
+      saved.unlockedVaultSessionPayload = payload;
+
+      return values.encryptedUnlockedVaultSessionPayload;
+    }),
+    decryptUnlockedVaultSessionPayload: vi.fn(
+      async () =>
+        saved.unlockedVaultSessionPayload ?? {
+          vault: values.decryptedVault,
+        },
     ),
-    decryptUnlockedVaultSessionPayload: vi.fn(async () => ({
-      vault: values.decryptedVault,
-    })),
     signVaultSnapshot: vi.fn(async () => values.snapshotSignature),
     verifyVaultSnapshotSignature: vi.fn(async () => true),
   };
@@ -162,18 +219,6 @@ export function createCoreTestPorts(
     removeVaultSnapshot: vi.fn(),
   };
 
-  const unlockedVaultRepository: UnlockedVaultRepositoryPort = {
-    saveUnlockedVaultSession: vi.fn(async (session) => {
-      saved.unlockedVaultSession = session;
-    }),
-    getUnlockedVaultSession: vi.fn(
-      async () => saved.unlockedVaultSession ?? null,
-    ),
-    removeUnlockedVaultSession: vi.fn(async () => {
-      saved.unlockedVaultSession = undefined;
-    }),
-  };
-
   const unlockedVaultSessionMaterialRepository: UnlockedVaultSessionMaterialRepositoryPort =
     {
       saveUnlockedVaultSessionMaterial: vi.fn(async (material) => {
@@ -199,6 +244,7 @@ export function createCoreTestPorts(
       ),
       removeEncryptedUnlockedVaultSessionPayload: vi.fn(async () => {
         saved.encryptedUnlockedVaultSessionPayload = undefined;
+        saved.unlockedVaultSessionPayload = undefined;
       }),
     };
 
@@ -206,8 +252,75 @@ export function createCoreTestPorts(
     generateId: vi
       .fn()
       .mockResolvedValueOnce(values.vaultId)
-      .mockResolvedValueOnce(values.deviceId),
+      .mockResolvedValueOnce(values.deviceId)
+      .mockResolvedValue(values.sessionId),
   };
+
+  const protectUnlockedVaultSession = new ProtectUnlockedVaultSessionUseCase(
+    crypto,
+    ids,
+  );
+  const restoreUnlockedVaultSession = new RestoreUnlockedVaultSessionUseCase(
+    crypto,
+  );
+  const saveUnlockedVaultSession = new SaveUnlockedVaultSessionUseCase(
+    unlockedVaultSessionMaterialRepository,
+    encryptedUnlockedVaultSessionPayloadRepository,
+    protectUnlockedVaultSession,
+  );
+  const getUnlockedVaultSession = new GetUnlockedVaultSessionUseCase(
+    unlockedVaultSessionMaterialRepository,
+    encryptedUnlockedVaultSessionPayloadRepository,
+    restoreUnlockedVaultSession,
+  );
+  const removeUnlockedVaultSession = new RemoveUnlockedVaultSessionUseCase(
+    unlockedVaultSessionMaterialRepository,
+    encryptedUnlockedVaultSessionPayloadRepository,
+  );
+  const sessionUseCases = {
+    protectUnlockedVaultSession,
+    restoreUnlockedVaultSession,
+    saveUnlockedVaultSession,
+    getUnlockedVaultSession,
+    removeUnlockedVaultSession,
+  };
+
+  const executeSaveUnlockedVaultSession =
+    sessionUseCases.saveUnlockedVaultSession.execute.bind(
+      sessionUseCases.saveUnlockedVaultSession,
+    );
+  const executeGetUnlockedVaultSession =
+    sessionUseCases.getUnlockedVaultSession.execute.bind(
+      sessionUseCases.getUnlockedVaultSession,
+    );
+  const executeRemoveUnlockedVaultSession =
+    sessionUseCases.removeUnlockedVaultSession.execute.bind(
+      sessionUseCases.removeUnlockedVaultSession,
+    );
+
+  vi.spyOn(
+    sessionUseCases.saveUnlockedVaultSession,
+    "execute",
+  ).mockImplementation(async (params) => {
+    await executeSaveUnlockedVaultSession(params);
+    unlockedVaultSessionMirror = params.session;
+  });
+  vi.spyOn(
+    sessionUseCases.getUnlockedVaultSession,
+    "execute",
+  ).mockImplementation(async () => {
+    const session = await executeGetUnlockedVaultSession();
+    unlockedVaultSessionMirror = session ?? undefined;
+
+    return session;
+  });
+  vi.spyOn(
+    sessionUseCases.removeUnlockedVaultSession,
+    "execute",
+  ).mockImplementation(async () => {
+    await executeRemoveUnlockedVaultSession();
+    unlockedVaultSessionMirror = undefined;
+  });
 
   const clock: ClockPort = {
     now: vi.fn(() => values.timestamp),
@@ -236,7 +349,6 @@ export function createCoreTestPorts(
     crypto,
     bip39,
     vaultLocalRepository,
-    unlockedVaultRepository,
     unlockedVaultSessionMaterialRepository,
     encryptedUnlockedVaultSessionPayloadRepository,
     ids,
@@ -245,6 +357,7 @@ export function createCoreTestPorts(
     syncProvider,
     vaultLockTasks,
     vaultDisplayName,
+    sessionUseCases,
     saved,
   };
 }

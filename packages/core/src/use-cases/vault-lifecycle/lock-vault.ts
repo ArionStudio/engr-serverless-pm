@@ -1,8 +1,8 @@
 import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard/clipboard-clear-task-repository.port";
 import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
-import type { UnlockedVaultRepositoryPort } from "../../ports/vault/unlocked-vault-repository.port";
 import type { VaultLockTaskRepositoryPort } from "../../ports/vault/vault-lock-task-repository.port";
 import type { ClearClipboardTaskUseCase } from "../clipboard/clear-clipboard-task";
+import type { RemoveUnlockedVaultSessionUseCase } from "../vault-session/remove-unlocked-vault-session";
 
 export type LockVaultCommandParams = {
   actionId?: string;
@@ -13,20 +13,20 @@ export class LockVaultUseCase {
   private readonly clipboardClearTasks: ClipboardClearTaskRepositoryPort;
   private readonly scheduledTasks: ScheduledTaskPort;
   private readonly vaultLockTasks: VaultLockTaskRepositoryPort;
-  private readonly unlockedVaultRepository: UnlockedVaultRepositoryPort;
+  private readonly removeUnlockedVaultSession: RemoveUnlockedVaultSessionUseCase;
 
   constructor(
     clearClipboardTask: ClearClipboardTaskUseCase,
     clipboardClearTasks: ClipboardClearTaskRepositoryPort,
     scheduledTasks: ScheduledTaskPort,
     vaultLockTasks: VaultLockTaskRepositoryPort,
-    unlockedVaultRepository: UnlockedVaultRepositoryPort,
+    removeUnlockedVaultSession: RemoveUnlockedVaultSessionUseCase,
   ) {
     this.clearClipboardTask = clearClipboardTask;
     this.clipboardClearTasks = clipboardClearTasks;
     this.scheduledTasks = scheduledTasks;
     this.vaultLockTasks = vaultLockTasks;
-    this.unlockedVaultRepository = unlockedVaultRepository;
+    this.removeUnlockedVaultSession = removeUnlockedVaultSession;
   }
 
   async execute(params: LockVaultCommandParams = {}): Promise<void> {
@@ -76,7 +76,7 @@ export class LockVaultUseCase {
         throw cleanupError;
       }
     } finally {
-      await this.unlockedVaultRepository.removeUnlockedVaultSession();
+      await this.removeUnlockedVaultSession.execute();
     }
   }
 }

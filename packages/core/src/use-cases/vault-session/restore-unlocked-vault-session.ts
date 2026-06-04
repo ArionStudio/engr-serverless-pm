@@ -1,5 +1,5 @@
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
-import { UnlockedVaultSessionInvalidError } from "../../ports/vault/unlocked-vault-repository.errors";
+import { UnlockedVaultSessionInvalidError } from "../__errors/vault-session.errors";
 import type {
   EncryptedUnlockedVaultSessionPayload,
   UnlockedVaultSession,

@@ -12,7 +12,18 @@ export class InvalidVaultLockDelayError extends Error {
   }
 }
 
-export {
-  ActiveUnlockedVaultMismatchError,
-  UnlockedVaultSessionInvalidError,
-} from "../../ports/vault/unlocked-vault-repository.errors";
+export class UnlockedVaultSessionInvalidError extends Error {
+  constructor(reason: string, options?: ErrorOptions) {
+    super(`Unlocked vault session is invalid: ${reason}.`, options);
+    this.name = "UnlockedVaultSessionInvalidError";
+  }
+}
+
+export class ActiveUnlockedVaultMismatchError extends Error {
+  constructor(activeVaultId: string, incomingVaultId: string) {
+    super(
+      `Cannot save unlocked vault "${incomingVaultId}" while vault "${activeVaultId}" is already unlocked.`,
+    );
+    this.name = "ActiveUnlockedVaultMismatchError";
+  }
+}

@@ -1,6 +1,6 @@
 import type { UnlockedVaultSession } from "../../domain/vault/unlocked-vault-session";
 import type { EncryptedUnlockedVaultSessionPayloadRepositoryPort } from "../../ports/vault/encrypted-unlocked-vault-session-payload-repository.port";
-import { UnlockedVaultSessionInvalidError } from "../../ports/vault/unlocked-vault-repository.errors";
+import { UnlockedVaultSessionInvalidError } from "../__errors/vault-session.errors";
 import type { UnlockedVaultSessionMaterialRepositoryPort } from "../../ports/vault/unlocked-vault-session-material-repository.port";
 import type { RestoreUnlockedVaultSessionUseCase } from "./restore-unlocked-vault-session";
 

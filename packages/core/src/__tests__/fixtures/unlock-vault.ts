@@ -59,7 +59,8 @@ export function createUnlockVaultTestContext() {
   ports.saved.vaultSnapshot = vaultSnapshot;
 
   const commitUnlockedVaultSession = new CommitUnlockedVaultSessionUseCase(
-    ports.unlockedVaultRepository,
+    ports.sessionUseCases.saveUnlockedVaultSession,
+    ports.sessionUseCases.removeUnlockedVaultSession,
   );
   const useCase = new UnlockVaultUseCase(
     ports.clock,

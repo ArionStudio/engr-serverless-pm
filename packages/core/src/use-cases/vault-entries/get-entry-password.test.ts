@@ -19,7 +19,9 @@ function createContext() {
     values,
     ports,
     saved: ports.saved,
-    useCase: new GetEntryPasswordUseCase(ports.unlockedVaultRepository),
+    useCase: new GetEntryPasswordUseCase(
+      ports.sessionUseCases.getUnlockedVaultSession,
+    ),
   };
 }
 

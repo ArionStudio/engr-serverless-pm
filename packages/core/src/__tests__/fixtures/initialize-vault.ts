@@ -7,7 +7,8 @@ export function createInitializeVaultTestContext() {
   const values = createCoreTestValues();
   const ports = createCoreTestPorts(values);
   const commitUnlockedVaultSession = new CommitUnlockedVaultSessionUseCase(
-    ports.unlockedVaultRepository,
+    ports.sessionUseCases.saveUnlockedVaultSession,
+    ports.sessionUseCases.removeUnlockedVaultSession,
   );
   const useCase = new InitializeVaultUseCase(
     ports.crypto,

@@ -63,7 +63,7 @@ function createContext() {
       clipboardClearTasks,
       scheduledTasks,
       clock,
-      ports.unlockedVaultRepository,
+      ports.sessionUseCases.getUnlockedVaultSession,
     ),
   };
 }
@@ -272,7 +272,7 @@ describe("CopyEntryPasswordUseCase", () => {
     ).rejects.toBeInstanceOf(InvalidClipboardClearDelayError);
 
     expect(
-      ctx.ports.unlockedVaultRepository.getUnlockedVaultSession,
+      ctx.ports.sessionUseCases.getUnlockedVaultSession.execute,
     ).not.toHaveBeenCalled();
     expect(ctx.clipboard.writeText).not.toHaveBeenCalled();
   });

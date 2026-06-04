@@ -44,7 +44,7 @@ function createContext() {
     clipboardClearTasks,
     scheduledTasks,
     ports.vaultLockTasks,
-    ports.unlockedVaultRepository,
+    ports.sessionUseCases.removeUnlockedVaultSession,
   );
 
   return {
@@ -64,7 +64,7 @@ describe("LockVaultUseCase", () => {
     await expect(ctx.useCase.execute()).resolves.toBeUndefined();
 
     expect(
-      ctx.ports.unlockedVaultRepository.removeUnlockedVaultSession,
+      ctx.ports.sessionUseCases.removeUnlockedVaultSession.execute,
     ).toHaveBeenCalledTimes(1);
   });
 
@@ -105,7 +105,7 @@ describe("LockVaultUseCase", () => {
     });
     expect(ctx.ports.vaultLockTasks.remove).toHaveBeenCalledTimes(1);
     expect(
-      ctx.ports.unlockedVaultRepository.removeUnlockedVaultSession,
+      ctx.ports.sessionUseCases.removeUnlockedVaultSession.execute,
     ).toHaveBeenCalledTimes(1);
   });
 
@@ -126,7 +126,7 @@ describe("LockVaultUseCase", () => {
     expect(ctx.clipboardClearTasks.get).not.toHaveBeenCalled();
     expect(ctx.scheduledTasks.cancelTask).not.toHaveBeenCalled();
     expect(
-      ctx.ports.unlockedVaultRepository.removeUnlockedVaultSession,
+      ctx.ports.sessionUseCases.removeUnlockedVaultSession.execute,
     ).not.toHaveBeenCalled();
   });
 
@@ -140,7 +140,7 @@ describe("LockVaultUseCase", () => {
     ).resolves.toBeUndefined();
 
     expect(
-      ctx.ports.unlockedVaultRepository.removeUnlockedVaultSession,
+      ctx.ports.sessionUseCases.removeUnlockedVaultSession.execute,
     ).toHaveBeenCalledTimes(1);
     expect(ctx.ports.vaultLockTasks.remove).not.toHaveBeenCalled();
   });
@@ -160,7 +160,7 @@ describe("LockVaultUseCase", () => {
     ).resolves.toBeUndefined();
 
     expect(
-      ctx.ports.unlockedVaultRepository.removeUnlockedVaultSession,
+      ctx.ports.sessionUseCases.removeUnlockedVaultSession.execute,
     ).toHaveBeenCalledTimes(1);
     expect(ctx.ports.vaultLockTasks.remove).toHaveBeenCalledTimes(1);
   });
@@ -183,7 +183,7 @@ describe("LockVaultUseCase", () => {
       actionId: "clipboard-action-id",
     });
     expect(
-      ctx.ports.unlockedVaultRepository.removeUnlockedVaultSession,
+      ctx.ports.sessionUseCases.removeUnlockedVaultSession.execute,
     ).toHaveBeenCalledTimes(1);
   });
 
@@ -201,7 +201,7 @@ describe("LockVaultUseCase", () => {
     await expect(ctx.useCase.execute()).rejects.toThrow(error);
 
     expect(
-      ctx.ports.unlockedVaultRepository.removeUnlockedVaultSession,
+      ctx.ports.sessionUseCases.removeUnlockedVaultSession.execute,
     ).toHaveBeenCalledTimes(1);
   });
 
@@ -233,7 +233,7 @@ describe("LockVaultUseCase", () => {
     });
     expect(ctx.ports.vaultLockTasks.remove).toHaveBeenCalledTimes(1);
     expect(
-      ctx.ports.unlockedVaultRepository.removeUnlockedVaultSession,
+      ctx.ports.sessionUseCases.removeUnlockedVaultSession.execute,
     ).toHaveBeenCalledTimes(1);
   });
 
@@ -242,7 +242,7 @@ describe("LockVaultUseCase", () => {
     const error = new Error("lock failed");
 
     vi.mocked(
-      ctx.ports.unlockedVaultRepository.removeUnlockedVaultSession,
+      ctx.ports.sessionUseCases.removeUnlockedVaultSession.execute,
     ).mockRejectedValueOnce(error);
 
     await expect(ctx.useCase.execute()).rejects.toThrow(error);

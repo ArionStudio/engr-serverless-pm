@@ -1,13 +1,13 @@
 import type { PasswordEntry } from "../../domain/entry/password-entry.type";
 import { passwordEntryInputSchema } from "../../domain/entry/password-entry.schema";
 import { sanitizeEntryUrl } from "../../domain/entry/sanitized-entry-url.utils";
-import type { UnlockedVaultRepositoryPort } from "../../ports/vault/unlocked-vault-repository.port";
 import {
   InvalidPasswordEntryError,
   PasswordEntryNotFoundError,
 } from "../__errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
 import type { CommitUnlockedVaultSessionUseCase } from "../vault-session/commit-unlocked-vault-session";
+import type { GetUnlockedVaultSessionUseCase } from "../vault-session/get-unlocked-vault-session";
 import type { PersistUnlockedVaultUseCase } from "../vault-snapshots/persist-unlocked-vault";
 
 export type UpdateEntryCommandParams = {
@@ -29,23 +29,22 @@ export type UpdateEntryResult = {
 };
 
 export class UpdateEntryUseCase {
-  private readonly unlockedVaultRepository: UnlockedVaultRepositoryPort;
+  private readonly getUnlockedVaultSession: GetUnlockedVaultSessionUseCase;
   private readonly persistUnlockedVault: PersistUnlockedVaultUseCase;
   private readonly commitUnlockedVaultSession: CommitUnlockedVaultSessionUseCase;
 
   constructor(
-    unlockedVaultRepository: UnlockedVaultRepositoryPort,
+    getUnlockedVaultSession: GetUnlockedVaultSessionUseCase,
     persistUnlockedVault: PersistUnlockedVaultUseCase,
     commitUnlockedVaultSession: CommitUnlockedVaultSessionUseCase,
   ) {
-    this.unlockedVaultRepository = unlockedVaultRepository;
+    this.getUnlockedVaultSession = getUnlockedVaultSession;
     this.persistUnlockedVault = persistUnlockedVault;
     this.commitUnlockedVaultSession = commitUnlockedVaultSession;
   }
 
   async execute(params: UpdateEntryCommandParams): Promise<UpdateEntryResult> {
-    const unlockedVaultSession =
-      await this.unlockedVaultRepository.getUnlockedVaultSession();
+    const unlockedVaultSession = await this.getUnlockedVaultSession.execute();
     const unlockedVault = unlockedVaultSession?.unlockedVault;
 
     if (unlockedVault?.vaultId !== params.vaultId) {

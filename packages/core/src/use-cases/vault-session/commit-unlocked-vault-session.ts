@@ -2,8 +2,9 @@ import type { UnlockedVault } from "../../domain/vault/unlocked-vault";
 import {
   ActiveUnlockedVaultMismatchError,
   UnlockedVaultSessionInvalidError,
-} from "../../ports/vault/unlocked-vault-repository.errors";
-import type { UnlockedVaultRepositoryPort } from "../../ports/vault/unlocked-vault-repository.port";
+} from "../__errors/vault-session.errors";
+import type { RemoveUnlockedVaultSessionUseCase } from "./remove-unlocked-vault-session";
+import type { SaveUnlockedVaultSessionUseCase } from "./save-unlocked-vault-session";
 
 export type CommitUnlockedVaultSessionCommandParams = {
   readonly unlockedVault: UnlockedVault;
@@ -11,19 +12,26 @@ export type CommitUnlockedVaultSessionCommandParams = {
 };
 
 export class CommitUnlockedVaultSessionUseCase {
-  private readonly unlockedVaultRepository: UnlockedVaultRepositoryPort;
+  private readonly saveUnlockedVaultSession: SaveUnlockedVaultSessionUseCase;
+  private readonly removeUnlockedVaultSession: RemoveUnlockedVaultSessionUseCase;
 
-  constructor(unlockedVaultRepository: UnlockedVaultRepositoryPort) {
-    this.unlockedVaultRepository = unlockedVaultRepository;
+  constructor(
+    saveUnlockedVaultSession: SaveUnlockedVaultSessionUseCase,
+    removeUnlockedVaultSession: RemoveUnlockedVaultSessionUseCase,
+  ) {
+    this.saveUnlockedVaultSession = saveUnlockedVaultSession;
+    this.removeUnlockedVaultSession = removeUnlockedVaultSession;
   }
 
   async execute(
     params: CommitUnlockedVaultSessionCommandParams,
   ): Promise<void> {
     try {
-      await this.unlockedVaultRepository.saveUnlockedVaultSession({
-        unlockedVault: params.unlockedVault,
-        sourceSnapshotRevision: params.sourceSnapshotRevision,
+      await this.saveUnlockedVaultSession.execute({
+        session: {
+          unlockedVault: params.unlockedVault,
+          sourceSnapshotRevision: params.sourceSnapshotRevision,
+        },
       });
     } catch (error) {
       if (!this.shouldCleanupAfterCommitFailure(error)) {
@@ -31,7 +39,7 @@ export class CommitUnlockedVaultSessionUseCase {
       }
 
       try {
-        await this.unlockedVaultRepository.removeUnlockedVaultSession();
+        await this.removeUnlockedVaultSession.execute();
       } catch {
         // Preserve the session commit failure as the root cause.
       }

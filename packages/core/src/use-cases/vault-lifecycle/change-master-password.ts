@@ -1,13 +1,13 @@
 import type { DeviceAccessMaterial } from "../../domain/device/device-access-material";
 import type { RawMasterPassword } from "../../domain/master-password";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
-import type { UnlockedVaultRepositoryPort } from "../../ports/vault/unlocked-vault-repository.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import { UnsupportedAlgorithmSuiteError } from "../__errors/algorithm-suite.errors";
 import {
   DeviceAccessMaterialNotFoundForMasterPasswordChangeError,
   VaultMustBeUnlockedForMasterPasswordChangeError,
 } from "../__errors/change-master-password.errors";
+import type { GetUnlockedVaultSessionUseCase } from "../vault-session/get-unlocked-vault-session";
 
 export type ChangeMasterPasswordCommandParams = {
   vaultId: string;
@@ -18,21 +18,20 @@ export type ChangeMasterPasswordCommandParams = {
 export class ChangeMasterPasswordUseCase {
   private readonly crypto: CryptoPort;
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
-  private readonly unlockedVaultRepository: UnlockedVaultRepositoryPort;
+  private readonly getUnlockedVaultSession: GetUnlockedVaultSessionUseCase;
 
   constructor(
     crypto: CryptoPort,
     vaultLocalRepository: VaultLocalRepositoryPort,
-    unlockedVaultRepository: UnlockedVaultRepositoryPort,
+    getUnlockedVaultSession: GetUnlockedVaultSessionUseCase,
   ) {
     this.crypto = crypto;
     this.vaultLocalRepository = vaultLocalRepository;
-    this.unlockedVaultRepository = unlockedVaultRepository;
+    this.getUnlockedVaultSession = getUnlockedVaultSession;
   }
 
   async execute(params: ChangeMasterPasswordCommandParams): Promise<void> {
-    const unlockedVaultSession =
-      await this.unlockedVaultRepository.getUnlockedVaultSession();
+    const unlockedVaultSession = await this.getUnlockedVaultSession.execute();
     const unlockedVault = unlockedVaultSession?.unlockedVault;
 
     if (unlockedVault?.vaultId !== params.vaultId) {

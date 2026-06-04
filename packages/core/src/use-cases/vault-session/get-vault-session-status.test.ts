@@ -9,7 +9,7 @@ describe("GetVaultSessionStatusUseCase", () => {
     const values = createCoreTestValues();
     const ports = createCoreTestPorts(values);
     const useCase = new GetVaultSessionStatusUseCase(
-      ports.unlockedVaultRepository,
+      ports.sessionUseCases.getUnlockedVaultSession,
     );
 
     return {
@@ -50,7 +50,7 @@ describe("GetVaultSessionStatusUseCase", () => {
     const error = new Error("session read failed");
 
     vi.mocked(
-      ctx.ports.unlockedVaultRepository.getUnlockedVaultSession,
+      ctx.ports.sessionUseCases.getUnlockedVaultSession.execute,
     ).mockRejectedValueOnce(error);
 
     await expect(ctx.useCase.execute()).rejects.toThrow(error);

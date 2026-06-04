@@ -6,7 +6,7 @@ import {
   singlePasswordEntry,
 } from "../../__tests__/fixtures/vault-entries";
 import type { UnlockedVaultSessionMaterial } from "../../domain/vault/unlocked-vault-session";
-import { ActiveUnlockedVaultMismatchError } from "../../ports/vault/unlocked-vault-repository.errors";
+import { ActiveUnlockedVaultMismatchError } from "../__errors/vault-session.errors";
 import { ProtectUnlockedVaultSessionUseCase } from "./protect-unlocked-vault-session";
 import { SaveUnlockedVaultSessionUseCase } from "./save-unlocked-vault-session";
 

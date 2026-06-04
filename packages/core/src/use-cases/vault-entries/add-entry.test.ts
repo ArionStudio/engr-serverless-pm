@@ -15,7 +15,8 @@ function createContext() {
   const ports = createCoreTestPorts(values);
   const persistUnlockedVault = createPersistUnlockedVaultUseCaseMock(values);
   const commitUnlockedVaultSession = new CommitUnlockedVaultSessionUseCase(
-    ports.unlockedVaultRepository,
+    ports.sessionUseCases.saveUnlockedVaultSession,
+    ports.sessionUseCases.removeUnlockedVaultSession,
   );
 
   vi.mocked(ports.ids.generateId).mockReset().mockResolvedValue("entry-id");
@@ -24,7 +25,7 @@ function createContext() {
 
   const useCase = new AddEntryUseCase(
     ports.ids,
-    ports.unlockedVaultRepository,
+    ports.sessionUseCases.getUnlockedVaultSession,
     persistUnlockedVault,
     commitUnlockedVaultSession,
   );
@@ -81,7 +82,7 @@ describe("AddEntryUseCase", () => {
     expect(
       vi.mocked(ctx.persistUnlockedVault.execute).mock.invocationCallOrder[0],
     ).toBeLessThan(
-      vi.mocked(ctx.ports.unlockedVaultRepository.saveUnlockedVaultSession).mock
+      vi.mocked(ctx.ports.sessionUseCases.saveUnlockedVaultSession.execute).mock
         .invocationCallOrder[0],
     );
   });
@@ -104,7 +105,7 @@ describe("AddEntryUseCase", () => {
 
     expect(ctx.ports.ids.generateId).not.toHaveBeenCalled();
     expect(
-      ctx.ports.unlockedVaultRepository.saveUnlockedVaultSession,
+      ctx.ports.sessionUseCases.saveUnlockedVaultSession.execute,
     ).not.toHaveBeenCalled();
     expect(ctx.persistUnlockedVault.execute).not.toHaveBeenCalled();
   });
@@ -126,7 +127,7 @@ describe("AddEntryUseCase", () => {
 
     expect(ctx.ports.ids.generateId).not.toHaveBeenCalled();
     expect(
-      ctx.ports.unlockedVaultRepository.saveUnlockedVaultSession,
+      ctx.ports.sessionUseCases.saveUnlockedVaultSession.execute,
     ).not.toHaveBeenCalled();
     expect(ctx.persistUnlockedVault.execute).not.toHaveBeenCalled();
   });
@@ -150,7 +151,7 @@ describe("AddEntryUseCase", () => {
     ).rejects.toThrow("persist failed");
 
     expect(
-      ctx.ports.unlockedVaultRepository.saveUnlockedVaultSession,
+      ctx.ports.sessionUseCases.saveUnlockedVaultSession.execute,
     ).not.toHaveBeenCalled();
     expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries).toEqual(
       [],
@@ -160,7 +161,7 @@ describe("AddEntryUseCase", () => {
   it("clears the session vault when session save fails after snapshot persistence", async () => {
     const ctx = createContext();
     vi.mocked(
-      ctx.ports.unlockedVaultRepository.saveUnlockedVaultSession,
+      ctx.ports.sessionUseCases.saveUnlockedVaultSession.execute,
     ).mockRejectedValueOnce(new Error("session save failed"));
 
     await expect(
@@ -177,7 +178,7 @@ describe("AddEntryUseCase", () => {
 
     expect(ctx.persistUnlockedVault.execute).toHaveBeenCalled();
     expect(
-      ctx.ports.unlockedVaultRepository.removeUnlockedVaultSession,
+      ctx.ports.sessionUseCases.removeUnlockedVaultSession.execute,
     ).toHaveBeenCalled();
     expect(ctx.saved.unlockedVaultSession).toBeUndefined();
   });
@@ -185,10 +186,10 @@ describe("AddEntryUseCase", () => {
   it("preserves the session save error when cleanup also fails", async () => {
     const ctx = createContext();
     vi.mocked(
-      ctx.ports.unlockedVaultRepository.saveUnlockedVaultSession,
+      ctx.ports.sessionUseCases.saveUnlockedVaultSession.execute,
     ).mockRejectedValueOnce(new Error("session save failed"));
     vi.mocked(
-      ctx.ports.unlockedVaultRepository.removeUnlockedVaultSession,
+      ctx.ports.sessionUseCases.removeUnlockedVaultSession.execute,
     ).mockRejectedValueOnce(new Error("cleanup failed"));
 
     await expect(

@@ -6,10 +6,10 @@ import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { IdPort } from "../../ports/system/id.port";
 import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard/clipboard-clear-task-repository.port";
 import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
-import type { UnlockedVaultRepositoryPort } from "../../ports/vault/unlocked-vault-repository.port";
 import { InvalidClipboardClearDelayError } from "../__errors/clipboard.errors";
 import { PasswordEntryNotFoundError } from "../__errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
+import type { GetUnlockedVaultSessionUseCase } from "../vault-session/get-unlocked-vault-session";
 import type { ClearClipboardTaskUseCase } from "./clear-clipboard-task";
 
 export type CopyEntryPasswordCommandParams = {
@@ -30,7 +30,7 @@ export class CopyEntryPasswordUseCase {
   private readonly clipboardClearTasks: ClipboardClearTaskRepositoryPort;
   private readonly scheduledTasks: ScheduledTaskPort;
   private readonly clock: ClockPort;
-  private readonly unlockedVaultRepository: UnlockedVaultRepositoryPort;
+  private readonly getUnlockedVaultSession: GetUnlockedVaultSessionUseCase;
 
   constructor(
     clipboard: ClipboardPort,
@@ -40,7 +40,7 @@ export class CopyEntryPasswordUseCase {
     clipboardClearTasks: ClipboardClearTaskRepositoryPort,
     scheduledTasks: ScheduledTaskPort,
     clock: ClockPort,
-    unlockedVaultRepository: UnlockedVaultRepositoryPort,
+    getUnlockedVaultSession: GetUnlockedVaultSessionUseCase,
   ) {
     this.clipboard = clipboard;
     this.clearClipboardTask = clearClipboardTask;
@@ -49,7 +49,7 @@ export class CopyEntryPasswordUseCase {
     this.clipboardClearTasks = clipboardClearTasks;
     this.scheduledTasks = scheduledTasks;
     this.clock = clock;
-    this.unlockedVaultRepository = unlockedVaultRepository;
+    this.getUnlockedVaultSession = getUnlockedVaultSession;
   }
 
   async execute(
@@ -57,8 +57,7 @@ export class CopyEntryPasswordUseCase {
   ): Promise<CopyEntryPasswordResult> {
     assertValidClipboardClearDelay(params.clearAfterMs);
 
-    const unlockedVaultSession =
-      await this.unlockedVaultRepository.getUnlockedVaultSession();
+    const unlockedVaultSession = await this.getUnlockedVaultSession.execute();
     const unlockedVault = unlockedVaultSession?.unlockedVault;
 
     if (unlockedVault?.vaultId !== params.vaultId) {

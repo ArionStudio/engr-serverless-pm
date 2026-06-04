@@ -18,7 +18,7 @@ describe("InitializeVaultUseCase", () => {
       vaultDisplayName: ctx.values.vaultDisplayName,
     });
 
-    expect(ctx.ports.ids.generateId).toHaveBeenCalledTimes(2);
+    expect(ctx.ports.ids.generateId).toHaveBeenCalledTimes(3);
     expect(ctx.ports.clock.now).toHaveBeenCalledTimes(1);
     expect(
       ctx.ports.vaultDisplayName.generateVaultDisplayName,
@@ -173,7 +173,7 @@ describe("InitializeVaultUseCase", () => {
       ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
     ).toHaveBeenCalledTimes(1);
     expect(
-      ctx.ports.unlockedVaultRepository.saveUnlockedVaultSession,
+      ctx.ports.sessionUseCases.saveUnlockedVaultSession.execute,
     ).not.toHaveBeenCalled();
     expect(
       ctx.ports.vaultLocalRepository.saveLocalVaultDescriptor,

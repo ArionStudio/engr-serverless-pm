@@ -5,7 +5,7 @@ import type {
   EncryptedUnlockedVaultSessionPayload,
   UnlockedVaultSessionMaterial,
 } from "../../domain/vault/unlocked-vault-session";
-import { UnlockedVaultSessionInvalidError } from "../../ports/vault/unlocked-vault-repository.errors";
+import { UnlockedVaultSessionInvalidError } from "../__errors/vault-session.errors";
 import { RestoreUnlockedVaultSessionUseCase } from "./restore-unlocked-vault-session";
 
 function createContext() {
