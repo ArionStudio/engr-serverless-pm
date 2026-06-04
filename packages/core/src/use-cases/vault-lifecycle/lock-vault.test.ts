@@ -205,6 +205,28 @@ describe("LockVaultUseCase", () => {
     ).toHaveBeenCalledTimes(1);
   });
 
+  it("preserves clipboard cleanup error when unlocked vault state removal also fails", async () => {
+    const ctx = createContext();
+    const cleanupError = new Error("clipboard unavailable");
+    const removeError = new Error("session removal failed");
+
+    vi.mocked(ctx.clipboardClearTasks.get).mockResolvedValueOnce({
+      actionId: "clipboard-action-id",
+      copiedValueHash: `hash:${singlePasswordEntry.password}`,
+      expiresAt: ctx.values.timestamp + 60_000,
+    });
+    vi.mocked(ctx.clipboard.readText).mockRejectedValueOnce(cleanupError);
+    vi.mocked(
+      ctx.ports.sessionUseCases.removeUnlockedVaultSession.execute,
+    ).mockRejectedValueOnce(removeError);
+
+    await expect(ctx.useCase.execute()).rejects.toBe(cleanupError);
+
+    expect(
+      ctx.ports.sessionUseCases.removeUnlockedVaultSession.execute,
+    ).toHaveBeenCalledTimes(1);
+  });
+
   it("removes unlocked vault state when clipboard clear task cancellation fails", async () => {
     const ctx = createContext();
     const error = new Error("cancel failed");
