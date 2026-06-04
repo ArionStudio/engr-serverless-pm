@@ -8,8 +8,8 @@ import {
   standardVaultTags,
 } from "../../__tests__/fixtures/vault-entries";
 import type { SearchEntryQuery } from "../../domain/entry/search-entry-query.type";
-import { InvalidSearchEntryQueryError } from "../__errors/vault-entry.errors";
-import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
+import { InvalidSearchEntryQueryError } from "../../application/errors/vault-entry.errors";
+import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
 import { SearchEntriesUseCase } from "./search-entries";
 
 function createContext() {
@@ -27,7 +27,9 @@ function createContext() {
     values,
     ports,
     saved: ports.saved,
-    useCase: new SearchEntriesUseCase(ports.unlockedVaultRepository),
+    useCase: new SearchEntriesUseCase(
+      ports.sessionServices.getUnlockedVaultSession,
+    ),
   };
 }
 
@@ -109,7 +111,7 @@ describe("SearchEntriesUseCase", () => {
 
   it("fails when the target vault is not unlocked", async () => {
     const ctx = createContext();
-    ctx.saved.unlockedVault = undefined;
+    ctx.saved.unlockedVaultSession = undefined;
 
     await expect(
       ctx.useCase.execute({

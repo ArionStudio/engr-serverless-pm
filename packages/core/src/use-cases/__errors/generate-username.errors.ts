@@ -1,8 +1,1 @@
-import { ZodError } from "zod";
-
-export class InvalidGeneratedUsernameSettingsError extends Error {
-  constructor(cause: ZodError) {
-    super("Generated username settings are invalid.", { cause });
-    this.name = "InvalidGeneratedUsernameSettingsError";
-  }
-}
+export * from "../../application/errors/generate-username.errors";

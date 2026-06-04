@@ -1,8 +1,8 @@
-import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard-clear-task-repository.port";
-import type { ScheduledTaskPort } from "../../ports/scheduled-task.port";
-import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
-import type { VaultLockTaskRepositoryPort } from "../../ports/vault-lock-task-repository.port";
+import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard/clipboard-clear-task-repository.port";
+import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
+import type { VaultLockTaskRepositoryPort } from "../../ports/vault/vault-lock-task-repository.port";
 import type { ClearClipboardTaskUseCase } from "../clipboard/clear-clipboard-task";
+import type { RemoveUnlockedVaultSessionService } from "../../application/vault-session/remove-unlocked-vault-session.service";
 
 export type LockVaultCommandParams = {
   actionId?: string;
@@ -13,20 +13,20 @@ export class LockVaultUseCase {
   private readonly clipboardClearTasks: ClipboardClearTaskRepositoryPort;
   private readonly scheduledTasks: ScheduledTaskPort;
   private readonly vaultLockTasks: VaultLockTaskRepositoryPort;
-  private readonly unlockedVaultRepository: UnlockedVaultRepositoryPort;
+  private readonly removeUnlockedVaultSession: RemoveUnlockedVaultSessionService;
 
   constructor(
     clearClipboardTask: ClearClipboardTaskUseCase,
     clipboardClearTasks: ClipboardClearTaskRepositoryPort,
     scheduledTasks: ScheduledTaskPort,
     vaultLockTasks: VaultLockTaskRepositoryPort,
-    unlockedVaultRepository: UnlockedVaultRepositoryPort,
+    removeUnlockedVaultSession: RemoveUnlockedVaultSessionService,
   ) {
     this.clearClipboardTask = clearClipboardTask;
     this.clipboardClearTasks = clipboardClearTasks;
     this.scheduledTasks = scheduledTasks;
     this.vaultLockTasks = vaultLockTasks;
-    this.unlockedVaultRepository = unlockedVaultRepository;
+    this.removeUnlockedVaultSession = removeUnlockedVaultSession;
   }
 
   async execute(params: LockVaultCommandParams = {}): Promise<void> {
@@ -41,6 +41,9 @@ export class LockVaultUseCase {
     }
 
     const clipboardClearTask = await this.clipboardClearTasks.get();
+
+    let executionError: unknown;
+    let sessionRemovalError: unknown;
 
     try {
       let cleanupError: unknown;
@@ -75,8 +78,24 @@ export class LockVaultUseCase {
       if (cleanupError !== undefined) {
         throw cleanupError;
       }
+    } catch (error) {
+      executionError = error;
     } finally {
-      await this.unlockedVaultRepository.removeUnlockedVault();
+      try {
+        await this.removeUnlockedVaultSession.remove();
+      } catch (error) {
+        if (executionError === undefined) {
+          sessionRemovalError = error;
+        }
+      }
+    }
+
+    if (executionError !== undefined) {
+      throw executionError;
+    }
+
+    if (sessionRemovalError !== undefined) {
+      throw sessionRemovalError;
     }
   }
 }

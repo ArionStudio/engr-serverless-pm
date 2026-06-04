@@ -1,29 +1,34 @@
-import type { AlgorithmSuite } from "../domain/crypto/algorithm-suite.type";
-import type { RandomBytes } from "../domain/crypto/brand-keys";
+import type { AlgorithmSuite } from "../../domain/crypto/algorithm-suite.type";
+import type { RandomBytes } from "../../domain/crypto/brand-keys";
 import type {
   ProtectionKeyFor,
   SerializedEncrypted,
   SerializedSignatureOf,
   SerializedWrapped,
-} from "../domain/crypto/protected-artifact";
+} from "../../domain/crypto/protected-artifact";
 import type {
   DevicePrivateSignKey,
   DevicePublicSignKey,
   DeviceSignKeyPair,
   DeviceSlotKey,
-} from "../domain/device/brand-keys";
+} from "../../domain/device/brand-keys";
 import type {
   LocalKeysPayload,
   LocalRootKey,
-} from "../domain/local-protection/local-protection.type";
-import type { RawMasterPassword } from "../domain/master-password";
-import type { RecoverySecretKey } from "../domain/recovery/brand-keys";
-import type { VaultMasterKey } from "../domain/snapshot/brand-keys";
+} from "../../domain/local-protection/local-protection.type";
+import type { RawMasterPassword } from "../../domain/master-password";
+import type { RecoverySecretKey } from "../../domain/recovery/brand-keys";
+import type { VaultMasterKey } from "../../domain/snapshot/brand-keys";
+import type {
+  UnlockedVaultSessionPayload,
+  UnlockedVaultSessionPayloadEncryptionContext,
+  UnlockedVaultSessionPayloadKey,
+} from "../../domain/vault/unlocked-vault-session";
 import type {
   UnsignedVaultSnapshot,
   VaultSnapshot,
-} from "../domain/snapshot/vault-snapshot";
-import type { Vault } from "../domain/vault/vault";
+} from "../../domain/snapshot/vault-snapshot";
+import type { Vault } from "../../domain/vault/vault";
 
 export interface CryptoPort {
   // Suite
@@ -41,6 +46,7 @@ export interface CryptoPort {
   generateVaultMasterKey: () => Promise<VaultMasterKey>;
   generateDeviceSlotKey: () => Promise<DeviceSlotKey>;
   generateRecoveryKey: () => Promise<RecoverySecretKey>;
+  generateUnlockedVaultSessionPayloadKey: () => Promise<UnlockedVaultSessionPayloadKey>;
 
   // Salt generation
   generateMasterPasswordSalt: () => Promise<RandomBytes>;
@@ -91,6 +97,18 @@ export interface CryptoPort {
     encryptedVault: SerializedEncrypted<Vault>,
     vaultMasterKey: VaultMasterKey,
   ) => Promise<Vault>;
+
+  // Unlocked vault session payload protection
+  encryptUnlockedVaultSessionPayload: (
+    payload: UnlockedVaultSessionPayload,
+    payloadKey: UnlockedVaultSessionPayloadKey,
+    context: UnlockedVaultSessionPayloadEncryptionContext,
+  ) => Promise<SerializedEncrypted<UnlockedVaultSessionPayload>>;
+  decryptUnlockedVaultSessionPayload: (
+    encryptedPayload: SerializedEncrypted<UnlockedVaultSessionPayload>,
+    payloadKey: UnlockedVaultSessionPayloadKey,
+    context: UnlockedVaultSessionPayloadEncryptionContext,
+  ) => Promise<UnlockedVaultSessionPayload>;
 
   // Vault snapshot authenticity
   signVaultSnapshot: (

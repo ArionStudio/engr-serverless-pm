@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { createChangeMasterPasswordTestContext } from "../../__tests__/fixtures/change-master-password";
-import { UnsupportedAlgorithmSuiteError } from "../__errors/algorithm-suite.errors";
+import { UnsupportedAlgorithmSuiteError } from "../../application/errors/algorithm-suite.errors";
 import {
   DeviceAccessMaterialNotFoundForMasterPasswordChangeError,
   VaultMustBeUnlockedForMasterPasswordChangeError,
-} from "../__errors/change-master-password.errors";
+} from "../../application/errors/change-master-password.errors";
 
 describe("ChangeMasterPasswordUseCase", () => {
   it("re-protects local device access material with the new master password", async () => {
@@ -19,7 +19,7 @@ describe("ChangeMasterPasswordUseCase", () => {
     ).resolves.toBeUndefined();
 
     expect(
-      ctx.ports.unlockedVaultRepository.getUnlockedVault,
+      ctx.ports.sessionServices.getUnlockedVaultSession.get,
     ).toHaveBeenCalledTimes(1);
     expect(
       ctx.ports.vaultLocalRepository.getDeviceAccessMaterial,
@@ -76,7 +76,7 @@ describe("ChangeMasterPasswordUseCase", () => {
 
   it("fails when the target vault is not unlocked", async () => {
     const ctx = createChangeMasterPasswordTestContext();
-    ctx.saved.unlockedVault = undefined;
+    ctx.saved.unlockedVaultSession = undefined;
 
     await expect(
       ctx.useCase.execute({
@@ -96,9 +96,12 @@ describe("ChangeMasterPasswordUseCase", () => {
 
   it("fails when another vault is unlocked", async () => {
     const ctx = createChangeMasterPasswordTestContext();
-    ctx.saved.unlockedVault = {
-      ...ctx.saved.unlockedVault!,
-      vaultId: "another-vault-id",
+    ctx.saved.unlockedVaultSession = {
+      ...ctx.saved.unlockedVaultSession!,
+      unlockedVault: {
+        ...ctx.saved.unlockedVaultSession!.unlockedVault,
+        vaultId: "another-vault-id",
+      },
     };
 
     await expect(

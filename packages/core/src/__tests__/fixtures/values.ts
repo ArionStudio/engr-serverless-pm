@@ -21,6 +21,10 @@ import type { RecoverySecretKey } from "../../domain/recovery/brand-keys";
 import type { VaultMasterKey } from "../../domain/snapshot/brand-keys";
 import type { SyncConfig } from "../../domain/sync/sync-config.type";
 import type { UnsignedVaultSnapshot } from "../../domain/snapshot/vault-snapshot";
+import type {
+  UnlockedVaultSessionPayload,
+  UnlockedVaultSessionPayloadKey,
+} from "../../domain/vault/unlocked-vault-session";
 import type { Vault } from "../../domain/vault/vault";
 
 export const bytes = <T extends ArrayBuffer>() => new ArrayBuffer(1) as T;
@@ -33,6 +37,7 @@ export function createCoreTestValues() {
     masterPassword: "master-password" as RawMasterPassword,
     newMasterPassword: "new-master-password" as RawMasterPassword,
     vaultId: "vault-id",
+    sessionId: "session-id",
     vaultLockActionId: "vault-lock-action-id",
     vaultDisplayName: "blue-river-4821",
     deviceId: "device-id",
@@ -55,6 +60,7 @@ export function createCoreTestValues() {
     devicePublicSignKey: bytes<DevicePublicSignKey>(),
     devicePrivateSignKey: bytes<DevicePrivateSignKey>(),
     recoverySecretKey: bytes<RecoverySecretKey>(),
+    unlockedVaultSessionPayloadKey: bytes<UnlockedVaultSessionPayloadKey>(),
     recoveryMnemonicKey: {
       format: "BIP39",
       words: ["abandon", "ability", "able"],
@@ -91,6 +97,10 @@ export function createCoreTestValues() {
       ciphertext: b64("encrypted-vault"),
       encryptionNonce: b64("encrypted-vault-nonce"),
     } satisfies SerializedEncrypted<Vault>,
+    encryptedUnlockedVaultSessionPayload: {
+      ciphertext: b64("encrypted-unlocked-vault-session-payload"),
+      encryptionNonce: b64("encrypted-unlocked-vault-session-payload-nonce"),
+    } satisfies SerializedEncrypted<UnlockedVaultSessionPayload>,
     decryptedVault: {
       entries: [],
       registeredDevices: [],

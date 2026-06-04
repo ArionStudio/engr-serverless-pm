@@ -5,11 +5,11 @@ import {
   saveUnlockedVaultWithEntries,
   singlePasswordEntry,
 } from "../../__tests__/fixtures/vault-entries";
-import type { ClipboardPort } from "../../ports/clipboard.port";
+import type { ClipboardPort } from "../../ports/clipboard/clipboard.port";
 import type {
   ClipboardClearTask,
   ClipboardClearTaskRepositoryPort,
-} from "../../ports/clipboard-clear-task-repository.port";
+} from "../../ports/clipboard/clipboard-clear-task-repository.port";
 import { ClearClipboardTaskUseCase } from "./clear-clipboard-task";
 
 function createContext(
@@ -112,16 +112,19 @@ describe("ClearClipboardTaskUseCase", () => {
 
   it("clears clipboard when copied entry was updated after copy", async () => {
     const ctx = createContext();
-    ctx.ports.saved.unlockedVault = {
-      ...ctx.ports.saved.unlockedVault!,
-      vault: {
-        ...ctx.ports.saved.unlockedVault!.vault,
-        entries: [
-          {
-            ...singlePasswordEntry,
-            password: "new-password",
-          },
-        ],
+    ctx.ports.saved.unlockedVaultSession = {
+      ...ctx.ports.saved.unlockedVaultSession!,
+      unlockedVault: {
+        ...ctx.ports.saved.unlockedVaultSession!.unlockedVault,
+        vault: {
+          ...ctx.ports.saved.unlockedVaultSession!.unlockedVault.vault,
+          entries: [
+            {
+              ...singlePasswordEntry,
+              password: "new-password",
+            },
+          ],
+        },
       },
     };
 

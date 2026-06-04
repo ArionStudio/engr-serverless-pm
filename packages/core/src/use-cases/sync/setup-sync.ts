@@ -1,10 +1,10 @@
 import type { SyncConfig } from "../../domain/sync/sync-config.type";
-import type { SyncProviderPort } from "../../ports/sync-provider.port";
-import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
-import { InvalidSyncConfigError } from "../__errors/sync.errors";
-import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
-import type { PersistUnlockedVaultUseCase } from "../vault-snapshots/persist-unlocked-vault";
-import { saveUnlockedVaultOrCleanup } from "../vault-snapshots/save-unlocked-vault-or-cleanup";
+import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
+import { InvalidSyncConfigError } from "../../application/errors/sync.errors";
+import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
+import type { CommitUnlockedVaultSessionService } from "../../application/vault-session/commit-unlocked-vault-session.service";
+import type { GetUnlockedVaultSessionService } from "../../application/vault-session/get-unlocked-vault-session.service";
+import type { PersistUnlockedVaultService } from "../../application/vault-snapshots/persist-unlocked-vault.service";
 
 export type SetupSyncCommandParams = {
   readonly vaultId: string;
@@ -13,21 +13,25 @@ export type SetupSyncCommandParams = {
 
 export class SetupSyncUseCase {
   private readonly syncProvider: SyncProviderPort;
-  private readonly unlockedVaultRepository: UnlockedVaultRepositoryPort;
-  private readonly persistUnlockedVault: PersistUnlockedVaultUseCase;
+  private readonly getUnlockedVaultSession: GetUnlockedVaultSessionService;
+  private readonly persistUnlockedVault: PersistUnlockedVaultService;
+  private readonly commitUnlockedVaultSession: CommitUnlockedVaultSessionService;
 
   constructor(
     syncProvider: SyncProviderPort,
-    unlockedVaultRepository: UnlockedVaultRepositoryPort,
-    persistUnlockedVault: PersistUnlockedVaultUseCase,
+    getUnlockedVaultSession: GetUnlockedVaultSessionService,
+    persistUnlockedVault: PersistUnlockedVaultService,
+    commitUnlockedVaultSession: CommitUnlockedVaultSessionService,
   ) {
     this.syncProvider = syncProvider;
-    this.unlockedVaultRepository = unlockedVaultRepository;
+    this.getUnlockedVaultSession = getUnlockedVaultSession;
     this.persistUnlockedVault = persistUnlockedVault;
+    this.commitUnlockedVaultSession = commitUnlockedVaultSession;
   }
 
   async execute(params: SetupSyncCommandParams): Promise<void> {
-    const unlockedVault = await this.unlockedVaultRepository.getUnlockedVault();
+    const unlockedVaultSession = await this.getUnlockedVaultSession.get();
+    const unlockedVault = unlockedVaultSession?.unlockedVault;
 
     if (unlockedVault?.vaultId !== params.vaultId) {
       throw new VaultMustBeUnlockedError(params.vaultId, "setup sync");
@@ -49,14 +53,14 @@ export class SetupSyncUseCase {
       },
     };
 
-    await this.persistUnlockedVault.execute({
-      vaultId: params.vaultId,
-      unlockedVault: updatedUnlockedVault,
-    });
-
-    await saveUnlockedVaultOrCleanup(
-      this.unlockedVaultRepository,
+    const persistedSnapshot = await this.persistUnlockedVault.persist(
+      params.vaultId,
       updatedUnlockedVault,
+    );
+
+    await this.commitUnlockedVaultSession.commit(
+      updatedUnlockedVault,
+      persistedSnapshot.revision,
     );
   }
 }
