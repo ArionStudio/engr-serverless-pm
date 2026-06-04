@@ -62,10 +62,7 @@ function arrayBufferToBase64Url(buffer: ArrayBuffer): Base64UrlString {
 
 function base64UrlToArrayBuffer(value: Base64UrlString): ArrayBuffer {
   const bytes = decodeBase64Url(value);
-  const copy = new Uint8Array(bytes.byteLength);
-  copy.set(bytes);
-
-  return copy.buffer;
+  return bytes.slice().buffer;
 }
 
 function assertStoredMaterial(
