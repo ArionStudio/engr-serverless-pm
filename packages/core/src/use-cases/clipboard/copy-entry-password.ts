@@ -9,7 +9,7 @@ import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
 import { InvalidClipboardClearDelayError } from "../__errors/clipboard.errors";
 import { PasswordEntryNotFoundError } from "../__errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
-import type { GetUnlockedVaultSessionUseCase } from "../vault-session/get-unlocked-vault-session";
+import type { GetUnlockedVaultSessionService } from "../../application/vault-session/get-unlocked-vault-session.service";
 import type { ClearClipboardTaskUseCase } from "./clear-clipboard-task";
 
 export type CopyEntryPasswordCommandParams = {
@@ -30,7 +30,7 @@ export class CopyEntryPasswordUseCase {
   private readonly clipboardClearTasks: ClipboardClearTaskRepositoryPort;
   private readonly scheduledTasks: ScheduledTaskPort;
   private readonly clock: ClockPort;
-  private readonly getUnlockedVaultSession: GetUnlockedVaultSessionUseCase;
+  private readonly getUnlockedVaultSession: GetUnlockedVaultSessionService;
 
   constructor(
     clipboard: ClipboardPort,
@@ -40,7 +40,7 @@ export class CopyEntryPasswordUseCase {
     clipboardClearTasks: ClipboardClearTaskRepositoryPort,
     scheduledTasks: ScheduledTaskPort,
     clock: ClockPort,
-    getUnlockedVaultSession: GetUnlockedVaultSessionUseCase,
+    getUnlockedVaultSession: GetUnlockedVaultSessionService,
   ) {
     this.clipboard = clipboard;
     this.clearClipboardTask = clearClipboardTask;
@@ -57,7 +57,7 @@ export class CopyEntryPasswordUseCase {
   ): Promise<CopyEntryPasswordResult> {
     assertValidClipboardClearDelay(params.clearAfterMs);
 
-    const unlockedVaultSession = await this.getUnlockedVaultSession.execute();
+    const unlockedVaultSession = await this.getUnlockedVaultSession.get();
     const unlockedVault = unlockedVaultSession?.unlockedVault;
 
     if (unlockedVault?.vaultId !== params.vaultId) {

@@ -5,9 +5,9 @@ import type {
   EncryptedUnlockedVaultSessionPayload,
   UnlockedVaultSessionMaterial,
 } from "../../domain/vault/unlocked-vault-session";
-import { UnlockedVaultSessionInvalidError } from "../__errors/vault-session.errors";
-import { GetUnlockedVaultSessionUseCase } from "./get-unlocked-vault-session";
-import { RestoreUnlockedVaultSessionUseCase } from "./restore-unlocked-vault-session";
+import { UnlockedVaultSessionInvalidError } from "../../use-cases/__errors/vault-session.errors";
+import { GetUnlockedVaultSessionService } from "./get-unlocked-vault-session.service";
+import { RestoreUnlockedVaultSessionService } from "./restore-unlocked-vault-session.service";
 
 function createContext() {
   const values = createCoreTestValues();
@@ -27,7 +27,7 @@ function createContext() {
     sourceSnapshotRevision: 7,
     content: values.encryptedUnlockedVaultSessionPayload,
   };
-  const restoreUnlockedVaultSession = new RestoreUnlockedVaultSessionUseCase(
+  const restoreUnlockedVaultSession = new RestoreUnlockedVaultSessionService(
     ports.crypto,
   );
 
@@ -36,7 +36,7 @@ function createContext() {
     ports,
     material,
     encryptedPayload,
-    useCase: new GetUnlockedVaultSessionUseCase(
+    service: new GetUnlockedVaultSessionService(
       ports.unlockedVaultSessionMaterialRepository,
       ports.encryptedUnlockedVaultSessionPayloadRepository,
       restoreUnlockedVaultSession,
@@ -44,11 +44,11 @@ function createContext() {
   };
 }
 
-describe("GetUnlockedVaultSessionUseCase", () => {
+describe("GetUnlockedVaultSessionService", () => {
   it("returns null when no session material exists", async () => {
     const ctx = createContext();
 
-    await expect(ctx.useCase.execute()).resolves.toBeNull();
+    await expect(ctx.service.get()).resolves.toBeNull();
 
     expect(
       ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
@@ -61,7 +61,7 @@ describe("GetUnlockedVaultSessionUseCase", () => {
     ctx.ports.saved.unlockedVaultSessionMaterial = ctx.material;
     ctx.ports.saved.encryptedUnlockedVaultSessionPayload = ctx.encryptedPayload;
 
-    await expect(ctx.useCase.execute()).resolves.toEqual({
+    await expect(ctx.service.get()).resolves.toEqual({
       unlockedVault: {
         vaultId: ctx.values.vaultId,
         deviceId: ctx.values.deviceId,
@@ -77,7 +77,7 @@ describe("GetUnlockedVaultSessionUseCase", () => {
     const ctx = createContext();
     ctx.ports.saved.unlockedVaultSessionMaterial = ctx.material;
 
-    await expect(ctx.useCase.execute()).rejects.toBeInstanceOf(
+    await expect(ctx.service.get()).rejects.toBeInstanceOf(
       UnlockedVaultSessionInvalidError,
     );
   });

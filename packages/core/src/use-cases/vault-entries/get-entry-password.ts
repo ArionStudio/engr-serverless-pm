@@ -1,6 +1,6 @@
 import { PasswordEntryNotFoundError } from "../__errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
-import type { GetUnlockedVaultSessionUseCase } from "../vault-session/get-unlocked-vault-session";
+import type { GetUnlockedVaultSessionService } from "../../application/vault-session/get-unlocked-vault-session.service";
 
 export type GetEntryPasswordCommandParams = {
   vaultId: string;
@@ -12,16 +12,16 @@ export type GetEntryPasswordResult = {
 };
 
 export class GetEntryPasswordUseCase {
-  private readonly getUnlockedVaultSession: GetUnlockedVaultSessionUseCase;
+  private readonly getUnlockedVaultSession: GetUnlockedVaultSessionService;
 
-  constructor(getUnlockedVaultSession: GetUnlockedVaultSessionUseCase) {
+  constructor(getUnlockedVaultSession: GetUnlockedVaultSessionService) {
     this.getUnlockedVaultSession = getUnlockedVaultSession;
   }
 
   async execute(
     params: GetEntryPasswordCommandParams,
   ): Promise<GetEntryPasswordResult> {
-    const unlockedVaultSession = await this.getUnlockedVaultSession.execute();
+    const unlockedVaultSession = await this.getUnlockedVaultSession.get();
     const unlockedVault = unlockedVaultSession?.unlockedVault;
 
     if (unlockedVault?.vaultId !== params.vaultId) {

@@ -7,7 +7,7 @@ import {
   DeviceAccessMaterialNotFoundForMasterPasswordChangeError,
   VaultMustBeUnlockedForMasterPasswordChangeError,
 } from "../__errors/change-master-password.errors";
-import type { GetUnlockedVaultSessionUseCase } from "../vault-session/get-unlocked-vault-session";
+import type { GetUnlockedVaultSessionService } from "../../application/vault-session/get-unlocked-vault-session.service";
 
 export type ChangeMasterPasswordCommandParams = {
   vaultId: string;
@@ -18,12 +18,12 @@ export type ChangeMasterPasswordCommandParams = {
 export class ChangeMasterPasswordUseCase {
   private readonly crypto: CryptoPort;
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
-  private readonly getUnlockedVaultSession: GetUnlockedVaultSessionUseCase;
+  private readonly getUnlockedVaultSession: GetUnlockedVaultSessionService;
 
   constructor(
     crypto: CryptoPort,
     vaultLocalRepository: VaultLocalRepositoryPort,
-    getUnlockedVaultSession: GetUnlockedVaultSessionUseCase,
+    getUnlockedVaultSession: GetUnlockedVaultSessionService,
   ) {
     this.crypto = crypto;
     this.vaultLocalRepository = vaultLocalRepository;
@@ -31,7 +31,7 @@ export class ChangeMasterPasswordUseCase {
   }
 
   async execute(params: ChangeMasterPasswordCommandParams): Promise<void> {
-    const unlockedVaultSession = await this.getUnlockedVaultSession.execute();
+    const unlockedVaultSession = await this.getUnlockedVaultSession.get();
     const unlockedVault = unlockedVaultSession?.unlockedVault;
 
     if (unlockedVault?.vaultId !== params.vaultId) {

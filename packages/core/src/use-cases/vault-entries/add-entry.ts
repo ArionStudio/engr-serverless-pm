@@ -4,9 +4,9 @@ import { sanitizeEntryUrl } from "../../domain/entry/sanitized-entry-url.utils";
 import type { IdPort } from "../../ports/system/id.port";
 import { InvalidPasswordEntryError } from "../__errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
-import type { CommitUnlockedVaultSessionUseCase } from "../vault-session/commit-unlocked-vault-session";
-import type { GetUnlockedVaultSessionUseCase } from "../vault-session/get-unlocked-vault-session";
-import type { PersistUnlockedVaultUseCase } from "../vault-snapshots/persist-unlocked-vault";
+import type { CommitUnlockedVaultSessionService } from "../../application/vault-session/commit-unlocked-vault-session.service";
+import type { GetUnlockedVaultSessionService } from "../../application/vault-session/get-unlocked-vault-session.service";
+import type { PersistUnlockedVaultService } from "../../application/vault-snapshots/persist-unlocked-vault.service";
 
 export type AddEntryCommandParams = {
   vaultId: string;
@@ -27,15 +27,15 @@ export type AddEntryResult = {
 
 export class AddEntryUseCase {
   private readonly ids: IdPort;
-  private readonly getUnlockedVaultSession: GetUnlockedVaultSessionUseCase;
-  private readonly persistUnlockedVault: PersistUnlockedVaultUseCase;
-  private readonly commitUnlockedVaultSession: CommitUnlockedVaultSessionUseCase;
+  private readonly getUnlockedVaultSession: GetUnlockedVaultSessionService;
+  private readonly persistUnlockedVault: PersistUnlockedVaultService;
+  private readonly commitUnlockedVaultSession: CommitUnlockedVaultSessionService;
 
   constructor(
     ids: IdPort,
-    getUnlockedVaultSession: GetUnlockedVaultSessionUseCase,
-    persistUnlockedVault: PersistUnlockedVaultUseCase,
-    commitUnlockedVaultSession: CommitUnlockedVaultSessionUseCase,
+    getUnlockedVaultSession: GetUnlockedVaultSessionService,
+    persistUnlockedVault: PersistUnlockedVaultService,
+    commitUnlockedVaultSession: CommitUnlockedVaultSessionService,
   ) {
     this.ids = ids;
     this.getUnlockedVaultSession = getUnlockedVaultSession;
@@ -44,7 +44,7 @@ export class AddEntryUseCase {
   }
 
   async execute(params: AddEntryCommandParams): Promise<AddEntryResult> {
-    const unlockedVaultSession = await this.getUnlockedVaultSession.execute();
+    const unlockedVaultSession = await this.getUnlockedVaultSession.get();
     const unlockedVault = unlockedVaultSession?.unlockedVault;
 
     if (unlockedVault?.vaultId !== params.vaultId) {
@@ -84,15 +84,15 @@ export class AddEntryUseCase {
       },
     };
 
-    const persistedSnapshot = await this.persistUnlockedVault.execute({
-      vaultId: params.vaultId,
-      unlockedVault: updatedUnlockedVault,
-    });
+    const persistedSnapshot = await this.persistUnlockedVault.persist(
+      params.vaultId,
+      updatedUnlockedVault,
+    );
 
-    await this.commitUnlockedVaultSession.execute({
-      unlockedVault: updatedUnlockedVault,
-      sourceSnapshotRevision: persistedSnapshot.revision,
-    });
+    await this.commitUnlockedVaultSession.commit(
+      updatedUnlockedVault,
+      persistedSnapshot.revision,
+    );
 
     return {
       entryId,

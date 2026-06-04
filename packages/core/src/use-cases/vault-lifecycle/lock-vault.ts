@@ -2,7 +2,7 @@ import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard/cli
 import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
 import type { VaultLockTaskRepositoryPort } from "../../ports/vault/vault-lock-task-repository.port";
 import type { ClearClipboardTaskUseCase } from "../clipboard/clear-clipboard-task";
-import type { RemoveUnlockedVaultSessionUseCase } from "../vault-session/remove-unlocked-vault-session";
+import type { RemoveUnlockedVaultSessionService } from "../../application/vault-session/remove-unlocked-vault-session.service";
 
 export type LockVaultCommandParams = {
   actionId?: string;
@@ -13,14 +13,14 @@ export class LockVaultUseCase {
   private readonly clipboardClearTasks: ClipboardClearTaskRepositoryPort;
   private readonly scheduledTasks: ScheduledTaskPort;
   private readonly vaultLockTasks: VaultLockTaskRepositoryPort;
-  private readonly removeUnlockedVaultSession: RemoveUnlockedVaultSessionUseCase;
+  private readonly removeUnlockedVaultSession: RemoveUnlockedVaultSessionService;
 
   constructor(
     clearClipboardTask: ClearClipboardTaskUseCase,
     clipboardClearTasks: ClipboardClearTaskRepositoryPort,
     scheduledTasks: ScheduledTaskPort,
     vaultLockTasks: VaultLockTaskRepositoryPort,
-    removeUnlockedVaultSession: RemoveUnlockedVaultSessionUseCase,
+    removeUnlockedVaultSession: RemoveUnlockedVaultSessionService,
   ) {
     this.clearClipboardTask = clearClipboardTask;
     this.clipboardClearTasks = clipboardClearTasks;
@@ -81,7 +81,7 @@ export class LockVaultUseCase {
       executionError = error;
     } finally {
       try {
-        await this.removeUnlockedVaultSession.execute();
+        await this.removeUnlockedVaultSession.remove();
       } catch (error) {
         if (executionError === undefined) {
           throw error;

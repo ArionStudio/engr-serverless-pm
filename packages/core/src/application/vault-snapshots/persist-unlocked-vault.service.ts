@@ -6,17 +6,12 @@ import type { UnlockedVault } from "../../domain/vault/unlocked-vault";
 import type { ClockPort } from "../../ports/system/clock.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
-import { UnsupportedAlgorithmSuiteError } from "../__errors/algorithm-suite.errors";
+import { UnsupportedAlgorithmSuiteError } from "../../use-cases/__errors/algorithm-suite.errors";
 import {
   VaultSnapshotNotFoundError,
   VaultSnapshotSignerNotTrustedError,
-} from "../__errors/unlock-vault.errors";
-import { PersistedVaultMismatchError } from "../__errors/vault-snapshot.errors";
-
-export type PersistUnlockedVaultCommandParams = {
-  vaultId: string;
-  unlockedVault: UnlockedVault;
-};
+} from "../../use-cases/__errors/unlock-vault.errors";
+import { PersistedVaultMismatchError } from "../../use-cases/__errors/vault-snapshot.errors";
 
 export type PersistUnlockedVaultResult = {
   revision: number;
@@ -24,7 +19,7 @@ export type PersistUnlockedVaultResult = {
   deviceId: string;
 };
 
-export class PersistUnlockedVaultUseCase {
+export class PersistUnlockedVaultService {
   private readonly crypto: CryptoPort;
   private readonly clock: ClockPort;
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
@@ -39,23 +34,19 @@ export class PersistUnlockedVaultUseCase {
     this.vaultLocalRepository = vaultLocalRepository;
   }
 
-  async execute(
-    params: PersistUnlockedVaultCommandParams,
+  async persist(
+    vaultId: string,
+    unlockedVault: UnlockedVault,
   ): Promise<PersistUnlockedVaultResult> {
-    const { unlockedVault } = params;
-
-    if (unlockedVault.vaultId !== params.vaultId) {
-      throw new PersistedVaultMismatchError(
-        params.vaultId,
-        unlockedVault.vaultId,
-      );
+    if (unlockedVault.vaultId !== vaultId) {
+      throw new PersistedVaultMismatchError(vaultId, unlockedVault.vaultId);
     }
 
     const currentVaultSnapshot =
-      await this.vaultLocalRepository.getVaultSnapshot(params.vaultId);
+      await this.vaultLocalRepository.getVaultSnapshot(vaultId);
 
     if (currentVaultSnapshot === null) {
-      throw new VaultSnapshotNotFoundError(params.vaultId);
+      throw new VaultSnapshotNotFoundError(vaultId);
     }
 
     if (
@@ -63,7 +54,7 @@ export class PersistUnlockedVaultUseCase {
       this.crypto.algorithmSuite.id
     ) {
       throw new UnsupportedAlgorithmSuiteError({
-        vaultId: params.vaultId,
+        vaultId,
         artifact: "vault snapshot",
         expectedAlgorithmSuiteId: this.crypto.algorithmSuite.id,
         actualAlgorithmSuiteId: currentVaultSnapshot.metadata.algorithmSuiteId,
@@ -76,7 +67,7 @@ export class PersistUnlockedVaultUseCase {
 
     if (signerDevice === undefined) {
       throw new VaultSnapshotSignerNotTrustedError(
-        params.vaultId,
+        vaultId,
         unlockedVault.deviceId,
       );
     }

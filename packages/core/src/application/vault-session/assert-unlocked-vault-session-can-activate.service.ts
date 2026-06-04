@@ -1,34 +1,22 @@
 import type { UnlockedVaultSessionMaterialRepositoryPort } from "../../ports/vault/unlocked-vault-session-material-repository.port";
+import { ActiveUnlockedVaultMismatchError } from "../../use-cases/__errors/vault-session.errors";
 
-export type GetVaultSessionStatusResult =
-  | {
-      status: "locked";
-    }
-  | {
-      status: "unlocked";
-      vaultId: string;
-    };
-
-export class GetVaultSessionStatusUseCase {
+export class AssertUnlockedVaultSessionCanActivateService {
   private readonly materialRepository: UnlockedVaultSessionMaterialRepositoryPort;
 
   constructor(materialRepository: UnlockedVaultSessionMaterialRepositoryPort) {
     this.materialRepository = materialRepository;
   }
 
-  async execute(): Promise<GetVaultSessionStatusResult> {
-    const material =
+  async assertCanActivate(vaultId: string): Promise<void> {
+    const activeMaterial =
       await this.materialRepository.getUnlockedVaultSessionMaterial();
 
-    if (material === null) {
-      return {
-        status: "locked",
-      };
+    if (activeMaterial !== null && activeMaterial.vaultId !== vaultId) {
+      throw new ActiveUnlockedVaultMismatchError(
+        activeMaterial.vaultId,
+        vaultId,
+      );
     }
-
-    return {
-      status: "unlocked",
-      vaultId: material.vaultId,
-    };
   }
 }

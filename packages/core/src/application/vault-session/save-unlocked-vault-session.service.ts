@@ -1,32 +1,28 @@
 import type { UnlockedVaultSession } from "../../domain/vault/unlocked-vault-session";
 import type { EncryptedUnlockedVaultSessionPayloadRepositoryPort } from "../../ports/vault/encrypted-unlocked-vault-session-payload-repository.port";
-import { ActiveUnlockedVaultMismatchError } from "../__errors/vault-session.errors";
+import { ActiveUnlockedVaultMismatchError } from "../../use-cases/__errors/vault-session.errors";
 import type { UnlockedVaultSessionMaterialRepositoryPort } from "../../ports/vault/unlocked-vault-session-material-repository.port";
-import type { ProtectUnlockedVaultSessionUseCase } from "./protect-unlocked-vault-session";
+import type { ProtectUnlockedVaultSessionService } from "./protect-unlocked-vault-session.service";
 
-export type SaveUnlockedVaultSessionCommandParams = {
-  readonly session: UnlockedVaultSession;
-};
-
-export class SaveUnlockedVaultSessionUseCase {
+export class SaveUnlockedVaultSessionService {
   private readonly materialRepository: UnlockedVaultSessionMaterialRepositoryPort;
   private readonly encryptedPayloadRepository: EncryptedUnlockedVaultSessionPayloadRepositoryPort;
-  private readonly protectUnlockedVaultSession: ProtectUnlockedVaultSessionUseCase;
+  private readonly protectUnlockedVaultSession: ProtectUnlockedVaultSessionService;
 
   constructor(
     materialRepository: UnlockedVaultSessionMaterialRepositoryPort,
     encryptedPayloadRepository: EncryptedUnlockedVaultSessionPayloadRepositoryPort,
-    protectUnlockedVaultSession: ProtectUnlockedVaultSessionUseCase,
+    protectUnlockedVaultSession: ProtectUnlockedVaultSessionService,
   ) {
     this.materialRepository = materialRepository;
     this.encryptedPayloadRepository = encryptedPayloadRepository;
     this.protectUnlockedVaultSession = protectUnlockedVaultSession;
   }
 
-  async execute(params: SaveUnlockedVaultSessionCommandParams): Promise<void> {
+  async save(session: UnlockedVaultSession): Promise<void> {
     const activeMaterial =
       await this.materialRepository.getUnlockedVaultSessionMaterial();
-    const incomingVaultId = params.session.unlockedVault.vaultId;
+    const incomingVaultId = session.unlockedVault.vaultId;
 
     if (activeMaterial !== null && activeMaterial.vaultId !== incomingVaultId) {
       throw new ActiveUnlockedVaultMismatchError(
@@ -35,17 +31,17 @@ export class SaveUnlockedVaultSessionUseCase {
       );
     }
 
-    const protectedSession = await this.protectUnlockedVaultSession.execute({
-      session: params.session,
-      activeMaterial: activeMaterial ?? undefined,
-    });
+    const protectedSession = await this.protectUnlockedVaultSession.protect(
+      session,
+      activeMaterial ?? undefined,
+    );
 
     if (activeMaterial !== null) {
-      await this.materialRepository.saveUnlockedVaultSessionMaterial(
-        protectedSession.material,
-      );
       await this.encryptedPayloadRepository.saveEncryptedUnlockedVaultSessionPayload(
         protectedSession.encryptedPayload,
+      );
+      await this.materialRepository.saveUnlockedVaultSessionMaterial(
+        protectedSession.material,
       );
       return;
     }

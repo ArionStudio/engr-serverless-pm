@@ -5,8 +5,8 @@ import { createUnlockedVaultWithEntries } from "../../__tests__/fixtures/vault-e
 import {
   ActiveUnlockedVaultMismatchError,
   UnlockedVaultSessionInvalidError,
-} from "../__errors/vault-session.errors";
-import { CommitUnlockedVaultSessionUseCase } from "./commit-unlocked-vault-session";
+} from "../../use-cases/__errors/vault-session.errors";
+import { CommitUnlockedVaultSessionService } from "./commit-unlocked-vault-session.service";
 
 function createContext() {
   const values = createCoreTestValues();
@@ -17,32 +17,27 @@ function createContext() {
     ports,
     values,
     unlockedVault,
-    useCase: new CommitUnlockedVaultSessionUseCase(
-      ports.sessionUseCases.saveUnlockedVaultSession,
-      ports.sessionUseCases.removeUnlockedVaultSession,
+    service: new CommitUnlockedVaultSessionService(
+      ports.sessionServices.saveUnlockedVaultSession,
+      ports.sessionServices.removeUnlockedVaultSession,
     ),
   };
 }
 
-describe("CommitUnlockedVaultSessionUseCase", () => {
+describe("CommitUnlockedVaultSessionService", () => {
   it("saves the unlocked vault session without cleanup", async () => {
     const ctx = createContext();
 
-    await ctx.useCase.execute({
+    await ctx.service.commit(ctx.unlockedVault, 7);
+
+    expect(
+      ctx.ports.sessionServices.saveUnlockedVaultSession.save,
+    ).toHaveBeenCalledWith({
       unlockedVault: ctx.unlockedVault,
       sourceSnapshotRevision: 7,
     });
-
     expect(
-      ctx.ports.sessionUseCases.saveUnlockedVaultSession.execute,
-    ).toHaveBeenCalledWith({
-      session: {
-        unlockedVault: ctx.unlockedVault,
-        sourceSnapshotRevision: 7,
-      },
-    });
-    expect(
-      ctx.ports.sessionUseCases.removeUnlockedVaultSession.execute,
+      ctx.ports.sessionServices.removeUnlockedVaultSession.remove,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.saved.unlockedVaultSession).toEqual({
       unlockedVault: ctx.unlockedVault,
@@ -55,18 +50,13 @@ describe("CommitUnlockedVaultSessionUseCase", () => {
     const error = new Error("session save failed");
 
     vi.mocked(
-      ctx.ports.sessionUseCases.saveUnlockedVaultSession.execute,
+      ctx.ports.sessionServices.saveUnlockedVaultSession.save,
     ).mockRejectedValueOnce(error);
 
-    await expect(
-      ctx.useCase.execute({
-        unlockedVault: ctx.unlockedVault,
-        sourceSnapshotRevision: 7,
-      }),
-    ).rejects.toBe(error);
+    await expect(ctx.service.commit(ctx.unlockedVault, 7)).rejects.toBe(error);
 
     expect(
-      ctx.ports.sessionUseCases.removeUnlockedVaultSession.execute,
+      ctx.ports.sessionServices.removeUnlockedVaultSession.remove,
     ).toHaveBeenCalled();
   });
 
@@ -78,18 +68,13 @@ describe("CommitUnlockedVaultSessionUseCase", () => {
     );
 
     vi.mocked(
-      ctx.ports.sessionUseCases.saveUnlockedVaultSession.execute,
+      ctx.ports.sessionServices.saveUnlockedVaultSession.save,
     ).mockRejectedValueOnce(error);
 
-    await expect(
-      ctx.useCase.execute({
-        unlockedVault: ctx.unlockedVault,
-        sourceSnapshotRevision: 7,
-      }),
-    ).rejects.toBe(error);
+    await expect(ctx.service.commit(ctx.unlockedVault, 7)).rejects.toBe(error);
 
     expect(
-      ctx.ports.sessionUseCases.removeUnlockedVaultSession.execute,
+      ctx.ports.sessionServices.removeUnlockedVaultSession.remove,
     ).not.toHaveBeenCalled();
   });
 
@@ -98,18 +83,13 @@ describe("CommitUnlockedVaultSessionUseCase", () => {
     const error = new UnlockedVaultSessionInvalidError("payload mismatch");
 
     vi.mocked(
-      ctx.ports.sessionUseCases.saveUnlockedVaultSession.execute,
+      ctx.ports.sessionServices.saveUnlockedVaultSession.save,
     ).mockRejectedValueOnce(error);
 
-    await expect(
-      ctx.useCase.execute({
-        unlockedVault: ctx.unlockedVault,
-        sourceSnapshotRevision: 7,
-      }),
-    ).rejects.toBe(error);
+    await expect(ctx.service.commit(ctx.unlockedVault, 7)).rejects.toBe(error);
 
     expect(
-      ctx.ports.sessionUseCases.removeUnlockedVaultSession.execute,
+      ctx.ports.sessionServices.removeUnlockedVaultSession.remove,
     ).toHaveBeenCalled();
   });
 
@@ -118,17 +98,12 @@ describe("CommitUnlockedVaultSessionUseCase", () => {
     const error = new Error("session save failed");
 
     vi.mocked(
-      ctx.ports.sessionUseCases.saveUnlockedVaultSession.execute,
+      ctx.ports.sessionServices.saveUnlockedVaultSession.save,
     ).mockRejectedValueOnce(error);
     vi.mocked(
-      ctx.ports.sessionUseCases.removeUnlockedVaultSession.execute,
+      ctx.ports.sessionServices.removeUnlockedVaultSession.remove,
     ).mockRejectedValueOnce(new Error("cleanup failed"));
 
-    await expect(
-      ctx.useCase.execute({
-        unlockedVault: ctx.unlockedVault,
-        sourceSnapshotRevision: 7,
-      }),
-    ).rejects.toBe(error);
+    await expect(ctx.service.commit(ctx.unlockedVault, 7)).rejects.toBe(error);
   });
 });

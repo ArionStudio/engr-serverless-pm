@@ -2,7 +2,7 @@ import { vi } from "vitest";
 import type { DeviceAccessMaterial } from "../../domain/device/device-access-material";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import { UnlockVaultUseCase } from "../../use-cases/vault-lifecycle/unlock-vault";
-import { CommitUnlockedVaultSessionUseCase } from "../../use-cases/vault-session/commit-unlocked-vault-session";
+import { CommitUnlockedVaultSessionService } from "../../application/vault-session/commit-unlocked-vault-session.service";
 import { createCoreTestPorts } from "./ports";
 import { createCoreTestValues } from "./values";
 
@@ -58,9 +58,9 @@ export function createUnlockVaultTestContext() {
   ports.saved.deviceAccessMaterial = deviceAccessMaterial;
   ports.saved.vaultSnapshot = vaultSnapshot;
 
-  const commitUnlockedVaultSession = new CommitUnlockedVaultSessionUseCase(
-    ports.sessionUseCases.saveUnlockedVaultSession,
-    ports.sessionUseCases.removeUnlockedVaultSession,
+  const commitUnlockedVaultSession = new CommitUnlockedVaultSessionService(
+    ports.sessionServices.saveUnlockedVaultSession,
+    ports.sessionServices.removeUnlockedVaultSession,
   );
   const useCase = new UnlockVaultUseCase(
     ports.clock,
@@ -69,6 +69,7 @@ export function createUnlockVaultTestContext() {
     ports.scheduledTasks,
     ports.vaultLocalRepository,
     ports.vaultLockTasks,
+    ports.sessionServices.assertUnlockedVaultSessionCanActivate,
     commitUnlockedVaultSession,
   );
 

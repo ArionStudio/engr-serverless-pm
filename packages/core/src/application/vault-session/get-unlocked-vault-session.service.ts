@@ -1,25 +1,25 @@
 import type { UnlockedVaultSession } from "../../domain/vault/unlocked-vault-session";
 import type { EncryptedUnlockedVaultSessionPayloadRepositoryPort } from "../../ports/vault/encrypted-unlocked-vault-session-payload-repository.port";
-import { UnlockedVaultSessionInvalidError } from "../__errors/vault-session.errors";
+import { UnlockedVaultSessionInvalidError } from "../../use-cases/__errors/vault-session.errors";
 import type { UnlockedVaultSessionMaterialRepositoryPort } from "../../ports/vault/unlocked-vault-session-material-repository.port";
-import type { RestoreUnlockedVaultSessionUseCase } from "./restore-unlocked-vault-session";
+import type { RestoreUnlockedVaultSessionService } from "./restore-unlocked-vault-session.service";
 
-export class GetUnlockedVaultSessionUseCase {
+export class GetUnlockedVaultSessionService {
   private readonly materialRepository: UnlockedVaultSessionMaterialRepositoryPort;
   private readonly encryptedPayloadRepository: EncryptedUnlockedVaultSessionPayloadRepositoryPort;
-  private readonly restoreUnlockedVaultSession: RestoreUnlockedVaultSessionUseCase;
+  private readonly restoreUnlockedVaultSession: RestoreUnlockedVaultSessionService;
 
   constructor(
     materialRepository: UnlockedVaultSessionMaterialRepositoryPort,
     encryptedPayloadRepository: EncryptedUnlockedVaultSessionPayloadRepositoryPort,
-    restoreUnlockedVaultSession: RestoreUnlockedVaultSessionUseCase,
+    restoreUnlockedVaultSession: RestoreUnlockedVaultSessionService,
   ) {
     this.materialRepository = materialRepository;
     this.encryptedPayloadRepository = encryptedPayloadRepository;
     this.restoreUnlockedVaultSession = restoreUnlockedVaultSession;
   }
 
-  async execute(): Promise<UnlockedVaultSession | null> {
+  async get(): Promise<UnlockedVaultSession | null> {
     const material =
       await this.materialRepository.getUnlockedVaultSessionMaterial();
 
@@ -36,9 +36,6 @@ export class GetUnlockedVaultSessionUseCase {
       );
     }
 
-    return this.restoreUnlockedVaultSession.execute({
-      material,
-      encryptedPayload,
-    });
+    return this.restoreUnlockedVaultSession.restore(material, encryptedPayload);
   }
 }

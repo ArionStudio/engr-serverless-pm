@@ -3,6 +3,7 @@ import { CURRENT_ALGORITHM_SUITE } from "../../domain/crypto/algorithm-suite.con
 import type { LocalKeysPayload } from "../../domain/local-protection/local-protection.type";
 import type { Vault } from "../../domain/vault/vault";
 import { createInitializeVaultTestContext } from "../../__tests__/fixtures/initialize-vault";
+import { ActiveUnlockedVaultMismatchError } from "../__errors/vault-session.errors";
 
 describe("InitializeVaultUseCase", () => {
   it("initializes an empty vault and persists local, snapshot, and unlocked state", async () => {
@@ -173,7 +174,7 @@ describe("InitializeVaultUseCase", () => {
       ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
     ).toHaveBeenCalledTimes(1);
     expect(
-      ctx.ports.sessionUseCases.saveUnlockedVaultSession.execute,
+      ctx.ports.sessionServices.saveUnlockedVaultSession.save,
     ).not.toHaveBeenCalled();
     expect(
       ctx.ports.vaultLocalRepository.saveLocalVaultDescriptor,
@@ -183,6 +184,34 @@ describe("InitializeVaultUseCase", () => {
     ).not.toHaveBeenCalled();
     expect(
       ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("fails before creating vault material when another vault is active", async () => {
+    const ctx = createInitializeVaultTestContext();
+    ctx.saved.unlockedVaultSessionMaterial = {
+      sessionId: ctx.values.sessionId,
+      vaultId: "active-vault-id",
+      sourceSnapshotRevision: 7,
+      deviceId: ctx.values.deviceId,
+      vaultMasterKey: ctx.values.vaultMasterKey,
+      devicePrivateSignKey: ctx.values.devicePrivateSignKey,
+      payloadKey: ctx.values.unlockedVaultSessionPayloadKey,
+    };
+
+    await expect(
+      ctx.useCase.execute({
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "Work laptop",
+      }),
+    ).rejects.toBeInstanceOf(ActiveUnlockedVaultMismatchError);
+
+    expect(ctx.ports.bip39.recoveryKeyToMnemonic).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.sessionServices.saveUnlockedVaultSession.save,
     ).not.toHaveBeenCalled();
   });
 });

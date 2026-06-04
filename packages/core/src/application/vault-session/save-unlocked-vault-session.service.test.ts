@@ -6,9 +6,9 @@ import {
   singlePasswordEntry,
 } from "../../__tests__/fixtures/vault-entries";
 import type { UnlockedVaultSessionMaterial } from "../../domain/vault/unlocked-vault-session";
-import { ActiveUnlockedVaultMismatchError } from "../__errors/vault-session.errors";
-import { ProtectUnlockedVaultSessionUseCase } from "./protect-unlocked-vault-session";
-import { SaveUnlockedVaultSessionUseCase } from "./save-unlocked-vault-session";
+import { ActiveUnlockedVaultMismatchError } from "../../use-cases/__errors/vault-session.errors";
+import { ProtectUnlockedVaultSessionService } from "./protect-unlocked-vault-session.service";
+import { SaveUnlockedVaultSessionService } from "./save-unlocked-vault-session.service";
 
 function createContext() {
   const values = createCoreTestValues();
@@ -19,7 +19,7 @@ function createContext() {
     [],
     7,
   );
-  const protectUnlockedVaultSession = new ProtectUnlockedVaultSessionUseCase(
+  const protectUnlockedVaultSession = new ProtectUnlockedVaultSessionService(
     ports.crypto,
     ports.ids,
   );
@@ -32,7 +32,7 @@ function createContext() {
     values,
     ports,
     session,
-    useCase: new SaveUnlockedVaultSessionUseCase(
+    service: new SaveUnlockedVaultSessionService(
       ports.unlockedVaultSessionMaterialRepository,
       ports.encryptedUnlockedVaultSessionPayloadRepository,
       protectUnlockedVaultSession,
@@ -55,13 +55,11 @@ function createActiveMaterial(
   };
 }
 
-describe("SaveUnlockedVaultSessionUseCase", () => {
+describe("SaveUnlockedVaultSessionService", () => {
   it("protects and saves a new unlocked vault session", async () => {
     const ctx = createContext();
 
-    await ctx.useCase.execute({
-      session: ctx.session,
-    });
+    await ctx.service.save(ctx.session);
 
     expect(
       ctx.ports.unlockedVaultSessionMaterialRepository
@@ -91,9 +89,7 @@ describe("SaveUnlockedVaultSessionUseCase", () => {
     const ctx = createContext();
     ctx.ports.saved.unlockedVaultSessionMaterial = createActiveMaterial(ctx);
 
-    await ctx.useCase.execute({
-      session: ctx.session,
-    });
+    await ctx.service.save(ctx.session);
 
     expect(ctx.ports.ids.generateId).not.toHaveBeenCalled();
     expect(
@@ -123,11 +119,9 @@ describe("SaveUnlockedVaultSessionUseCase", () => {
       "other-vault-id",
     );
 
-    await expect(
-      ctx.useCase.execute({
-        session: ctx.session,
-      }),
-    ).rejects.toBeInstanceOf(ActiveUnlockedVaultMismatchError);
+    await expect(ctx.service.save(ctx.session)).rejects.toBeInstanceOf(
+      ActiveUnlockedVaultMismatchError,
+    );
 
     expect(
       ctx.ports.crypto.encryptUnlockedVaultSessionPayload,
@@ -147,11 +141,7 @@ describe("SaveUnlockedVaultSessionUseCase", () => {
         .saveEncryptedUnlockedVaultSessionPayload,
     ).mockRejectedValueOnce(error);
 
-    await expect(
-      ctx.useCase.execute({
-        session: ctx.session,
-      }),
-    ).rejects.toBe(error);
+    await expect(ctx.service.save(ctx.session)).rejects.toBe(error);
 
     expect(
       ctx.ports.unlockedVaultSessionMaterialRepository
@@ -162,9 +152,7 @@ describe("SaveUnlockedVaultSessionUseCase", () => {
   it("saves encrypted payload before session material for a new session", async () => {
     const ctx = createContext();
 
-    await ctx.useCase.execute({
-      session: ctx.session,
-    });
+    await ctx.service.save(ctx.session);
 
     expect(
       vi.mocked(
@@ -179,23 +167,21 @@ describe("SaveUnlockedVaultSessionUseCase", () => {
     );
   });
 
-  it("saves session material before encrypted payload for an active session", async () => {
+  it("saves encrypted payload before session material for an active session", async () => {
     const ctx = createContext();
     ctx.ports.saved.unlockedVaultSessionMaterial = createActiveMaterial(ctx);
 
-    await ctx.useCase.execute({
-      session: ctx.session,
-    });
+    await ctx.service.save(ctx.session);
 
     expect(
       vi.mocked(
-        ctx.ports.unlockedVaultSessionMaterialRepository
-          .saveUnlockedVaultSessionMaterial,
+        ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
+          .saveEncryptedUnlockedVaultSessionPayload,
       ).mock.invocationCallOrder[0],
     ).toBeLessThan(
       vi.mocked(
-        ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
-          .saveEncryptedUnlockedVaultSessionPayload,
+        ctx.ports.unlockedVaultSessionMaterialRepository
+          .saveUnlockedVaultSessionMaterial,
       ).mock.invocationCallOrder[0],
     );
   });

@@ -40,7 +40,7 @@ export function createChangeMasterPasswordTestContext() {
   const useCase = new ChangeMasterPasswordUseCase(
     ports.crypto,
     ports.vaultLocalRepository,
-    ports.sessionUseCases.getUnlockedVaultSession,
+    ports.sessionServices.getUnlockedVaultSession,
   );
 
   return {

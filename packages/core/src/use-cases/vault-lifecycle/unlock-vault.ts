@@ -20,7 +20,8 @@ import {
   VaultSnapshotSignerNotTrustedError,
 } from "../__errors/unlock-vault.errors";
 import { InvalidVaultLockDelayError } from "../__errors/vault-session.errors";
-import type { CommitUnlockedVaultSessionUseCase } from "../vault-session/commit-unlocked-vault-session";
+import type { AssertUnlockedVaultSessionCanActivateService } from "../../application/vault-session/assert-unlocked-vault-session-can-activate.service";
+import type { CommitUnlockedVaultSessionService } from "../../application/vault-session/commit-unlocked-vault-session.service";
 
 export type UnlockVaultCommandParams = {
   vaultId: string;
@@ -39,7 +40,8 @@ export class UnlockVaultUseCase {
   private readonly scheduledTasks: ScheduledTaskPort;
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
   private readonly vaultLockTasks: VaultLockTaskRepositoryPort;
-  private readonly commitUnlockedVaultSession: CommitUnlockedVaultSessionUseCase;
+  private readonly assertUnlockedVaultSessionCanActivate: AssertUnlockedVaultSessionCanActivateService;
+  private readonly commitUnlockedVaultSession: CommitUnlockedVaultSessionService;
 
   constructor(
     clock: ClockPort,
@@ -48,7 +50,8 @@ export class UnlockVaultUseCase {
     scheduledTasks: ScheduledTaskPort,
     vaultLocalRepository: VaultLocalRepositoryPort,
     vaultLockTasks: VaultLockTaskRepositoryPort,
-    commitUnlockedVaultSession: CommitUnlockedVaultSessionUseCase,
+    assertUnlockedVaultSessionCanActivate: AssertUnlockedVaultSessionCanActivateService,
+    commitUnlockedVaultSession: CommitUnlockedVaultSessionService,
   ) {
     this.clock = clock;
     this.crypto = crypto;
@@ -56,6 +59,8 @@ export class UnlockVaultUseCase {
     this.scheduledTasks = scheduledTasks;
     this.vaultLocalRepository = vaultLocalRepository;
     this.vaultLockTasks = vaultLockTasks;
+    this.assertUnlockedVaultSessionCanActivate =
+      assertUnlockedVaultSessionCanActivate;
     this.commitUnlockedVaultSession = commitUnlockedVaultSession;
   }
 
@@ -162,9 +167,6 @@ export class UnlockVaultUseCase {
       vaultMasterKey,
     );
 
-    const lockVaultActionId = await this.ids.generateId();
-    const lockScheduledAt = this.clock.now() + params.lockAfterMs;
-
     const unlockedVault: UnlockedVault = {
       vaultId: params.vaultId,
       deviceId: deviceAccessMaterial.deviceId,
@@ -172,6 +174,13 @@ export class UnlockVaultUseCase {
       vaultMasterKey,
       devicePrivateSignKey: localKeysPayload.devicePrivateSignKey,
     };
+
+    await this.assertUnlockedVaultSessionCanActivate.assertCanActivate(
+      params.vaultId,
+    );
+
+    const lockVaultActionId = await this.ids.generateId();
+    const lockScheduledAt = this.clock.now() + params.lockAfterMs;
 
     const lockVaultTask = {
       name: "lockVault",
@@ -199,10 +208,10 @@ export class UnlockVaultUseCase {
     }
 
     try {
-      await this.commitUnlockedVaultSession.execute({
+      await this.commitUnlockedVaultSession.commit(
         unlockedVault,
-        sourceSnapshotRevision: vaultSnapshot.metadata.revision,
-      });
+        vaultSnapshot.metadata.revision,
+      );
     } catch (error) {
       try {
         await this.scheduledTasks.cancelTask(lockVaultTask);

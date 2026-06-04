@@ -7,15 +7,7 @@ import type {
   UnlockedVaultSessionPayloadEncryptionContext,
 } from "../../domain/vault/unlocked-vault-session";
 
-export type ProtectUnlockedVaultSessionCommandParams = {
-  readonly session: UnlockedVaultSession;
-  readonly activeMaterial?: Pick<
-    UnlockedVaultSessionMaterial,
-    "sessionId" | "payloadKey"
-  >;
-};
-
-export class ProtectUnlockedVaultSessionUseCase {
+export class ProtectUnlockedVaultSessionService {
   private readonly crypto: CryptoPort;
   private readonly ids: IdPort;
 
@@ -24,15 +16,19 @@ export class ProtectUnlockedVaultSessionUseCase {
     this.ids = ids;
   }
 
-  async execute(
-    params: ProtectUnlockedVaultSessionCommandParams,
+  async protect(
+    session: UnlockedVaultSession,
+    activeMaterial?: Pick<
+      UnlockedVaultSessionMaterial,
+      "sessionId" | "payloadKey"
+    >,
   ): Promise<ProtectedUnlockedVaultSession> {
     const sessionId =
-      params.activeMaterial?.sessionId ?? (await this.ids.generateId());
+      activeMaterial?.sessionId ?? (await this.ids.generateId());
     const payloadKey =
-      params.activeMaterial?.payloadKey ??
+      activeMaterial?.payloadKey ??
       (await this.crypto.generateUnlockedVaultSessionPayloadKey());
-    const { unlockedVault, sourceSnapshotRevision } = params.session;
+    const { unlockedVault, sourceSnapshotRevision } = session;
     const context: UnlockedVaultSessionPayloadEncryptionContext = {
       sessionId,
       vaultId: unlockedVault.vaultId,

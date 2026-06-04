@@ -5,8 +5,8 @@ import type {
   EncryptedUnlockedVaultSessionPayload,
   UnlockedVaultSessionMaterial,
 } from "../../domain/vault/unlocked-vault-session";
-import { UnlockedVaultSessionInvalidError } from "../__errors/vault-session.errors";
-import { RestoreUnlockedVaultSessionUseCase } from "./restore-unlocked-vault-session";
+import { UnlockedVaultSessionInvalidError } from "../../use-cases/__errors/vault-session.errors";
+import { RestoreUnlockedVaultSessionService } from "./restore-unlocked-vault-session.service";
 
 function createContext() {
   const values = createCoreTestValues();
@@ -32,18 +32,18 @@ function createContext() {
     ports,
     material,
     encryptedPayload,
-    useCase: new RestoreUnlockedVaultSessionUseCase(ports.crypto),
+    service: new RestoreUnlockedVaultSessionService(ports.crypto),
   };
 }
 
-describe("RestoreUnlockedVaultSessionUseCase", () => {
+describe("RestoreUnlockedVaultSessionService", () => {
   it("decrypts the payload and restores the unlocked vault session", async () => {
     const ctx = createContext();
 
-    const result = await ctx.useCase.execute({
-      material: ctx.material,
-      encryptedPayload: ctx.encryptedPayload,
-    });
+    const result = await ctx.service.restore(
+      ctx.material,
+      ctx.encryptedPayload,
+    );
 
     const context = {
       sessionId: ctx.values.sessionId,
@@ -74,12 +74,9 @@ describe("RestoreUnlockedVaultSessionUseCase", () => {
     const ctx = createContext();
 
     await expect(
-      ctx.useCase.execute({
-        material: ctx.material,
-        encryptedPayload: {
-          ...ctx.encryptedPayload,
-          vaultId: "other-vault-id",
-        },
+      ctx.service.restore(ctx.material, {
+        ...ctx.encryptedPayload,
+        vaultId: "other-vault-id",
       }),
     ).rejects.toBeInstanceOf(UnlockedVaultSessionInvalidError);
 
@@ -91,13 +88,13 @@ describe("RestoreUnlockedVaultSessionUseCase", () => {
   it("uses encrypted payload revision when material revision is stale", async () => {
     const ctx = createContext();
 
-    const result = await ctx.useCase.execute({
-      material: {
+    const result = await ctx.service.restore(
+      {
         ...ctx.material,
         sourceSnapshotRevision: 6,
       },
-      encryptedPayload: ctx.encryptedPayload,
-    });
+      ctx.encryptedPayload,
+    );
 
     expect(
       ctx.ports.crypto.decryptUnlockedVaultSessionPayload,
@@ -113,6 +110,21 @@ describe("RestoreUnlockedVaultSessionUseCase", () => {
     expect(result.sourceSnapshotRevision).toBe(7);
   });
 
+  it("rejects encrypted payload older than session material", async () => {
+    const ctx = createContext();
+
+    await expect(
+      ctx.service.restore(ctx.material, {
+        ...ctx.encryptedPayload,
+        sourceSnapshotRevision: 6,
+      }),
+    ).rejects.toBeInstanceOf(UnlockedVaultSessionInvalidError);
+
+    expect(
+      ctx.ports.crypto.decryptUnlockedVaultSessionPayload,
+    ).not.toHaveBeenCalled();
+  });
+
   it("wraps payload decryption failures as invalid session errors", async () => {
     const ctx = createContext();
     const decryptError = new Error("decrypt failed");
@@ -124,10 +136,7 @@ describe("RestoreUnlockedVaultSessionUseCase", () => {
     let caught: unknown;
 
     try {
-      await ctx.useCase.execute({
-        material: ctx.material,
-        encryptedPayload: ctx.encryptedPayload,
-      });
+      await ctx.service.restore(ctx.material, ctx.encryptedPayload);
     } catch (error) {
       caught = error;
     }

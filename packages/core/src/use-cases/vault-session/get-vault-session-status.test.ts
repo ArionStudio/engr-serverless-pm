@@ -9,7 +9,7 @@ describe("GetVaultSessionStatusUseCase", () => {
     const values = createCoreTestValues();
     const ports = createCoreTestPorts(values);
     const useCase = new GetVaultSessionStatusUseCase(
-      ports.sessionUseCases.getUnlockedVaultSession,
+      ports.unlockedVaultSessionMaterialRepository,
     );
 
     return {
@@ -43,14 +43,22 @@ describe("GetVaultSessionStatusUseCase", () => {
       status: "unlocked",
       vaultId: ctx.values.vaultId,
     });
+    expect(
+      ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
+        .getEncryptedUnlockedVaultSessionPayload,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.crypto.decryptUnlockedVaultSessionPayload,
+    ).not.toHaveBeenCalled();
   });
 
-  it("bubbles unlocked vault repository errors", async () => {
+  it("bubbles session material repository errors", async () => {
     const ctx = createContext();
     const error = new Error("session read failed");
 
     vi.mocked(
-      ctx.ports.sessionUseCases.getUnlockedVaultSession.execute,
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .getUnlockedVaultSessionMaterial,
     ).mockRejectedValueOnce(error);
 
     await expect(ctx.useCase.execute()).rejects.toThrow(error);

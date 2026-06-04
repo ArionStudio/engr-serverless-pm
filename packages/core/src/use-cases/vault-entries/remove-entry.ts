@@ -1,8 +1,8 @@
 import { PasswordEntryNotFoundError } from "../__errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
-import type { CommitUnlockedVaultSessionUseCase } from "../vault-session/commit-unlocked-vault-session";
-import type { GetUnlockedVaultSessionUseCase } from "../vault-session/get-unlocked-vault-session";
-import type { PersistUnlockedVaultUseCase } from "../vault-snapshots/persist-unlocked-vault";
+import type { CommitUnlockedVaultSessionService } from "../../application/vault-session/commit-unlocked-vault-session.service";
+import type { GetUnlockedVaultSessionService } from "../../application/vault-session/get-unlocked-vault-session.service";
+import type { PersistUnlockedVaultService } from "../../application/vault-snapshots/persist-unlocked-vault.service";
 
 export type RemoveEntryCommandParams = {
   vaultId: string;
@@ -17,14 +17,14 @@ export type RemoveEntryResult = {
 };
 
 export class RemoveEntryUseCase {
-  private readonly getUnlockedVaultSession: GetUnlockedVaultSessionUseCase;
-  private readonly persistUnlockedVault: PersistUnlockedVaultUseCase;
-  private readonly commitUnlockedVaultSession: CommitUnlockedVaultSessionUseCase;
+  private readonly getUnlockedVaultSession: GetUnlockedVaultSessionService;
+  private readonly persistUnlockedVault: PersistUnlockedVaultService;
+  private readonly commitUnlockedVaultSession: CommitUnlockedVaultSessionService;
 
   constructor(
-    getUnlockedVaultSession: GetUnlockedVaultSessionUseCase,
-    persistUnlockedVault: PersistUnlockedVaultUseCase,
-    commitUnlockedVaultSession: CommitUnlockedVaultSessionUseCase,
+    getUnlockedVaultSession: GetUnlockedVaultSessionService,
+    persistUnlockedVault: PersistUnlockedVaultService,
+    commitUnlockedVaultSession: CommitUnlockedVaultSessionService,
   ) {
     this.getUnlockedVaultSession = getUnlockedVaultSession;
     this.persistUnlockedVault = persistUnlockedVault;
@@ -32,7 +32,7 @@ export class RemoveEntryUseCase {
   }
 
   async execute(params: RemoveEntryCommandParams): Promise<RemoveEntryResult> {
-    const unlockedVaultSession = await this.getUnlockedVaultSession.execute();
+    const unlockedVaultSession = await this.getUnlockedVaultSession.get();
     const unlockedVault = unlockedVaultSession?.unlockedVault;
 
     if (unlockedVault?.vaultId !== params.vaultId) {
@@ -57,15 +57,15 @@ export class RemoveEntryUseCase {
       },
     };
 
-    const persistedSnapshot = await this.persistUnlockedVault.execute({
-      vaultId: params.vaultId,
-      unlockedVault: updatedUnlockedVault,
-    });
+    const persistedSnapshot = await this.persistUnlockedVault.persist(
+      params.vaultId,
+      updatedUnlockedVault,
+    );
 
-    await this.commitUnlockedVaultSession.execute({
-      unlockedVault: updatedUnlockedVault,
-      sourceSnapshotRevision: persistedSnapshot.revision,
-    });
+    await this.commitUnlockedVaultSession.commit(
+      updatedUnlockedVault,
+      persistedSnapshot.revision,
+    );
 
     return {
       entryId: params.entryId,

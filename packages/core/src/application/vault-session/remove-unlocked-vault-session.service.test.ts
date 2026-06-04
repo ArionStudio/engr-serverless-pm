@@ -5,7 +5,7 @@ import type {
   EncryptedUnlockedVaultSessionPayload,
   UnlockedVaultSessionMaterial,
 } from "../../domain/vault/unlocked-vault-session";
-import { RemoveUnlockedVaultSessionUseCase } from "./remove-unlocked-vault-session";
+import { RemoveUnlockedVaultSessionService } from "./remove-unlocked-vault-session.service";
 
 function createContext() {
   const values = createCoreTestValues();
@@ -34,18 +34,18 @@ function createContext() {
     ports,
     material,
     encryptedPayload,
-    useCase: new RemoveUnlockedVaultSessionUseCase(
+    service: new RemoveUnlockedVaultSessionService(
       ports.unlockedVaultSessionMaterialRepository,
       ports.encryptedUnlockedVaultSessionPayloadRepository,
     ),
   };
 }
 
-describe("RemoveUnlockedVaultSessionUseCase", () => {
+describe("RemoveUnlockedVaultSessionService", () => {
   it("removes session material and encrypted payload", async () => {
     const ctx = createContext();
 
-    await expect(ctx.useCase.execute()).resolves.toBeUndefined();
+    await expect(ctx.service.remove()).resolves.toBeUndefined();
 
     expect(ctx.ports.saved.unlockedVaultSessionMaterial).toBeUndefined();
     expect(
@@ -62,7 +62,7 @@ describe("RemoveUnlockedVaultSessionUseCase", () => {
         .removeUnlockedVaultSessionMaterial,
     ).mockRejectedValueOnce(error);
 
-    await expect(ctx.useCase.execute()).rejects.toBe(error);
+    await expect(ctx.service.remove()).rejects.toBe(error);
 
     expect(
       ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
@@ -82,7 +82,7 @@ describe("RemoveUnlockedVaultSessionUseCase", () => {
         .removeEncryptedUnlockedVaultSessionPayload,
     ).mockRejectedValueOnce(error);
 
-    await expect(ctx.useCase.execute()).rejects.toBe(error);
+    await expect(ctx.service.remove()).rejects.toBe(error);
 
     expect(ctx.ports.saved.unlockedVaultSessionMaterial).toBeUndefined();
   });

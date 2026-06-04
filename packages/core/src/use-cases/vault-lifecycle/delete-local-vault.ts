@@ -1,7 +1,7 @@
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import { VaultMustBeUnlockedForLocalDeletionError } from "../__errors/delete-local-vault.errors";
-import type { GetUnlockedVaultSessionUseCase } from "../vault-session/get-unlocked-vault-session";
-import type { RemoveUnlockedVaultSessionUseCase } from "../vault-session/remove-unlocked-vault-session";
+import type { GetUnlockedVaultSessionService } from "../../application/vault-session/get-unlocked-vault-session.service";
+import type { RemoveUnlockedVaultSessionService } from "../../application/vault-session/remove-unlocked-vault-session.service";
 
 export type DeleteLocalVaultCommandParams = {
   vaultId: string;
@@ -9,13 +9,13 @@ export type DeleteLocalVaultCommandParams = {
 
 export class DeleteLocalVaultUseCase {
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
-  private readonly getUnlockedVaultSession: GetUnlockedVaultSessionUseCase;
-  private readonly removeUnlockedVaultSession: RemoveUnlockedVaultSessionUseCase;
+  private readonly getUnlockedVaultSession: GetUnlockedVaultSessionService;
+  private readonly removeUnlockedVaultSession: RemoveUnlockedVaultSessionService;
 
   constructor(
     vaultLocalRepository: VaultLocalRepositoryPort,
-    getUnlockedVaultSession: GetUnlockedVaultSessionUseCase,
-    removeUnlockedVaultSession: RemoveUnlockedVaultSessionUseCase,
+    getUnlockedVaultSession: GetUnlockedVaultSessionService,
+    removeUnlockedVaultSession: RemoveUnlockedVaultSessionService,
   ) {
     this.vaultLocalRepository = vaultLocalRepository;
     this.getUnlockedVaultSession = getUnlockedVaultSession;
@@ -23,7 +23,7 @@ export class DeleteLocalVaultUseCase {
   }
 
   async execute(params: DeleteLocalVaultCommandParams): Promise<void> {
-    const unlockedVaultSession = await this.getUnlockedVaultSession.execute();
+    const unlockedVaultSession = await this.getUnlockedVaultSession.get();
     const unlockedVault = unlockedVaultSession?.unlockedVault;
 
     if (unlockedVault?.vaultId !== params.vaultId) {
@@ -31,6 +31,6 @@ export class DeleteLocalVaultUseCase {
     }
 
     await this.vaultLocalRepository.removePersistedLocalVault(params.vaultId);
-    await this.removeUnlockedVaultSession.execute();
+    await this.removeUnlockedVaultSession.remove();
   }
 }

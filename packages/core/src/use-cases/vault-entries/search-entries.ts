@@ -5,7 +5,7 @@ import { entryMatchesSearchQuery } from "../../domain/entry/search-entry-query.u
 import type { VisiblePasswordEntryFields } from "../../domain/entry/password-entry.type";
 import { InvalidSearchEntryQueryError } from "../__errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
-import type { GetUnlockedVaultSessionUseCase } from "../vault-session/get-unlocked-vault-session";
+import type { GetUnlockedVaultSessionService } from "../../application/vault-session/get-unlocked-vault-session.service";
 
 export type SearchEntriesCommandParams = {
   vaultId: string;
@@ -17,16 +17,16 @@ export type SearchEntriesResult = {
 };
 
 export class SearchEntriesUseCase {
-  private readonly getUnlockedVaultSession: GetUnlockedVaultSessionUseCase;
+  private readonly getUnlockedVaultSession: GetUnlockedVaultSessionService;
 
-  constructor(getUnlockedVaultSession: GetUnlockedVaultSessionUseCase) {
+  constructor(getUnlockedVaultSession: GetUnlockedVaultSessionService) {
     this.getUnlockedVaultSession = getUnlockedVaultSession;
   }
 
   async execute(
     params: SearchEntriesCommandParams,
   ): Promise<SearchEntriesResult> {
-    const unlockedVaultSession = await this.getUnlockedVaultSession.execute();
+    const unlockedVaultSession = await this.getUnlockedVaultSession.get();
     const unlockedVault = unlockedVaultSession?.unlockedVault;
 
     if (unlockedVault?.vaultId !== params.vaultId) {

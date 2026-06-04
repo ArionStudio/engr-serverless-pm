@@ -3,7 +3,7 @@ import type { PasswordEntry } from "../../domain/entry/password-entry.type";
 import type { Tag } from "../../domain/entry/tag.type";
 import type { UnlockedVault } from "../../domain/vault/unlocked-vault";
 import type { UnlockedVaultSession } from "../../domain/vault/unlocked-vault-session";
-import type { PersistUnlockedVaultUseCase } from "../../use-cases/vault-snapshots/persist-unlocked-vault";
+import type { PersistUnlockedVaultService } from "../../application/vault-snapshots/persist-unlocked-vault.service";
 import type { CoreTestPorts } from "./ports";
 import type { CoreTestValues } from "./values";
 
@@ -91,14 +91,14 @@ export function saveUnlockedVaultWithEntries(
   );
 }
 
-export function createPersistUnlockedVaultUseCaseMock(
+export function createPersistUnlockedVaultServiceMock(
   values: CoreTestValues,
-): PersistUnlockedVaultUseCase {
+): PersistUnlockedVaultService {
   return {
-    execute: vi.fn(async () => ({
+    persist: vi.fn(async () => ({
       revision: 2,
       revisionTimestamp: values.timestamp + 1,
       deviceId: values.deviceId,
     })),
-  } as unknown as PersistUnlockedVaultUseCase;
+  } as unknown as PersistUnlockedVaultService;
 }

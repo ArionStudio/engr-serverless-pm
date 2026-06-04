@@ -1,5 +1,5 @@
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
-import { UnlockedVaultSessionInvalidError } from "../__errors/vault-session.errors";
+import { UnlockedVaultSessionInvalidError } from "../../use-cases/__errors/vault-session.errors";
 import type {
   EncryptedUnlockedVaultSessionPayload,
   UnlockedVaultSession,
@@ -7,35 +7,31 @@ import type {
   UnlockedVaultSessionPayloadEncryptionContext,
 } from "../../domain/vault/unlocked-vault-session";
 
-export type RestoreUnlockedVaultSessionCommandParams = {
-  readonly material: UnlockedVaultSessionMaterial;
-  readonly encryptedPayload: EncryptedUnlockedVaultSessionPayload;
-};
-
-export class RestoreUnlockedVaultSessionUseCase {
+export class RestoreUnlockedVaultSessionService {
   private readonly crypto: CryptoPort;
 
   constructor(crypto: CryptoPort) {
     this.crypto = crypto;
   }
 
-  async execute(
-    params: RestoreUnlockedVaultSessionCommandParams,
+  async restore(
+    material: UnlockedVaultSessionMaterial,
+    encryptedPayload: EncryptedUnlockedVaultSessionPayload,
   ): Promise<UnlockedVaultSession> {
-    assertMatchingSessionRecords(params.material, params.encryptedPayload);
+    assertMatchingSessionRecords(material, encryptedPayload);
 
     const context: UnlockedVaultSessionPayloadEncryptionContext = {
-      sessionId: params.encryptedPayload.sessionId,
-      vaultId: params.encryptedPayload.vaultId,
-      sourceSnapshotRevision: params.encryptedPayload.sourceSnapshotRevision,
+      sessionId: encryptedPayload.sessionId,
+      vaultId: encryptedPayload.vaultId,
+      sourceSnapshotRevision: encryptedPayload.sourceSnapshotRevision,
     };
 
     let payload;
 
     try {
       payload = await this.crypto.decryptUnlockedVaultSessionPayload(
-        params.encryptedPayload.content,
-        params.material.payloadKey,
+        encryptedPayload.content,
+        material.payloadKey,
         context,
       );
     } catch (error) {
@@ -47,13 +43,13 @@ export class RestoreUnlockedVaultSessionUseCase {
 
     return {
       unlockedVault: {
-        vaultId: params.material.vaultId,
-        deviceId: params.material.deviceId,
+        vaultId: material.vaultId,
+        deviceId: material.deviceId,
         vault: payload.vault,
-        vaultMasterKey: params.material.vaultMasterKey,
-        devicePrivateSignKey: params.material.devicePrivateSignKey,
+        vaultMasterKey: material.vaultMasterKey,
+        devicePrivateSignKey: material.devicePrivateSignKey,
       },
-      sourceSnapshotRevision: params.encryptedPayload.sourceSnapshotRevision,
+      sourceSnapshotRevision: encryptedPayload.sourceSnapshotRevision,
     };
   }
 }
@@ -68,6 +64,14 @@ function assertMatchingSessionRecords(
   ) {
     throw new UnlockedVaultSessionInvalidError(
       "session material does not match encrypted payload",
+    );
+  }
+
+  if (
+    encryptedPayload.sourceSnapshotRevision < material.sourceSnapshotRevision
+  ) {
+    throw new UnlockedVaultSessionInvalidError(
+      "encrypted payload is older than session material",
     );
   }
 }

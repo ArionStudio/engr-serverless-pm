@@ -9,8 +9,8 @@ function createContext() {
   const ports = createCoreTestPorts(values);
   const useCase = new DeleteLocalVaultUseCase(
     ports.vaultLocalRepository,
-    ports.sessionUseCases.getUnlockedVaultSession,
-    ports.sessionUseCases.removeUnlockedVaultSession,
+    ports.sessionServices.getUnlockedVaultSession,
+    ports.sessionServices.removeUnlockedVaultSession,
   );
 
   ports.saved.unlockedVaultSession = {
@@ -54,7 +54,7 @@ describe("DeleteLocalVaultUseCase", () => {
       ctx.ports.vaultLocalRepository.removeVaultSnapshot,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionUseCases.removeUnlockedVaultSession.execute,
+      ctx.ports.sessionServices.removeUnlockedVaultSession.remove,
     ).toHaveBeenCalledTimes(1);
   });
 
@@ -72,7 +72,7 @@ describe("DeleteLocalVaultUseCase", () => {
       ctx.ports.vaultLocalRepository.removePersistedLocalVault,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionUseCases.removeUnlockedVaultSession.execute,
+      ctx.ports.sessionServices.removeUnlockedVaultSession.remove,
     ).not.toHaveBeenCalled();
   });
 
@@ -96,7 +96,7 @@ describe("DeleteLocalVaultUseCase", () => {
       ctx.ports.vaultLocalRepository.removePersistedLocalVault,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionUseCases.removeUnlockedVaultSession.execute,
+      ctx.ports.sessionServices.removeUnlockedVaultSession.remove,
     ).not.toHaveBeenCalled();
   });
 
@@ -115,7 +115,7 @@ describe("DeleteLocalVaultUseCase", () => {
     ).rejects.toThrow(error);
 
     expect(
-      ctx.ports.sessionUseCases.removeUnlockedVaultSession.execute,
+      ctx.ports.sessionServices.removeUnlockedVaultSession.remove,
     ).not.toHaveBeenCalled();
   });
 
@@ -124,7 +124,7 @@ describe("DeleteLocalVaultUseCase", () => {
     const error = new Error("session cleanup failed");
 
     vi.mocked(
-      ctx.ports.sessionUseCases.removeUnlockedVaultSession.execute,
+      ctx.ports.sessionServices.removeUnlockedVaultSession.remove,
     ).mockRejectedValueOnce(error);
 
     await expect(

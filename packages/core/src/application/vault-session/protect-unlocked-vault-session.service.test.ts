@@ -5,7 +5,7 @@ import {
   createUnlockedVaultSessionWithEntries,
   singlePasswordEntry,
 } from "../../__tests__/fixtures/vault-entries";
-import { ProtectUnlockedVaultSessionUseCase } from "./protect-unlocked-vault-session";
+import { ProtectUnlockedVaultSessionService } from "./protect-unlocked-vault-session.service";
 
 function createContext() {
   const values = createCoreTestValues();
@@ -16,7 +16,7 @@ function createContext() {
     [],
     7,
   );
-  const useCase = new ProtectUnlockedVaultSessionUseCase(
+  const service = new ProtectUnlockedVaultSessionService(
     ports.crypto,
     ports.ids,
   );
@@ -29,17 +29,15 @@ function createContext() {
     values,
     ports,
     session,
-    useCase,
+    service,
   };
 }
 
-describe("ProtectUnlockedVaultSessionUseCase", () => {
+describe("ProtectUnlockedVaultSessionService", () => {
   it("splits session material from the encrypted vault payload", async () => {
     const ctx = createContext();
 
-    const result = await ctx.useCase.execute({
-      session: ctx.session,
-    });
+    const result = await ctx.service.protect(ctx.session);
 
     const context = {
       sessionId: ctx.values.sessionId,
@@ -78,12 +76,9 @@ describe("ProtectUnlockedVaultSessionUseCase", () => {
   it("reuses active session material when protecting an existing session", async () => {
     const ctx = createContext();
 
-    const result = await ctx.useCase.execute({
-      session: ctx.session,
-      activeMaterial: {
-        sessionId: "active-session-id",
-        payloadKey: ctx.values.unlockedVaultSessionPayloadKey,
-      },
+    const result = await ctx.service.protect(ctx.session, {
+      sessionId: "active-session-id",
+      payloadKey: ctx.values.unlockedVaultSessionPayloadKey,
     });
 
     const context = {
