@@ -1,5 +1,5 @@
-import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
-import type { VaultLocalRepositoryPort } from "../../ports/vault-local-repository.port";
+import type { UnlockedVaultRepositoryPort } from "../../ports/vault/unlocked-vault-repository.port";
+import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import { VaultMustBeUnlockedForLocalDeletionError } from "../__errors/delete-local-vault.errors";
 
 export type DeleteLocalVaultCommandParams = {
@@ -19,13 +19,15 @@ export class DeleteLocalVaultUseCase {
   }
 
   async execute(params: DeleteLocalVaultCommandParams): Promise<void> {
-    const unlockedVault = await this.unlockedVaultRepository.getUnlockedVault();
+    const unlockedVaultSession =
+      await this.unlockedVaultRepository.getUnlockedVaultSession();
+    const unlockedVault = unlockedVaultSession?.unlockedVault;
 
     if (unlockedVault?.vaultId !== params.vaultId) {
       throw new VaultMustBeUnlockedForLocalDeletionError(params.vaultId);
     }
 
     await this.vaultLocalRepository.removePersistedLocalVault(params.vaultId);
-    await this.unlockedVaultRepository.removeUnlockedVault();
+    await this.unlockedVaultRepository.removeUnlockedVaultSession();
   }
 }

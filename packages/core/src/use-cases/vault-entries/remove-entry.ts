@@ -1,8 +1,8 @@
-import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
+import type { UnlockedVaultRepositoryPort } from "../../ports/vault/unlocked-vault-repository.port";
 import { PasswordEntryNotFoundError } from "../__errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
+import type { CommitUnlockedVaultSessionUseCase } from "../vault-session/commit-unlocked-vault-session";
 import type { PersistUnlockedVaultUseCase } from "../vault-snapshots/persist-unlocked-vault";
-import { saveUnlockedVaultOrCleanup } from "../vault-snapshots/save-unlocked-vault-or-cleanup";
 
 export type RemoveEntryCommandParams = {
   vaultId: string;
@@ -19,17 +19,22 @@ export type RemoveEntryResult = {
 export class RemoveEntryUseCase {
   private readonly unlockedVaultRepository: UnlockedVaultRepositoryPort;
   private readonly persistUnlockedVault: PersistUnlockedVaultUseCase;
+  private readonly commitUnlockedVaultSession: CommitUnlockedVaultSessionUseCase;
 
   constructor(
     unlockedVaultRepository: UnlockedVaultRepositoryPort,
     persistUnlockedVault: PersistUnlockedVaultUseCase,
+    commitUnlockedVaultSession: CommitUnlockedVaultSessionUseCase,
   ) {
     this.unlockedVaultRepository = unlockedVaultRepository;
     this.persistUnlockedVault = persistUnlockedVault;
+    this.commitUnlockedVaultSession = commitUnlockedVaultSession;
   }
 
   async execute(params: RemoveEntryCommandParams): Promise<RemoveEntryResult> {
-    const unlockedVault = await this.unlockedVaultRepository.getUnlockedVault();
+    const unlockedVaultSession =
+      await this.unlockedVaultRepository.getUnlockedVaultSession();
+    const unlockedVault = unlockedVaultSession?.unlockedVault;
 
     if (unlockedVault?.vaultId !== params.vaultId) {
       throw new VaultMustBeUnlockedError(params.vaultId, "remove entry");
@@ -58,10 +63,10 @@ export class RemoveEntryUseCase {
       unlockedVault: updatedUnlockedVault,
     });
 
-    await saveUnlockedVaultOrCleanup(
-      this.unlockedVaultRepository,
-      updatedUnlockedVault,
-    );
+    await this.commitUnlockedVaultSession.execute({
+      unlockedVault: updatedUnlockedVault,
+      sourceSnapshotRevision: persistedSnapshot.revision,
+    });
 
     return {
       entryId: params.entryId,

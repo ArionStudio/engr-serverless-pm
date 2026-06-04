@@ -1,8 +1,8 @@
 import type { DeviceAccessMaterial } from "../../domain/device/device-access-material";
 import type { RawMasterPassword } from "../../domain/master-password";
-import type { CryptoPort } from "../../ports/crypto.port";
-import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
-import type { VaultLocalRepositoryPort } from "../../ports/vault-local-repository.port";
+import type { CryptoPort } from "../../ports/crypto/crypto.port";
+import type { UnlockedVaultRepositoryPort } from "../../ports/vault/unlocked-vault-repository.port";
+import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import { UnsupportedAlgorithmSuiteError } from "../__errors/algorithm-suite.errors";
 import {
   DeviceAccessMaterialNotFoundForMasterPasswordChangeError,
@@ -31,7 +31,9 @@ export class ChangeMasterPasswordUseCase {
   }
 
   async execute(params: ChangeMasterPasswordCommandParams): Promise<void> {
-    const unlockedVault = await this.unlockedVaultRepository.getUnlockedVault();
+    const unlockedVaultSession =
+      await this.unlockedVaultRepository.getUnlockedVaultSession();
+    const unlockedVault = unlockedVaultSession?.unlockedVault;
 
     if (unlockedVault?.vaultId !== params.vaultId) {
       throw new VaultMustBeUnlockedForMasterPasswordChangeError(params.vaultId);

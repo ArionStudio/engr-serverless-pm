@@ -10,13 +10,13 @@ import type {
 import type { LocalVaultDescriptor } from "../../domain/vault/local-vault-descriptor";
 import type { UnlockedVault } from "../../domain/vault/unlocked-vault";
 import type { Vault } from "../../domain/vault/vault";
-import type { Bip39Port } from "../../ports/bip39.port";
-import type { ClockPort } from "../../ports/clock.port";
-import type { CryptoPort } from "../../ports/crypto.port";
-import type { IdPort } from "../../ports/id.port";
-import type { VaultDisplayNamePort } from "../../ports/vault-display-name.port";
-import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
-import type { VaultLocalRepositoryPort } from "../../ports/vault-local-repository.port";
+import type { Bip39Port } from "../../ports/crypto/bip39.port";
+import type { ClockPort } from "../../ports/system/clock.port";
+import type { CryptoPort } from "../../ports/crypto/crypto.port";
+import type { IdPort } from "../../ports/system/id.port";
+import type { VaultDisplayNamePort } from "../../ports/vault/vault-display-name.port";
+import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
+import type { CommitUnlockedVaultSessionUseCase } from "../vault-session/commit-unlocked-vault-session";
 
 export type InitializeVaultCommandParams = {
   masterPassword: RawMasterPassword;
@@ -32,7 +32,7 @@ export class InitializeVaultUseCase {
   private readonly crypto: CryptoPort;
   private readonly bip39: Bip39Port;
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
-  private readonly unlockedVaultRepository: UnlockedVaultRepositoryPort;
+  private readonly commitUnlockedVaultSession: CommitUnlockedVaultSessionUseCase;
   private readonly ids: IdPort;
   private readonly clock: ClockPort;
   private readonly vaultDisplayName: VaultDisplayNamePort;
@@ -41,7 +41,7 @@ export class InitializeVaultUseCase {
     crypto: CryptoPort,
     bip39: Bip39Port,
     vaultLocalRepository: VaultLocalRepositoryPort,
-    unlockedVaultRepository: UnlockedVaultRepositoryPort,
+    commitUnlockedVaultSession: CommitUnlockedVaultSessionUseCase,
     ids: IdPort,
     clock: ClockPort,
     vaultDisplayName: VaultDisplayNamePort,
@@ -49,7 +49,7 @@ export class InitializeVaultUseCase {
     this.crypto = crypto;
     this.bip39 = bip39;
     this.vaultLocalRepository = vaultLocalRepository;
-    this.unlockedVaultRepository = unlockedVaultRepository;
+    this.commitUnlockedVaultSession = commitUnlockedVaultSession;
     this.ids = ids;
     this.clock = clock;
     this.vaultDisplayName = vaultDisplayName;
@@ -202,7 +202,10 @@ export class InitializeVaultUseCase {
       deviceAccessMaterial,
       snapshot: vaultSnapshot,
     });
-    await this.unlockedVaultRepository.saveUnlockedVault(unlockedVault);
+    await this.commitUnlockedVaultSession.execute({
+      unlockedVault,
+      sourceSnapshotRevision: vaultSnapshot.metadata.revision,
+    });
 
     return {
       recoveryMnemonicKey,

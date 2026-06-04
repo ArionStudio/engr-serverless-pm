@@ -2,6 +2,7 @@ import { vi } from "vitest";
 import type { PasswordEntry } from "../../domain/entry/password-entry.type";
 import type { Tag } from "../../domain/entry/tag.type";
 import type { UnlockedVault } from "../../domain/vault/unlocked-vault";
+import type { UnlockedVaultSession } from "../../domain/vault/unlocked-vault-session";
 import type { PersistUnlockedVaultUseCase } from "../../use-cases/vault-snapshots/persist-unlocked-vault";
 import type { CoreTestPorts } from "./ports";
 import type { CoreTestValues } from "./values";
@@ -65,13 +66,25 @@ export function createUnlockedVaultWithEntries(
   };
 }
 
+export function createUnlockedVaultSessionWithEntries(
+  values: CoreTestValues,
+  entries: PasswordEntry[],
+  tags: Tag[] = [],
+  sourceSnapshotRevision = 1,
+): UnlockedVaultSession {
+  return {
+    unlockedVault: createUnlockedVaultWithEntries(values, entries, tags),
+    sourceSnapshotRevision,
+  };
+}
+
 export function saveUnlockedVaultWithEntries(
   ports: CoreTestPorts,
   values: CoreTestValues,
   entries: PasswordEntry[],
   tags: Tag[] = [],
 ): void {
-  ports.saved.unlockedVault = createUnlockedVaultWithEntries(
+  ports.saved.unlockedVaultSession = createUnlockedVaultSessionWithEntries(
     values,
     entries,
     tags,

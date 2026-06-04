@@ -45,7 +45,7 @@ describe("ReadEntryUseCase", () => {
 
   it("fails when the target vault is not unlocked", async () => {
     const ctx = createContext();
-    ctx.saved.unlockedVault = undefined;
+    ctx.saved.unlockedVaultSession = undefined;
 
     await expect(
       ctx.useCase.execute({

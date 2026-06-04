@@ -1,4 +1,4 @@
-import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
+import type { UnlockedVaultRepositoryPort } from "../../ports/vault/unlocked-vault-repository.port";
 import { PasswordEntryNotFoundError } from "../__errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
 
@@ -21,7 +21,9 @@ export class GetEntryPasswordUseCase {
   async execute(
     params: GetEntryPasswordCommandParams,
   ): Promise<GetEntryPasswordResult> {
-    const unlockedVault = await this.unlockedVaultRepository.getUnlockedVault();
+    const unlockedVaultSession =
+      await this.unlockedVaultRepository.getUnlockedVaultSession();
+    const unlockedVault = unlockedVaultSession?.unlockedVault;
 
     if (unlockedVault?.vaultId !== params.vaultId) {
       throw new VaultMustBeUnlockedError(params.vaultId, "get entry password");

@@ -7,7 +7,7 @@ import {
   pickGeneratedPasswordCharacters,
   shuffleGeneratedPasswordCharacters,
 } from "../../domain/password-tools/generated-password.utils";
-import type { CryptoPort } from "../../ports/crypto.port";
+import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import {
   InvalidGeneratedPasswordSettingsError,
   PasswordGenerationImpossibleError,

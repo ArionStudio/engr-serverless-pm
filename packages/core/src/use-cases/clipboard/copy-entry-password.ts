@@ -1,12 +1,12 @@
 import { clipboardClearDelayMsSchema } from "../../domain/scheduled-task/scheduled-task-delay.schema";
 import type { ClipboardClearDelayMs } from "../../domain/scheduled-task/scheduled-task-delay.type";
-import type { ClipboardPort } from "../../ports/clipboard.port";
-import type { ClockPort } from "../../ports/clock.port";
-import type { CryptoPort } from "../../ports/crypto.port";
-import type { IdPort } from "../../ports/id.port";
-import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard-clear-task-repository.port";
-import type { ScheduledTaskPort } from "../../ports/scheduled-task.port";
-import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
+import type { ClipboardPort } from "../../ports/clipboard/clipboard.port";
+import type { ClockPort } from "../../ports/system/clock.port";
+import type { CryptoPort } from "../../ports/crypto/crypto.port";
+import type { IdPort } from "../../ports/system/id.port";
+import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard/clipboard-clear-task-repository.port";
+import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
+import type { UnlockedVaultRepositoryPort } from "../../ports/vault/unlocked-vault-repository.port";
 import { InvalidClipboardClearDelayError } from "../__errors/clipboard.errors";
 import { PasswordEntryNotFoundError } from "../__errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
@@ -57,7 +57,9 @@ export class CopyEntryPasswordUseCase {
   ): Promise<CopyEntryPasswordResult> {
     assertValidClipboardClearDelay(params.clearAfterMs);
 
-    const unlockedVault = await this.unlockedVaultRepository.getUnlockedVault();
+    const unlockedVaultSession =
+      await this.unlockedVaultRepository.getUnlockedVaultSession();
+    const unlockedVault = unlockedVaultSession?.unlockedVault;
 
     if (unlockedVault?.vaultId !== params.vaultId) {
       throw new VaultMustBeUnlockedError(params.vaultId, "copy entry password");

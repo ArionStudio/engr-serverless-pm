@@ -5,9 +5,9 @@ import {
   saveUnlockedVaultWithEntries,
   singlePasswordEntry,
 } from "../../__tests__/fixtures/vault-entries";
-import type { ClipboardPort } from "../../ports/clipboard.port";
-import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard-clear-task-repository.port";
-import type { ScheduledTaskPort } from "../../ports/scheduled-task.port";
+import type { ClipboardPort } from "../../ports/clipboard/clipboard.port";
+import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard/clipboard-clear-task-repository.port";
+import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
 import { InvalidClipboardClearDelayError } from "../__errors/clipboard.errors";
 import { PasswordEntryNotFoundError } from "../__errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
@@ -100,7 +100,7 @@ describe("CopyEntryPasswordUseCase", () => {
 
   it("does not write to the clipboard when the vault is not unlocked", async () => {
     const ctx = createContext();
-    ctx.ports.saved.unlockedVault = undefined;
+    ctx.ports.saved.unlockedVaultSession = undefined;
 
     await expect(
       ctx.useCase.execute({
@@ -272,7 +272,7 @@ describe("CopyEntryPasswordUseCase", () => {
     ).rejects.toBeInstanceOf(InvalidClipboardClearDelayError);
 
     expect(
-      ctx.ports.unlockedVaultRepository.getUnlockedVault,
+      ctx.ports.unlockedVaultRepository.getUnlockedVaultSession,
     ).not.toHaveBeenCalled();
     expect(ctx.clipboard.writeText).not.toHaveBeenCalled();
   });

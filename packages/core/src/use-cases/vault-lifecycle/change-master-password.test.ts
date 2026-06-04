@@ -19,7 +19,7 @@ describe("ChangeMasterPasswordUseCase", () => {
     ).resolves.toBeUndefined();
 
     expect(
-      ctx.ports.unlockedVaultRepository.getUnlockedVault,
+      ctx.ports.unlockedVaultRepository.getUnlockedVaultSession,
     ).toHaveBeenCalledTimes(1);
     expect(
       ctx.ports.vaultLocalRepository.getDeviceAccessMaterial,
@@ -76,7 +76,7 @@ describe("ChangeMasterPasswordUseCase", () => {
 
   it("fails when the target vault is not unlocked", async () => {
     const ctx = createChangeMasterPasswordTestContext();
-    ctx.saved.unlockedVault = undefined;
+    ctx.saved.unlockedVaultSession = undefined;
 
     await expect(
       ctx.useCase.execute({
@@ -96,9 +96,12 @@ describe("ChangeMasterPasswordUseCase", () => {
 
   it("fails when another vault is unlocked", async () => {
     const ctx = createChangeMasterPasswordTestContext();
-    ctx.saved.unlockedVault = {
-      ...ctx.saved.unlockedVault!,
-      vaultId: "another-vault-id",
+    ctx.saved.unlockedVaultSession = {
+      ...ctx.saved.unlockedVaultSession!,
+      unlockedVault: {
+        ...ctx.saved.unlockedVaultSession!.unlockedVault,
+        vaultId: "another-vault-id",
+      },
     };
 
     await expect(

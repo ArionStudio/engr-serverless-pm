@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
-import { createUnlockedVaultWithEntries } from "../../__tests__/fixtures/vault-entries";
+import { createUnlockedVaultSessionWithEntries } from "../../__tests__/fixtures/vault-entries";
 import { GetVaultSessionStatusUseCase } from "./get-vault-session-status";
 
 describe("GetVaultSessionStatusUseCase", () => {
@@ -32,7 +32,10 @@ describe("GetVaultSessionStatusUseCase", () => {
 
   it("returns unlocked status for the active vault", async () => {
     const ctx = createContext();
-    ctx.saved.unlockedVault = createUnlockedVaultWithEntries(ctx.values, []);
+    ctx.saved.unlockedVaultSession = createUnlockedVaultSessionWithEntries(
+      ctx.values,
+      [],
+    );
 
     const result = await ctx.useCase.execute();
 
@@ -47,7 +50,7 @@ describe("GetVaultSessionStatusUseCase", () => {
     const error = new Error("session read failed");
 
     vi.mocked(
-      ctx.ports.unlockedVaultRepository.getUnlockedVault,
+      ctx.ports.unlockedVaultRepository.getUnlockedVaultSession,
     ).mockRejectedValueOnce(error);
 
     await expect(ctx.useCase.execute()).rejects.toThrow(error);

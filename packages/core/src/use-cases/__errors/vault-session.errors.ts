@@ -11,3 +11,8 @@ export class InvalidVaultLockDelayError extends Error {
     this.name = "InvalidVaultLockDelayError";
   }
 }
+
+export {
+  ActiveUnlockedVaultMismatchError,
+  UnlockedVaultSessionInvalidError,
+} from "../../ports/vault/unlocked-vault-repository.errors";

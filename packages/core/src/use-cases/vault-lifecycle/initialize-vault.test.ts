@@ -142,12 +142,15 @@ describe("InitializeVaultUseCase", () => {
       ctx.values.devicePrivateSignKey,
     );
 
-    expect(ctx.saved.unlockedVault).toEqual({
-      vaultId: ctx.values.vaultId,
-      deviceId: ctx.values.deviceId,
-      vault: expectedVault,
-      vaultMasterKey: ctx.values.vaultMasterKey,
-      devicePrivateSignKey: ctx.values.devicePrivateSignKey,
+    expect(ctx.saved.unlockedVaultSession).toEqual({
+      unlockedVault: {
+        vaultId: ctx.values.vaultId,
+        deviceId: ctx.values.deviceId,
+        vault: expectedVault,
+        vaultMasterKey: ctx.values.vaultMasterKey,
+        devicePrivateSignKey: ctx.values.devicePrivateSignKey,
+      },
+      sourceSnapshotRevision: 1,
     });
   });
 
@@ -170,7 +173,7 @@ describe("InitializeVaultUseCase", () => {
       ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
     ).toHaveBeenCalledTimes(1);
     expect(
-      ctx.ports.unlockedVaultRepository.saveUnlockedVault,
+      ctx.ports.unlockedVaultRepository.saveUnlockedVaultSession,
     ).not.toHaveBeenCalled();
     expect(
       ctx.ports.vaultLocalRepository.saveLocalVaultDescriptor,

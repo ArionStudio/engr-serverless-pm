@@ -5,13 +5,12 @@ import type { VaultLockDelayMs } from "../../domain/scheduled-task/scheduled-tas
 import type { DeviceKeySlot } from "../../domain/snapshot/key-slot";
 import type { UnlockedVault } from "../../domain/vault/unlocked-vault";
 import type { Vault } from "../../domain/vault/vault";
-import type { ClockPort } from "../../ports/clock.port";
-import type { CryptoPort } from "../../ports/crypto.port";
-import type { IdPort } from "../../ports/id.port";
-import type { ScheduledTaskPort } from "../../ports/scheduled-task.port";
-import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
-import type { VaultLocalRepositoryPort } from "../../ports/vault-local-repository.port";
-import type { VaultLockTaskRepositoryPort } from "../../ports/vault-lock-task-repository.port";
+import type { ClockPort } from "../../ports/system/clock.port";
+import type { CryptoPort } from "../../ports/crypto/crypto.port";
+import type { IdPort } from "../../ports/system/id.port";
+import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
+import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
+import type { VaultLockTaskRepositoryPort } from "../../ports/vault/vault-lock-task-repository.port";
 import { UnsupportedAlgorithmSuiteError } from "../__errors/algorithm-suite.errors";
 import {
   DeviceAccessMaterialNotFoundError,
@@ -21,6 +20,7 @@ import {
   VaultSnapshotSignerNotTrustedError,
 } from "../__errors/unlock-vault.errors";
 import { InvalidVaultLockDelayError } from "../__errors/vault-session.errors";
+import type { CommitUnlockedVaultSessionUseCase } from "../vault-session/commit-unlocked-vault-session";
 
 export type UnlockVaultCommandParams = {
   vaultId: string;
@@ -39,7 +39,7 @@ export class UnlockVaultUseCase {
   private readonly scheduledTasks: ScheduledTaskPort;
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
   private readonly vaultLockTasks: VaultLockTaskRepositoryPort;
-  private readonly unlockedVaultRepository: UnlockedVaultRepositoryPort;
+  private readonly commitUnlockedVaultSession: CommitUnlockedVaultSessionUseCase;
 
   constructor(
     clock: ClockPort,
@@ -48,7 +48,7 @@ export class UnlockVaultUseCase {
     scheduledTasks: ScheduledTaskPort,
     vaultLocalRepository: VaultLocalRepositoryPort,
     vaultLockTasks: VaultLockTaskRepositoryPort,
-    unlockedVaultRepository: UnlockedVaultRepositoryPort,
+    commitUnlockedVaultSession: CommitUnlockedVaultSessionUseCase,
   ) {
     this.clock = clock;
     this.crypto = crypto;
@@ -56,7 +56,7 @@ export class UnlockVaultUseCase {
     this.scheduledTasks = scheduledTasks;
     this.vaultLocalRepository = vaultLocalRepository;
     this.vaultLockTasks = vaultLockTasks;
-    this.unlockedVaultRepository = unlockedVaultRepository;
+    this.commitUnlockedVaultSession = commitUnlockedVaultSession;
   }
 
   async execute(params: UnlockVaultCommandParams): Promise<UnlockVaultResult> {
@@ -199,7 +199,10 @@ export class UnlockVaultUseCase {
     }
 
     try {
-      await this.unlockedVaultRepository.saveUnlockedVault(unlockedVault);
+      await this.commitUnlockedVaultSession.execute({
+        unlockedVault,
+        sourceSnapshotRevision: vaultSnapshot.metadata.revision,
+      });
     } catch (error) {
       try {
         await this.scheduledTasks.cancelTask(lockVaultTask);

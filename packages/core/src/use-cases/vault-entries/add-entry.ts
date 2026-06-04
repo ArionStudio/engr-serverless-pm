@@ -1,12 +1,12 @@
 import type { PasswordEntry } from "../../domain/entry/password-entry.type";
 import { passwordEntryInputSchema } from "../../domain/entry/password-entry.schema";
 import { sanitizeEntryUrl } from "../../domain/entry/sanitized-entry-url.utils";
-import type { IdPort } from "../../ports/id.port";
-import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
+import type { IdPort } from "../../ports/system/id.port";
+import type { UnlockedVaultRepositoryPort } from "../../ports/vault/unlocked-vault-repository.port";
 import { InvalidPasswordEntryError } from "../__errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
+import type { CommitUnlockedVaultSessionUseCase } from "../vault-session/commit-unlocked-vault-session";
 import type { PersistUnlockedVaultUseCase } from "../vault-snapshots/persist-unlocked-vault";
-import { saveUnlockedVaultOrCleanup } from "../vault-snapshots/save-unlocked-vault-or-cleanup";
 
 export type AddEntryCommandParams = {
   vaultId: string;
@@ -29,19 +29,24 @@ export class AddEntryUseCase {
   private readonly ids: IdPort;
   private readonly unlockedVaultRepository: UnlockedVaultRepositoryPort;
   private readonly persistUnlockedVault: PersistUnlockedVaultUseCase;
+  private readonly commitUnlockedVaultSession: CommitUnlockedVaultSessionUseCase;
 
   constructor(
     ids: IdPort,
     unlockedVaultRepository: UnlockedVaultRepositoryPort,
     persistUnlockedVault: PersistUnlockedVaultUseCase,
+    commitUnlockedVaultSession: CommitUnlockedVaultSessionUseCase,
   ) {
     this.ids = ids;
     this.unlockedVaultRepository = unlockedVaultRepository;
     this.persistUnlockedVault = persistUnlockedVault;
+    this.commitUnlockedVaultSession = commitUnlockedVaultSession;
   }
 
   async execute(params: AddEntryCommandParams): Promise<AddEntryResult> {
-    const unlockedVault = await this.unlockedVaultRepository.getUnlockedVault();
+    const unlockedVaultSession =
+      await this.unlockedVaultRepository.getUnlockedVaultSession();
+    const unlockedVault = unlockedVaultSession?.unlockedVault;
 
     if (unlockedVault?.vaultId !== params.vaultId) {
       throw new VaultMustBeUnlockedError(params.vaultId, "add entry");
@@ -85,10 +90,10 @@ export class AddEntryUseCase {
       unlockedVault: updatedUnlockedVault,
     });
 
-    await saveUnlockedVaultOrCleanup(
-      this.unlockedVaultRepository,
-      updatedUnlockedVault,
-    );
+    await this.commitUnlockedVaultSession.execute({
+      unlockedVault: updatedUnlockedVault,
+      sourceSnapshotRevision: persistedSnapshot.revision,
+    });
 
     return {
       entryId,

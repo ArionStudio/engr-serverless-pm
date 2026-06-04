@@ -12,12 +12,15 @@ function createContext() {
     ports.unlockedVaultRepository,
   );
 
-  ports.saved.unlockedVault = {
-    vaultId: values.vaultId,
-    deviceId: values.deviceId,
-    vault: values.decryptedVault,
-    vaultMasterKey: values.vaultMasterKey,
-    devicePrivateSignKey: values.devicePrivateSignKey,
+  ports.saved.unlockedVaultSession = {
+    unlockedVault: {
+      vaultId: values.vaultId,
+      deviceId: values.deviceId,
+      vault: values.decryptedVault,
+      vaultMasterKey: values.vaultMasterKey,
+      devicePrivateSignKey: values.devicePrivateSignKey,
+    },
+    sourceSnapshotRevision: 1,
   };
 
   return {
@@ -50,13 +53,13 @@ describe("DeleteLocalVaultUseCase", () => {
       ctx.ports.vaultLocalRepository.removeVaultSnapshot,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.unlockedVaultRepository.removeUnlockedVault,
+      ctx.ports.unlockedVaultRepository.removeUnlockedVaultSession,
     ).toHaveBeenCalledTimes(1);
   });
 
   it("fails when no vault is unlocked", async () => {
     const ctx = createContext();
-    ctx.ports.saved.unlockedVault = undefined;
+    ctx.ports.saved.unlockedVaultSession = undefined;
 
     await expect(
       ctx.useCase.execute({
@@ -68,15 +71,18 @@ describe("DeleteLocalVaultUseCase", () => {
       ctx.ports.vaultLocalRepository.removePersistedLocalVault,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.unlockedVaultRepository.removeUnlockedVault,
+      ctx.ports.unlockedVaultRepository.removeUnlockedVaultSession,
     ).not.toHaveBeenCalled();
   });
 
   it("fails when another vault is unlocked", async () => {
     const ctx = createContext();
-    ctx.ports.saved.unlockedVault = {
-      ...ctx.ports.saved.unlockedVault!,
-      vaultId: "another-vault-id",
+    ctx.ports.saved.unlockedVaultSession = {
+      ...ctx.ports.saved.unlockedVaultSession!,
+      unlockedVault: {
+        ...ctx.ports.saved.unlockedVaultSession!.unlockedVault,
+        vaultId: "another-vault-id",
+      },
     };
 
     await expect(
@@ -89,7 +95,7 @@ describe("DeleteLocalVaultUseCase", () => {
       ctx.ports.vaultLocalRepository.removePersistedLocalVault,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.unlockedVaultRepository.removeUnlockedVault,
+      ctx.ports.unlockedVaultRepository.removeUnlockedVaultSession,
     ).not.toHaveBeenCalled();
   });
 
@@ -108,7 +114,7 @@ describe("DeleteLocalVaultUseCase", () => {
     ).rejects.toThrow(error);
 
     expect(
-      ctx.ports.unlockedVaultRepository.removeUnlockedVault,
+      ctx.ports.unlockedVaultRepository.removeUnlockedVaultSession,
     ).not.toHaveBeenCalled();
   });
 
@@ -117,7 +123,7 @@ describe("DeleteLocalVaultUseCase", () => {
     const error = new Error("session cleanup failed");
 
     vi.mocked(
-      ctx.ports.unlockedVaultRepository.removeUnlockedVault,
+      ctx.ports.unlockedVaultRepository.removeUnlockedVaultSession,
     ).mockRejectedValueOnce(error);
 
     await expect(

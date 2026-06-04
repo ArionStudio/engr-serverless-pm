@@ -3,9 +3,9 @@ import type {
   VaultSnapshot,
 } from "../../domain/snapshot/vault-snapshot";
 import type { UnlockedVault } from "../../domain/vault/unlocked-vault";
-import type { ClockPort } from "../../ports/clock.port";
-import type { CryptoPort } from "../../ports/crypto.port";
-import type { VaultLocalRepositoryPort } from "../../ports/vault-local-repository.port";
+import type { ClockPort } from "../../ports/system/clock.port";
+import type { CryptoPort } from "../../ports/crypto/crypto.port";
+import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import { UnsupportedAlgorithmSuiteError } from "../__errors/algorithm-suite.errors";
 import {
   VaultSnapshotNotFoundError,

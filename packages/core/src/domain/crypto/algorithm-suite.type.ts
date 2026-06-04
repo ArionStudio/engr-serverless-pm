@@ -37,6 +37,20 @@ export interface AlgorithmSuite {
     readonly algorithm: "AES-256-GCM";
     readonly nonceLengthBytes: 12;
   };
+  readonly unlockedVaultSessionPayloadKeyGeneration: {
+    readonly method: "secure-random";
+    readonly byteLength: 32;
+    readonly keyFormat: "raw";
+  };
+  readonly unlockedVaultSessionPayloadEncryption: {
+    readonly algorithm: "AES-256-GCM";
+    readonly nonceLengthBytes: 12;
+    readonly authenticatedData: [
+      "sessionId",
+      "vaultId",
+      "sourceSnapshotRevision",
+    ];
+  };
   readonly vaultSnapshotSigning: {
     readonly algorithm: "Ed25519";
     readonly signatureFormat: "raw";

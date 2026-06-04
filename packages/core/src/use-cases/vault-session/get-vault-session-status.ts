@@ -1,4 +1,4 @@
-import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
+import type { UnlockedVaultRepositoryPort } from "../../ports/vault/unlocked-vault-repository.port";
 
 export type GetVaultSessionStatusResult =
   | {
@@ -17,9 +17,11 @@ export class GetVaultSessionStatusUseCase {
   }
 
   async execute(): Promise<GetVaultSessionStatusResult> {
-    const unlockedVault = await this.unlockedVaultRepository.getUnlockedVault();
+    const unlockedVaultSession =
+      await this.unlockedVaultRepository.getUnlockedVaultSession();
+    const unlockedVault = unlockedVaultSession?.unlockedVault;
 
-    if (unlockedVault === null) {
+    if (unlockedVault === undefined) {
       return {
         status: "locked",
       };

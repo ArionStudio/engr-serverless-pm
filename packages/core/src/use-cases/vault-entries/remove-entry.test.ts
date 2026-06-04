@@ -10,12 +10,16 @@ import {
 } from "../../__tests__/fixtures/vault-entries";
 import { PasswordEntryNotFoundError } from "../__errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
+import { CommitUnlockedVaultSessionUseCase } from "../vault-session/commit-unlocked-vault-session";
 import { RemoveEntryUseCase } from "./remove-entry";
 
 function createContext() {
   const values = createCoreTestValues();
   const ports = createCoreTestPorts(values);
   const persistUnlockedVault = createPersistUnlockedVaultUseCaseMock(values);
+  const commitUnlockedVaultSession = new CommitUnlockedVaultSessionUseCase(
+    ports.unlockedVaultRepository,
+  );
 
   saveUnlockedVaultWithEntries(ports, values, standardPasswordEntries);
 
@@ -27,6 +31,7 @@ function createContext() {
     useCase: new RemoveEntryUseCase(
       ports.unlockedVaultRepository,
       persistUnlockedVault,
+      commitUnlockedVaultSession,
     ),
   };
 }
@@ -46,28 +51,29 @@ describe("RemoveEntryUseCase", () => {
       revisionTimestamp: ctx.values.timestamp + 1,
       deviceId: ctx.values.deviceId,
     });
-    expect(ctx.saved.unlockedVault?.vault.entries).toEqual([
-      secondPasswordEntry,
-    ]);
+    expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries).toEqual(
+      [secondPasswordEntry],
+    );
+    expect(ctx.saved.unlockedVaultSession?.sourceSnapshotRevision).toBe(2);
     expect(ctx.persistUnlockedVault.execute).toHaveBeenCalledWith({
       vaultId: ctx.values.vaultId,
       unlockedVault: expect.objectContaining({
         vault: expect.objectContaining({
-          entries: ctx.saved.unlockedVault?.vault.entries,
+          entries: ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries,
         }),
       }),
     });
     expect(
       vi.mocked(ctx.persistUnlockedVault.execute).mock.invocationCallOrder[0],
     ).toBeLessThan(
-      vi.mocked(ctx.ports.unlockedVaultRepository.saveUnlockedVault).mock
+      vi.mocked(ctx.ports.unlockedVaultRepository.saveUnlockedVaultSession).mock
         .invocationCallOrder[0],
     );
   });
 
   it("fails when the target vault is not unlocked", async () => {
     const ctx = createContext();
-    ctx.saved.unlockedVault = undefined;
+    ctx.saved.unlockedVaultSession = undefined;
 
     await expect(
       ctx.useCase.execute({
@@ -88,7 +94,7 @@ describe("RemoveEntryUseCase", () => {
     ).rejects.toBeInstanceOf(PasswordEntryNotFoundError);
 
     expect(
-      ctx.ports.unlockedVaultRepository.saveUnlockedVault,
+      ctx.ports.unlockedVaultRepository.saveUnlockedVaultSession,
     ).not.toHaveBeenCalled();
     expect(ctx.persistUnlockedVault.execute).not.toHaveBeenCalled();
   });
@@ -107,18 +113,17 @@ describe("RemoveEntryUseCase", () => {
     ).rejects.toThrow("persist failed");
 
     expect(
-      ctx.ports.unlockedVaultRepository.saveUnlockedVault,
+      ctx.ports.unlockedVaultRepository.saveUnlockedVaultSession,
     ).not.toHaveBeenCalled();
-    expect(ctx.saved.unlockedVault?.vault.entries).toEqual([
-      firstPasswordEntry,
-      secondPasswordEntry,
-    ]);
+    expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries).toEqual(
+      [firstPasswordEntry, secondPasswordEntry],
+    );
   });
 
   it("clears the session vault when session save fails after snapshot persistence", async () => {
     const ctx = createContext();
     vi.mocked(
-      ctx.ports.unlockedVaultRepository.saveUnlockedVault,
+      ctx.ports.unlockedVaultRepository.saveUnlockedVaultSession,
     ).mockRejectedValueOnce(new Error("session save failed"));
 
     await expect(
@@ -130,18 +135,18 @@ describe("RemoveEntryUseCase", () => {
 
     expect(ctx.persistUnlockedVault.execute).toHaveBeenCalled();
     expect(
-      ctx.ports.unlockedVaultRepository.removeUnlockedVault,
+      ctx.ports.unlockedVaultRepository.removeUnlockedVaultSession,
     ).toHaveBeenCalled();
-    expect(ctx.saved.unlockedVault).toBeUndefined();
+    expect(ctx.saved.unlockedVaultSession).toBeUndefined();
   });
 
   it("preserves the session save error when cleanup also fails", async () => {
     const ctx = createContext();
     vi.mocked(
-      ctx.ports.unlockedVaultRepository.saveUnlockedVault,
+      ctx.ports.unlockedVaultRepository.saveUnlockedVaultSession,
     ).mockRejectedValueOnce(new Error("session save failed"));
     vi.mocked(
-      ctx.ports.unlockedVaultRepository.removeUnlockedVault,
+      ctx.ports.unlockedVaultRepository.removeUnlockedVaultSession,
     ).mockRejectedValueOnce(new Error("cleanup failed"));
 
     await expect(

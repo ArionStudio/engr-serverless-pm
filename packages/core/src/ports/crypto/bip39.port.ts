@@ -1,5 +1,5 @@
-import type { RecoveryKeyMnemonic } from "../domain/recovery/bip39-mnemonic";
-import type { RecoverySecretKey } from "../domain/recovery/brand-keys";
+import type { RecoveryKeyMnemonic } from "../../domain/recovery/bip39-mnemonic";
+import type { RecoverySecretKey } from "../../domain/recovery/brand-keys";
 
 export interface Bip39Port {
   recoveryKeyToMnemonic: (

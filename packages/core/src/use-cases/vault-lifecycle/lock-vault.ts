@@ -1,7 +1,7 @@
-import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard-clear-task-repository.port";
-import type { ScheduledTaskPort } from "../../ports/scheduled-task.port";
-import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
-import type { VaultLockTaskRepositoryPort } from "../../ports/vault-lock-task-repository.port";
+import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard/clipboard-clear-task-repository.port";
+import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
+import type { UnlockedVaultRepositoryPort } from "../../ports/vault/unlocked-vault-repository.port";
+import type { VaultLockTaskRepositoryPort } from "../../ports/vault/vault-lock-task-repository.port";
 import type { ClearClipboardTaskUseCase } from "../clipboard/clear-clipboard-task";
 
 export type LockVaultCommandParams = {
@@ -76,7 +76,7 @@ export class LockVaultUseCase {
         throw cleanupError;
       }
     } finally {
-      await this.unlockedVaultRepository.removeUnlockedVault();
+      await this.unlockedVaultRepository.removeUnlockedVaultSession();
     }
   }
 }

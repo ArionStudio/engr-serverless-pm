@@ -2,7 +2,7 @@ import { pickRandomIndex } from "../../domain/crypto/random.utils";
 import { generatedUsernameSettingsSchema } from "../../domain/password-tools/generated-username.schema";
 import type { GeneratedUsernameSettings } from "../../domain/password-tools/generated-username.type";
 import { generateUsernameValue } from "../../domain/password-tools/generated-username.utils";
-import type { CryptoPort } from "../../ports/crypto.port";
+import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import { InvalidGeneratedUsernameSettingsError } from "../__errors/generate-username.errors";
 
 export type GenerateUsernameCommandParams = Partial<GeneratedUsernameSettings>;
