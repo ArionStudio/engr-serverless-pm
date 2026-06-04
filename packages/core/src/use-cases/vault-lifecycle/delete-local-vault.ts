@@ -30,7 +30,7 @@ export class DeleteLocalVaultUseCase {
       throw new VaultMustBeUnlockedForLocalDeletionError(params.vaultId);
     }
 
-    await this.vaultLocalRepository.removePersistedLocalVault(params.vaultId);
     await this.removeUnlockedVaultSession.remove();
+    await this.vaultLocalRepository.removePersistedLocalVault(params.vaultId);
   }
 }

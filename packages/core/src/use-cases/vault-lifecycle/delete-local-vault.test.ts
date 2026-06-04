@@ -56,6 +56,13 @@ describe("DeleteLocalVaultUseCase", () => {
     expect(
       ctx.ports.sessionServices.removeUnlockedVaultSession.remove,
     ).toHaveBeenCalledTimes(1);
+    expect(
+      vi.mocked(ctx.ports.sessionServices.removeUnlockedVaultSession.remove)
+        .mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      vi.mocked(ctx.ports.vaultLocalRepository.removePersistedLocalVault).mock
+        .invocationCallOrder[0],
+    );
   });
 
   it("fails when no vault is unlocked", async () => {
@@ -100,7 +107,7 @@ describe("DeleteLocalVaultUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("does not remove unlocked state when persisted local deletion fails", async () => {
+  it("bubbles persisted local deletion errors after removing unlocked state", async () => {
     const ctx = createContext();
     const error = new Error("persisted local deletion failed");
 
@@ -112,14 +119,15 @@ describe("DeleteLocalVaultUseCase", () => {
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
       }),
-    ).rejects.toThrow(error);
+    ).rejects.toBe(error);
 
     expect(
       ctx.ports.sessionServices.removeUnlockedVaultSession.remove,
-    ).not.toHaveBeenCalled();
+    ).toHaveBeenCalledTimes(1);
+    expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
   });
 
-  it("bubbles unlocked state cleanup errors after local deletion", async () => {
+  it("does not remove persisted local vault when unlocked state cleanup fails", async () => {
     const ctx = createContext();
     const error = new Error("session cleanup failed");
 
@@ -131,10 +139,10 @@ describe("DeleteLocalVaultUseCase", () => {
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
       }),
-    ).rejects.toThrow(error);
+    ).rejects.toBe(error);
 
     expect(
       ctx.ports.vaultLocalRepository.removePersistedLocalVault,
-    ).toHaveBeenCalledWith(ctx.values.vaultId);
+    ).not.toHaveBeenCalled();
   });
 });

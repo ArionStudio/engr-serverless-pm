@@ -187,6 +187,56 @@ describe("InitializeVaultUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
+  it("removes initialized local vault when unlocked session commit fails", async () => {
+    const ctx = createInitializeVaultTestContext();
+    const error = new Error("session commit failed");
+
+    vi.mocked(
+      ctx.ports.sessionServices.saveUnlockedVaultSession.save,
+    ).mockRejectedValueOnce(error);
+
+    await expect(
+      ctx.useCase.execute({
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "Work laptop",
+      }),
+    ).rejects.toBe(error);
+
+    expect(
+      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      ctx.ports.vaultLocalRepository.removePersistedLocalVault,
+    ).toHaveBeenCalledWith(ctx.values.vaultId);
+    expect(ctx.saved.localVaultDescriptor).toBeUndefined();
+    expect(ctx.saved.deviceAccessMaterial).toBeUndefined();
+    expect(ctx.saved.vaultSnapshot).toBeUndefined();
+  });
+
+  it("preserves session commit error when initialized local cleanup fails", async () => {
+    const ctx = createInitializeVaultTestContext();
+    const commitError = new Error("session commit failed");
+    const cleanupError = new Error("initialized local cleanup failed");
+
+    vi.mocked(
+      ctx.ports.sessionServices.saveUnlockedVaultSession.save,
+    ).mockRejectedValueOnce(commitError);
+    vi.mocked(
+      ctx.ports.vaultLocalRepository.removePersistedLocalVault,
+    ).mockRejectedValueOnce(cleanupError);
+
+    await expect(
+      ctx.useCase.execute({
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "Work laptop",
+      }),
+    ).rejects.toBe(commitError);
+
+    expect(
+      ctx.ports.vaultLocalRepository.removePersistedLocalVault,
+    ).toHaveBeenCalledWith(ctx.values.vaultId);
+  });
+
   it("fails before creating vault material when another vault is active", async () => {
     const ctx = createInitializeVaultTestContext();
     ctx.saved.unlockedVaultSessionMaterial = {

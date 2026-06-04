@@ -209,10 +209,20 @@ export class InitializeVaultUseCase {
       deviceAccessMaterial,
       snapshot: vaultSnapshot,
     });
-    await this.commitUnlockedVaultSession.commit(
-      unlockedVault,
-      vaultSnapshot.metadata.revision,
-    );
+    try {
+      await this.commitUnlockedVaultSession.commit(
+        unlockedVault,
+        vaultSnapshot.metadata.revision,
+      );
+    } catch (error) {
+      try {
+        await this.vaultLocalRepository.removePersistedLocalVault(vaultId);
+      } catch {
+        // Preserve the session activation failure as the root cause.
+      }
+
+      throw error;
+    }
 
     return {
       recoveryMnemonicKey,
