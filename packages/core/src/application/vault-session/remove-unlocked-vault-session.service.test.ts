@@ -53,7 +53,7 @@ describe("RemoveUnlockedVaultSessionService", () => {
     ).toBeUndefined();
   });
 
-  it("does not remove encrypted payload when material removal fails", async () => {
+  it("removes encrypted payload when material removal fails", async () => {
     const ctx = createContext();
     const error = new Error("material remove failed");
 
@@ -67,10 +67,10 @@ describe("RemoveUnlockedVaultSessionService", () => {
     expect(
       ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
         .removeEncryptedUnlockedVaultSessionPayload,
-    ).not.toHaveBeenCalled();
-    expect(ctx.ports.saved.encryptedUnlockedVaultSessionPayload).toEqual(
-      ctx.encryptedPayload,
-    );
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      ctx.ports.saved.encryptedUnlockedVaultSessionPayload,
+    ).toBeUndefined();
   });
 
   it("bubbles encrypted payload removal failure", async () => {
@@ -85,5 +85,27 @@ describe("RemoveUnlockedVaultSessionService", () => {
     await expect(ctx.service.remove()).rejects.toBe(error);
 
     expect(ctx.ports.saved.unlockedVaultSessionMaterial).toBeUndefined();
+  });
+
+  it("preserves material removal failure when encrypted payload removal also fails", async () => {
+    const ctx = createContext();
+    const materialError = new Error("material remove failed");
+    const payloadError = new Error("payload remove failed");
+
+    vi.mocked(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .removeUnlockedVaultSessionMaterial,
+    ).mockRejectedValueOnce(materialError);
+    vi.mocked(
+      ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
+        .removeEncryptedUnlockedVaultSessionPayload,
+    ).mockRejectedValueOnce(payloadError);
+
+    await expect(ctx.service.remove()).rejects.toBe(materialError);
+
+    expect(
+      ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
+        .removeEncryptedUnlockedVaultSessionPayload,
+    ).toHaveBeenCalledTimes(1);
   });
 });

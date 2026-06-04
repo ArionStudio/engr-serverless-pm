@@ -14,7 +14,24 @@ export class RemoveUnlockedVaultSessionService {
   }
 
   async remove(): Promise<void> {
-    await this.materialRepository.removeUnlockedVaultSessionMaterial();
-    await this.encryptedPayloadRepository.removeEncryptedUnlockedVaultSessionPayload();
+    let removalError: unknown;
+
+    try {
+      await this.materialRepository.removeUnlockedVaultSessionMaterial();
+    } catch (error) {
+      removalError = error;
+    }
+
+    try {
+      await this.encryptedPayloadRepository.removeEncryptedUnlockedVaultSessionPayload();
+    } catch (error) {
+      if (removalError === undefined) {
+        removalError = error;
+      }
+    }
+
+    if (removalError !== undefined) {
+      throw removalError;
+    }
   }
 }

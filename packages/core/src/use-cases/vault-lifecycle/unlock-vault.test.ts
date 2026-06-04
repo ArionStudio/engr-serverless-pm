@@ -316,7 +316,7 @@ describe("UnlockVaultUseCase", () => {
     expect(ctx.ports.vaultLockTasks.remove).toHaveBeenCalledTimes(1);
   });
 
-  it("fails before changing lock metadata when another vault is active", async () => {
+  it("fails before reading vault data when another vault is active", async () => {
     const ctx = createUnlockVaultTestContext();
     ctx.saved.unlockedVaultSessionMaterial = {
       sessionId: ctx.values.sessionId,
@@ -336,6 +336,16 @@ describe("UnlockVaultUseCase", () => {
       }),
     ).rejects.toBeInstanceOf(ActiveUnlockedVaultMismatchError);
 
+    expect(
+      ctx.ports.vaultLocalRepository.getDeviceAccessMaterial,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.getVaultSnapshot,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.crypto.verifyVaultSnapshotSignature,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
     expect(ctx.ports.vaultLockTasks.save).not.toHaveBeenCalled();
     expect(ctx.ports.scheduledTasks.scheduleTask).not.toHaveBeenCalled();
     expect(
