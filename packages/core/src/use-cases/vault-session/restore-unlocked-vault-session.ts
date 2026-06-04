@@ -25,9 +25,9 @@ export class RestoreUnlockedVaultSessionUseCase {
     assertMatchingSessionRecords(params.material, params.encryptedPayload);
 
     const context: UnlockedVaultSessionPayloadEncryptionContext = {
-      sessionId: params.material.sessionId,
-      vaultId: params.material.vaultId,
-      sourceSnapshotRevision: params.material.sourceSnapshotRevision,
+      sessionId: params.encryptedPayload.sessionId,
+      vaultId: params.encryptedPayload.vaultId,
+      sourceSnapshotRevision: params.encryptedPayload.sourceSnapshotRevision,
     };
 
     let payload;
@@ -53,7 +53,7 @@ export class RestoreUnlockedVaultSessionUseCase {
         vaultMasterKey: params.material.vaultMasterKey,
         devicePrivateSignKey: params.material.devicePrivateSignKey,
       },
-      sourceSnapshotRevision: params.material.sourceSnapshotRevision,
+      sourceSnapshotRevision: params.encryptedPayload.sourceSnapshotRevision,
     };
   }
 }
@@ -64,8 +64,7 @@ function assertMatchingSessionRecords(
 ): void {
   if (
     material.sessionId !== encryptedPayload.sessionId ||
-    material.vaultId !== encryptedPayload.vaultId ||
-    material.sourceSnapshotRevision !== encryptedPayload.sourceSnapshotRevision
+    material.vaultId !== encryptedPayload.vaultId
   ) {
     throw new UnlockedVaultSessionInvalidError(
       "session material does not match encrypted payload",

@@ -88,6 +88,31 @@ describe("RestoreUnlockedVaultSessionUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
+  it("uses encrypted payload revision when material revision is stale", async () => {
+    const ctx = createContext();
+
+    const result = await ctx.useCase.execute({
+      material: {
+        ...ctx.material,
+        sourceSnapshotRevision: 6,
+      },
+      encryptedPayload: ctx.encryptedPayload,
+    });
+
+    expect(
+      ctx.ports.crypto.decryptUnlockedVaultSessionPayload,
+    ).toHaveBeenCalledWith(
+      ctx.values.encryptedUnlockedVaultSessionPayload,
+      ctx.values.unlockedVaultSessionPayloadKey,
+      {
+        sessionId: ctx.values.sessionId,
+        vaultId: ctx.values.vaultId,
+        sourceSnapshotRevision: 7,
+      },
+    );
+    expect(result.sourceSnapshotRevision).toBe(7);
+  });
+
   it("wraps payload decryption failures as invalid session errors", async () => {
     const ctx = createContext();
     const decryptError = new Error("decrypt failed");

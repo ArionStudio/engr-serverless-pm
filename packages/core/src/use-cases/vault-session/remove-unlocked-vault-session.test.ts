@@ -53,7 +53,7 @@ describe("RemoveUnlockedVaultSessionUseCase", () => {
     ).toBeUndefined();
   });
 
-  it("still removes encrypted payload when material removal fails", async () => {
+  it("does not remove encrypted payload when material removal fails", async () => {
     const ctx = createContext();
     const error = new Error("material remove failed");
 
@@ -67,10 +67,10 @@ describe("RemoveUnlockedVaultSessionUseCase", () => {
     expect(
       ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
         .removeEncryptedUnlockedVaultSessionPayload,
-    ).toHaveBeenCalled();
-    expect(
-      ctx.ports.saved.encryptedUnlockedVaultSessionPayload,
-    ).toBeUndefined();
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.encryptedUnlockedVaultSessionPayload).toEqual(
+      ctx.encryptedPayload,
+    );
   });
 
   it("bubbles encrypted payload removal failure", async () => {

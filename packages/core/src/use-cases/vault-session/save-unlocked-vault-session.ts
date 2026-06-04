@@ -37,7 +37,18 @@ export class SaveUnlockedVaultSessionUseCase {
 
     const protectedSession = await this.protectUnlockedVaultSession.execute({
       session: params.session,
+      activeMaterial: activeMaterial ?? undefined,
     });
+
+    if (activeMaterial !== null) {
+      await this.materialRepository.saveUnlockedVaultSessionMaterial(
+        protectedSession.material,
+      );
+      await this.encryptedPayloadRepository.saveEncryptedUnlockedVaultSessionPayload(
+        protectedSession.encryptedPayload,
+      );
+      return;
+    }
 
     await this.encryptedPayloadRepository.saveEncryptedUnlockedVaultSessionPayload(
       protectedSession.encryptedPayload,

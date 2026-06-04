@@ -95,12 +95,25 @@ describe("SaveUnlockedVaultSessionUseCase", () => {
       session: ctx.session,
     });
 
-    expect(ctx.ports.saved.unlockedVaultSessionMaterial?.vaultId).toBe(
-      ctx.values.vaultId,
-    );
+    expect(ctx.ports.ids.generateId).not.toHaveBeenCalled();
     expect(
-      ctx.ports.saved.unlockedVaultSessionMaterial?.sourceSnapshotRevision,
-    ).toBe(7);
+      ctx.ports.crypto.generateUnlockedVaultSessionPayloadKey,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.encryptedUnlockedVaultSessionPayload).toEqual({
+      sessionId: "active-session-id",
+      vaultId: ctx.values.vaultId,
+      sourceSnapshotRevision: 7,
+      content: ctx.values.encryptedUnlockedVaultSessionPayload,
+    });
+    expect(ctx.ports.saved.unlockedVaultSessionMaterial).toEqual({
+      sessionId: "active-session-id",
+      vaultId: ctx.values.vaultId,
+      sourceSnapshotRevision: 7,
+      deviceId: ctx.values.deviceId,
+      vaultMasterKey: ctx.values.vaultMasterKey,
+      devicePrivateSignKey: ctx.values.devicePrivateSignKey,
+      payloadKey: ctx.values.unlockedVaultSessionPayloadKey,
+    });
   });
 
   it("rejects saving a different vault while another vault is active", async () => {
@@ -146,7 +159,7 @@ describe("SaveUnlockedVaultSessionUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("saves encrypted payload before session material", async () => {
+  it("saves encrypted payload before session material for a new session", async () => {
     const ctx = createContext();
 
     await ctx.useCase.execute({
@@ -162,6 +175,27 @@ describe("SaveUnlockedVaultSessionUseCase", () => {
       vi.mocked(
         ctx.ports.unlockedVaultSessionMaterialRepository
           .saveUnlockedVaultSessionMaterial,
+      ).mock.invocationCallOrder[0],
+    );
+  });
+
+  it("saves session material before encrypted payload for an active session", async () => {
+    const ctx = createContext();
+    ctx.ports.saved.unlockedVaultSessionMaterial = createActiveMaterial(ctx);
+
+    await ctx.useCase.execute({
+      session: ctx.session,
+    });
+
+    expect(
+      vi.mocked(
+        ctx.ports.unlockedVaultSessionMaterialRepository
+          .saveUnlockedVaultSessionMaterial,
+      ).mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      vi.mocked(
+        ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
+          .saveEncryptedUnlockedVaultSessionPayload,
       ).mock.invocationCallOrder[0],
     );
   });

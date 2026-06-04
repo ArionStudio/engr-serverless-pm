@@ -93,7 +93,7 @@ describe("CommitUnlockedVaultSessionUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("does not clear the active session after an invalid-session repository error", async () => {
+  it("clears the active session after an invalid-session save error", async () => {
     const ctx = createContext();
     const error = new UnlockedVaultSessionInvalidError("payload mismatch");
 
@@ -110,7 +110,7 @@ describe("CommitUnlockedVaultSessionUseCase", () => {
 
     expect(
       ctx.ports.sessionUseCases.removeUnlockedVaultSession.execute,
-    ).not.toHaveBeenCalled();
+    ).toHaveBeenCalled();
   });
 
   it("preserves the session commit error when cleanup also fails", async () => {

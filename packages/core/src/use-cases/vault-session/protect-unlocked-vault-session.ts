@@ -3,11 +3,16 @@ import type { IdPort } from "../../ports/system/id.port";
 import type {
   ProtectedUnlockedVaultSession,
   UnlockedVaultSession,
+  UnlockedVaultSessionMaterial,
   UnlockedVaultSessionPayloadEncryptionContext,
 } from "../../domain/vault/unlocked-vault-session";
 
 export type ProtectUnlockedVaultSessionCommandParams = {
   readonly session: UnlockedVaultSession;
+  readonly activeMaterial?: Pick<
+    UnlockedVaultSessionMaterial,
+    "sessionId" | "payloadKey"
+  >;
 };
 
 export class ProtectUnlockedVaultSessionUseCase {
@@ -22,9 +27,11 @@ export class ProtectUnlockedVaultSessionUseCase {
   async execute(
     params: ProtectUnlockedVaultSessionCommandParams,
   ): Promise<ProtectedUnlockedVaultSession> {
-    const sessionId = await this.ids.generateId();
+    const sessionId =
+      params.activeMaterial?.sessionId ?? (await this.ids.generateId());
     const payloadKey =
-      await this.crypto.generateUnlockedVaultSessionPayloadKey();
+      params.activeMaterial?.payloadKey ??
+      (await this.crypto.generateUnlockedVaultSessionPayloadKey());
     const { unlockedVault, sourceSnapshotRevision } = params.session;
     const context: UnlockedVaultSessionPayloadEncryptionContext = {
       sessionId,

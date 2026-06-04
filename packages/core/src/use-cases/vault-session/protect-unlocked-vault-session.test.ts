@@ -74,4 +74,38 @@ describe("ProtectUnlockedVaultSessionUseCase", () => {
       },
     });
   });
+
+  it("reuses active session material when protecting an existing session", async () => {
+    const ctx = createContext();
+
+    const result = await ctx.useCase.execute({
+      session: ctx.session,
+      activeMaterial: {
+        sessionId: "active-session-id",
+        payloadKey: ctx.values.unlockedVaultSessionPayloadKey,
+      },
+    });
+
+    const context = {
+      sessionId: "active-session-id",
+      vaultId: ctx.values.vaultId,
+      sourceSnapshotRevision: 7,
+    };
+
+    expect(ctx.ports.ids.generateId).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.crypto.generateUnlockedVaultSessionPayloadKey,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.crypto.encryptUnlockedVaultSessionPayload,
+    ).toHaveBeenCalledWith(
+      {
+        vault: ctx.session.unlockedVault.vault,
+      },
+      ctx.values.unlockedVaultSessionPayloadKey,
+      context,
+    );
+    expect(result.material.sessionId).toBe("active-session-id");
+    expect(result.encryptedPayload.sessionId).toBe("active-session-id");
+  });
 });

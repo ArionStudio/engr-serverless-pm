@@ -1,8 +1,5 @@
 import type { UnlockedVault } from "../../domain/vault/unlocked-vault";
-import {
-  ActiveUnlockedVaultMismatchError,
-  UnlockedVaultSessionInvalidError,
-} from "../__errors/vault-session.errors";
+import { ActiveUnlockedVaultMismatchError } from "../__errors/vault-session.errors";
 import type { RemoveUnlockedVaultSessionUseCase } from "./remove-unlocked-vault-session";
 import type { SaveUnlockedVaultSessionUseCase } from "./save-unlocked-vault-session";
 
@@ -49,9 +46,6 @@ export class CommitUnlockedVaultSessionUseCase {
   }
 
   private shouldCleanupAfterCommitFailure(error: unknown): boolean {
-    return !(
-      error instanceof ActiveUnlockedVaultMismatchError ||
-      error instanceof UnlockedVaultSessionInvalidError
-    );
+    return !(error instanceof ActiveUnlockedVaultMismatchError);
   }
 }

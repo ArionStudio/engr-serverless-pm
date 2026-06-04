@@ -14,24 +14,7 @@ export class RemoveUnlockedVaultSessionUseCase {
   }
 
   async execute(): Promise<void> {
-    let materialRemoveError: unknown;
-
-    try {
-      await this.materialRepository.removeUnlockedVaultSessionMaterial();
-    } catch (error) {
-      materialRemoveError = error;
-    }
-
-    try {
-      await this.encryptedPayloadRepository.removeEncryptedUnlockedVaultSessionPayload();
-    } catch (error) {
-      if (materialRemoveError === undefined) {
-        throw error;
-      }
-    }
-
-    if (materialRemoveError !== undefined) {
-      throw materialRemoveError;
-    }
+    await this.materialRepository.removeUnlockedVaultSessionMaterial();
+    await this.encryptedPayloadRepository.removeEncryptedUnlockedVaultSessionPayload();
   }
 }
