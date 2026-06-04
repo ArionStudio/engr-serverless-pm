@@ -1,5 +1,5 @@
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
-import { VaultMustBeUnlockedForLocalDeletionError } from "../__errors/delete-local-vault.errors";
+import { VaultMustBeUnlockedForLocalDeletionError } from "../../application/errors/delete-local-vault.errors";
 import type { GetUnlockedVaultSessionService } from "../../application/vault-session/get-unlocked-vault-session.service";
 import type { RemoveUnlockedVaultSessionService } from "../../application/vault-session/remove-unlocked-vault-session.service";
 

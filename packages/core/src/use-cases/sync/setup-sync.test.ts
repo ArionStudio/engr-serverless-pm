@@ -5,8 +5,8 @@ import {
   createPersistUnlockedVaultServiceMock,
   createUnlockedVaultWithEntries,
 } from "../../__tests__/fixtures/vault-entries";
-import { InvalidSyncConfigError } from "../__errors/sync.errors";
-import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
+import { InvalidSyncConfigError } from "../../application/errors/sync.errors";
+import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
 import { CommitUnlockedVaultSessionService } from "../../application/vault-session/commit-unlocked-vault-session.service";
 import { SetupSyncUseCase } from "./setup-sync";
 

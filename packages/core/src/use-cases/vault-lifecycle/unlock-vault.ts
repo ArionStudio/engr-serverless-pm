@@ -11,15 +11,15 @@ import type { IdPort } from "../../ports/system/id.port";
 import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import type { VaultLockTaskRepositoryPort } from "../../ports/vault/vault-lock-task-repository.port";
-import { UnsupportedAlgorithmSuiteError } from "../__errors/algorithm-suite.errors";
+import { UnsupportedAlgorithmSuiteError } from "../../application/errors/algorithm-suite.errors";
 import {
   DeviceAccessMaterialNotFoundError,
   DeviceKeySlotNotFoundError,
   VaultSnapshotNotFoundError,
   VaultSnapshotSignatureVerificationFailedError,
   VaultSnapshotSignerNotTrustedError,
-} from "../__errors/unlock-vault.errors";
-import { InvalidVaultLockDelayError } from "../__errors/vault-session.errors";
+} from "../../application/errors/unlock-vault.errors";
+import { InvalidVaultLockDelayError } from "../../application/errors/vault-session.errors";
 import type { AssertUnlockedVaultSessionCanActivateService } from "../../application/vault-session/assert-unlocked-vault-session-can-activate.service";
 import type { CommitUnlockedVaultSessionService } from "../../application/vault-session/commit-unlocked-vault-session.service";
 

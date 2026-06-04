@@ -5,7 +5,7 @@ import { createUnlockedVaultWithEntries } from "../../__tests__/fixtures/vault-e
 import {
   ActiveUnlockedVaultMismatchError,
   UnlockedVaultSessionInvalidError,
-} from "../../use-cases/__errors/vault-session.errors";
+} from "../errors/vault-session.errors";
 import { CommitUnlockedVaultSessionService } from "./commit-unlocked-vault-session.service";
 
 function createContext() {

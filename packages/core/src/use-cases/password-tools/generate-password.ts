@@ -11,7 +11,7 @@ import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import {
   InvalidGeneratedPasswordSettingsError,
   PasswordGenerationImpossibleError,
-} from "../__errors/generate-password.errors";
+} from "../../application/errors/generate-password.errors";
 
 export type GeneratePasswordCommandParams = Partial<GeneratedPasswordSettings>;
 

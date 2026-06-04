@@ -6,9 +6,9 @@ import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { IdPort } from "../../ports/system/id.port";
 import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard/clipboard-clear-task-repository.port";
 import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
-import { InvalidClipboardClearDelayError } from "../__errors/clipboard.errors";
-import { PasswordEntryNotFoundError } from "../__errors/vault-entry.errors";
-import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
+import { InvalidClipboardClearDelayError } from "../../application/errors/clipboard.errors";
+import { PasswordEntryNotFoundError } from "../../application/errors/vault-entry.errors";
+import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
 import type { GetUnlockedVaultSessionService } from "../../application/vault-session/get-unlocked-vault-session.service";
 import type { ClearClipboardTaskUseCase } from "./clear-clipboard-task";
 

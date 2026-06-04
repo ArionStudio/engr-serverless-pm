@@ -1,5 +1,5 @@
 import type { UnlockedVault } from "../../domain/vault/unlocked-vault";
-import { ActiveUnlockedVaultMismatchError } from "../../use-cases/__errors/vault-session.errors";
+import { ActiveUnlockedVaultMismatchError } from "../errors/vault-session.errors";
 import type { RemoveUnlockedVaultSessionService } from "./remove-unlocked-vault-session.service";
 import type { SaveUnlockedVaultSessionService } from "./save-unlocked-vault-session.service";
 

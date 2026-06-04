@@ -3,7 +3,7 @@ import { generatedUsernameSettingsSchema } from "../../domain/password-tools/gen
 import type { GeneratedUsernameSettings } from "../../domain/password-tools/generated-username.type";
 import { generateUsernameValue } from "../../domain/password-tools/generated-username.utils";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
-import { InvalidGeneratedUsernameSettingsError } from "../__errors/generate-username.errors";
+import { InvalidGeneratedUsernameSettingsError } from "../../application/errors/generate-username.errors";
 
 export type GenerateUsernameCommandParams = Partial<GeneratedUsernameSettings>;
 

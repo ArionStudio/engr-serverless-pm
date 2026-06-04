@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import type { UnlockedVaultSessionMaterial } from "../../domain/vault/unlocked-vault-session";
-import { ActiveUnlockedVaultMismatchError } from "../../use-cases/__errors/vault-session.errors";
+import { ActiveUnlockedVaultMismatchError } from "../errors/vault-session.errors";
 import { AssertUnlockedVaultSessionCanActivateService } from "./assert-unlocked-vault-session-can-activate.service";
 
 function createContext() {

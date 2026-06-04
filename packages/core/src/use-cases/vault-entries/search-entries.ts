@@ -3,8 +3,8 @@ import { searchEntryQuerySchema } from "../../domain/entry/search-entry-query.sc
 import type { SearchEntryQuery } from "../../domain/entry/search-entry-query.type";
 import { entryMatchesSearchQuery } from "../../domain/entry/search-entry-query.utils";
 import type { VisiblePasswordEntryFields } from "../../domain/entry/password-entry.type";
-import { InvalidSearchEntryQueryError } from "../__errors/vault-entry.errors";
-import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
+import { InvalidSearchEntryQueryError } from "../../application/errors/vault-entry.errors";
+import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
 import type { GetUnlockedVaultSessionService } from "../../application/vault-session/get-unlocked-vault-session.service";
 
 export type SearchEntriesCommandParams = {

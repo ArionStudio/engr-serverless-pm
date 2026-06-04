@@ -11,8 +11,8 @@ import {
 import {
   InvalidPasswordEntryError,
   PasswordEntryNotFoundError,
-} from "../__errors/vault-entry.errors";
-import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
+} from "../../application/errors/vault-entry.errors";
+import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
 import { CommitUnlockedVaultSessionService } from "../../application/vault-session/commit-unlocked-vault-session.service";
 import { UpdateEntryUseCase } from "./update-entry";
 

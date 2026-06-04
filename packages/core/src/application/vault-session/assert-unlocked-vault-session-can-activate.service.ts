@@ -1,5 +1,5 @@
 import type { UnlockedVaultSessionMaterialRepositoryPort } from "../../ports/vault/unlocked-vault-session-material-repository.port";
-import { ActiveUnlockedVaultMismatchError } from "../../use-cases/__errors/vault-session.errors";
+import { ActiveUnlockedVaultMismatchError } from "../errors/vault-session.errors";
 
 export class AssertUnlockedVaultSessionCanActivateService {
   private readonly materialRepository: UnlockedVaultSessionMaterialRepositoryPort;

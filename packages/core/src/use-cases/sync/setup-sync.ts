@@ -1,7 +1,7 @@
 import type { SyncConfig } from "../../domain/sync/sync-config.type";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
-import { InvalidSyncConfigError } from "../__errors/sync.errors";
-import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
+import { InvalidSyncConfigError } from "../../application/errors/sync.errors";
+import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
 import type { CommitUnlockedVaultSessionService } from "../../application/vault-session/commit-unlocked-vault-session.service";
 import type { GetUnlockedVaultSessionService } from "../../application/vault-session/get-unlocked-vault-session.service";
 import type { PersistUnlockedVaultService } from "../../application/vault-snapshots/persist-unlocked-vault.service";

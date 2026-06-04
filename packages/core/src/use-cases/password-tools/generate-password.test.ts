@@ -5,7 +5,7 @@ import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import {
   InvalidGeneratedPasswordSettingsError,
   PasswordGenerationImpossibleError,
-} from "../__errors/generate-password.errors";
+} from "../../application/errors/generate-password.errors";
 import { GeneratePasswordUseCase } from "./generate-password";
 
 function randomBytesFromUint32(value: number): RandomBytes {

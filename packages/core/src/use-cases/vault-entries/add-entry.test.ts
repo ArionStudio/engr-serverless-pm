@@ -5,8 +5,8 @@ import {
   createPersistUnlockedVaultServiceMock,
   saveUnlockedVaultWithEntries,
 } from "../../__tests__/fixtures/vault-entries";
-import { InvalidPasswordEntryError } from "../__errors/vault-entry.errors";
-import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
+import { InvalidPasswordEntryError } from "../../application/errors/vault-entry.errors";
+import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
 import { CommitUnlockedVaultSessionService } from "../../application/vault-session/commit-unlocked-vault-session.service";
 import { AddEntryUseCase } from "./add-entry";
 

@@ -8,12 +8,12 @@ import {
 } from "../../__tests__/fixtures/vault-entries";
 import { CURRENT_ALGORITHM_SUITE } from "../../domain/crypto/algorithm-suite.const";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
-import { UnsupportedAlgorithmSuiteError } from "../../use-cases/__errors/algorithm-suite.errors";
+import { UnsupportedAlgorithmSuiteError } from "../errors/algorithm-suite.errors";
 import {
   VaultSnapshotNotFoundError,
   VaultSnapshotSignerNotTrustedError,
-} from "../../use-cases/__errors/unlock-vault.errors";
-import { PersistedVaultMismatchError } from "../../use-cases/__errors/vault-snapshot.errors";
+} from "../errors/unlock-vault.errors";
+import { PersistedVaultMismatchError } from "../errors/vault-snapshot.errors";
 import { PersistUnlockedVaultService } from "./persist-unlocked-vault.service";
 
 describe("PersistUnlockedVaultService", () => {

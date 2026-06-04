@@ -8,8 +8,8 @@ import {
   secondPasswordEntry,
   standardPasswordEntries,
 } from "../../__tests__/fixtures/vault-entries";
-import { PasswordEntryNotFoundError } from "../__errors/vault-entry.errors";
-import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
+import { PasswordEntryNotFoundError } from "../../application/errors/vault-entry.errors";
+import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
 import { CommitUnlockedVaultSessionService } from "../../application/vault-session/commit-unlocked-vault-session.service";
 import { RemoveEntryUseCase } from "./remove-entry";
 

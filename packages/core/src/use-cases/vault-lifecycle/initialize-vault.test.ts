@@ -3,7 +3,7 @@ import { CURRENT_ALGORITHM_SUITE } from "../../domain/crypto/algorithm-suite.con
 import type { LocalKeysPayload } from "../../domain/local-protection/local-protection.type";
 import type { Vault } from "../../domain/vault/vault";
 import { createInitializeVaultTestContext } from "../../__tests__/fixtures/initialize-vault";
-import { ActiveUnlockedVaultMismatchError } from "../__errors/vault-session.errors";
+import { ActiveUnlockedVaultMismatchError } from "../../application/errors/vault-session.errors";
 
 describe("InitializeVaultUseCase", () => {
   it("initializes an empty vault and persists local, snapshot, and unlocked state", async () => {

@@ -4,8 +4,8 @@ import { sanitizeEntryUrl } from "../../domain/entry/sanitized-entry-url.utils";
 import {
   InvalidPasswordEntryError,
   PasswordEntryNotFoundError,
-} from "../__errors/vault-entry.errors";
-import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
+} from "../../application/errors/vault-entry.errors";
+import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
 import type { CommitUnlockedVaultSessionService } from "../../application/vault-session/commit-unlocked-vault-session.service";
 import type { GetUnlockedVaultSessionService } from "../../application/vault-session/get-unlocked-vault-session.service";
 import type { PersistUnlockedVaultService } from "../../application/vault-snapshots/persist-unlocked-vault.service";
