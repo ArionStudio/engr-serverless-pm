@@ -105,6 +105,27 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
     ).resolves.toBeNull();
   });
 
+  it("names the malformed field when stored material is corrupted", async () => {
+    const { storageArea } = createStorageArea({
+      [UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY]: {
+        sessionId: "session-id",
+        vaultId: "vault-id",
+        sourceSnapshotRevision: 7,
+        deviceId: "device-id",
+        vaultMasterKey: "AQID",
+        devicePrivateSignKey: "BAUG",
+        payloadKey: null,
+      },
+    });
+    const repository = new ChromeUnlockedVaultSessionMaterialRepository(
+      storageArea,
+    );
+
+    await expect(repository.getUnlockedVaultSessionMaterial()).rejects.toThrow(
+      'Unlocked vault session material field "payloadKey" is malformed.',
+    );
+  });
+
   it("removes session material", async () => {
     const { records, storageArea } = createStorageArea({
       [UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY]: {

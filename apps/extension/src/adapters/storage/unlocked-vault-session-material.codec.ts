@@ -89,7 +89,9 @@ function assertStringField(
   fieldName: string,
 ): void {
   if (typeof record[fieldName] !== "string") {
-    throw new Error(`Unlocked vault session material field is malformed.`);
+    throw new Error(
+      `Unlocked vault session material field "${fieldName}" is malformed.`,
+    );
   }
 }
 
@@ -98,7 +100,9 @@ function assertNumberField(
   fieldName: string,
 ): void {
   if (typeof record[fieldName] !== "number") {
-    throw new Error(`Unlocked vault session material field is malformed.`);
+    throw new Error(
+      `Unlocked vault session material field "${fieldName}" is malformed.`,
+    );
   }
 }
 
