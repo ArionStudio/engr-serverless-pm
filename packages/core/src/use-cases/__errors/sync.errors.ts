@@ -1,6 +1,1 @@
-export class InvalidSyncConfigError extends Error {
-  constructor(cause: unknown) {
-    super("Sync configuration is invalid.", { cause });
-    this.name = "InvalidSyncConfigError";
-  }
-}
+export * from "../../application/errors/sync.errors";

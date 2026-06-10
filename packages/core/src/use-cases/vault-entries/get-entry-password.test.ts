@@ -5,8 +5,8 @@ import {
   saveUnlockedVaultWithEntries,
   singlePasswordEntry,
 } from "../../__tests__/fixtures/vault-entries";
-import { PasswordEntryNotFoundError } from "../__errors/vault-entry.errors";
-import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
+import { PasswordEntryNotFoundError } from "../../application/errors/vault-entry.errors";
+import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
 import { GetEntryPasswordUseCase } from "./get-entry-password";
 
 function createContext() {
@@ -19,7 +19,9 @@ function createContext() {
     values,
     ports,
     saved: ports.saved,
-    useCase: new GetEntryPasswordUseCase(ports.unlockedVaultRepository),
+    useCase: new GetEntryPasswordUseCase(
+      ports.sessionServices.getUnlockedVaultSession,
+    ),
   };
 }
 
@@ -39,7 +41,7 @@ describe("GetEntryPasswordUseCase", () => {
 
   it("fails when the target vault is not unlocked", async () => {
     const ctx = createContext();
-    ctx.saved.unlockedVault = undefined;
+    ctx.saved.unlockedVaultSession = undefined;
 
     await expect(
       ctx.useCase.execute({

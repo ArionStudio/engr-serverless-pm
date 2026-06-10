@@ -19,12 +19,15 @@ export function createChangeMasterPasswordTestContext() {
   };
 
   ports.saved.deviceAccessMaterial = deviceAccessMaterial;
-  ports.saved.unlockedVault = {
-    vaultId: values.vaultId,
-    deviceId: values.deviceId,
-    vault: values.decryptedVault,
-    vaultMasterKey: values.vaultMasterKey,
-    devicePrivateSignKey: values.devicePrivateSignKey,
+  ports.saved.unlockedVaultSession = {
+    unlockedVault: {
+      vaultId: values.vaultId,
+      deviceId: values.deviceId,
+      vault: values.decryptedVault,
+      vaultMasterKey: values.vaultMasterKey,
+      devicePrivateSignKey: values.devicePrivateSignKey,
+    },
+    sourceSnapshotRevision: 1,
   };
 
   vi.mocked(ports.crypto.generateMasterPasswordSalt)
@@ -37,7 +40,7 @@ export function createChangeMasterPasswordTestContext() {
   const useCase = new ChangeMasterPasswordUseCase(
     ports.crypto,
     ports.vaultLocalRepository,
-    ports.unlockedVaultRepository,
+    ports.sessionServices.getUnlockedVaultSession,
   );
 
   return {

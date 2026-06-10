@@ -1,13 +1,13 @@
 import type { DeviceAccessMaterial } from "../../domain/device/device-access-material";
 import type { RawMasterPassword } from "../../domain/master-password";
-import type { CryptoPort } from "../../ports/crypto.port";
-import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
-import type { VaultLocalRepositoryPort } from "../../ports/vault-local-repository.port";
-import { UnsupportedAlgorithmSuiteError } from "../__errors/algorithm-suite.errors";
+import type { CryptoPort } from "../../ports/crypto/crypto.port";
+import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
+import { UnsupportedAlgorithmSuiteError } from "../../application/errors/algorithm-suite.errors";
 import {
   DeviceAccessMaterialNotFoundForMasterPasswordChangeError,
   VaultMustBeUnlockedForMasterPasswordChangeError,
-} from "../__errors/change-master-password.errors";
+} from "../../application/errors/change-master-password.errors";
+import type { GetUnlockedVaultSessionService } from "../../application/vault-session/get-unlocked-vault-session.service";
 
 export type ChangeMasterPasswordCommandParams = {
   vaultId: string;
@@ -18,20 +18,21 @@ export type ChangeMasterPasswordCommandParams = {
 export class ChangeMasterPasswordUseCase {
   private readonly crypto: CryptoPort;
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
-  private readonly unlockedVaultRepository: UnlockedVaultRepositoryPort;
+  private readonly getUnlockedVaultSession: GetUnlockedVaultSessionService;
 
   constructor(
     crypto: CryptoPort,
     vaultLocalRepository: VaultLocalRepositoryPort,
-    unlockedVaultRepository: UnlockedVaultRepositoryPort,
+    getUnlockedVaultSession: GetUnlockedVaultSessionService,
   ) {
     this.crypto = crypto;
     this.vaultLocalRepository = vaultLocalRepository;
-    this.unlockedVaultRepository = unlockedVaultRepository;
+    this.getUnlockedVaultSession = getUnlockedVaultSession;
   }
 
   async execute(params: ChangeMasterPasswordCommandParams): Promise<void> {
-    const unlockedVault = await this.unlockedVaultRepository.getUnlockedVault();
+    const unlockedVaultSession = await this.getUnlockedVaultSession.get();
+    const unlockedVault = unlockedVaultSession?.unlockedVault;
 
     if (unlockedVault?.vaultId !== params.vaultId) {
       throw new VaultMustBeUnlockedForMasterPasswordChangeError(params.vaultId);

@@ -1,6 +1,6 @@
-import type { DeviceAccessMaterial } from "../domain/device/device-access-material";
-import type { VaultSnapshot } from "../domain/snapshot/vault-snapshot";
-import type { LocalVaultDescriptor } from "../domain/vault/local-vault-descriptor";
+import type { DeviceAccessMaterial } from "../../domain/device/device-access-material";
+import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
+import type { LocalVaultDescriptor } from "../../domain/vault/local-vault-descriptor";
 
 export type InitializedLocalVault = {
   descriptor: LocalVaultDescriptor;

@@ -1,34 +1,39 @@
 import Dexie from "dexie";
 import type { EntityTable } from "dexie";
+import type { EncryptedUnlockedVaultSessionPayload } from "@lfspm/core/domain";
 
-const STORE_NAMES = {
-  VAULT: "",
-  DEVICE_STATE: "",
-  PENDING_SYNC: "",
+export const DATABASE_NAME = "lfspm-extension";
+export const STORAGE_SCHEMA_VERSION = 1;
+
+export const STORE_NAMES = {
+  ENCRYPTED_UNLOCKED_VAULT_SESSION_PAYLOADS:
+    "encryptedUnlockedVaultSessionPayloads",
+} as const;
+
+export const ACTIVE_UNLOCKED_VAULT_SESSION_PAYLOAD_ID = "active";
+
+export type EncryptedUnlockedVaultSessionPayloadRecord =
+  EncryptedUnlockedVaultSessionPayload & {
+    id: typeof ACTIVE_UNLOCKED_VAULT_SESSION_PAYLOAD_ID;
+  };
+
+export type VaultManagerDb = Dexie & {
+  encryptedUnlockedVaultSessionPayloads: EntityTable<
+    EncryptedUnlockedVaultSessionPayloadRecord,
+    "id"
+  >;
 };
 
-const DATABASE_NAME = "";
-const STORAGE_SCHEMA_VERSION = 1;
+export function createVaultManagerDb(
+  databaseName = DATABASE_NAME,
+): VaultManagerDb {
+  const db = new Dexie(databaseName) as VaultManagerDb;
 
-type EncryptedVaultRecord = {
-  vaultId: "";
-};
-type LocalDeviceState = { deviceId: "" };
-type PendingSyncItem = { id: "" };
+  db.version(STORAGE_SCHEMA_VERSION).stores({
+    [STORE_NAMES.ENCRYPTED_UNLOCKED_VAULT_SESSION_PAYLOADS]: "id",
+  });
 
-type VaultManagerDb = Dexie & {
-  [STORE_NAMES.VAULT]: EntityTable<EncryptedVaultRecord, "vaultId">;
-  [STORE_NAMES.DEVICE_STATE]: EntityTable<LocalDeviceState, "deviceId">;
-  [STORE_NAMES.PENDING_SYNC]: EntityTable<PendingSyncItem, "id">;
-};
+  return db;
+}
 
-const db = new Dexie(DATABASE_NAME) as VaultManagerDb;
-
-db.version(STORAGE_SCHEMA_VERSION).stores({
-  [STORE_NAMES.VAULT]: "vaultId",
-  [STORE_NAMES.DEVICE_STATE]: "deviceId",
-  [STORE_NAMES.PENDING_SYNC]: "id, timestamp",
-});
-
-export { db };
-export type { VaultManagerDb };
+export const db = createVaultManagerDb();

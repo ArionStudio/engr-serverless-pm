@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
-import { createUnlockedVaultWithEntries } from "../../__tests__/fixtures/vault-entries";
+import { createUnlockedVaultSessionWithEntries } from "../../__tests__/fixtures/vault-entries";
 import { GetVaultSessionStatusUseCase } from "./get-vault-session-status";
 
 describe("GetVaultSessionStatusUseCase", () => {
@@ -9,7 +9,7 @@ describe("GetVaultSessionStatusUseCase", () => {
     const values = createCoreTestValues();
     const ports = createCoreTestPorts(values);
     const useCase = new GetVaultSessionStatusUseCase(
-      ports.unlockedVaultRepository,
+      ports.unlockedVaultSessionMaterialRepository,
     );
 
     return {
@@ -32,7 +32,10 @@ describe("GetVaultSessionStatusUseCase", () => {
 
   it("returns unlocked status for the active vault", async () => {
     const ctx = createContext();
-    ctx.saved.unlockedVault = createUnlockedVaultWithEntries(ctx.values, []);
+    ctx.saved.unlockedVaultSession = createUnlockedVaultSessionWithEntries(
+      ctx.values,
+      [],
+    );
 
     const result = await ctx.useCase.execute();
 
@@ -40,14 +43,22 @@ describe("GetVaultSessionStatusUseCase", () => {
       status: "unlocked",
       vaultId: ctx.values.vaultId,
     });
+    expect(
+      ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
+        .getEncryptedUnlockedVaultSessionPayload,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.crypto.decryptUnlockedVaultSessionPayload,
+    ).not.toHaveBeenCalled();
   });
 
-  it("bubbles unlocked vault repository errors", async () => {
+  it("bubbles session material repository errors", async () => {
     const ctx = createContext();
     const error = new Error("session read failed");
 
     vi.mocked(
-      ctx.ports.unlockedVaultRepository.getUnlockedVault,
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .getUnlockedVaultSessionMaterial,
     ).mockRejectedValueOnce(error);
 
     await expect(ctx.useCase.execute()).rejects.toThrow(error);

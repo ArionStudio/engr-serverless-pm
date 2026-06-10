@@ -1,10 +1,10 @@
 import type {
   ClipboardClearTask,
   ClipboardClearTaskRepositoryPort,
-} from "../../ports/clipboard-clear-task-repository.port";
-import type { ClipboardPort } from "../../ports/clipboard.port";
-import type { ClockPort } from "../../ports/clock.port";
-import type { CryptoPort } from "../../ports/crypto.port";
+} from "../../ports/clipboard/clipboard-clear-task-repository.port";
+import type { ClipboardPort } from "../../ports/clipboard/clipboard.port";
+import type { ClockPort } from "../../ports/system/clock.port";
+import type { CryptoPort } from "../../ports/crypto/crypto.port";
 
 export type ClearClipboardTaskCommandParams = {
   actionId?: string;

@@ -1,4 +1,4 @@
-import type { ScheduledTask } from "../domain/scheduled-task/scheduled-task.type";
+import type { ScheduledTask } from "../../domain/scheduled-task/scheduled-task.type";
 
 export type ScheduleTaskParams<TTask extends ScheduledTask = ScheduledTask> = {
   task: TTask;

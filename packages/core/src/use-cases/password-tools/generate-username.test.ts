@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import type { RandomBytes } from "../../domain/crypto/brand-keys";
-import { InvalidGeneratedUsernameSettingsError } from "../__errors/generate-username.errors";
+import { InvalidGeneratedUsernameSettingsError } from "../../application/errors/generate-username.errors";
 import { GenerateUsernameUseCase } from "./generate-username";
 
 function randomBytesFromUint32(value: number): RandomBytes {

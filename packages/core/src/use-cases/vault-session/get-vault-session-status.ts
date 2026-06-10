@@ -1,4 +1,4 @@
-import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
+import type { UnlockedVaultSessionMaterialRepositoryPort } from "../../ports/vault/unlocked-vault-session-material-repository.port";
 
 export type GetVaultSessionStatusResult =
   | {
@@ -10,16 +10,17 @@ export type GetVaultSessionStatusResult =
     };
 
 export class GetVaultSessionStatusUseCase {
-  private readonly unlockedVaultRepository: UnlockedVaultRepositoryPort;
+  private readonly materialRepository: UnlockedVaultSessionMaterialRepositoryPort;
 
-  constructor(unlockedVaultRepository: UnlockedVaultRepositoryPort) {
-    this.unlockedVaultRepository = unlockedVaultRepository;
+  constructor(materialRepository: UnlockedVaultSessionMaterialRepositoryPort) {
+    this.materialRepository = materialRepository;
   }
 
   async execute(): Promise<GetVaultSessionStatusResult> {
-    const unlockedVault = await this.unlockedVaultRepository.getUnlockedVault();
+    const material =
+      await this.materialRepository.getUnlockedVaultSessionMaterial();
 
-    if (unlockedVault === null) {
+    if (material === null) {
       return {
         status: "locked",
       };
@@ -27,7 +28,7 @@ export class GetVaultSessionStatusUseCase {
 
     return {
       status: "unlocked",
-      vaultId: unlockedVault.vaultId,
+      vaultId: material.vaultId,
     };
   }
 }

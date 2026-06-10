@@ -10,13 +10,14 @@ import type {
 import type { LocalVaultDescriptor } from "../../domain/vault/local-vault-descriptor";
 import type { UnlockedVault } from "../../domain/vault/unlocked-vault";
 import type { Vault } from "../../domain/vault/vault";
-import type { Bip39Port } from "../../ports/bip39.port";
-import type { ClockPort } from "../../ports/clock.port";
-import type { CryptoPort } from "../../ports/crypto.port";
-import type { IdPort } from "../../ports/id.port";
-import type { VaultDisplayNamePort } from "../../ports/vault-display-name.port";
-import type { UnlockedVaultRepositoryPort } from "../../ports/unlocked-vault-repository.port";
-import type { VaultLocalRepositoryPort } from "../../ports/vault-local-repository.port";
+import type { Bip39Port } from "../../ports/crypto/bip39.port";
+import type { ClockPort } from "../../ports/system/clock.port";
+import type { CryptoPort } from "../../ports/crypto/crypto.port";
+import type { IdPort } from "../../ports/system/id.port";
+import type { VaultDisplayNamePort } from "../../ports/vault/vault-display-name.port";
+import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
+import type { AssertUnlockedVaultSessionCanActivateService } from "../../application/vault-session/assert-unlocked-vault-session-can-activate.service";
+import type { CommitUnlockedVaultSessionService } from "../../application/vault-session/commit-unlocked-vault-session.service";
 
 export type InitializeVaultCommandParams = {
   masterPassword: RawMasterPassword;
@@ -32,7 +33,8 @@ export class InitializeVaultUseCase {
   private readonly crypto: CryptoPort;
   private readonly bip39: Bip39Port;
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
-  private readonly unlockedVaultRepository: UnlockedVaultRepositoryPort;
+  private readonly assertUnlockedVaultSessionCanActivate: AssertUnlockedVaultSessionCanActivateService;
+  private readonly commitUnlockedVaultSession: CommitUnlockedVaultSessionService;
   private readonly ids: IdPort;
   private readonly clock: ClockPort;
   private readonly vaultDisplayName: VaultDisplayNamePort;
@@ -41,7 +43,8 @@ export class InitializeVaultUseCase {
     crypto: CryptoPort,
     bip39: Bip39Port,
     vaultLocalRepository: VaultLocalRepositoryPort,
-    unlockedVaultRepository: UnlockedVaultRepositoryPort,
+    assertUnlockedVaultSessionCanActivate: AssertUnlockedVaultSessionCanActivateService,
+    commitUnlockedVaultSession: CommitUnlockedVaultSessionService,
     ids: IdPort,
     clock: ClockPort,
     vaultDisplayName: VaultDisplayNamePort,
@@ -49,7 +52,9 @@ export class InitializeVaultUseCase {
     this.crypto = crypto;
     this.bip39 = bip39;
     this.vaultLocalRepository = vaultLocalRepository;
-    this.unlockedVaultRepository = unlockedVaultRepository;
+    this.assertUnlockedVaultSessionCanActivate =
+      assertUnlockedVaultSessionCanActivate;
+    this.commitUnlockedVaultSession = commitUnlockedVaultSession;
     this.ids = ids;
     this.clock = clock;
     this.vaultDisplayName = vaultDisplayName;
@@ -59,6 +64,8 @@ export class InitializeVaultUseCase {
     initializeVaultCommandParams: InitializeVaultCommandParams,
   ): Promise<InitializeVaultResult> {
     const vaultId = await this.ids.generateId();
+    await this.assertUnlockedVaultSessionCanActivate.assertCanActivate(vaultId);
+
     const deviceId = await this.ids.generateId();
     const timestamp = this.clock.now();
     const vaultDisplayName =
@@ -202,7 +209,20 @@ export class InitializeVaultUseCase {
       deviceAccessMaterial,
       snapshot: vaultSnapshot,
     });
-    await this.unlockedVaultRepository.saveUnlockedVault(unlockedVault);
+    try {
+      await this.commitUnlockedVaultSession.commit(
+        unlockedVault,
+        vaultSnapshot.metadata.revision,
+      );
+    } catch (error) {
+      try {
+        await this.vaultLocalRepository.removePersistedLocalVault(vaultId);
+      } catch {
+        // Preserve the session activation failure as the root cause.
+      }
+
+      throw error;
+    }
 
     return {
       recoveryMnemonicKey,
