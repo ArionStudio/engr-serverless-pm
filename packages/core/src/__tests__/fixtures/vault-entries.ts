@@ -3,7 +3,7 @@ import type { PasswordEntry } from "../../domain/entry/password-entry.type";
 import type { Tag } from "../../domain/entry/tag.type";
 import type { UnlockedVault } from "../../domain/vault/unlocked-vault";
 import type { UnlockedVaultSession } from "../../domain/vault/unlocked-vault-session";
-import type { PersistUnlockedVaultService } from "../../application/vault-snapshots/persist-unlocked-vault.service";
+import type { VaultSnapshotService } from "../../application/vault-snapshots/vault-snapshot.service";
 import type { CoreTestPorts } from "./ports";
 import type { CoreTestValues } from "./values";
 
@@ -13,6 +13,9 @@ export const singlePasswordEntry: PasswordEntry = {
   login: "user@example.com",
   tags: [1],
   sanitizedUrl: "https://example.com/login",
+  versionVector: {
+    "device-id": 1,
+  },
 };
 
 export const firstPasswordEntry: PasswordEntry = {
@@ -21,6 +24,9 @@ export const firstPasswordEntry: PasswordEntry = {
   login: "first@example.com",
   tags: [1],
   sanitizedUrl: "https://example.com/login",
+  versionVector: {
+    "device-id": 1,
+  },
 };
 
 export const secondPasswordEntry: PasswordEntry = {
@@ -29,16 +35,25 @@ export const secondPasswordEntry: PasswordEntry = {
   login: "second@example.com",
   tags: [2],
   sanitizedUrl: "https://service.example.com/account",
+  versionVector: {
+    "device-id": 1,
+  },
 };
 
 export const workTag: Tag = {
   id: 1,
   name: "Work",
+  versionVector: {
+    "device-id": 1,
+  },
 };
 
 export const personalTag: Tag = {
   id: 2,
   name: "Personal",
+  versionVector: {
+    "device-id": 1,
+  },
 };
 
 export const standardPasswordEntries = [
@@ -91,14 +106,14 @@ export function saveUnlockedVaultWithEntries(
   );
 }
 
-export function createPersistUnlockedVaultServiceMock(
+export function createVaultSnapshotServiceMock(
   values: CoreTestValues,
-): PersistUnlockedVaultService {
+): VaultSnapshotService {
   return {
-    persist: vi.fn(async () => ({
+    persistUnlockedVault: vi.fn(async () => ({
       revision: 2,
       revisionTimestamp: values.timestamp + 1,
       deviceId: values.deviceId,
     })),
-  } as unknown as PersistUnlockedVaultService;
+  } as unknown as VaultSnapshotService;
 }

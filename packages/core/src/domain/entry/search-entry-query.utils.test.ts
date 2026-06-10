@@ -8,9 +8,15 @@ import {
 import { entryMatchesSearchQuery } from "./search-entry-query.utils";
 
 const vault: Vault = {
+  versionVector: {
+    "device-id": 1,
+  },
   entries: [firstPasswordEntry, secondPasswordEntry],
-  registeredDevices: [],
+  deletedEntries: [],
+  deviceProfiles: [],
+  deletedDeviceProfiles: [],
   tags: standardVaultTags,
+  deletedTags: [],
 };
 
 describe("entryMatchesSearchQuery", () => {
