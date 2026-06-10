@@ -41,14 +41,25 @@ describe("RandomSamplerService", () => {
     expect(ctx.ports.crypto.generateRandomBytes).toHaveBeenCalledWith(4);
   });
 
-  it("rejects non-positive upper bounds", async () => {
-    const ctx = createContext();
+  it("rejects invalid upper bounds", async () => {
+    const invalidUpperBounds = [
+      0,
+      -1,
+      1.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.MAX_SAFE_INTEGER + 1,
+    ];
 
-    await expect(ctx.service.pickIndex(0)).rejects.toThrow(
-      "Random index upper bound must be positive.",
-    );
+    for (const maxExclusive of invalidUpperBounds) {
+      const ctx = createContext();
 
-    expect(ctx.ports.crypto.generateRandomBytes).not.toHaveBeenCalled();
+      await expect(ctx.service.pickIndex(maxExclusive)).rejects.toThrow(
+        "Random index upper bound must be a positive safe integer.",
+      );
+
+      expect(ctx.ports.crypto.generateRandomBytes).not.toHaveBeenCalled();
+    }
   });
 
   it("retries when sampled value would introduce modulo bias", async () => {

@@ -179,6 +179,10 @@ describe("AddEntryUseCase", () => {
     ).rejects.toThrow("session save failed");
 
     expect(ctx.vaultSnapshot.persistUnlockedVault).toHaveBeenCalled();
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.remove,
+    ).toHaveBeenCalled();
+    expect(ctx.saved.unlockedVaultSession).toBeUndefined();
   });
 
   it("preserves the session commit error", async () => {

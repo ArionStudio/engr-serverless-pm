@@ -215,6 +215,53 @@ describe("vault sync review utils", () => {
     });
   });
 
+  it("does not count trust-only differences as resolvable changes", () => {
+    const localTrustState: VaultSyncTrustState = {
+      trustedDevices: [],
+      keySlots: {
+        deviceSlots: [],
+        recoveryKeySlot: {
+          protectedVaultMasterKey: {
+            wrappedKey: "same" as never,
+            wrappingNonce: "same" as never,
+          },
+        },
+      },
+    };
+    const remoteTrustState: VaultSyncTrustState = {
+      trustedDevices: [
+        {
+          id: "device-b",
+          publicKeys: {
+            signingKey: new ArrayBuffer(1) as never,
+          },
+        },
+      ],
+      keySlots: {
+        deviceSlots: [],
+        recoveryKeySlot: {
+          protectedVaultMasterKey: {
+            wrappedKey: "same" as never,
+            wrappingNonce: "same" as never,
+          },
+        },
+      },
+    };
+
+    const review = createVaultSyncReview(
+      createVault(),
+      createVault(),
+      localTrustState,
+      remoteTrustState,
+    );
+
+    expect(review.hasChanges).toBe(false);
+    expect(review.trustReview).toMatchObject({
+      kind: "device_trust",
+      informational: true,
+    });
+  });
+
   it("applies only explicit resolutions and stamps the resolved local event", () => {
     const localEntry = createEntry("entry-id", { A: 2, B: 1 });
     const remoteEntry = {
@@ -343,5 +390,87 @@ describe("vault sync review utils", () => {
         "A",
       ),
     ).toThrow('Entry "entry-id" must have a sync resolution.');
+  });
+
+  it("rejects duplicate entry resolutions", () => {
+    expect(() =>
+      applyVaultSyncResolution(
+        createVault({ entries: [createEntry("entry-id", { A: 1 })] }),
+        createVault({ entries: [createEntry("entry-id", { A: 2 })] }),
+        {
+          entryResolutions: [
+            {
+              kind: "password_entry",
+              entryId: "entry-id",
+              action: "use_local",
+            },
+            {
+              kind: "password_entry",
+              entryId: "entry-id",
+              action: "use_remote",
+            },
+          ],
+          tagResolutions: [],
+          deviceProfileResolutions: [],
+        },
+        "A",
+      ),
+    ).toThrow('Entry "entry-id" has multiple sync resolutions.');
+  });
+
+  it("rejects duplicate tag resolutions", () => {
+    expect(() =>
+      applyVaultSyncResolution(
+        createVault({ tags: [createTag(1, "Local", { A: 1 })] }),
+        createVault({ tags: [createTag(1, "Remote", { A: 2 })] }),
+        {
+          entryResolutions: [],
+          tagResolutions: [
+            {
+              kind: "tag",
+              tagId: 1,
+              action: "use_local",
+            },
+            {
+              kind: "tag",
+              tagId: 1,
+              action: "use_remote",
+            },
+          ],
+          deviceProfileResolutions: [],
+        },
+        "A",
+      ),
+    ).toThrow('Tag "1" has multiple sync resolutions.');
+  });
+
+  it("rejects duplicate device profile resolutions", () => {
+    expect(() =>
+      applyVaultSyncResolution(
+        createVault({
+          deviceProfiles: [createDeviceProfile("device-a", "Local", { A: 1 })],
+        }),
+        createVault({
+          deviceProfiles: [createDeviceProfile("device-a", "Remote", { A: 2 })],
+        }),
+        {
+          entryResolutions: [],
+          tagResolutions: [],
+          deviceProfileResolutions: [
+            {
+              kind: "device_profile",
+              deviceId: "device-a",
+              action: "use_local",
+            },
+            {
+              kind: "device_profile",
+              deviceId: "device-a",
+              action: "use_remote",
+            },
+          ],
+        },
+        "A",
+      ),
+    ).toThrow('Device profile "device-a" has multiple sync resolutions.');
   });
 });

@@ -362,21 +362,69 @@ describe("UnlockedVaultSessionService", () => {
     ).toHaveBeenCalled();
   });
 
-  it("preserves the commit error when cleanup also fails", async () => {
+  it("does not clean up when commit fails before persistence", async () => {
     const ctx = createContext();
     const error = new Error("encrypt failed");
 
     vi.mocked(
       ctx.ports.crypto.encryptUnlockedVaultSessionPayload,
     ).mockRejectedValueOnce(error);
-    vi.mocked(
-      ctx.ports.unlockedVaultSessionMaterialRepository
-        .removeUnlockedVaultSessionMaterial,
-    ).mockRejectedValueOnce(new Error("cleanup failed"));
 
     await expect(ctx.service.commit(ctx.session.unlockedVault, 7)).rejects.toBe(
       error,
     );
+
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .removeUnlockedVaultSessionMaterial,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
+        .removeEncryptedUnlockedVaultSessionPayload,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("invalidates the session when persisted snapshot commit fails", async () => {
+    const ctx = createContext();
+    const error = new Error("encrypt failed");
+
+    vi.mocked(
+      ctx.ports.crypto.encryptUnlockedVaultSessionPayload,
+    ).mockRejectedValueOnce(error);
+
+    await expect(
+      ctx.service.commitPersistedSnapshot(ctx.session.unlockedVault, 7),
+    ).rejects.toBe(error);
+
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .removeUnlockedVaultSessionMaterial,
+    ).toHaveBeenCalled();
+    expect(
+      ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
+        .removeEncryptedUnlockedVaultSessionPayload,
+    ).toHaveBeenCalled();
+  });
+
+  it("does not invalidate another active vault after persisted snapshot commit mismatch", async () => {
+    const ctx = createContext();
+    ctx.ports.saved.unlockedVaultSessionMaterial = createActiveMaterial(
+      ctx,
+      "other-vault-id",
+    );
+
+    await expect(
+      ctx.service.commitPersistedSnapshot(ctx.session.unlockedVault, 7),
+    ).rejects.toBeInstanceOf(ActiveUnlockedVaultMismatchError);
+
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .removeUnlockedVaultSessionMaterial,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
+        .removeEncryptedUnlockedVaultSessionPayload,
+    ).not.toHaveBeenCalled();
   });
 
   it("removes session material and encrypted payload", async () => {

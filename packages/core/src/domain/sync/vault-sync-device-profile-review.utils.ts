@@ -46,12 +46,20 @@ export function resolveDeviceProfileStates(
   deviceProfileResolutions: readonly VaultSyncDeviceProfileResolution[],
   deviceId: string,
 ): Map<string, VaultSyncDeviceProfileState> {
-  const resolutionById = new Map(
-    deviceProfileResolutions.map((deviceProfileResolution) => [
+  const resolutionById = new Map<string, VaultSyncDeviceProfileResolution>();
+
+  for (const deviceProfileResolution of deviceProfileResolutions) {
+    if (resolutionById.has(deviceProfileResolution.deviceId)) {
+      throw new Error(
+        `Device profile "${deviceProfileResolution.deviceId}" has multiple sync resolutions.`,
+      );
+    }
+
+    resolutionById.set(
       deviceProfileResolution.deviceId,
       deviceProfileResolution,
-    ]),
-  );
+    );
+  }
 
   for (const deviceProfileResolution of deviceProfileResolutions) {
     if (

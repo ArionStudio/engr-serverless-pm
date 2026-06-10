@@ -47,12 +47,17 @@ export function resolveEntryStates(
   entryResolutions: readonly VaultSyncEntryResolution[],
   deviceId: string,
 ): Map<string, VaultSyncEntryState> {
-  const resolutionById = new Map(
-    entryResolutions.map((entryResolution) => [
-      entryResolution.entryId,
-      entryResolution,
-    ]),
-  );
+  const resolutionById = new Map<string, VaultSyncEntryResolution>();
+
+  for (const entryResolution of entryResolutions) {
+    if (resolutionById.has(entryResolution.entryId)) {
+      throw new Error(
+        `Entry "${entryResolution.entryId}" has multiple sync resolutions.`,
+      );
+    }
+
+    resolutionById.set(entryResolution.entryId, entryResolution);
+  }
 
   for (const entryResolution of entryResolutions) {
     if (

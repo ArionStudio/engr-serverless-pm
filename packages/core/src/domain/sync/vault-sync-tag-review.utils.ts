@@ -44,9 +44,17 @@ export function resolveTagStates(
   tagResolutions: readonly VaultSyncTagResolution[],
   deviceId: string,
 ): Map<number, VaultSyncTagState> {
-  const resolutionById = new Map(
-    tagResolutions.map((tagResolution) => [tagResolution.tagId, tagResolution]),
-  );
+  const resolutionById = new Map<number, VaultSyncTagResolution>();
+
+  for (const tagResolution of tagResolutions) {
+    if (resolutionById.has(tagResolution.tagId)) {
+      throw new Error(
+        `Tag "${tagResolution.tagId}" has multiple sync resolutions.`,
+      );
+    }
+
+    resolutionById.set(tagResolution.tagId, tagResolution);
+  }
 
   for (const tagResolution of tagResolutions) {
     if (

@@ -63,7 +63,7 @@ export class RemoveEntryUseCase {
       updatedUnlockedVault,
     );
 
-    await this.unlockedVaultSession.commit(
+    await this.unlockedVaultSession.commitPersistedSnapshot(
       updatedUnlockedVault,
       persistedSnapshot.revision,
     );

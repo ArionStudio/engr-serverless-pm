@@ -125,12 +125,12 @@ export class ResolveSyncConflictUseCase {
       toTrustState(remoteSnapshot),
     );
 
-    if (!review.hasChanges) {
-      throw new SyncResolutionIncompleteError(params.vaultId);
-    }
-
     if (review.trustReview !== undefined) {
       throw new SyncTrustChangeRequiresDeviceTrustFlowError(params.vaultId);
+    }
+
+    if (!review.hasChanges) {
+      throw new SyncResolutionIncompleteError(params.vaultId);
     }
 
     if (
@@ -165,7 +165,7 @@ export class ResolveSyncConflictUseCase {
       updatedUnlockedVault,
     );
 
-    await this.unlockedVaultSession.commit(
+    await this.unlockedVaultSession.commitPersistedSnapshot(
       updatedUnlockedVault,
       persistedSnapshot.revision,
     );

@@ -69,20 +69,21 @@ export class UnlockedVaultSessionService {
     unlockedVault: UnlockedVault,
     sourceSnapshotRevision: number,
   ): Promise<void> {
-    try {
-      await this.save({
-        unlockedVault,
-        sourceSnapshotRevision,
-      });
-    } catch (error) {
-      if (!this.shouldCleanupAfterCommitFailure(error)) {
-        throw error;
-      }
+    await this.save({
+      unlockedVault,
+      sourceSnapshotRevision,
+    });
+  }
 
-      try {
-        await this.remove();
-      } catch {
-        // Preserve the session commit failure as the root cause.
+  async commitPersistedSnapshot(
+    unlockedVault: UnlockedVault,
+    sourceSnapshotRevision: number,
+  ): Promise<void> {
+    try {
+      await this.commit(unlockedVault, sourceSnapshotRevision);
+    } catch (error) {
+      if (!(error instanceof ActiveUnlockedVaultMismatchError)) {
+        await this.removePreservingRootCause();
       }
 
       throw error;
@@ -128,12 +129,17 @@ export class UnlockedVaultSessionService {
       activeMaterial ?? undefined,
     );
 
-    await this.encryptedPayloadRepository.saveEncryptedUnlockedVaultSessionPayload(
-      protectedSession.encryptedPayload,
-    );
-    await this.materialRepository.saveUnlockedVaultSessionMaterial(
-      protectedSession.material,
-    );
+    try {
+      await this.encryptedPayloadRepository.saveEncryptedUnlockedVaultSessionPayload(
+        protectedSession.encryptedPayload,
+      );
+      await this.materialRepository.saveUnlockedVaultSessionMaterial(
+        protectedSession.material,
+      );
+    } catch (error) {
+      await this.removePreservingRootCause();
+      throw error;
+    }
   }
 
   private async protect(
@@ -216,8 +222,12 @@ export class UnlockedVaultSessionService {
     };
   }
 
-  private shouldCleanupAfterCommitFailure(error: unknown): boolean {
-    return !(error instanceof ActiveUnlockedVaultMismatchError);
+  private async removePreservingRootCause(): Promise<void> {
+    try {
+      await this.remove();
+    } catch {
+      // Preserve the original failure as the root cause.
+    }
   }
 }
 

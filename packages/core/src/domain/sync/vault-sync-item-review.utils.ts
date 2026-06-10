@@ -14,6 +14,10 @@ export function getSyncItemRelation(
   localVersionVector: VersionVector | null,
   remoteVersionVector: VersionVector | null,
 ): VaultSyncItemRelation {
+  if (localVersionVector === null && remoteVersionVector === null) {
+    return "equal";
+  }
+
   if (localVersionVector === null) {
     return "remote_only";
   }

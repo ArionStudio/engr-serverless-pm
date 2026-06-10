@@ -60,8 +60,7 @@ export function createVaultSyncReview(
     hasChanges:
       entryReviews.length > 0 ||
       tagReviews.length > 0 ||
-      deviceProfileReviews.length > 0 ||
-      trustReview !== undefined,
+      deviceProfileReviews.length > 0,
     hasConflicts:
       entryReviews.some((review) => review.conflict) ||
       tagReviews.some((review) => review.conflict) ||

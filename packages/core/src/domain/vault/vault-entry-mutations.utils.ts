@@ -11,6 +11,10 @@ export function addPasswordEntryToVault(
   entryInput: PasswordEntryInput,
   deviceId: string,
 ): Vault {
+  if (vault.entries.some((entry) => entry.id === entryId)) {
+    throw new Error(`Entry "${entryId}" already exists.`);
+  }
+
   const versionVector = incrementVersionVector(vault.versionVector, deviceId);
   const deletedEntry = vault.deletedEntries.find(
     (vaultDeletedEntry) => vaultDeletedEntry.id === entryId,

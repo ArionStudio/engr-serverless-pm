@@ -11,8 +11,10 @@ export class RandomSamplerService {
   }
 
   async pickIndex(maxExclusive: number): Promise<number> {
-    if (maxExclusive < 1) {
-      throw new Error("Random index upper bound must be positive.");
+    if (!Number.isSafeInteger(maxExclusive) || maxExclusive <= 0) {
+      throw new Error(
+        "Random index upper bound must be a positive safe integer.",
+      );
     }
 
     // Rejection sampling avoids modulo bias: using value % maxExclusive directly
