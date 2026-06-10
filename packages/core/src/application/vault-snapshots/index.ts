@@ -1,1 +1,1 @@
-export * from "./persist-unlocked-vault.service";
+export * from "./vault-snapshot.service";

@@ -1,14 +1,13 @@
-import type { PasswordEntry } from "../../domain/entry/password-entry.type";
 import { passwordEntryInputSchema } from "../../domain/entry/password-entry.schema";
 import { sanitizeEntryUrl } from "../../domain/entry/sanitized-entry-url.utils";
+import { updatePasswordEntryInVault } from "../../domain/vault/vault-entry-mutations.utils";
 import {
   InvalidPasswordEntryError,
   PasswordEntryNotFoundError,
 } from "../../application/errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
-import type { CommitUnlockedVaultSessionService } from "../../application/vault-session/commit-unlocked-vault-session.service";
-import type { GetUnlockedVaultSessionService } from "../../application/vault-session/get-unlocked-vault-session.service";
-import type { PersistUnlockedVaultService } from "../../application/vault-snapshots/persist-unlocked-vault.service";
+import type { UnlockedVaultSessionService } from "../../application/vault-session/unlocked-vault-session.service";
+import type { VaultSnapshotService } from "../../application/vault-snapshots/vault-snapshot.service";
 
 export type UpdateEntryCommandParams = {
   vaultId: string;
@@ -29,22 +28,19 @@ export type UpdateEntryResult = {
 };
 
 export class UpdateEntryUseCase {
-  private readonly getUnlockedVaultSession: GetUnlockedVaultSessionService;
-  private readonly persistUnlockedVault: PersistUnlockedVaultService;
-  private readonly commitUnlockedVaultSession: CommitUnlockedVaultSessionService;
+  private readonly unlockedVaultSession: UnlockedVaultSessionService;
+  private readonly vaultSnapshot: VaultSnapshotService;
 
   constructor(
-    getUnlockedVaultSession: GetUnlockedVaultSessionService,
-    persistUnlockedVault: PersistUnlockedVaultService,
-    commitUnlockedVaultSession: CommitUnlockedVaultSessionService,
+    unlockedVaultSession: UnlockedVaultSessionService,
+    vaultSnapshot: VaultSnapshotService,
   ) {
-    this.getUnlockedVaultSession = getUnlockedVaultSession;
-    this.persistUnlockedVault = persistUnlockedVault;
-    this.commitUnlockedVaultSession = commitUnlockedVaultSession;
+    this.unlockedVaultSession = unlockedVaultSession;
+    this.vaultSnapshot = vaultSnapshot;
   }
 
   async execute(params: UpdateEntryCommandParams): Promise<UpdateEntryResult> {
-    const unlockedVaultSession = await this.getUnlockedVaultSession.get();
+    const unlockedVaultSession = await this.unlockedVaultSession.get();
     const unlockedVault = unlockedVaultSession?.unlockedVault;
 
     if (unlockedVault?.vaultId !== params.vaultId) {
@@ -78,27 +74,22 @@ export class UpdateEntryUseCase {
       throw new InvalidPasswordEntryError(entryPayloadResult.error);
     }
 
-    const entry: PasswordEntry = {
-      id: params.entryId,
-      ...entryPayloadResult.data,
-    };
-    const entries = [...unlockedVault.vault.entries];
-    entries[entryIndex] = entry;
-
     const updatedUnlockedVault = {
       ...unlockedVault,
-      vault: {
-        ...unlockedVault.vault,
-        entries,
-      },
+      vault: updatePasswordEntryInVault(
+        unlockedVault.vault,
+        params.entryId,
+        entryPayloadResult.data,
+        unlockedVault.deviceId,
+      ),
     };
 
-    const persistedSnapshot = await this.persistUnlockedVault.persist(
+    const persistedSnapshot = await this.vaultSnapshot.persistUnlockedVault(
       params.vaultId,
       updatedUnlockedVault,
     );
 
-    await this.commitUnlockedVaultSession.commit(
+    await this.unlockedVaultSession.commit(
       updatedUnlockedVault,
       persistedSnapshot.revision,
     );
