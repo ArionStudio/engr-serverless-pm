@@ -16,6 +16,8 @@
  * - https://datatracker.ietf.org/doc/html/rfc4648#section-5
  */
 
+import type { Base64URLString } from "./base64Url.type";
+
 /**
  * Base64 alphabet (RFC 4648 §4).
  */
@@ -35,18 +37,16 @@ const B64REV: Int16Array = (() => {
   return rev;
 })();
 
-export type Base64UrlString = string;
-
 /**
  * Encode base64url string from a Uint8Array.
  *
  * - Produces unpadded base64url (no '=' at the end).
- * - Returns a branded-by-convention base64url string.
+ * - Returns core's branded Base64URLString.
  *
  * @param bytes - Data to encode
  * @returns Base64url encoded string
  */
-export function encodeBase64Url(bytes: Uint8Array): Base64UrlString {
+export function encodeBase64Url(bytes: Uint8Array): Base64URLString {
   const len = bytes.length;
   const end = len - (len % 3);
 
@@ -78,7 +78,7 @@ export function encodeBase64Url(bytes: Uint8Array): Base64UrlString {
   return parts
     .join("")
     .replace(/\+/g, "-")
-    .replace(/\//g, "_") as Base64UrlString;
+    .replace(/\//g, "_") as Base64URLString;
 }
 
 /**
@@ -92,7 +92,7 @@ export function encodeBase64Url(bytes: Uint8Array): Base64UrlString {
  * @returns Decoded bytes
  * @throws Error if input is not valid base64/base64url
  */
-export function decodeBase64Url(b64url: Base64UrlString): Uint8Array {
+export function decodeBase64Url(b64url: Base64URLString): Uint8Array {
   // Normalize base64url -> base64
   const b64 = b64url.replace(/-/g, "+").replace(/_/g, "/");
 

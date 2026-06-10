@@ -1,7 +1,7 @@
 import {
   decodeBase64Url,
   encodeBase64Url,
-  type Base64UrlString,
+  type Base64URLString,
 } from "@lfspm/core/lib";
 import type {
   DevicePrivateSignKey,
@@ -15,9 +15,9 @@ export type StoredUnlockedVaultSessionMaterial = {
   vaultId: string;
   sourceSnapshotRevision: number;
   deviceId: string;
-  vaultMasterKey: Base64UrlString;
-  devicePrivateSignKey: Base64UrlString;
-  payloadKey: Base64UrlString;
+  vaultMasterKey: Base64URLString;
+  devicePrivateSignKey: Base64URLString;
+  payloadKey: Base64URLString;
 };
 
 export function serializeUnlockedVaultSessionMaterial(
@@ -56,11 +56,11 @@ export function deserializeUnlockedVaultSessionMaterial(
   };
 }
 
-function arrayBufferToBase64Url(buffer: ArrayBuffer): Base64UrlString {
+function arrayBufferToBase64Url(buffer: ArrayBuffer): Base64URLString {
   return encodeBase64Url(new Uint8Array(buffer));
 }
 
-function base64UrlToArrayBuffer(value: Base64UrlString): ArrayBuffer {
+function base64UrlToArrayBuffer(value: Base64URLString): ArrayBuffer {
   const bytes = decodeBase64Url(value);
   return bytes.slice().buffer;
 }
