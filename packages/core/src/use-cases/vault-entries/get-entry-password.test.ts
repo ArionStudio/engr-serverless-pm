@@ -20,7 +20,7 @@ function createContext() {
     ports,
     saved: ports.saved,
     useCase: new GetEntryPasswordUseCase(
-      ports.sessionServices.getUnlockedVaultSession,
+      ports.sessionServices.unlockedVaultSession,
     ),
   };
 }

@@ -9,8 +9,7 @@ function createContext() {
   const ports = createCoreTestPorts(values);
   const useCase = new DeleteLocalVaultUseCase(
     ports.vaultLocalRepository,
-    ports.sessionServices.getUnlockedVaultSession,
-    ports.sessionServices.removeUnlockedVaultSession,
+    ports.sessionServices.unlockedVaultSession,
   );
 
   ports.saved.unlockedVaultSession = {
@@ -54,11 +53,11 @@ describe("DeleteLocalVaultUseCase", () => {
       ctx.ports.vaultLocalRepository.removeVaultSnapshot,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.removeUnlockedVaultSession.remove,
+      ctx.ports.sessionServices.unlockedVaultSession.remove,
     ).toHaveBeenCalledTimes(1);
     expect(
-      vi.mocked(ctx.ports.sessionServices.removeUnlockedVaultSession.remove)
-        .mock.invocationCallOrder[0],
+      vi.mocked(ctx.ports.sessionServices.unlockedVaultSession.remove).mock
+        .invocationCallOrder[0],
     ).toBeLessThan(
       vi.mocked(ctx.ports.vaultLocalRepository.removePersistedLocalVault).mock
         .invocationCallOrder[0],
@@ -79,7 +78,7 @@ describe("DeleteLocalVaultUseCase", () => {
       ctx.ports.vaultLocalRepository.removePersistedLocalVault,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.removeUnlockedVaultSession.remove,
+      ctx.ports.sessionServices.unlockedVaultSession.remove,
     ).not.toHaveBeenCalled();
   });
 
@@ -103,7 +102,7 @@ describe("DeleteLocalVaultUseCase", () => {
       ctx.ports.vaultLocalRepository.removePersistedLocalVault,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.removeUnlockedVaultSession.remove,
+      ctx.ports.sessionServices.unlockedVaultSession.remove,
     ).not.toHaveBeenCalled();
   });
 
@@ -122,7 +121,7 @@ describe("DeleteLocalVaultUseCase", () => {
     ).rejects.toBe(error);
 
     expect(
-      ctx.ports.sessionServices.removeUnlockedVaultSession.remove,
+      ctx.ports.sessionServices.unlockedVaultSession.remove,
     ).toHaveBeenCalledTimes(1);
     expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
   });
@@ -132,7 +131,7 @@ describe("DeleteLocalVaultUseCase", () => {
     const error = new Error("session cleanup failed");
 
     vi.mocked(
-      ctx.ports.sessionServices.removeUnlockedVaultSession.remove,
+      ctx.ports.sessionServices.unlockedVaultSession.remove,
     ).mockRejectedValueOnce(error);
 
     await expect(

@@ -20,8 +20,7 @@ import {
   VaultSnapshotSignerNotTrustedError,
 } from "../../application/errors/unlock-vault.errors";
 import { InvalidVaultLockDelayError } from "../../application/errors/vault-session.errors";
-import type { AssertUnlockedVaultSessionCanActivateService } from "../../application/vault-session/assert-unlocked-vault-session-can-activate.service";
-import type { CommitUnlockedVaultSessionService } from "../../application/vault-session/commit-unlocked-vault-session.service";
+import type { UnlockedVaultSessionService } from "../../application/vault-session/unlocked-vault-session.service";
 
 export type UnlockVaultCommandParams = {
   vaultId: string;
@@ -40,8 +39,7 @@ export class UnlockVaultUseCase {
   private readonly scheduledTasks: ScheduledTaskPort;
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
   private readonly vaultLockTasks: VaultLockTaskRepositoryPort;
-  private readonly assertUnlockedVaultSessionCanActivate: AssertUnlockedVaultSessionCanActivateService;
-  private readonly commitUnlockedVaultSession: CommitUnlockedVaultSessionService;
+  private readonly unlockedVaultSession: UnlockedVaultSessionService;
 
   constructor(
     clock: ClockPort,
@@ -50,8 +48,7 @@ export class UnlockVaultUseCase {
     scheduledTasks: ScheduledTaskPort,
     vaultLocalRepository: VaultLocalRepositoryPort,
     vaultLockTasks: VaultLockTaskRepositoryPort,
-    assertUnlockedVaultSessionCanActivate: AssertUnlockedVaultSessionCanActivateService,
-    commitUnlockedVaultSession: CommitUnlockedVaultSessionService,
+    unlockedVaultSession: UnlockedVaultSessionService,
   ) {
     this.clock = clock;
     this.crypto = crypto;
@@ -59,17 +56,13 @@ export class UnlockVaultUseCase {
     this.scheduledTasks = scheduledTasks;
     this.vaultLocalRepository = vaultLocalRepository;
     this.vaultLockTasks = vaultLockTasks;
-    this.assertUnlockedVaultSessionCanActivate =
-      assertUnlockedVaultSessionCanActivate;
-    this.commitUnlockedVaultSession = commitUnlockedVaultSession;
+    this.unlockedVaultSession = unlockedVaultSession;
   }
 
   async execute(params: UnlockVaultCommandParams): Promise<UnlockVaultResult> {
     assertValidVaultLockDelay(params.lockAfterMs);
 
-    await this.assertUnlockedVaultSessionCanActivate.assertCanActivate(
-      params.vaultId,
-    );
+    await this.unlockedVaultSession.assertCanActivate(params.vaultId);
 
     const deviceAccessMaterial =
       await this.vaultLocalRepository.getDeviceAccessMaterial(params.vaultId);
@@ -208,7 +201,7 @@ export class UnlockVaultUseCase {
     }
 
     try {
-      await this.commitUnlockedVaultSession.commit(
+      await this.unlockedVaultSession.commit(
         unlockedVault,
         vaultSnapshot.metadata.revision,
       );
