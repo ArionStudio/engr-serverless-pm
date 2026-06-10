@@ -1,4 +1,3 @@
-import { pickRandomIndex } from "../../domain/crypto/random.utils";
 import { generatedPasswordSettingsSchema } from "../../domain/password-tools/generated-password.schema";
 import type { GeneratedPasswordSettings } from "../../domain/password-tools/generated-password.type";
 import {
@@ -7,11 +6,11 @@ import {
   pickGeneratedPasswordCharacters,
   shuffleGeneratedPasswordCharacters,
 } from "../../domain/password-tools/generated-password.utils";
-import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import {
   InvalidGeneratedPasswordSettingsError,
   PasswordGenerationImpossibleError,
 } from "../../application/errors/generate-password.errors";
+import type { RandomSamplerService } from "../../application/randomness/random-sampler.service";
 
 export type GeneratePasswordCommandParams = Partial<GeneratedPasswordSettings>;
 
@@ -20,10 +19,10 @@ export type GeneratePasswordResult = {
 };
 
 export class GeneratePasswordUseCase {
-  private readonly crypto: CryptoPort;
+  private readonly randomSampler: RandomSamplerService;
 
-  constructor(crypto: CryptoPort) {
-    this.crypto = crypto;
+  constructor(randomSampler: RandomSamplerService) {
+    this.randomSampler = randomSampler;
   }
 
   async execute(
@@ -47,14 +46,13 @@ export class GeneratePasswordUseCase {
     const characters = await pickGeneratedPasswordCharacters(
       settings,
       characterSets,
-      (maxExclusive) =>
-        pickRandomIndex(maxExclusive, this.crypto.generateRandomBytes),
+      (maxExclusive) => this.randomSampler.pickIndex(maxExclusive),
     );
 
     return {
       password: (
         await shuffleGeneratedPasswordCharacters(characters, (maxExclusive) =>
-          pickRandomIndex(maxExclusive, this.crypto.generateRandomBytes),
+          this.randomSampler.pickIndex(maxExclusive),
         )
       ).join(""),
     };

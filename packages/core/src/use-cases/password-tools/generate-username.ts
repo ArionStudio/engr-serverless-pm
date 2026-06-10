@@ -1,9 +1,8 @@
-import { pickRandomIndex } from "../../domain/crypto/random.utils";
 import { generatedUsernameSettingsSchema } from "../../domain/password-tools/generated-username.schema";
 import type { GeneratedUsernameSettings } from "../../domain/password-tools/generated-username.type";
 import { generateUsernameValue } from "../../domain/password-tools/generated-username.utils";
-import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import { InvalidGeneratedUsernameSettingsError } from "../../application/errors/generate-username.errors";
+import type { RandomSamplerService } from "../../application/randomness/random-sampler.service";
 
 export type GenerateUsernameCommandParams = Partial<GeneratedUsernameSettings>;
 
@@ -12,10 +11,10 @@ export type GenerateUsernameResult = {
 };
 
 export class GenerateUsernameUseCase {
-  private readonly crypto: CryptoPort;
+  private readonly randomSampler: RandomSamplerService;
 
-  constructor(crypto: CryptoPort) {
-    this.crypto = crypto;
+  constructor(randomSampler: RandomSamplerService) {
+    this.randomSampler = randomSampler;
   }
 
   async execute(
@@ -30,8 +29,7 @@ export class GenerateUsernameUseCase {
     return {
       username: await generateUsernameValue(
         settingsResult.data,
-        (maxExclusive) =>
-          pickRandomIndex(maxExclusive, this.crypto.generateRandomBytes),
+        (maxExclusive) => this.randomSampler.pickIndex(maxExclusive),
       ),
     };
   }
