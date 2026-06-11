@@ -11,9 +11,13 @@ export class RandomSamplerService {
   }
 
   async pickIndex(maxExclusive: number): Promise<number> {
-    if (!Number.isSafeInteger(maxExclusive) || maxExclusive <= 0) {
+    if (
+      !Number.isSafeInteger(maxExclusive) ||
+      maxExclusive <= 0 ||
+      maxExclusive > UINT32_RANGE
+    ) {
       throw new Error(
-        "Random index upper bound must be a positive safe integer.",
+        "Random index upper bound must be a positive safe integer within uint32 range.",
       );
     }
 
