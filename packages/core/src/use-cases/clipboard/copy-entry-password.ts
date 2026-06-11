@@ -9,7 +9,7 @@ import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
 import { InvalidClipboardClearDelayError } from "../../application/errors/clipboard.errors";
 import { PasswordEntryNotFoundError } from "../../application/errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
-import type { GetUnlockedVaultSessionService } from "../../application/vault-session/get-unlocked-vault-session.service";
+import type { UnlockedVaultSessionService } from "../../application/vault-session/unlocked-vault-session.service";
 import type { ClearClipboardTaskUseCase } from "./clear-clipboard-task";
 
 export type CopyEntryPasswordCommandParams = {
@@ -30,7 +30,7 @@ export class CopyEntryPasswordUseCase {
   private readonly clipboardClearTasks: ClipboardClearTaskRepositoryPort;
   private readonly scheduledTasks: ScheduledTaskPort;
   private readonly clock: ClockPort;
-  private readonly getUnlockedVaultSession: GetUnlockedVaultSessionService;
+  private readonly unlockedVaultSession: UnlockedVaultSessionService;
 
   constructor(
     clipboard: ClipboardPort,
@@ -40,7 +40,7 @@ export class CopyEntryPasswordUseCase {
     clipboardClearTasks: ClipboardClearTaskRepositoryPort,
     scheduledTasks: ScheduledTaskPort,
     clock: ClockPort,
-    getUnlockedVaultSession: GetUnlockedVaultSessionService,
+    unlockedVaultSession: UnlockedVaultSessionService,
   ) {
     this.clipboard = clipboard;
     this.clearClipboardTask = clearClipboardTask;
@@ -49,7 +49,7 @@ export class CopyEntryPasswordUseCase {
     this.clipboardClearTasks = clipboardClearTasks;
     this.scheduledTasks = scheduledTasks;
     this.clock = clock;
-    this.getUnlockedVaultSession = getUnlockedVaultSession;
+    this.unlockedVaultSession = unlockedVaultSession;
   }
 
   async execute(
@@ -57,7 +57,7 @@ export class CopyEntryPasswordUseCase {
   ): Promise<CopyEntryPasswordResult> {
     assertValidClipboardClearDelay(params.clearAfterMs);
 
-    const unlockedVaultSession = await this.getUnlockedVaultSession.get();
+    const unlockedVaultSession = await this.unlockedVaultSession.get();
     const unlockedVault = unlockedVaultSession?.unlockedVault;
 
     if (unlockedVault?.vaultId !== params.vaultId) {

@@ -3,8 +3,8 @@ import type {
   VaultSnapshot,
 } from "../../domain/snapshot/vault-snapshot";
 import type { UnlockedVault } from "../../domain/vault/unlocked-vault";
-import type { ClockPort } from "../../ports/system/clock.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
+import type { ClockPort } from "../../ports/system/clock.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import { UnsupportedAlgorithmSuiteError } from "../errors/algorithm-suite.errors";
 import {
@@ -19,7 +19,7 @@ export type PersistUnlockedVaultResult = {
   deviceId: string;
 };
 
-export class PersistUnlockedVaultService {
+export class VaultSnapshotService {
   private readonly crypto: CryptoPort;
   private readonly clock: ClockPort;
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
@@ -34,7 +34,7 @@ export class PersistUnlockedVaultService {
     this.vaultLocalRepository = vaultLocalRepository;
   }
 
-  async persist(
+  async persistUnlockedVault(
     vaultId: string,
     unlockedVault: UnlockedVault,
   ): Promise<PersistUnlockedVaultResult> {

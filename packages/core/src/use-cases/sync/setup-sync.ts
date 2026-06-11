@@ -2,9 +2,8 @@ import type { SyncConfig } from "../../domain/sync/sync-config.type";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import { InvalidSyncConfigError } from "../../application/errors/sync.errors";
 import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
-import type { CommitUnlockedVaultSessionService } from "../../application/vault-session/commit-unlocked-vault-session.service";
-import type { GetUnlockedVaultSessionService } from "../../application/vault-session/get-unlocked-vault-session.service";
-import type { PersistUnlockedVaultService } from "../../application/vault-snapshots/persist-unlocked-vault.service";
+import type { UnlockedVaultSessionService } from "../../application/vault-session/unlocked-vault-session.service";
+import type { VaultSnapshotService } from "../../application/vault-snapshots/vault-snapshot.service";
 
 export type SetupSyncCommandParams = {
   readonly vaultId: string;
@@ -13,24 +12,21 @@ export type SetupSyncCommandParams = {
 
 export class SetupSyncUseCase {
   private readonly syncProvider: SyncProviderPort;
-  private readonly getUnlockedVaultSession: GetUnlockedVaultSessionService;
-  private readonly persistUnlockedVault: PersistUnlockedVaultService;
-  private readonly commitUnlockedVaultSession: CommitUnlockedVaultSessionService;
+  private readonly unlockedVaultSession: UnlockedVaultSessionService;
+  private readonly vaultSnapshot: VaultSnapshotService;
 
   constructor(
     syncProvider: SyncProviderPort,
-    getUnlockedVaultSession: GetUnlockedVaultSessionService,
-    persistUnlockedVault: PersistUnlockedVaultService,
-    commitUnlockedVaultSession: CommitUnlockedVaultSessionService,
+    unlockedVaultSession: UnlockedVaultSessionService,
+    vaultSnapshot: VaultSnapshotService,
   ) {
     this.syncProvider = syncProvider;
-    this.getUnlockedVaultSession = getUnlockedVaultSession;
-    this.persistUnlockedVault = persistUnlockedVault;
-    this.commitUnlockedVaultSession = commitUnlockedVaultSession;
+    this.unlockedVaultSession = unlockedVaultSession;
+    this.vaultSnapshot = vaultSnapshot;
   }
 
   async execute(params: SetupSyncCommandParams): Promise<void> {
-    const unlockedVaultSession = await this.getUnlockedVaultSession.get();
+    const unlockedVaultSession = await this.unlockedVaultSession.get();
     const unlockedVault = unlockedVaultSession?.unlockedVault;
 
     if (unlockedVault?.vaultId !== params.vaultId) {
@@ -53,12 +49,12 @@ export class SetupSyncUseCase {
       },
     };
 
-    const persistedSnapshot = await this.persistUnlockedVault.persist(
+    const persistedSnapshot = await this.vaultSnapshot.persistUnlockedVault(
       params.vaultId,
       updatedUnlockedVault,
     );
 
-    await this.commitUnlockedVaultSession.commit(
+    await this.unlockedVaultSession.commitPersistedSnapshot(
       updatedUnlockedVault,
       persistedSnapshot.revision,
     );

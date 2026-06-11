@@ -19,9 +19,7 @@ function createContext() {
     values,
     ports,
     saved: ports.saved,
-    useCase: new ReadEntryUseCase(
-      ports.sessionServices.getUnlockedVaultSession,
-    ),
+    useCase: new ReadEntryUseCase(ports.sessionServices.unlockedVaultSession),
   };
 }
 

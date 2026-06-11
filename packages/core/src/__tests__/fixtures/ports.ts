@@ -22,12 +22,7 @@ import type { VaultDisplayNamePort } from "../../ports/vault/vault-display-name.
 import type { VaultLockTaskRepositoryPort } from "../../ports/vault/vault-lock-task-repository.port";
 import type { UnlockedVaultSessionMaterialRepositoryPort } from "../../ports/vault/unlocked-vault-session-material-repository.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
-import { AssertUnlockedVaultSessionCanActivateService } from "../../application/vault-session/assert-unlocked-vault-session-can-activate.service";
-import { GetUnlockedVaultSessionService } from "../../application/vault-session/get-unlocked-vault-session.service";
-import { ProtectUnlockedVaultSessionService } from "../../application/vault-session/protect-unlocked-vault-session.service";
-import { RemoveUnlockedVaultSessionService } from "../../application/vault-session/remove-unlocked-vault-session.service";
-import { RestoreUnlockedVaultSessionService } from "../../application/vault-session/restore-unlocked-vault-session.service";
-import { SaveUnlockedVaultSessionService } from "../../application/vault-session/save-unlocked-vault-session.service";
+import { UnlockedVaultSessionService } from "../../application/vault-session/unlocked-vault-session.service";
 import { createCoreTestValues, type CoreTestValues } from "./values";
 
 export type SavedCoreRecords = {
@@ -257,74 +252,51 @@ export function createCoreTestPorts(
       .mockResolvedValue(values.sessionId),
   };
 
-  const protectUnlockedVaultSession = new ProtectUnlockedVaultSessionService(
+  const unlockedVaultSession = new UnlockedVaultSessionService(
+    unlockedVaultSessionMaterialRepository,
+    encryptedUnlockedVaultSessionPayloadRepository,
     crypto,
     ids,
   );
-  const restoreUnlockedVaultSession = new RestoreUnlockedVaultSessionService(
-    crypto,
-  );
-  const saveUnlockedVaultSession = new SaveUnlockedVaultSessionService(
-    unlockedVaultSessionMaterialRepository,
-    encryptedUnlockedVaultSessionPayloadRepository,
-    protectUnlockedVaultSession,
-  );
-  const getUnlockedVaultSession = new GetUnlockedVaultSessionService(
-    unlockedVaultSessionMaterialRepository,
-    encryptedUnlockedVaultSessionPayloadRepository,
-    restoreUnlockedVaultSession,
-  );
-  const removeUnlockedVaultSession = new RemoveUnlockedVaultSessionService(
-    unlockedVaultSessionMaterialRepository,
-    encryptedUnlockedVaultSessionPayloadRepository,
-  );
-  const assertUnlockedVaultSessionCanActivate =
-    new AssertUnlockedVaultSessionCanActivateService(
-      unlockedVaultSessionMaterialRepository,
-    );
   const sessionServices = {
-    assertUnlockedVaultSessionCanActivate,
-    protectUnlockedVaultSession,
-    restoreUnlockedVaultSession,
-    saveUnlockedVaultSession,
-    getUnlockedVaultSession,
-    removeUnlockedVaultSession,
+    unlockedVaultSession,
   };
 
-  const saveUnlockedVaultSessionOriginal =
-    sessionServices.saveUnlockedVaultSession.save.bind(
-      sessionServices.saveUnlockedVaultSession,
+  const commitSessionOriginal =
+    sessionServices.unlockedVaultSession.commit.bind(
+      sessionServices.unlockedVaultSession,
     );
-  const getUnlockedVaultSessionOriginal =
-    sessionServices.getUnlockedVaultSession.get.bind(
-      sessionServices.getUnlockedVaultSession,
-    );
-  const removeUnlockedVaultSessionOriginal =
-    sessionServices.removeUnlockedVaultSession.remove.bind(
-      sessionServices.removeUnlockedVaultSession,
+  const getSessionOriginal = sessionServices.unlockedVaultSession.get.bind(
+    sessionServices.unlockedVaultSession,
+  );
+  const removeSessionOriginal =
+    sessionServices.unlockedVaultSession.remove.bind(
+      sessionServices.unlockedVaultSession,
     );
 
-  vi.spyOn(sessionServices.saveUnlockedVaultSession, "save").mockImplementation(
-    async (session) => {
-      await saveUnlockedVaultSessionOriginal(session);
-      unlockedVaultSessionMirror = session;
+  vi.spyOn(sessionServices.unlockedVaultSession, "commit").mockImplementation(
+    async (unlockedVault, sourceSnapshotRevision) => {
+      await commitSessionOriginal(unlockedVault, sourceSnapshotRevision);
+      unlockedVaultSessionMirror = {
+        unlockedVault,
+        sourceSnapshotRevision,
+      };
     },
   );
-  vi.spyOn(sessionServices.getUnlockedVaultSession, "get").mockImplementation(
+  vi.spyOn(sessionServices.unlockedVaultSession, "get").mockImplementation(
     async () => {
-      const session = await getUnlockedVaultSessionOriginal();
+      const session = await getSessionOriginal();
       unlockedVaultSessionMirror = session ?? undefined;
 
       return session;
     },
   );
-  vi.spyOn(
-    sessionServices.removeUnlockedVaultSession,
-    "remove",
-  ).mockImplementation(async () => {
-    await removeUnlockedVaultSessionOriginal();
-    unlockedVaultSessionMirror = undefined;
-  });
+  vi.spyOn(sessionServices.unlockedVaultSession, "remove").mockImplementation(
+    async () => {
+      await removeSessionOriginal();
+      unlockedVaultSessionMirror = undefined;
+    },
+  );
 
   const clock: ClockPort = {
     now: vi.fn(() => values.timestamp),
@@ -337,6 +309,9 @@ export function createCoreTestPorts(
 
   const syncProvider: SyncProviderPort = {
     setup: vi.fn(async () => values.syncConfig),
+    getLatestVaultSnapshotDescriptor: vi.fn(async () => null),
+    downloadVaultSnapshot: vi.fn(),
+    uploadVaultSnapshot: vi.fn(async () => undefined),
   };
 
   const vaultLockTasks: VaultLockTaskRepositoryPort = {

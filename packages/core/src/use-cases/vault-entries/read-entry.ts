@@ -2,7 +2,7 @@ import { toVisiblePasswordEntryFields } from "../../domain/entry/password-entry.
 import type { VisiblePasswordEntryFields } from "../../domain/entry/password-entry.type";
 import { PasswordEntryNotFoundError } from "../../application/errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
-import type { GetUnlockedVaultSessionService } from "../../application/vault-session/get-unlocked-vault-session.service";
+import type { UnlockedVaultSessionService } from "../../application/vault-session/unlocked-vault-session.service";
 
 export type ReadEntryCommandParams = {
   vaultId: string;
@@ -14,14 +14,14 @@ export type ReadEntryResult = {
 };
 
 export class ReadEntryUseCase {
-  private readonly getUnlockedVaultSession: GetUnlockedVaultSessionService;
+  private readonly unlockedVaultSession: UnlockedVaultSessionService;
 
-  constructor(getUnlockedVaultSession: GetUnlockedVaultSessionService) {
-    this.getUnlockedVaultSession = getUnlockedVaultSession;
+  constructor(unlockedVaultSession: UnlockedVaultSessionService) {
+    this.unlockedVaultSession = unlockedVaultSession;
   }
 
   async execute(params: ReadEntryCommandParams): Promise<ReadEntryResult> {
-    const unlockedVaultSession = await this.getUnlockedVaultSession.get();
+    const unlockedVaultSession = await this.unlockedVaultSession.get();
     const unlockedVault = unlockedVaultSession?.unlockedVault;
 
     if (unlockedVault?.vaultId !== params.vaultId) {

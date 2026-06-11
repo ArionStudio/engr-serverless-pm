@@ -1,6 +1,7 @@
 import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it } from "vitest";
 import type { EncryptedUnlockedVaultSessionPayload } from "@lfspm/core/domain";
+import type { Base64URLString } from "@lfspm/core/lib";
 import {
   ACTIVE_UNLOCKED_VAULT_SESSION_PAYLOAD_ID,
   createVaultManagerDb,
@@ -10,6 +11,8 @@ import { IndexedDbEncryptedUnlockedVaultSessionPayloadRepository } from "./index
 
 let databaseCounter = 0;
 let database: VaultManagerDb | undefined;
+
+const b64 = (value: string) => value as Base64URLString;
 
 function createContext() {
   databaseCounter += 1;
@@ -93,8 +96,8 @@ function createPayload(
     vaultId: "vault-id",
     sourceSnapshotRevision,
     content: {
-      ciphertext: `ciphertext-${sourceSnapshotRevision}`,
-      encryptionNonce: `nonce-${sourceSnapshotRevision}`,
+      ciphertext: b64(`ciphertext-${sourceSnapshotRevision}`),
+      encryptionNonce: b64(`nonce-${sourceSnapshotRevision}`),
     },
   };
 }

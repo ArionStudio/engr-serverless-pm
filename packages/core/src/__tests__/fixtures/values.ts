@@ -1,5 +1,5 @@
 import type { RandomBytes } from "../../domain/crypto/brand-keys";
-import type { Base64UrlString } from "../../lib/base64Url.utils";
+import type { Base64URLString } from "../../lib/base64Url.type";
 import type {
   ProtectionKeyFor,
   SerializedEncrypted,
@@ -28,7 +28,7 @@ import type {
 import type { Vault } from "../../domain/vault/vault";
 
 export const bytes = <T extends ArrayBuffer>() => new ArrayBuffer(1) as T;
-export const b64 = (value: string) => value as Base64UrlString;
+export const b64 = (value: string) => value as Base64URLString;
 
 export type CoreTestValues = ReturnType<typeof createCoreTestValues>;
 
@@ -102,9 +102,15 @@ export function createCoreTestValues() {
       encryptionNonce: b64("encrypted-unlocked-vault-session-payload-nonce"),
     } satisfies SerializedEncrypted<UnlockedVaultSessionPayload>,
     decryptedVault: {
+      versionVector: {
+        "device-id": 1,
+      },
       entries: [],
-      registeredDevices: [],
+      deletedEntries: [],
+      deviceProfiles: [],
+      deletedDeviceProfiles: [],
       tags: [],
+      deletedTags: [],
     } satisfies Vault,
     snapshotSignature: {
       signature: b64("snapshot-signature"),

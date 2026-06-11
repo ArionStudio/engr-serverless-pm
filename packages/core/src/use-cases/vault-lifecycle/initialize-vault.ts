@@ -1,5 +1,5 @@
 import type { DeviceAccessMaterial } from "../../domain/device/device-access-material";
-import type { Device } from "../../domain/device/device";
+import type { DeviceProfile } from "../../domain/device/device";
 import type { LocalKeysPayload } from "../../domain/local-protection/local-protection.type";
 import type { RawMasterPassword } from "../../domain/master-password";
 import type { RecoveryKeyMnemonic } from "../../domain/recovery/bip39-mnemonic";
@@ -16,8 +16,7 @@ import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { IdPort } from "../../ports/system/id.port";
 import type { VaultDisplayNamePort } from "../../ports/vault/vault-display-name.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
-import type { AssertUnlockedVaultSessionCanActivateService } from "../../application/vault-session/assert-unlocked-vault-session-can-activate.service";
-import type { CommitUnlockedVaultSessionService } from "../../application/vault-session/commit-unlocked-vault-session.service";
+import type { UnlockedVaultSessionService } from "../../application/vault-session/unlocked-vault-session.service";
 
 export type InitializeVaultCommandParams = {
   masterPassword: RawMasterPassword;
@@ -33,8 +32,7 @@ export class InitializeVaultUseCase {
   private readonly crypto: CryptoPort;
   private readonly bip39: Bip39Port;
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
-  private readonly assertUnlockedVaultSessionCanActivate: AssertUnlockedVaultSessionCanActivateService;
-  private readonly commitUnlockedVaultSession: CommitUnlockedVaultSessionService;
+  private readonly unlockedVaultSession: UnlockedVaultSessionService;
   private readonly ids: IdPort;
   private readonly clock: ClockPort;
   private readonly vaultDisplayName: VaultDisplayNamePort;
@@ -43,8 +41,7 @@ export class InitializeVaultUseCase {
     crypto: CryptoPort,
     bip39: Bip39Port,
     vaultLocalRepository: VaultLocalRepositoryPort,
-    assertUnlockedVaultSessionCanActivate: AssertUnlockedVaultSessionCanActivateService,
-    commitUnlockedVaultSession: CommitUnlockedVaultSessionService,
+    unlockedVaultSession: UnlockedVaultSessionService,
     ids: IdPort,
     clock: ClockPort,
     vaultDisplayName: VaultDisplayNamePort,
@@ -52,9 +49,7 @@ export class InitializeVaultUseCase {
     this.crypto = crypto;
     this.bip39 = bip39;
     this.vaultLocalRepository = vaultLocalRepository;
-    this.assertUnlockedVaultSessionCanActivate =
-      assertUnlockedVaultSessionCanActivate;
-    this.commitUnlockedVaultSession = commitUnlockedVaultSession;
+    this.unlockedVaultSession = unlockedVaultSession;
     this.ids = ids;
     this.clock = clock;
     this.vaultDisplayName = vaultDisplayName;
@@ -64,7 +59,7 @@ export class InitializeVaultUseCase {
     initializeVaultCommandParams: InitializeVaultCommandParams,
   ): Promise<InitializeVaultResult> {
     const vaultId = await this.ids.generateId();
-    await this.assertUnlockedVaultSessionCanActivate.assertCanActivate(vaultId);
+    await this.unlockedVaultSession.assertCanActivate(vaultId);
 
     const deviceId = await this.ids.generateId();
     const timestamp = this.clock.now();
@@ -122,19 +117,25 @@ export class InitializeVaultUseCase {
         recoveryVaultMasterKeyProtectionKey,
       );
 
-    const device: Device = {
+    const deviceProfile: DeviceProfile = {
       id: deviceId,
       name: initializeVaultCommandParams.deviceName,
       createdAt: new Date(timestamp),
-      publicKeys: {
-        signingKey: deviceSignKeyPair.publicKey,
+      versionVector: {
+        [deviceId]: 1,
       },
     };
 
     const vault: Vault = {
+      versionVector: {
+        [deviceId]: 1,
+      },
       entries: [],
-      registeredDevices: [device],
+      deletedEntries: [],
+      deviceProfiles: [deviceProfile],
+      deletedDeviceProfiles: [],
       tags: [],
+      deletedTags: [],
     };
 
     const unsignedVaultSnapshot: UnsignedVaultSnapshot = {
@@ -210,7 +211,7 @@ export class InitializeVaultUseCase {
       snapshot: vaultSnapshot,
     });
     try {
-      await this.commitUnlockedVaultSession.commit(
+      await this.unlockedVaultSession.commit(
         unlockedVault,
         vaultSnapshot.metadata.revision,
       );

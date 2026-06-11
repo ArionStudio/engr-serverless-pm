@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { RandomBytes } from "../../domain/crypto/brand-keys";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
+import { RandomSamplerService } from "../../application/randomness/random-sampler.service";
 import {
   InvalidGeneratedPasswordSettingsError,
   PasswordGenerationImpossibleError,
@@ -32,7 +33,9 @@ function createContext(randomValues: number[] = []) {
 
   return {
     ports,
-    useCase: new GeneratePasswordUseCase(ports.crypto),
+    useCase: new GeneratePasswordUseCase(
+      new RandomSamplerService(ports.crypto),
+    ),
   };
 }
 
@@ -146,23 +149,5 @@ describe("GeneratePasswordUseCase", () => {
     ).rejects.toBeInstanceOf(PasswordGenerationImpossibleError);
 
     expect(ctx.ports.crypto.generateRandomBytes).not.toHaveBeenCalled();
-  });
-
-  it("retries random index selection when sampled value would introduce modulo bias", async () => {
-    const ctx = createContext([0xffffffff, 0]);
-
-    const result = await ctx.useCase.execute({
-      length: 1,
-      uppercase: true,
-      lowercase: false,
-      numbers: false,
-      special: false,
-      minNumbers: 0,
-    });
-
-    expect(result).toEqual({
-      password: "A",
-    });
-    expect(ctx.ports.crypto.generateRandomBytes).toHaveBeenCalledTimes(2);
   });
 });

@@ -101,7 +101,7 @@ describe("UnlockVaultUseCase", () => {
       ctx.ports.vaultLocalRepository.getVaultSnapshot,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.saveUnlockedVaultSession.save,
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
     ).not.toHaveBeenCalled();
   });
 
@@ -121,7 +121,7 @@ describe("UnlockVaultUseCase", () => {
       ctx.ports.crypto.verifyVaultSnapshotSignature,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.saveUnlockedVaultSession.save,
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
     ).not.toHaveBeenCalled();
   });
 
@@ -142,7 +142,7 @@ describe("UnlockVaultUseCase", () => {
 
     expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.saveUnlockedVaultSession.save,
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
     ).not.toHaveBeenCalled();
   });
 
@@ -166,7 +166,7 @@ describe("UnlockVaultUseCase", () => {
     ).not.toHaveBeenCalled();
     expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.saveUnlockedVaultSession.save,
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
     ).not.toHaveBeenCalled();
   });
 
@@ -193,7 +193,7 @@ describe("UnlockVaultUseCase", () => {
     ).not.toHaveBeenCalled();
     expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.saveUnlockedVaultSession.save,
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
     ).not.toHaveBeenCalled();
   });
 
@@ -217,7 +217,7 @@ describe("UnlockVaultUseCase", () => {
     ).not.toHaveBeenCalled();
     expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.saveUnlockedVaultSession.save,
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
     ).not.toHaveBeenCalled();
   });
 
@@ -241,7 +241,7 @@ describe("UnlockVaultUseCase", () => {
 
     expect(ctx.ports.crypto.unwrapVaultMasterKey).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.saveUnlockedVaultSession.save,
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
     ).not.toHaveBeenCalled();
   });
 
@@ -262,7 +262,7 @@ describe("UnlockVaultUseCase", () => {
     ).rejects.toThrow(error);
 
     expect(
-      ctx.ports.sessionServices.saveUnlockedVaultSession.save,
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.vaultLockTasks.remove).toHaveBeenCalledTimes(1);
   });
@@ -288,7 +288,7 @@ describe("UnlockVaultUseCase", () => {
     ).rejects.toThrow(scheduleError);
 
     expect(
-      ctx.ports.sessionServices.saveUnlockedVaultSession.save,
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.vaultLockTasks.remove).toHaveBeenCalledTimes(1);
   });
@@ -298,7 +298,7 @@ describe("UnlockVaultUseCase", () => {
     const error = new Error("save failed");
 
     vi.mocked(
-      ctx.ports.sessionServices.saveUnlockedVaultSession.save,
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
     ).mockRejectedValueOnce(error);
 
     await expect(
@@ -349,7 +349,7 @@ describe("UnlockVaultUseCase", () => {
     expect(ctx.ports.vaultLockTasks.save).not.toHaveBeenCalled();
     expect(ctx.ports.scheduledTasks.scheduleTask).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.saveUnlockedVaultSession.save,
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
     ).not.toHaveBeenCalled();
   });
 
@@ -359,7 +359,7 @@ describe("UnlockVaultUseCase", () => {
     const cancelError = new Error("cancel failed");
 
     vi.mocked(
-      ctx.ports.sessionServices.saveUnlockedVaultSession.save,
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
     ).mockRejectedValueOnce(saveError);
     vi.mocked(ctx.ports.scheduledTasks.cancelTask).mockRejectedValueOnce(
       cancelError,

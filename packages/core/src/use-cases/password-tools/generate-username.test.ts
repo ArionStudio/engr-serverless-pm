@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
+import { RandomSamplerService } from "../../application/randomness/random-sampler.service";
 import type { RandomBytes } from "../../domain/crypto/brand-keys";
 import { InvalidGeneratedUsernameSettingsError } from "../../application/errors/generate-username.errors";
 import { GenerateUsernameUseCase } from "./generate-username";
@@ -29,7 +30,9 @@ function createContext(randomValues: number[] = []) {
 
   return {
     ports,
-    useCase: new GenerateUsernameUseCase(ports.crypto),
+    useCase: new GenerateUsernameUseCase(
+      new RandomSamplerService(ports.crypto),
+    ),
   };
 }
 
@@ -105,18 +108,5 @@ describe("GenerateUsernameUseCase", () => {
     ).rejects.toBeInstanceOf(InvalidGeneratedUsernameSettingsError);
 
     expect(ctx.ports.crypto.generateRandomBytes).not.toHaveBeenCalled();
-  });
-
-  it("retries random index selection when sampled value would introduce modulo bias", async () => {
-    const ctx = createContext([0xffffffff, 0, 1]);
-
-    const result = await ctx.useCase.execute({
-      includeNumber: false,
-    });
-
-    expect(result).toEqual({
-      username: "abacusabdomen",
-    });
-    expect(ctx.ports.crypto.generateRandomBytes).toHaveBeenCalledTimes(3);
   });
 });

@@ -63,18 +63,24 @@ describe("InitializeVaultUseCase", () => {
     );
 
     const expectedVault: Vault = {
+      versionVector: {
+        [ctx.values.deviceId]: 1,
+      },
       entries: [],
-      registeredDevices: [
+      deletedEntries: [],
+      deviceProfiles: [
         {
           id: ctx.values.deviceId,
           name: "Work laptop",
           createdAt: new Date(ctx.values.timestamp),
-          publicKeys: {
-            signingKey: ctx.values.devicePublicSignKey,
+          versionVector: {
+            [ctx.values.deviceId]: 1,
           },
         },
       ],
+      deletedDeviceProfiles: [],
       tags: [],
+      deletedTags: [],
     };
 
     const expectedTrustedDevices = [
@@ -174,7 +180,7 @@ describe("InitializeVaultUseCase", () => {
       ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
     ).toHaveBeenCalledTimes(1);
     expect(
-      ctx.ports.sessionServices.saveUnlockedVaultSession.save,
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
     ).not.toHaveBeenCalled();
     expect(
       ctx.ports.vaultLocalRepository.saveLocalVaultDescriptor,
@@ -192,7 +198,7 @@ describe("InitializeVaultUseCase", () => {
     const error = new Error("session commit failed");
 
     vi.mocked(
-      ctx.ports.sessionServices.saveUnlockedVaultSession.save,
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
     ).mockRejectedValueOnce(error);
 
     await expect(
@@ -219,7 +225,7 @@ describe("InitializeVaultUseCase", () => {
     const cleanupError = new Error("initialized local cleanup failed");
 
     vi.mocked(
-      ctx.ports.sessionServices.saveUnlockedVaultSession.save,
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
     ).mockRejectedValueOnce(commitError);
     vi.mocked(
       ctx.ports.vaultLocalRepository.removePersistedLocalVault,
@@ -261,7 +267,7 @@ describe("InitializeVaultUseCase", () => {
       ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.saveUnlockedVaultSession.save,
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
     ).not.toHaveBeenCalled();
   });
 });

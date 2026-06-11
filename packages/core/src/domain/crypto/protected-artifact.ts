@@ -1,5 +1,5 @@
 import type { RandomBytes } from "./brand-keys";
-import type { Base64UrlString } from "../../lib/base64Url.utils";
+import type { Base64URLString } from "../../lib/base64Url.type";
 
 declare const __protectedPayload: unique symbol;
 
@@ -30,18 +30,18 @@ export type SignatureOf<What> = {
 };
 
 export type SerializedWrapped<What> = {
-  readonly wrappedKey: Base64UrlString;
-  readonly wrappingNonce: Base64UrlString;
+  readonly wrappedKey: Base64URLString;
+  readonly wrappingNonce: Base64URLString;
   readonly [__protectedPayload]?: What;
 };
 
 export type SerializedEncrypted<What> = {
-  readonly ciphertext: Base64UrlString;
-  readonly encryptionNonce: Base64UrlString;
+  readonly ciphertext: Base64URLString;
+  readonly encryptionNonce: Base64URLString;
   readonly [__protectedPayload]?: What;
 };
 
 export type SerializedSignatureOf<What> = {
-  readonly signature: Base64UrlString;
+  readonly signature: Base64URLString;
   readonly [__protectedPayload]?: What;
 };
