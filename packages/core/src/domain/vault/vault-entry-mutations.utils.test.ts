@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Vault } from "./vault";
+import { DuplicateVaultEntryError } from "./vault-entry.errors";
 import {
   addPasswordEntryToVault,
   removePasswordEntryFromVault,
@@ -71,7 +72,7 @@ describe("vault entry mutation utils", () => {
         },
         "A",
       ),
-    ).toThrow('Entry "entry-id" already exists.');
+    ).toThrow(DuplicateVaultEntryError);
   });
 
   it("updates an entry and increments vault and entry vectors for the device", () => {

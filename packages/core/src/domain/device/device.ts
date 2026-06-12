@@ -4,7 +4,7 @@ import type { VersionVector } from "../sync/version-vector.type";
 export type DeviceProfile = {
   id: string; // random
   name: string; // user given name
-  createdAt: Date;
+  createdAt: number;
   versionVector: VersionVector;
 };
 

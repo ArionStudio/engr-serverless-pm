@@ -6,7 +6,17 @@ function toCanonicalJsonValue(value: unknown): unknown {
   if (value !== null && typeof value === "object" && !(value instanceof Date)) {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>)
-        .sort(([currentKey], [nextKey]) => currentKey.localeCompare(nextKey))
+        .sort(([currentKey], [nextKey]) => {
+          if (currentKey < nextKey) {
+            return -1;
+          }
+
+          if (currentKey > nextKey) {
+            return 1;
+          }
+
+          return 0;
+        })
         .map(([key, nestedValue]) => [key, toCanonicalJsonValue(nestedValue)]),
     );
   }

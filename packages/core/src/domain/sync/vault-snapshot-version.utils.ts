@@ -2,12 +2,12 @@ import type { RemoteVaultSnapshotDescriptor } from "./remote-vault-snapshot-desc
 import type { VaultSnapshot } from "../snapshot/vault-snapshot";
 import type { Vault } from "../vault/vault";
 import { compareVersionVectors } from "./version-vector.utils";
-import type { LocalRemoteSnapshotVersionRelation } from "./vault-snapshot-version.type";
+import type { VersionVectorRelation } from "./version-vector.type";
 
 export function compareLocalAndRemoteSnapshotDescriptors(
   local: RemoteVaultSnapshotDescriptor,
   remote: RemoteVaultSnapshotDescriptor,
-): LocalRemoteSnapshotVersionRelation {
+): VersionVectorRelation {
   return compareVersionVectors(local.versionVector, remote.versionVector);
 }
 

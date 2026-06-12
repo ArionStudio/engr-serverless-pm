@@ -4,6 +4,7 @@ import type {
 } from "../entry/password-entry.type";
 import { incrementVersionVector } from "../sync/version-vector.utils";
 import type { Vault } from "./vault";
+import { DuplicateVaultEntryError } from "./vault-entry.errors";
 
 export function addPasswordEntryToVault(
   vault: Vault,
@@ -12,7 +13,7 @@ export function addPasswordEntryToVault(
   deviceId: string,
 ): Vault {
   if (vault.entries.some((entry) => entry.id === entryId)) {
-    throw new Error(`Entry "${entryId}" already exists.`);
+    throw new DuplicateVaultEntryError(entryId);
   }
 
   const versionVector = incrementVersionVector(vault.versionVector, deviceId);

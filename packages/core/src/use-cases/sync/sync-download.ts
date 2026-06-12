@@ -3,7 +3,7 @@ import {
   areRemoteVaultSnapshotDescriptorsEqual,
   compareLocalAndRemoteSnapshotDescriptors,
 } from "../../domain/sync/vault-snapshot-version.utils";
-import type { LocalRemoteSnapshotVersionRelation } from "../../domain/sync/vault-snapshot-version.type";
+import type { VersionVectorRelation } from "../../domain/sync/version-vector.type";
 import { createVaultSyncReview } from "../../domain/sync/vault-sync-review.utils";
 import type { VaultSyncReview } from "../../domain/sync/vault-sync-review.type";
 import type { RemoteVaultSnapshotDescriptor } from "../../domain/sync/remote-vault-snapshot-descriptor.type";
@@ -28,7 +28,7 @@ export type SyncDownloadCommandParams = {
 
 export type SyncDownloadResult = {
   readonly remoteSnapshotDescriptor: RemoteVaultSnapshotDescriptor;
-  readonly relation: LocalRemoteSnapshotVersionRelation;
+  readonly relation: VersionVectorRelation;
   readonly review: VaultSyncReview;
 };
 
