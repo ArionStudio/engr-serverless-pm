@@ -55,7 +55,7 @@ describe("RandomSamplerService", () => {
       const ctx = createContext();
 
       await expect(ctx.service.pickIndex(maxExclusive)).rejects.toThrow(
-        "Random index upper bound must be a positive safe integer.",
+        "Random index upper bound must be a positive safe integer within uint32 range.",
       );
 
       expect(ctx.ports.crypto.generateRandomBytes).not.toHaveBeenCalled();
