@@ -10,9 +10,9 @@ import {
   RemoteVaultSnapshotChangedError,
   SyncConflictDetectedError,
   SyncNotConfiguredError,
-} from "../__errors/sync.errors";
-import { VaultSnapshotNotFoundError } from "../__errors/unlock-vault.errors";
-import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
+} from "../../application/errors/sync.errors";
+import { VaultSnapshotNotFoundError } from "../../application/errors/unlock-vault.errors";
+import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
 import { SyncUploadUseCase } from "./sync-upload";
 
 function createSnapshot(

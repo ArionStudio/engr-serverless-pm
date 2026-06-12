@@ -5,14 +5,14 @@ import {
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import type { UnlockedVaultSessionService } from "../../application/vault-session/unlocked-vault-session.service";
-import { VaultSnapshotNotFoundError } from "../__errors/unlock-vault.errors";
-import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
+import { VaultSnapshotNotFoundError } from "../../application/errors/unlock-vault.errors";
+import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
 import {
   RemoteVaultSnapshotAheadError,
   RemoteVaultSnapshotChangedError,
   SyncConflictDetectedError,
   SyncNotConfiguredError,
-} from "../__errors/sync.errors";
+} from "../../application/errors/sync.errors";
 
 export type SyncUploadCommandParams = {
   readonly vaultId: string;

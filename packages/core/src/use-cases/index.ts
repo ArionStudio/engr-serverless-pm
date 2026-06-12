@@ -1,4 +1,3 @@
-export * from "./__errors";
 export * from "./clipboard";
 export * from "./device-trust";
 export * from "./password-tools";
