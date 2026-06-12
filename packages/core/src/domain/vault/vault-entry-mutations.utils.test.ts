@@ -60,7 +60,8 @@ describe("vault entry mutation utils", () => {
   });
 
   it("rejects adding an active entry with an existing id", () => {
-    expect(() =>
+    expect.assertions(2);
+    try {
       addPasswordEntryToVault(
         createVault(),
         "entry-id",
@@ -71,8 +72,11 @@ describe("vault entry mutation utils", () => {
           tags: [],
         },
         "A",
-      ),
-    ).toThrow(DuplicateVaultEntryError);
+      );
+    } catch (error) {
+      expect(error).toBeInstanceOf(DuplicateVaultEntryError);
+      expect((error as DuplicateVaultEntryError).entryId).toBe("entry-id");
+    }
   });
 
   it("updates an entry and increments vault and entry vectors for the device", () => {
