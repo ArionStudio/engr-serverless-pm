@@ -14,13 +14,13 @@ import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import {
   RemoteVaultSnapshotNotFoundError,
   SyncNotConfiguredError,
-} from "../__errors/sync.errors";
+} from "../../application/errors/sync.errors";
 import {
   VaultSnapshotNotFoundError,
   VaultSnapshotSignatureVerificationFailedError,
   VaultSnapshotSignerNotTrustedError,
-} from "../__errors/unlock-vault.errors";
-import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
+} from "../../application/errors/unlock-vault.errors";
+import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
 
 export type SyncDownloadCommandParams = {
   readonly vaultId: string;

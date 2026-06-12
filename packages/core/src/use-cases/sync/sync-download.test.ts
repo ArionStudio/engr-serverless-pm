@@ -10,12 +10,12 @@ import type { Vault } from "../../domain/vault/vault";
 import {
   RemoteVaultSnapshotNotFoundError,
   SyncNotConfiguredError,
-} from "../__errors/sync.errors";
+} from "../../application/errors/sync.errors";
 import {
   VaultSnapshotNotFoundError,
   VaultSnapshotSignerNotTrustedError,
-} from "../__errors/unlock-vault.errors";
-import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
+} from "../../application/errors/unlock-vault.errors";
+import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
 import { SyncDownloadUseCase } from "./sync-download";
 
 function createSnapshot(

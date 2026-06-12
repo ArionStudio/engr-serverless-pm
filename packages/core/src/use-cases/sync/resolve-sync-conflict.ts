@@ -16,13 +16,13 @@ import {
   SyncNotConfiguredError,
   SyncResolutionIncompleteError,
   SyncTrustChangeRequiresDeviceTrustFlowError,
-} from "../__errors/sync.errors";
+} from "../../application/errors/sync.errors";
 import {
   VaultSnapshotNotFoundError,
   VaultSnapshotSignatureVerificationFailedError,
   VaultSnapshotSignerNotTrustedError,
-} from "../__errors/unlock-vault.errors";
-import { VaultMustBeUnlockedError } from "../__errors/vault-session.errors";
+} from "../../application/errors/unlock-vault.errors";
+import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
 import type { UnlockedVaultSessionService } from "../../application/vault-session/unlocked-vault-session.service";
 import type {
   PersistUnlockedVaultResult,

@@ -12,8 +12,8 @@ import {
   RemoteVaultSnapshotChangedError,
   SyncResolutionIncompleteError,
   SyncTrustChangeRequiresDeviceTrustFlowError,
-} from "../__errors/sync.errors";
-import { VaultSnapshotSignerNotTrustedError } from "../__errors/unlock-vault.errors";
+} from "../../application/errors/sync.errors";
+import { VaultSnapshotSignerNotTrustedError } from "../../application/errors/unlock-vault.errors";
 import { ResolveSyncConflictUseCase } from "./resolve-sync-conflict";
 
 function createSnapshot(
