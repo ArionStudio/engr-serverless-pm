@@ -1,3 +1,4 @@
+export * from "./disable-sync";
 export * from "./remove-cloud-sync-files";
 export * from "./remove-local-sync-credentials";
 export * from "./resolve-sync-conflict";
