@@ -463,4 +463,42 @@ describe("RecoverVaultAccessUseCase", () => {
       ctx.ports.sessionServices.unlockedVaultSession.commit,
     ).not.toHaveBeenCalled();
   });
+
+  it("preserves recovered local records when session commit fails", async () => {
+    const ctx = createContext();
+    const error = new Error("session commit failed");
+
+    vi.mocked(
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
+    ).mockRejectedValueOnce(error);
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        recoveryMnemonicKey: ctx.values.recoveryMnemonicKey,
+        newMasterPassword: ctx.values.newMasterPassword,
+        deviceName: "Recovered laptop",
+      }),
+    ).rejects.toBe(error);
+
+    expect(
+      ctx.ports.vaultLocalRepository.saveRecoveredLocalVault,
+    ).toHaveBeenCalledTimes(1);
+    expect(ctx.saved.deviceAccessMaterial).toMatchObject({
+      vaultId: ctx.values.vaultId,
+      deviceId: recoveredDeviceId,
+      masterPasswordSalt: ctx.values.newMasterPasswordSalt,
+      localKeysProtectionSalt: ctx.values.newLocalKeysProtectionSalt,
+      protectedLocalKeys: ctx.values.reprotectedLocalKeys,
+    });
+    expect(ctx.saved.vaultSnapshot?.metadata).toMatchObject({
+      id: ctx.values.vaultId,
+      revision: 2,
+      createdByDeviceId: recoveredDeviceId,
+    });
+    expect(ctx.saved.unlockedVaultSession).toBeUndefined();
+    expect(
+      ctx.ports.vaultLocalRepository.removePersistedLocalVault,
+    ).not.toHaveBeenCalled();
+  });
 });
