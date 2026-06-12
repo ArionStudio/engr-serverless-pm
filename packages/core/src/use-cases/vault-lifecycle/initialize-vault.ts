@@ -120,7 +120,7 @@ export class InitializeVaultUseCase {
     const deviceProfile: DeviceProfile = {
       id: deviceId,
       name: initializeVaultCommandParams.deviceName,
-      createdAt: new Date(timestamp),
+      createdAt: timestamp,
       versionVector: {
         [deviceId]: 1,
       },

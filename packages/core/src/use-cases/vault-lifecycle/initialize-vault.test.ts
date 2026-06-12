@@ -72,7 +72,7 @@ describe("InitializeVaultUseCase", () => {
         {
           id: ctx.values.deviceId,
           name: "Work laptop",
-          createdAt: new Date(ctx.values.timestamp),
+          createdAt: ctx.values.timestamp,
           versionVector: {
             [ctx.values.deviceId]: 1,
           },

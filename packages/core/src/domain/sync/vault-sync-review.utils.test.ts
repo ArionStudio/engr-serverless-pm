@@ -43,7 +43,7 @@ function createDeviceProfile(
   return {
     id,
     name,
-    createdAt: new Date(1),
+    createdAt: 1,
     versionVector,
   };
 }
