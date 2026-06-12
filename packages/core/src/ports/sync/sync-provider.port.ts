@@ -17,4 +17,8 @@ export interface SyncProviderPort {
     vaultSnapshot: VaultSnapshot,
     expectedRemoteSnapshotDescriptor: RemoteVaultSnapshotDescriptor | null,
   ) => Promise<void>;
+  removeVaultSnapshots: (
+    syncConfig: SyncConfig,
+    vaultId: string,
+  ) => Promise<void>;
 }

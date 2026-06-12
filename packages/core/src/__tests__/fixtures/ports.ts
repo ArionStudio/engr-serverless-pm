@@ -312,6 +312,7 @@ export function createCoreTestPorts(
     getLatestVaultSnapshotDescriptor: vi.fn(async () => null),
     downloadVaultSnapshot: vi.fn(),
     uploadVaultSnapshot: vi.fn(async () => undefined),
+    removeVaultSnapshots: vi.fn(async () => undefined),
   };
 
   const vaultLockTasks: VaultLockTaskRepositoryPort = {
