@@ -2,15 +2,15 @@ import type { DeviceAccessMaterial } from "../../domain/device/device-access-mat
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import type { LocalVaultDescriptor } from "../../domain/vault/local-vault-descriptor";
 
-export type InitializedLocalVault = {
-  descriptor: LocalVaultDescriptor;
-  deviceAccessMaterial: DeviceAccessMaterial;
-  snapshot: VaultSnapshot;
-};
-
 export interface VaultLocalRepositoryPort {
   saveInitializedLocalVault: (
-    initializedLocalVault: InitializedLocalVault,
+    descriptor: LocalVaultDescriptor,
+    deviceAccessMaterial: DeviceAccessMaterial,
+    snapshot: VaultSnapshot,
+  ) => Promise<void>;
+  saveRecoveredLocalVault: (
+    deviceAccessMaterial: DeviceAccessMaterial,
+    snapshot: VaultSnapshot,
   ) => Promise<void>;
   removePersistedLocalVault: (vaultId: string) => Promise<void>;
 

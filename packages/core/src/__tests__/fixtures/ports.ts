@@ -163,17 +163,21 @@ export function createCoreTestPorts(
 
   const bip39: Bip39Port = {
     recoveryKeyToMnemonic: vi.fn(async () => values.recoveryMnemonicKey),
-    mnemonicToRecoveryKey: vi.fn(),
+    mnemonicToRecoveryKey: vi.fn(async () => values.recoverySecretKey),
   };
 
   const vaultLocalRepository: VaultLocalRepositoryPort = {
     saveInitializedLocalVault: vi.fn(
-      async ({ descriptor, deviceAccessMaterial, snapshot }) => {
+      async (descriptor, deviceAccessMaterial, snapshot) => {
         saved.localVaultDescriptor = descriptor;
         saved.deviceAccessMaterial = deviceAccessMaterial;
         saved.vaultSnapshot = snapshot;
       },
     ),
+    saveRecoveredLocalVault: vi.fn(async (deviceAccessMaterial, snapshot) => {
+      saved.deviceAccessMaterial = deviceAccessMaterial;
+      saved.vaultSnapshot = snapshot;
+    }),
     removePersistedLocalVault: vi.fn(async () => {
       saved.localVaultDescriptor = undefined;
       saved.deviceAccessMaterial = undefined;
@@ -199,7 +203,9 @@ export function createCoreTestPorts(
         ? deviceAccessMaterial
         : null;
     }),
-    removeDeviceAccessMaterial: vi.fn(),
+    removeDeviceAccessMaterial: vi.fn(async () => {
+      saved.deviceAccessMaterial = undefined;
+    }),
     saveVaultSnapshot: vi.fn(async (vaultSnapshot) => {
       saved.vaultSnapshot = vaultSnapshot;
     }),

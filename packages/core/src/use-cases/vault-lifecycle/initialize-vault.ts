@@ -205,11 +205,11 @@ export class InitializeVaultUseCase {
       devicePrivateSignKey: deviceSignKeyPair.privateKey,
     };
 
-    await this.vaultLocalRepository.saveInitializedLocalVault({
-      descriptor: localVaultDescriptor,
+    await this.vaultLocalRepository.saveInitializedLocalVault(
+      localVaultDescriptor,
       deviceAccessMaterial,
-      snapshot: vaultSnapshot,
-    });
+      vaultSnapshot,
+    );
     try {
       await this.unlockedVaultSession.commit(
         unlockedVault,
