@@ -1,4 +1,3 @@
-import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { RemoteVaultSnapshotDescriptor } from "../../domain/sync/remote-vault-snapshot-descriptor.type";
 import type { VaultSyncResolution } from "../../domain/sync/vault-sync-review.type";
@@ -10,7 +9,6 @@ import {
   SyncResolutionIncompleteError,
   SyncTrustChangeRequiresDeviceTrustFlowError,
 } from "../../errors/sync.errors";
-import { VaultSnapshotNotFoundError } from "../../errors/unlock-vault.errors";
 import { requireVaultSyncConfig } from "../../services/sync/sync-config.utils";
 import type { VaultSyncUploadService } from "../../services/sync/vault-sync-upload.service";
 import type { VaultSyncReviewService } from "../../services/sync/vault-sync-review.service";
@@ -32,7 +30,6 @@ export type ApplySyncResolutionResult = {
 export class ApplySyncResolutionUseCase {
   private readonly syncProvider: SyncProviderPort;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
-  private readonly vaultLocalRepository: VaultLocalRepositoryPort;
   private readonly vaultSyncReview: VaultSyncReviewService;
   private readonly vaultSnapshot: VaultSnapshotService;
   private readonly vaultSyncUpload: VaultSyncUploadService;
@@ -40,14 +37,12 @@ export class ApplySyncResolutionUseCase {
   constructor(
     syncProvider: SyncProviderPort,
     unlockedVaultSession: UnlockedVaultSessionService,
-    vaultLocalRepository: VaultLocalRepositoryPort,
     vaultSyncReview: VaultSyncReviewService,
     vaultSnapshot: VaultSnapshotService,
     vaultSyncUpload: VaultSyncUploadService,
   ) {
     this.syncProvider = syncProvider;
     this.unlockedVaultSession = unlockedVaultSession;
-    this.vaultLocalRepository = vaultLocalRepository;
     this.vaultSyncReview = vaultSyncReview;
     this.vaultSnapshot = vaultSnapshot;
     this.vaultSyncUpload = vaultSyncUpload;
@@ -57,7 +52,7 @@ export class ApplySyncResolutionUseCase {
     params: ApplySyncResolutionCommandParams,
   ): Promise<ApplySyncResolutionResult> {
     const { sourceSnapshotRevision, unlockedVault } =
-      await this.unlockedVaultSession.getUnlockedVaultContext(
+      await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
         "apply sync resolution",
       );
@@ -148,13 +143,9 @@ export class ApplySyncResolutionUseCase {
       persistedSnapshot.revision,
     );
 
-    const resolvedSnapshot = await this.vaultLocalRepository.getVaultSnapshot(
+    const resolvedSnapshot = await this.vaultSnapshot.requireLocalVaultSnapshot(
       params.vaultId,
     );
-
-    if (resolvedSnapshot === null) {
-      throw new VaultSnapshotNotFoundError(params.vaultId);
-    }
 
     await this.vaultSyncUpload.uploadSnapshotWithExpectedDescriptor({
       vaultId: params.vaultId,

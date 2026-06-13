@@ -34,7 +34,7 @@ export class UnlockedVaultSessionService {
     this.ids = ids;
   }
 
-  async assertCanActivate(vaultId: string): Promise<void> {
+  async requireVaultCanBeActivated(vaultId: string): Promise<void> {
     const activeMaterial =
       await this.materialRepository.getUnlockedVaultSessionMaterial();
 
@@ -66,7 +66,7 @@ export class UnlockedVaultSessionService {
     return this.restore(material, encryptedPayload);
   }
 
-  async getUnlockedVaultContext(
+  async requireUnlockedVaultContext(
     vaultId: string,
     operation: string,
   ): Promise<
@@ -209,7 +209,7 @@ export class UnlockedVaultSessionService {
     material: UnlockedVaultSessionMaterial,
     encryptedPayload: EncryptedUnlockedVaultSessionPayload,
   ): Promise<UnlockedVaultSession> {
-    assertMatchingSessionRecords(material, encryptedPayload);
+    this.requireMatchingSessionRecords(material, encryptedPayload);
 
     const context: UnlockedVaultSessionPayloadEncryptionContext = {
       sessionId: encryptedPayload.sessionId,
@@ -251,26 +251,26 @@ export class UnlockedVaultSessionService {
       // Preserve the original failure as the root cause.
     }
   }
-}
 
-function assertMatchingSessionRecords(
-  material: UnlockedVaultSessionMaterial,
-  encryptedPayload: EncryptedUnlockedVaultSessionPayload,
-): void {
-  if (
-    material.sessionId !== encryptedPayload.sessionId ||
-    material.vaultId !== encryptedPayload.vaultId
-  ) {
-    throw new UnlockedVaultSessionInvalidError(
-      "session material does not match encrypted payload",
-    );
-  }
+  private requireMatchingSessionRecords(
+    material: UnlockedVaultSessionMaterial,
+    encryptedPayload: EncryptedUnlockedVaultSessionPayload,
+  ): void {
+    if (
+      material.sessionId !== encryptedPayload.sessionId ||
+      material.vaultId !== encryptedPayload.vaultId
+    ) {
+      throw new UnlockedVaultSessionInvalidError(
+        "session material does not match encrypted payload",
+      );
+    }
 
-  if (
-    encryptedPayload.sourceSnapshotRevision < material.sourceSnapshotRevision
-  ) {
-    throw new UnlockedVaultSessionInvalidError(
-      "encrypted payload is older than session material",
-    );
+    if (
+      encryptedPayload.sourceSnapshotRevision < material.sourceSnapshotRevision
+    ) {
+      throw new UnlockedVaultSessionInvalidError(
+        "encrypted payload is older than session material",
+      );
+    }
   }
 }

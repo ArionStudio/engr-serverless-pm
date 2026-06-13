@@ -25,7 +25,7 @@ export class DisableSyncUseCase {
 
   async execute(params: DisableSyncCommandParams): Promise<void> {
     const { sourceSnapshotRevision, unlockedVault } =
-      await this.unlockedVaultSession.getUnlockedVaultContext(
+      await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
         "disable sync",
       );
@@ -40,7 +40,7 @@ export class DisableSyncUseCase {
       vault: removeVaultSyncConfig(unlockedVault.vault),
     };
 
-    await this.vaultSnapshot.assertCanPersistUnlockedVault(
+    await this.vaultSnapshot.requireUnlockedVaultCanBePersisted(
       params.vaultId,
       updatedUnlockedVault,
       sourceSnapshotRevision,

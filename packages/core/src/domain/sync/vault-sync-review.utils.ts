@@ -1,4 +1,5 @@
 import { areJsonEqual } from "../common/json.utils";
+import type { VaultSnapshot } from "../snapshot/vault-snapshot";
 import type { Vault } from "../vault/vault";
 import {
   incrementVersionVector,
@@ -24,6 +25,13 @@ import type {
   VaultSyncReview,
   VaultSyncTrustState,
 } from "./vault-sync-review.type";
+
+export function createVaultSyncTrustState(snapshot: VaultSnapshot) {
+  return {
+    trustedDevices: snapshot.trustedDevices,
+    keySlots: snapshot.keySlots,
+  };
+}
 
 export function createVaultSyncReview(
   localVault: Vault,

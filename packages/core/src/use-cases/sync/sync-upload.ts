@@ -1,31 +1,30 @@
-import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
-import { VaultSnapshotNotFoundError } from "../../errors/unlock-vault.errors";
 import { requireVaultSyncConfig } from "../../services/sync/sync-config.utils";
 import type { VaultSyncUploadService } from "../../services/sync/vault-sync-upload.service";
 import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
+import type { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
 
 export type SyncUploadCommandParams = {
   readonly vaultId: string;
 };
 
 export class SyncUploadUseCase {
-  private readonly vaultLocalRepository: VaultLocalRepositoryPort;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
+  private readonly vaultSnapshot: VaultSnapshotService;
   private readonly vaultSyncUpload: VaultSyncUploadService;
 
   constructor(
-    vaultLocalRepository: VaultLocalRepositoryPort,
     unlockedVaultSession: UnlockedVaultSessionService,
+    vaultSnapshot: VaultSnapshotService,
     vaultSyncUpload: VaultSyncUploadService,
   ) {
-    this.vaultLocalRepository = vaultLocalRepository;
     this.unlockedVaultSession = unlockedVaultSession;
+    this.vaultSnapshot = vaultSnapshot;
     this.vaultSyncUpload = vaultSyncUpload;
   }
 
   async execute(params: SyncUploadCommandParams): Promise<void> {
     const { unlockedVault } =
-      await this.unlockedVaultSession.getUnlockedVaultContext(
+      await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
         "sync upload",
       );
@@ -35,15 +34,11 @@ export class SyncUploadUseCase {
       unlockedVault.vault,
     );
 
-    const localSnapshot = await this.vaultLocalRepository.getVaultSnapshot(
+    const localSnapshot = await this.vaultSnapshot.requireLocalVaultSnapshot(
       params.vaultId,
     );
 
-    if (localSnapshot === null) {
-      throw new VaultSnapshotNotFoundError(params.vaultId);
-    }
-
-    await this.vaultSyncUpload.uploadLocalSnapshotIfAllowed({
+    await this.vaultSyncUpload.uploadLocalSnapshotWhenSafe({
       vaultId: params.vaultId,
       syncConfig,
       localVault: unlockedVault.vault,

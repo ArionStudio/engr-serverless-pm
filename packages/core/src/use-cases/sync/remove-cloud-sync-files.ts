@@ -24,7 +24,7 @@ export class RemoveCloudSyncFilesUseCase {
 
   async execute(params: RemoveCloudSyncFilesCommandParams): Promise<void> {
     const { unlockedVault } =
-      await this.unlockedVaultSession.getUnlockedVaultContext(
+      await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
         "remove cloud sync files",
       );

@@ -23,7 +23,7 @@ export class RemoveLocalSyncCredentialsUseCase {
     params: RemoveLocalSyncCredentialsCommandParams,
   ): Promise<void> {
     const { sourceSnapshotRevision, unlockedVault } =
-      await this.unlockedVaultSession.getUnlockedVaultContext(
+      await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
         "remove local sync credentials",
       );

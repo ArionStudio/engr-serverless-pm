@@ -12,6 +12,7 @@ import {
   SyncNotConfiguredError,
 } from "../../errors/sync.errors";
 import { VaultSyncUploadService } from "../../services/sync/vault-sync-upload.service";
+import { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
 import { VaultSnapshotNotFoundError } from "../../errors/unlock-vault.errors";
 import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 import { SyncUploadUseCase } from "./sync-upload";
@@ -92,6 +93,11 @@ function createContext() {
     sourceSnapshotRevision: 1,
   };
   ports.saved.vaultSnapshot = localSnapshot;
+  const vaultSnapshot = new VaultSnapshotService(
+    ports.crypto,
+    ports.clock,
+    ports.vaultLocalRepository,
+  );
 
   return {
     values,
@@ -99,8 +105,8 @@ function createContext() {
     saved: ports.saved,
     localSnapshot,
     useCase: new SyncUploadUseCase(
-      ports.vaultLocalRepository,
       ports.sessionServices.unlockedVaultSession,
+      vaultSnapshot,
       new VaultSyncUploadService(ports.syncProvider),
     ),
   };

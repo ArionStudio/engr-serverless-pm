@@ -68,14 +68,14 @@ describe("DisableSyncUseCase", () => {
     expect("syncConfig" in persistedUnlockedVault!.vault).toBe(false);
     expect(sourceSnapshotRevision).toBe(1);
     expect(
-      ctx.vaultSnapshot.assertCanPersistUnlockedVault,
+      ctx.vaultSnapshot.requireUnlockedVaultCanBePersisted,
     ).toHaveBeenCalledWith(
       ctx.values.vaultId,
       persistedUnlockedVault,
       sourceSnapshotRevision,
     );
     expect(
-      vi.mocked(ctx.vaultSnapshot.assertCanPersistUnlockedVault).mock
+      vi.mocked(ctx.vaultSnapshot.requireUnlockedVaultCanBePersisted).mock
         .invocationCallOrder[0],
     ).toBeLessThan(
       vi.mocked(ctx.ports.syncProvider.removeVaultSnapshots).mock
@@ -133,7 +133,7 @@ describe("DisableSyncUseCase", () => {
     });
 
     vi.mocked(
-      ctx.vaultSnapshot.assertCanPersistUnlockedVault,
+      ctx.vaultSnapshot.requireUnlockedVaultCanBePersisted,
     ).mockRejectedValueOnce(error);
 
     await expect(

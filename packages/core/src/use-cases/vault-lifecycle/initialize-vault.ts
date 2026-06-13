@@ -59,7 +59,7 @@ export class InitializeVaultUseCase {
     initializeVaultCommandParams: InitializeVaultCommandParams,
   ): Promise<InitializeVaultResult> {
     const vaultId = await this.ids.generateId();
-    await this.unlockedVaultSession.assertCanActivate(vaultId);
+    await this.unlockedVaultSession.requireVaultCanBeActivated(vaultId);
 
     const deviceId = await this.ids.generateId();
     const timestamp = this.clock.now();

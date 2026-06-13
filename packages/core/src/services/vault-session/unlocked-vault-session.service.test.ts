@@ -89,7 +89,7 @@ describe("UnlockedVaultSessionService", () => {
     const ctx = createContext();
 
     await expect(
-      ctx.service.assertCanActivate(ctx.values.vaultId),
+      ctx.service.requireVaultCanBeActivated(ctx.values.vaultId),
     ).resolves.toBeUndefined();
   });
 
@@ -98,7 +98,7 @@ describe("UnlockedVaultSessionService", () => {
     ctx.ports.saved.unlockedVaultSessionMaterial = createActiveMaterial(ctx);
 
     await expect(
-      ctx.service.assertCanActivate(ctx.values.vaultId),
+      ctx.service.requireVaultCanBeActivated(ctx.values.vaultId),
     ).resolves.toBeUndefined();
   });
 
@@ -107,7 +107,7 @@ describe("UnlockedVaultSessionService", () => {
     ctx.ports.saved.unlockedVaultSessionMaterial = createActiveMaterial(ctx);
 
     await expect(
-      ctx.service.assertCanActivate("other-vault-id"),
+      ctx.service.requireVaultCanBeActivated("other-vault-id"),
     ).rejects.toBeInstanceOf(ActiveUnlockedVaultMismatchError);
   });
 
@@ -158,7 +158,10 @@ describe("UnlockedVaultSessionService", () => {
       createEncryptedPayload(ctx);
 
     await expect(
-      ctx.service.getUnlockedVaultContext(ctx.values.vaultId, "test operation"),
+      ctx.service.requireUnlockedVaultContext(
+        ctx.values.vaultId,
+        "test operation",
+      ),
     ).resolves.toEqual({
       unlockedVault: {
         vaultId: ctx.values.vaultId,
@@ -175,7 +178,10 @@ describe("UnlockedVaultSessionService", () => {
     const ctx = createContext();
 
     await expect(
-      ctx.service.getUnlockedVaultContext(ctx.values.vaultId, "test operation"),
+      ctx.service.requireUnlockedVaultContext(
+        ctx.values.vaultId,
+        "test operation",
+      ),
     ).rejects.toBeInstanceOf(VaultMustBeUnlockedError);
 
     expect(
@@ -191,7 +197,10 @@ describe("UnlockedVaultSessionService", () => {
       createEncryptedPayload(ctx);
 
     await expect(
-      ctx.service.getUnlockedVaultContext("other-vault-id", "test operation"),
+      ctx.service.requireUnlockedVaultContext(
+        "other-vault-id",
+        "test operation",
+      ),
     ).rejects.toBeInstanceOf(VaultMustBeUnlockedError);
   });
 

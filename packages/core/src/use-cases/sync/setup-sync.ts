@@ -26,7 +26,7 @@ export class SetupSyncUseCase {
 
   async execute(params: SetupSyncCommandParams): Promise<void> {
     const { sourceSnapshotRevision, unlockedVault } =
-      await this.unlockedVaultSession.getUnlockedVaultContext(
+      await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
         "setup sync",
       );

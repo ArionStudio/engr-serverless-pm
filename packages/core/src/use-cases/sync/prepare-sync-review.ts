@@ -31,7 +31,7 @@ export class PrepareSyncReviewUseCase {
     params: PrepareSyncReviewCommandParams,
   ): Promise<PrepareSyncReviewResult> {
     const { unlockedVault } =
-      await this.unlockedVaultSession.getUnlockedVaultContext(
+      await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
         "prepare sync review",
       );

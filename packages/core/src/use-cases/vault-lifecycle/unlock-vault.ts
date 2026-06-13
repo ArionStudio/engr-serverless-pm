@@ -62,7 +62,7 @@ export class UnlockVaultUseCase {
   async execute(params: UnlockVaultCommandParams): Promise<UnlockVaultResult> {
     assertValidVaultLockDelay(params.lockAfterMs);
 
-    await this.unlockedVaultSession.assertCanActivate(params.vaultId);
+    await this.unlockedVaultSession.requireVaultCanBeActivated(params.vaultId);
 
     const deviceAccessMaterial =
       await this.vaultLocalRepository.getDeviceAccessMaterial(params.vaultId);

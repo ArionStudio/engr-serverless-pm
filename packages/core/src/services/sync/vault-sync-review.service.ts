@@ -8,36 +8,29 @@ import {
   toRemoteVaultSnapshotDescriptor,
 } from "../../domain/sync/vault-snapshot-version.utils";
 import type { VersionVectorRelation } from "../../domain/sync/version-vector.type";
-import { createVaultSyncReview } from "../../domain/sync/vault-sync-review.utils";
+import {
+  createVaultSyncReview,
+  createVaultSyncTrustState,
+} from "../../domain/sync/vault-sync-review.utils";
 import type { VaultSyncReview } from "../../domain/sync/vault-sync-review.type";
 import type { Vault } from "../../domain/vault/vault";
-import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
-import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
-import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
+import type { VaultSnapshotService } from "../vault-snapshots/vault-snapshot.service";
 import {
   RemoteVaultSnapshotChangedError,
   RemoteVaultSnapshotNotFoundError,
 } from "../../errors/sync.errors";
-import {
-  VaultSnapshotNotFoundError,
-  VaultSnapshotSignatureVerificationFailedError,
-  VaultSnapshotSignerNotTrustedError,
-} from "../../errors/unlock-vault.errors";
 
 export class VaultSyncReviewService {
   private readonly syncProvider: SyncProviderPort;
-  private readonly vaultLocalRepository: VaultLocalRepositoryPort;
-  private readonly crypto: CryptoPort;
+  private readonly vaultSnapshot: VaultSnapshotService;
 
   constructor(
     syncProvider: SyncProviderPort,
-    vaultLocalRepository: VaultLocalRepositoryPort,
-    crypto: CryptoPort,
+    vaultSnapshot: VaultSnapshotService,
   ) {
     this.syncProvider = syncProvider;
-    this.vaultLocalRepository = vaultLocalRepository;
-    this.crypto = crypto;
+    this.vaultSnapshot = vaultSnapshot;
   }
 
   async prepareReview(params: {
@@ -60,7 +53,9 @@ export class VaultSyncReviewService {
       throw new RemoteVaultSnapshotNotFoundError(params.vaultId);
     }
 
-    const localSnapshot = await this.getLocalSnapshot(params.vaultId);
+    const localSnapshot = await this.vaultSnapshot.requireLocalVaultSnapshot(
+      params.vaultId,
+    );
     const localSnapshotDescriptor = toRemoteVaultSnapshotDescriptor(
       localSnapshot.metadata.id,
       params.localVault,
@@ -82,8 +77,8 @@ export class VaultSyncReviewService {
         review: createVaultSyncReview(
           params.localVault,
           params.localVault,
-          toTrustState(localSnapshot),
-          toTrustState(localSnapshot),
+          createVaultSyncTrustState(localSnapshot),
+          createVaultSyncTrustState(localSnapshot),
         ),
       };
     }
@@ -101,8 +96,8 @@ export class VaultSyncReviewService {
         review: createVaultSyncReview(
           params.localVault,
           params.localVault,
-          toTrustState(localSnapshot),
-          toTrustState(localSnapshot),
+          createVaultSyncTrustState(localSnapshot),
+          createVaultSyncTrustState(localSnapshot),
         ),
       };
     }
@@ -134,7 +129,7 @@ export class VaultSyncReviewService {
   }> {
     return this.loadReviewForRemoteDescriptorWithSnapshot(
       params,
-      await this.getLocalSnapshot(params.vaultId),
+      await this.vaultSnapshot.requireLocalVaultSnapshot(params.vaultId),
     );
   }
 
@@ -151,15 +146,15 @@ export class VaultSyncReviewService {
     readonly remoteVault: Vault;
     readonly review: VaultSyncReview;
   }> {
-    const remoteSnapshot = await this.downloadVerifiedRemoteSnapshot(
+    const remoteSnapshot = await this.syncProvider.downloadVaultSnapshot(
       params.syncConfig,
       params.remoteSnapshotDescriptor,
-      params.vaultId,
-      localSnapshot,
     );
-    const remoteVault = await this.crypto.decryptVaultSnapshotContent(
-      remoteSnapshot.content,
+    const remoteVault = await this.vaultSnapshot.openTrustedVaultSnapshot(
+      params.vaultId,
+      remoteSnapshot,
       params.vaultMasterKey,
+      localSnapshot,
     );
     const downloadedDescriptor = toRemoteVaultSnapshotDescriptor(
       remoteSnapshot.metadata.id,
@@ -181,72 +176,9 @@ export class VaultSyncReviewService {
       review: createVaultSyncReview(
         params.localVault,
         remoteVault,
-        toTrustState(localSnapshot),
-        toTrustState(remoteSnapshot),
+        createVaultSyncTrustState(localSnapshot),
+        createVaultSyncTrustState(remoteSnapshot),
       ),
     };
   }
-
-  private async getLocalSnapshot(vaultId: string): Promise<VaultSnapshot> {
-    const localSnapshot =
-      await this.vaultLocalRepository.getVaultSnapshot(vaultId);
-
-    if (localSnapshot === null) {
-      throw new VaultSnapshotNotFoundError(vaultId);
-    }
-
-    return localSnapshot;
-  }
-
-  private async downloadVerifiedRemoteSnapshot(
-    syncConfig: SyncConfig,
-    remoteSnapshotDescriptor: RemoteVaultSnapshotDescriptor,
-    vaultId: string,
-    localSnapshot: VaultSnapshot,
-  ): Promise<VaultSnapshot> {
-    const remoteSnapshot = await this.syncProvider.downloadVaultSnapshot(
-      syncConfig,
-      remoteSnapshotDescriptor,
-    );
-
-    if (
-      remoteSnapshot.metadata.algorithmSuiteId !== this.crypto.algorithmSuite.id
-    ) {
-      throw new UnsupportedAlgorithmSuiteError({
-        vaultId,
-        artifact: "vault snapshot",
-        expectedAlgorithmSuiteId: this.crypto.algorithmSuite.id,
-        actualAlgorithmSuiteId: remoteSnapshot.metadata.algorithmSuiteId,
-      });
-    }
-
-    const signerDevice = localSnapshot.trustedDevices.find(
-      (device) => device.id === remoteSnapshot.metadata.createdByDeviceId,
-    );
-
-    if (signerDevice === undefined) {
-      throw new VaultSnapshotSignerNotTrustedError(
-        vaultId,
-        remoteSnapshot.metadata.createdByDeviceId,
-      );
-    }
-
-    const isSnapshotAuthentic = await this.crypto.verifyVaultSnapshotSignature(
-      remoteSnapshot,
-      signerDevice.publicKeys.signingKey,
-    );
-
-    if (!isSnapshotAuthentic) {
-      throw new VaultSnapshotSignatureVerificationFailedError(vaultId);
-    }
-
-    return remoteSnapshot;
-  }
-}
-
-function toTrustState(snapshot: VaultSnapshot) {
-  return {
-    trustedDevices: snapshot.trustedDevices,
-    keySlots: snapshot.keySlots,
-  };
 }

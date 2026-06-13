@@ -131,12 +131,7 @@ function createContext() {
     useCase: new ApplySyncResolutionUseCase(
       ports.syncProvider,
       ports.sessionServices.unlockedVaultSession,
-      ports.vaultLocalRepository,
-      new VaultSyncReviewService(
-        ports.syncProvider,
-        ports.vaultLocalRepository,
-        ports.crypto,
-      ),
+      new VaultSyncReviewService(ports.syncProvider, vaultSnapshot),
       vaultSnapshot,
       new VaultSyncUploadService(ports.syncProvider),
     ),

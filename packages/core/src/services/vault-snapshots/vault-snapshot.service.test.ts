@@ -11,6 +11,7 @@ import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
 import {
   VaultSnapshotNotFoundError,
+  VaultSnapshotSignatureVerificationFailedError,
   VaultSnapshotSignerNotTrustedError,
 } from "../../errors/unlock-vault.errors";
 import {
@@ -124,11 +125,11 @@ describe("VaultSnapshotService", () => {
     });
   });
 
-  it("returns the current snapshot for an unlocked mutation without saving", async () => {
+  it("requires the current snapshot for an unlocked vault without saving", async () => {
     const ctx = createContext();
 
     await expect(
-      ctx.service.getCurrentVaultSnapshotForUnlockedMutation(
+      ctx.service.requireCurrentSnapshotForUnlockedVault(
         ctx.values.vaultId,
         ctx.unlockedVault,
         ctx.currentSnapshot.metadata.revision,
@@ -142,10 +143,123 @@ describe("VaultSnapshotService", () => {
     ).not.toHaveBeenCalled();
   });
 
+  it("requires a local vault snapshot", async () => {
+    const ctx = createContext();
+
+    await expect(
+      ctx.service.requireLocalVaultSnapshot(ctx.values.vaultId),
+    ).resolves.toBe(ctx.currentSnapshot);
+  });
+
+  it("opens a vault snapshot only after trusted signer verification", async () => {
+    const ctx = createContext();
+    const trustedSnapshot: VaultSnapshot = {
+      ...ctx.currentSnapshot,
+      metadata: {
+        ...ctx.currentSnapshot.metadata,
+        createdByDeviceId: ctx.values.deviceId,
+      },
+    };
+
+    await expect(
+      ctx.service.openTrustedVaultSnapshot(
+        ctx.values.vaultId,
+        trustedSnapshot,
+        ctx.values.vaultMasterKey,
+        ctx.currentSnapshot,
+      ),
+    ).resolves.toBe(ctx.values.decryptedVault);
+
+    expect(ctx.ports.crypto.verifyVaultSnapshotSignature).toHaveBeenCalledWith(
+      trustedSnapshot,
+      ctx.values.devicePublicSignKey,
+    );
+    expect(ctx.ports.crypto.decryptVaultSnapshotContent).toHaveBeenCalledWith(
+      trustedSnapshot.content,
+      ctx.values.vaultMasterKey,
+    );
+  });
+
+  it("fails before decrypting when the snapshot signer is not trusted", async () => {
+    const ctx = createContext();
+    const untrustedSnapshot: VaultSnapshot = {
+      ...ctx.currentSnapshot,
+      metadata: {
+        ...ctx.currentSnapshot.metadata,
+        createdByDeviceId: "untrusted-device-id",
+      },
+    };
+
+    await expect(
+      ctx.service.openTrustedVaultSnapshot(
+        ctx.values.vaultId,
+        untrustedSnapshot,
+        ctx.values.vaultMasterKey,
+        ctx.currentSnapshot,
+      ),
+    ).rejects.toThrow(VaultSnapshotSignerNotTrustedError);
+
+    expect(
+      ctx.ports.crypto.verifyVaultSnapshotSignature,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
+  });
+
+  it("fails before decrypting when the snapshot signature is invalid", async () => {
+    const ctx = createContext();
+    const trustedSnapshot: VaultSnapshot = {
+      ...ctx.currentSnapshot,
+      metadata: {
+        ...ctx.currentSnapshot.metadata,
+        createdByDeviceId: ctx.values.deviceId,
+      },
+    };
+
+    vi.mocked(
+      ctx.ports.crypto.verifyVaultSnapshotSignature,
+    ).mockResolvedValueOnce(false);
+
+    await expect(
+      ctx.service.openTrustedVaultSnapshot(
+        ctx.values.vaultId,
+        trustedSnapshot,
+        ctx.values.vaultMasterKey,
+        ctx.currentSnapshot,
+      ),
+    ).rejects.toThrow(VaultSnapshotSignatureVerificationFailedError);
+
+    expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
+  });
+
+  it("fails before verifying when the snapshot algorithm suite is unsupported", async () => {
+    const ctx = createContext();
+    const unsupportedSnapshot: VaultSnapshot = {
+      ...ctx.currentSnapshot,
+      metadata: {
+        ...ctx.currentSnapshot.metadata,
+        algorithmSuiteId: "unsupported-suite",
+      },
+    };
+
+    await expect(
+      ctx.service.openTrustedVaultSnapshot(
+        ctx.values.vaultId,
+        unsupportedSnapshot,
+        ctx.values.vaultMasterKey,
+        ctx.currentSnapshot,
+      ),
+    ).rejects.toThrow(UnsupportedAlgorithmSuiteError);
+
+    expect(
+      ctx.ports.crypto.verifyVaultSnapshotSignature,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
+  });
+
   it("preflights unlocked vault persistence without saving a snapshot", async () => {
     const ctx = createContext();
 
-    await ctx.service.assertCanPersistUnlockedVault(
+    await ctx.service.requireUnlockedVaultCanBePersisted(
       ctx.values.vaultId,
       ctx.unlockedVault,
       ctx.currentSnapshot.metadata.revision,
@@ -162,7 +276,7 @@ describe("VaultSnapshotService", () => {
     const ctx = createContext();
 
     await expect(
-      ctx.service.assertCanPersistUnlockedVault(
+      ctx.service.requireUnlockedVaultCanBePersisted(
         ctx.values.vaultId,
         ctx.unlockedVault,
         ctx.currentSnapshot.metadata.revision - 1,

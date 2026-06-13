@@ -64,7 +64,7 @@ export class RecoverVaultAccessUseCase {
     // source of truth.
     // Recovery activates this vault locally, so it must not replace another
     // already-unlocked vault session.
-    await this.unlockedVaultSession.assertCanActivate(params.vaultId);
+    await this.unlockedVaultSession.requireVaultCanBeActivated(params.vaultId);
 
     // Start from the local encrypted snapshot. Sync credentials are inside the
     // encrypted vault content, so recovery cannot download first.

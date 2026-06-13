@@ -7,6 +7,7 @@ import {
   SyncNotConfiguredError,
 } from "../../errors/sync.errors";
 import { VaultSyncReviewService } from "../../services/sync/vault-sync-review.service";
+import { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
 import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 import { CURRENT_ALGORITHM_SUITE } from "../../domain/crypto/algorithm-suite.const";
 import type { PasswordEntry } from "../../domain/entry/password-entry.type";
@@ -105,6 +106,11 @@ function createContext() {
     sourceSnapshotRevision: 1,
   };
   ports.saved.vaultSnapshot = localSnapshot;
+  const vaultSnapshot = new VaultSnapshotService(
+    ports.crypto,
+    ports.clock,
+    ports.vaultLocalRepository,
+  );
 
   return {
     values,
@@ -113,11 +119,7 @@ function createContext() {
     localSnapshot,
     useCase: new PrepareSyncReviewUseCase(
       ports.sessionServices.unlockedVaultSession,
-      new VaultSyncReviewService(
-        ports.syncProvider,
-        ports.vaultLocalRepository,
-        ports.crypto,
-      ),
+      new VaultSyncReviewService(ports.syncProvider, vaultSnapshot),
     ),
   };
 }

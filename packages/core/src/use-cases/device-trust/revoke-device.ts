@@ -77,7 +77,7 @@ export class RevokeDeviceUseCase {
     // Start from the current local snapshot and verify its provenance before
     // using its trust and key-slot state as the basis for the new snapshot.
     const currentVaultSnapshot =
-      await this.vaultSnapshot.getCurrentVaultSnapshotForUnlockedMutation(
+      await this.vaultSnapshot.requireCurrentSnapshotForUnlockedVault(
         params.vaultId,
         unlockedVault,
         sourceSnapshotRevision,

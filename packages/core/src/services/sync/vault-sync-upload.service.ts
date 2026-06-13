@@ -21,7 +21,7 @@ export class VaultSyncUploadService {
     this.syncProvider = syncProvider;
   }
 
-  async uploadLocalSnapshotIfAllowed(params: {
+  async uploadLocalSnapshotWhenSafe(params: {
     readonly vaultId: string;
     readonly syncConfig: SyncConfig;
     readonly localVault: Vault;
