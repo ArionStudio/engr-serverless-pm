@@ -60,6 +60,47 @@ export function addRecoveredDeviceProfileToVault(
   };
 }
 
+export function revokeDeviceProfileFromVault(
+  vault: Vault,
+  revokingDeviceId: string,
+  revokedDeviceId: string,
+  deletedAt: number,
+): Vault {
+  const revokedDeviceProfile = vault.deviceProfiles.find(
+    (deviceProfile) => deviceProfile.id === revokedDeviceId,
+  );
+
+  if (revokedDeviceProfile === undefined) {
+    return vault;
+  }
+
+  const versionVector = incrementVersionVector(
+    vault.versionVector,
+    revokingDeviceId,
+  );
+
+  return {
+    ...vault,
+    versionVector,
+    deviceProfiles: vault.deviceProfiles.filter(
+      (deviceProfile) => deviceProfile.id !== revokedDeviceId,
+    ),
+    deletedDeviceProfiles: [
+      ...vault.deletedDeviceProfiles.filter(
+        (deviceProfile) => deviceProfile.id !== revokedDeviceId,
+      ),
+      {
+        id: revokedDeviceId,
+        versionVector: incrementVersionVector(
+          revokedDeviceProfile.versionVector,
+          revokingDeviceId,
+        ),
+        deletedAt,
+      },
+    ],
+  };
+}
+
 function removeReplacedDeviceProfile(
   deviceProfiles: DeviceProfile[],
   replacedDeviceProfile: DeviceProfile | undefined,
