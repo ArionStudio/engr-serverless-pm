@@ -1,8 +1,8 @@
-import { requireVaultSyncConfig } from "../../services/sync/sync-config.utils";
 import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
 import { removeVaultSyncConfig } from "../../domain/vault/vault-sync-config.mutations";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
+import { requireVaultSyncConfig } from "./require-vault-sync-config";
 
 export type DisableSyncCommandParams = {
   readonly vaultId: string;
@@ -40,7 +40,7 @@ export class DisableSyncUseCase {
       vault: removeVaultSyncConfig(unlockedVault.vault),
     };
 
-    await this.vaultSnapshot.requireUnlockedVaultCanBePersisted(
+    await this.vaultSnapshot.requireCurrentSnapshotForUnlockedVault(
       params.vaultId,
       updatedUnlockedVault,
       sourceSnapshotRevision,

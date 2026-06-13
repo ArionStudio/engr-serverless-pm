@@ -2,8 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import { createUnlockedVaultWithEntries } from "../../__tests__/fixtures/vault-entries";
-import { VaultSyncUploadService } from "../../services/sync/vault-sync-upload.service";
-import { VaultSyncReviewService } from "../../services/sync/vault-sync-review.service";
 import { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
 import { CURRENT_ALGORITHM_SUITE } from "../../domain/crypto/algorithm-suite.const";
 import type { PasswordEntry } from "../../domain/entry/password-entry.type";
@@ -131,9 +129,7 @@ function createContext() {
     useCase: new ApplySyncResolutionUseCase(
       ports.syncProvider,
       ports.sessionServices.unlockedVaultSession,
-      new VaultSyncReviewService(ports.syncProvider, vaultSnapshot),
       vaultSnapshot,
-      new VaultSyncUploadService(ports.syncProvider),
     ),
   };
 }

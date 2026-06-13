@@ -11,7 +11,6 @@ import {
   SyncConflictDetectedError,
   SyncNotConfiguredError,
 } from "../../errors/sync.errors";
-import { VaultSyncUploadService } from "../../services/sync/vault-sync-upload.service";
 import { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
 import { VaultSnapshotNotFoundError } from "../../errors/unlock-vault.errors";
 import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
@@ -105,9 +104,9 @@ function createContext() {
     saved: ports.saved,
     localSnapshot,
     useCase: new SyncUploadUseCase(
+      ports.syncProvider,
       ports.sessionServices.unlockedVaultSession,
       vaultSnapshot,
-      new VaultSyncUploadService(ports.syncProvider),
     ),
   };
 }

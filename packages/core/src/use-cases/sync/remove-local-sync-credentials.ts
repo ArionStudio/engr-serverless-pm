@@ -1,7 +1,7 @@
-import { requireVaultSyncConfig } from "../../services/sync/sync-config.utils";
 import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
 import { removeVaultSyncConfig } from "../../domain/vault/vault-sync-config.mutations";
+import { requireVaultSyncConfig } from "./require-vault-sync-config";
 
 export type RemoveLocalSyncCredentialsCommandParams = {
   readonly vaultId: string;

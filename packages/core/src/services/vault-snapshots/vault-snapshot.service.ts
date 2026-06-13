@@ -34,18 +34,6 @@ export class VaultSnapshotService {
     this.vaultLocalRepository = vaultLocalRepository;
   }
 
-  async requireUnlockedVaultCanBePersisted(
-    vaultId: string,
-    unlockedVault: UnlockedVault,
-    sourceSnapshotRevision: number,
-  ): Promise<void> {
-    await this.requireCurrentSnapshotForUnlockedVault(
-      vaultId,
-      unlockedVault,
-      sourceSnapshotRevision,
-    );
-  }
-
   async persistUnlockedVault(
     vaultId: string,
     unlockedVault: UnlockedVault,

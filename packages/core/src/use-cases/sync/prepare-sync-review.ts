@@ -1,9 +1,23 @@
 import type { RemoteVaultSnapshotDescriptor } from "../../domain/sync/remote-vault-snapshot-descriptor.type";
 import type { VaultSyncReview } from "../../domain/sync/vault-sync-review.type";
 import type { VersionVectorRelation } from "../../domain/sync/version-vector.type";
-import type { VaultSyncReviewService } from "../../services/sync/vault-sync-review.service";
-import { requireVaultSyncConfig } from "../../services/sync/sync-config.utils";
+import {
+  areRemoteVaultSnapshotDescriptorsEqual,
+  compareLocalAndRemoteSnapshotDescriptors,
+  toRemoteVaultSnapshotDescriptor,
+} from "../../domain/sync/vault-snapshot-version.utils";
+import {
+  createVaultSyncReview,
+  createVaultSyncTrustState,
+} from "../../domain/sync/vault-sync-review.utils";
+import {
+  RemoteVaultSnapshotChangedError,
+  RemoteVaultSnapshotNotFoundError,
+} from "../../errors/sync.errors";
+import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
+import type { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
+import { requireVaultSyncConfig } from "./require-vault-sync-config";
 
 export type PrepareSyncReviewCommandParams = {
   readonly vaultId: string;
@@ -17,14 +31,17 @@ export type PrepareSyncReviewResult = {
 
 export class PrepareSyncReviewUseCase {
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
-  private readonly vaultSyncReview: VaultSyncReviewService;
+  private readonly syncProvider: SyncProviderPort;
+  private readonly vaultSnapshot: VaultSnapshotService;
 
   constructor(
     unlockedVaultSession: UnlockedVaultSessionService,
-    vaultSyncReview: VaultSyncReviewService,
+    syncProvider: SyncProviderPort,
+    vaultSnapshot: VaultSnapshotService,
   ) {
     this.unlockedVaultSession = unlockedVaultSession;
-    this.vaultSyncReview = vaultSyncReview;
+    this.syncProvider = syncProvider;
+    this.vaultSnapshot = vaultSnapshot;
   }
 
   async execute(
@@ -41,11 +58,99 @@ export class PrepareSyncReviewUseCase {
       unlockedVault.vault,
     );
 
-    return this.vaultSyncReview.prepareReview({
-      vaultId: params.vaultId,
+    const remoteSnapshotDescriptor =
+      await this.syncProvider.getLatestVaultSnapshotDescriptor(
+        syncConfig,
+        params.vaultId,
+      );
+
+    if (remoteSnapshotDescriptor === null) {
+      throw new RemoteVaultSnapshotNotFoundError(params.vaultId);
+    }
+
+    const localSnapshot = await this.vaultSnapshot.requireLocalVaultSnapshot(
+      params.vaultId,
+    );
+    const localSnapshotDescriptor = toRemoteVaultSnapshotDescriptor(
+      localSnapshot.metadata.id,
+      unlockedVault.vault,
+      localSnapshot,
+    );
+    const relation = compareLocalAndRemoteSnapshotDescriptors(
+      localSnapshotDescriptor,
+      remoteSnapshotDescriptor,
+    );
+
+    if (
+      relation === "local_ahead" &&
+      remoteSnapshotDescriptor.revisionTimestamp <=
+        localSnapshot.metadata.revisionTimestamp
+    ) {
+      return {
+        remoteSnapshotDescriptor,
+        relation,
+        review: createVaultSyncReview(
+          unlockedVault.vault,
+          unlockedVault.vault,
+          createVaultSyncTrustState(localSnapshot),
+          createVaultSyncTrustState(localSnapshot),
+        ),
+      };
+    }
+
+    if (
+      relation === "equal" &&
+      areRemoteVaultSnapshotDescriptorsEqual(
+        remoteSnapshotDescriptor,
+        localSnapshotDescriptor,
+      )
+    ) {
+      return {
+        remoteSnapshotDescriptor,
+        relation,
+        review: createVaultSyncReview(
+          unlockedVault.vault,
+          unlockedVault.vault,
+          createVaultSyncTrustState(localSnapshot),
+          createVaultSyncTrustState(localSnapshot),
+        ),
+      };
+    }
+
+    const remoteSnapshot = await this.syncProvider.downloadVaultSnapshot(
       syncConfig,
-      localVault: unlockedVault.vault,
-      vaultMasterKey: unlockedVault.vaultMasterKey,
-    });
+      remoteSnapshotDescriptor,
+    );
+    const remoteVault = await this.vaultSnapshot.openTrustedVaultSnapshot(
+      params.vaultId,
+      remoteSnapshot,
+      unlockedVault.vaultMasterKey,
+      localSnapshot,
+    );
+    const downloadedDescriptor = toRemoteVaultSnapshotDescriptor(
+      remoteSnapshot.metadata.id,
+      remoteVault,
+      remoteSnapshot,
+    );
+
+    if (
+      !areRemoteVaultSnapshotDescriptorsEqual(
+        downloadedDescriptor,
+        remoteSnapshotDescriptor,
+      )
+    ) {
+      throw new RemoteVaultSnapshotChangedError(params.vaultId);
+    }
+
+    return {
+      remoteSnapshotDescriptor,
+      relation,
+      review: createVaultSyncReview(
+        unlockedVault.vault,
+        remoteVault,
+        createVaultSyncTrustState(localSnapshot),
+        createVaultSyncTrustState(remoteSnapshot),
+      ),
+    };
   }
 }

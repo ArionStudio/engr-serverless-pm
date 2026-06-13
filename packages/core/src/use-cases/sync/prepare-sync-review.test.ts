@@ -6,7 +6,6 @@ import {
   RemoteVaultSnapshotNotFoundError,
   SyncNotConfiguredError,
 } from "../../errors/sync.errors";
-import { VaultSyncReviewService } from "../../services/sync/vault-sync-review.service";
 import { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
 import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 import { CURRENT_ALGORITHM_SUITE } from "../../domain/crypto/algorithm-suite.const";
@@ -119,7 +118,8 @@ function createContext() {
     localSnapshot,
     useCase: new PrepareSyncReviewUseCase(
       ports.sessionServices.unlockedVaultSession,
-      new VaultSyncReviewService(ports.syncProvider, vaultSnapshot),
+      ports.syncProvider,
+      vaultSnapshot,
     ),
   };
 }

@@ -1,6 +1,6 @@
-import { requireVaultSyncConfig } from "../../services/sync/sync-config.utils";
 import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
+import { requireVaultSyncConfig } from "./require-vault-sync-config";
 
 export type RemoveCloudSyncFilesCommandParams = {
   readonly vaultId: string;

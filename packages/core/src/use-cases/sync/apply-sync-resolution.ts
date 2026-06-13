@@ -1,19 +1,25 @@
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { RemoteVaultSnapshotDescriptor } from "../../domain/sync/remote-vault-snapshot-descriptor.type";
 import type { VaultSyncResolution } from "../../domain/sync/vault-sync-review.type";
-import { areRemoteVaultSnapshotDescriptorsEqual } from "../../domain/sync/vault-snapshot-version.utils";
-import { applyVaultSyncResolution } from "../../domain/sync/vault-sync-review.utils";
+import {
+  areRemoteVaultSnapshotDescriptorsEqual,
+  toRemoteVaultSnapshotDescriptor,
+} from "../../domain/sync/vault-snapshot-version.utils";
+import {
+  applyVaultSyncResolution,
+  createVaultSyncReview,
+  createVaultSyncTrustState,
+} from "../../domain/sync/vault-sync-review.utils";
 import {
   InvalidSyncResolutionError,
   RemoteVaultSnapshotChangedError,
+  SyncConflictDetectedError,
   SyncResolutionIncompleteError,
   SyncTrustChangeRequiresDeviceTrustFlowError,
 } from "../../errors/sync.errors";
-import { requireVaultSyncConfig } from "../../services/sync/sync-config.utils";
-import type { VaultSyncUploadService } from "../../services/sync/vault-sync-upload.service";
-import type { VaultSyncReviewService } from "../../services/sync/vault-sync-review.service";
 import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
+import { requireVaultSyncConfig } from "./require-vault-sync-config";
 
 export type ApplySyncResolutionCommandParams = {
   readonly vaultId: string;
@@ -30,22 +36,16 @@ export type ApplySyncResolutionResult = {
 export class ApplySyncResolutionUseCase {
   private readonly syncProvider: SyncProviderPort;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
-  private readonly vaultSyncReview: VaultSyncReviewService;
   private readonly vaultSnapshot: VaultSnapshotService;
-  private readonly vaultSyncUpload: VaultSyncUploadService;
 
   constructor(
     syncProvider: SyncProviderPort,
     unlockedVaultSession: UnlockedVaultSessionService,
-    vaultSyncReview: VaultSyncReviewService,
     vaultSnapshot: VaultSnapshotService,
-    vaultSyncUpload: VaultSyncUploadService,
   ) {
     this.syncProvider = syncProvider;
     this.unlockedVaultSession = unlockedVaultSession;
-    this.vaultSyncReview = vaultSyncReview;
     this.vaultSnapshot = vaultSnapshot;
-    this.vaultSyncUpload = vaultSyncUpload;
   }
 
   async execute(
@@ -88,14 +88,40 @@ export class ApplySyncResolutionUseCase {
       throw new RemoteVaultSnapshotChangedError(params.vaultId);
     }
 
-    const { remoteVault, review } =
-      await this.vaultSyncReview.loadReviewForRemoteDescriptor({
-        vaultId: params.vaultId,
-        syncConfig,
-        remoteSnapshotDescriptor: params.remoteSnapshotDescriptor,
-        localVault: unlockedVault.vault,
-        vaultMasterKey: unlockedVault.vaultMasterKey,
-      });
+    const localSnapshot = await this.vaultSnapshot.requireLocalVaultSnapshot(
+      params.vaultId,
+    );
+    const remoteSnapshot = await this.syncProvider.downloadVaultSnapshot(
+      syncConfig,
+      params.remoteSnapshotDescriptor,
+    );
+    const remoteVault = await this.vaultSnapshot.openTrustedVaultSnapshot(
+      params.vaultId,
+      remoteSnapshot,
+      unlockedVault.vaultMasterKey,
+      localSnapshot,
+    );
+    const downloadedDescriptor = toRemoteVaultSnapshotDescriptor(
+      remoteSnapshot.metadata.id,
+      remoteVault,
+      remoteSnapshot,
+    );
+
+    if (
+      !areRemoteVaultSnapshotDescriptorsEqual(
+        downloadedDescriptor,
+        params.remoteSnapshotDescriptor,
+      )
+    ) {
+      throw new RemoteVaultSnapshotChangedError(params.vaultId);
+    }
+
+    const review = createVaultSyncReview(
+      unlockedVault.vault,
+      remoteVault,
+      createVaultSyncTrustState(localSnapshot),
+      createVaultSyncTrustState(remoteSnapshot),
+    );
 
     if (review.trustReview !== undefined) {
       throw new SyncTrustChangeRequiresDeviceTrustFlowError(params.vaultId);
@@ -147,12 +173,19 @@ export class ApplySyncResolutionUseCase {
       params.vaultId,
     );
 
-    await this.vaultSyncUpload.uploadSnapshotWithExpectedDescriptor({
-      vaultId: params.vaultId,
-      syncConfig,
-      vaultSnapshot: resolvedSnapshot,
-      expectedRemoteSnapshotDescriptor: params.remoteSnapshotDescriptor,
-    });
+    try {
+      await this.syncProvider.uploadVaultSnapshot(
+        syncConfig,
+        resolvedSnapshot,
+        params.remoteSnapshotDescriptor,
+      );
+    } catch (error) {
+      if (error instanceof RemoteVaultSnapshotChangedError) {
+        throw new SyncConflictDetectedError(params.vaultId);
+      }
+
+      throw error;
+    }
 
     return persistedSnapshot;
   }

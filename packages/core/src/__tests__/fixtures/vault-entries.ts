@@ -145,7 +145,6 @@ export function createVaultSnapshotServiceMock(
   };
 
   return {
-    requireUnlockedVaultCanBePersisted: vi.fn(async () => undefined),
     requireCurrentSnapshotForUnlockedVault: vi.fn(
       async () => currentVaultSnapshot,
     ),
