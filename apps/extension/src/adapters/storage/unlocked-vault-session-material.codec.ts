@@ -8,7 +8,7 @@ import type {
   UnlockedVaultSessionMaterial,
   UnlockedVaultSessionPayloadKey,
   VaultMasterKey,
-} from "@lfspm/core/domain";
+} from "@lfspm/core";
 
 export type StoredUnlockedVaultSessionMaterial = {
   sessionId: string;

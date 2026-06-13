@@ -15,6 +15,7 @@ import {
   InvalidVaultSyncResolutionError,
   RemoteVaultSnapshotChangedError,
   SyncConflictDetectedError,
+  SyncAlreadyResolvedError,
   SyncNotConfiguredError,
   SyncResolutionIncompleteError,
   SyncTrustChangeRequiresDeviceTrustFlowError,
@@ -129,7 +130,7 @@ export class ApplySyncResolutionUseCase {
     }
 
     if (!review.hasChanges) {
-      throw new SyncResolutionIncompleteError(params.vaultId);
+      throw new SyncAlreadyResolvedError(params.vaultId);
     }
 
     if (

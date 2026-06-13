@@ -51,6 +51,13 @@ export class SyncResolutionIncompleteError extends Error {
   }
 }
 
+export class SyncAlreadyResolvedError extends Error {
+  constructor(vaultId: string) {
+    super(`Vault "${vaultId}" sync resolution has no changes to apply.`);
+    this.name = "SyncAlreadyResolvedError";
+  }
+}
+
 export class InvalidSyncResolutionError extends Error {
   constructor(vaultId: string, cause: unknown) {
     super(`Vault "${vaultId}" sync resolution is invalid.`, { cause });

@@ -10,6 +10,7 @@ import type { RemoteVaultSnapshotDescriptor } from "../../domain/sync/remote-vau
 import type { Vault } from "../../domain/vault/vault";
 import {
   RemoteVaultSnapshotChangedError,
+  SyncAlreadyResolvedError,
   SyncResolutionIncompleteError,
   SyncTrustChangeRequiresDeviceTrustFlowError,
 } from "../../errors/sync.errors";
@@ -320,6 +321,45 @@ describe("ApplySyncResolutionUseCase", () => {
         },
       }),
     ).rejects.toBeInstanceOf(SyncResolutionIncompleteError);
+
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("fails with already-resolved error when there are no sync changes", async () => {
+    const ctx = createContext();
+    const remoteVault = ctx.saved.unlockedVaultSession!.unlockedVault.vault;
+    const remoteSnapshotDescriptor = createRemoteSnapshotDescriptor(
+      ctx.values,
+      {
+        versionVector: remoteVault.versionVector,
+      },
+    );
+    const remoteSnapshot = createSnapshot(ctx.values);
+
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValueOnce(remoteSnapshotDescriptor);
+    vi.mocked(
+      ctx.ports.syncProvider.downloadVaultSnapshot,
+    ).mockResolvedValueOnce(remoteSnapshot);
+    vi.mocked(
+      ctx.ports.crypto.decryptVaultSnapshotContent,
+    ).mockResolvedValueOnce(remoteVault);
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        remoteSnapshotDescriptor,
+        resolution: {
+          entryResolutions: [],
+          tagResolutions: [],
+          deviceProfileResolutions: [],
+        },
+      }),
+    ).rejects.toBeInstanceOf(SyncAlreadyResolvedError);
 
     expect(
       ctx.ports.vaultLocalRepository.saveVaultSnapshot,

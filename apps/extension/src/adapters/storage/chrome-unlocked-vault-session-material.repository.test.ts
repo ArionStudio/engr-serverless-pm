@@ -4,7 +4,7 @@ import type {
   UnlockedVaultSessionMaterial,
   UnlockedVaultSessionPayloadKey,
   VaultMasterKey,
-} from "@lfspm/core/domain";
+} from "@lfspm/core";
 import {
   ChromeUnlockedVaultSessionMaterialRepository,
   type ChromeStorageArea,

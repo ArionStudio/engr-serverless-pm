@@ -1,5 +1,7 @@
-import type { UnlockedVaultSessionMaterial } from "@lfspm/core/domain";
-import type { UnlockedVaultSessionMaterialRepositoryPort } from "@lfspm/core/ports";
+import type {
+  UnlockedVaultSessionMaterial,
+  UnlockedVaultSessionMaterialRepositoryPort,
+} from "@lfspm/core";
 import {
   deserializeUnlockedVaultSessionMaterial,
   serializeUnlockedVaultSessionMaterial,
