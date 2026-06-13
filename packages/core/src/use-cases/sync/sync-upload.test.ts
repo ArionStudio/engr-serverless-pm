@@ -8,6 +8,7 @@ import type { RemoteVaultSnapshotDescriptor } from "../../domain/sync/remote-vau
 import {
   RemoteVaultSnapshotAheadError,
   RemoteVaultSnapshotChangedError,
+  RemoteVaultSnapshotIntegrityError,
   SyncConflictDetectedError,
   SyncNotConfiguredError,
 } from "../../errors/sync.errors";
@@ -180,7 +181,7 @@ describe("SyncUploadUseCase", () => {
     expect(ctx.saved.vaultSnapshot).toBe(ctx.localSnapshot);
   });
 
-  it("blocks upload when the remote snapshot changed without a vector change", async () => {
+  it("fails integrity validation when the remote snapshot changed without a vector change", async () => {
     const ctx = createContext();
     const remoteSnapshotDescriptor = createRemoteSnapshotDescriptor(
       ctx.values,
@@ -198,7 +199,7 @@ describe("SyncUploadUseCase", () => {
 
     await expect(
       ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
-    ).rejects.toBeInstanceOf(RemoteVaultSnapshotAheadError);
+    ).rejects.toBeInstanceOf(RemoteVaultSnapshotIntegrityError);
 
     expect(ctx.ports.syncProvider.downloadVaultSnapshot).not.toHaveBeenCalled();
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();

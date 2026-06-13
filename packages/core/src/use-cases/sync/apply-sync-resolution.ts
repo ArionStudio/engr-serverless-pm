@@ -15,12 +15,12 @@ import {
   InvalidVaultSyncResolutionError,
   RemoteVaultSnapshotChangedError,
   SyncConflictDetectedError,
+  SyncNotConfiguredError,
   SyncResolutionIncompleteError,
   SyncTrustChangeRequiresDeviceTrustFlowError,
 } from "../../errors/sync.errors";
 import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
-import { requireVaultSyncConfig } from "./require-vault-sync-config";
 
 export type ApplySyncResolutionCommandParams = {
   readonly vaultId: string;
@@ -57,11 +57,11 @@ export class ApplySyncResolutionUseCase {
         params.vaultId,
         "apply sync resolution",
       );
-    const syncConfig = requireVaultSyncConfig(
-      params.vaultId,
-      "apply sync resolution",
-      unlockedVault.vault,
-    );
+    const syncConfig = unlockedVault.vault.syncConfig;
+
+    if (syncConfig === undefined) {
+      throw new SyncNotConfiguredError(params.vaultId, "apply sync resolution");
+    }
 
     if (params.remoteSnapshotDescriptor.vaultId !== params.vaultId) {
       throw new InvalidSyncResolutionError(

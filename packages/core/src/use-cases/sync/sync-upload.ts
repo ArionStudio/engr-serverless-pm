@@ -6,12 +6,13 @@ import {
 import {
   RemoteVaultSnapshotAheadError,
   RemoteVaultSnapshotChangedError,
+  RemoteVaultSnapshotIntegrityError,
   SyncConflictDetectedError,
+  SyncNotConfiguredError,
 } from "../../errors/sync.errors";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
-import { requireVaultSyncConfig } from "./require-vault-sync-config";
 
 export type SyncUploadCommandParams = {
   readonly vaultId: string;
@@ -38,11 +39,11 @@ export class SyncUploadUseCase {
         params.vaultId,
         "sync upload",
       );
-    const syncConfig = requireVaultSyncConfig(
-      params.vaultId,
-      "sync upload",
-      unlockedVault.vault,
-    );
+    const syncConfig = unlockedVault.vault.syncConfig;
+
+    if (syncConfig === undefined) {
+      throw new SyncNotConfiguredError(params.vaultId, "sync upload");
+    }
 
     const localSnapshot = await this.vaultSnapshot.requireLocalVaultSnapshot(
       params.vaultId,
@@ -74,7 +75,11 @@ export class SyncUploadUseCase {
         return;
       }
 
-      if (relation === "equal" || relation === "remote_ahead") {
+      if (relation === "equal") {
+        throw new RemoteVaultSnapshotIntegrityError(params.vaultId);
+      }
+
+      if (relation === "remote_ahead") {
         throw new RemoteVaultSnapshotAheadError(params.vaultId);
       }
 

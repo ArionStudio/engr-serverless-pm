@@ -19,3 +19,10 @@ export class VaultSnapshotRevisionMismatchError extends Error {
     this.name = "VaultSnapshotRevisionMismatchError";
   }
 }
+
+export class DeviceNotTrustedForVaultMutationError extends Error {
+  constructor(vaultId: string, deviceId: string) {
+    super(`Device "${deviceId}" is not trusted to mutate vault "${vaultId}".`);
+    this.name = "DeviceNotTrustedForVaultMutationError";
+  }
+}

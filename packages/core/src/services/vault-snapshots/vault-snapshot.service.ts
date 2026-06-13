@@ -15,6 +15,7 @@ import {
   VaultSnapshotSignerNotTrustedError,
 } from "../../errors/unlock-vault.errors";
 import {
+  DeviceNotTrustedForVaultMutationError,
   PersistedVaultMismatchError,
   VaultSnapshotRevisionMismatchError,
 } from "../../errors/vault-snapshot.errors";
@@ -150,12 +151,12 @@ export class VaultSnapshotService {
 
     this.requireSupportedSnapshotAlgorithm(vaultId, currentVaultSnapshot);
 
-    const signerDevice = currentVaultSnapshot.trustedDevices.find(
+    const trustedDevice = currentVaultSnapshot.trustedDevices.find(
       (device) => device.id === unlockedVault.deviceId,
     );
 
-    if (signerDevice === undefined) {
-      throw new VaultSnapshotSignerNotTrustedError(
+    if (trustedDevice === undefined) {
+      throw new DeviceNotTrustedForVaultMutationError(
         vaultId,
         unlockedVault.deviceId,
       );

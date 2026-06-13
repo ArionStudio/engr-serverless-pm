@@ -1,7 +1,7 @@
 import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
 import { removeVaultSyncConfig } from "../../domain/vault/vault-sync-config.mutations";
-import { requireVaultSyncConfig } from "./require-vault-sync-config";
+import { SyncNotConfiguredError } from "../../errors/sync.errors";
 
 export type RemoveLocalSyncCredentialsCommandParams = {
   readonly vaultId: string;
@@ -27,11 +27,12 @@ export class RemoveLocalSyncCredentialsUseCase {
         params.vaultId,
         "remove local sync credentials",
       );
-    requireVaultSyncConfig(
-      params.vaultId,
-      "remove local sync credentials",
-      unlockedVault.vault,
-    );
+    if (unlockedVault.vault.syncConfig === undefined) {
+      throw new SyncNotConfiguredError(
+        params.vaultId,
+        "remove local sync credentials",
+      );
+    }
 
     const updatedUnlockedVault = {
       ...unlockedVault,

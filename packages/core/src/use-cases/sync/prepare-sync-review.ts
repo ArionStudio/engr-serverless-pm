@@ -13,11 +13,11 @@ import {
 import {
   RemoteVaultSnapshotChangedError,
   RemoteVaultSnapshotNotFoundError,
+  SyncNotConfiguredError,
 } from "../../errors/sync.errors";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
-import { requireVaultSyncConfig } from "./require-vault-sync-config";
 
 export type PrepareSyncReviewCommandParams = {
   readonly vaultId: string;
@@ -52,11 +52,11 @@ export class PrepareSyncReviewUseCase {
         params.vaultId,
         "prepare sync review",
       );
-    const syncConfig = requireVaultSyncConfig(
-      params.vaultId,
-      "prepare sync review",
-      unlockedVault.vault,
-    );
+    const syncConfig = unlockedVault.vault.syncConfig;
+
+    if (syncConfig === undefined) {
+      throw new SyncNotConfiguredError(params.vaultId, "prepare sync review");
+    }
 
     const remoteSnapshotDescriptor =
       await this.syncProvider.getLatestVaultSnapshotDescriptor(

@@ -35,6 +35,15 @@ export class RemoteVaultSnapshotAheadError extends Error {
   }
 }
 
+export class RemoteVaultSnapshotIntegrityError extends Error {
+  constructor(vaultId: string) {
+    super(
+      `Remote vault snapshot descriptor for vault "${vaultId}" is inconsistent with the local descriptor.`,
+    );
+    this.name = "RemoteVaultSnapshotIntegrityError";
+  }
+}
+
 export class SyncResolutionIncompleteError extends Error {
   constructor(vaultId: string) {
     super(`Vault "${vaultId}" sync resolution is incomplete.`);
