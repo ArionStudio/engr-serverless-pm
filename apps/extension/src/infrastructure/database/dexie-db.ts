@@ -1,6 +1,6 @@
 import Dexie from "dexie";
 import type { EntityTable } from "dexie";
-import type { EncryptedUnlockedVaultSessionPayload } from "@lfspm/core/domain";
+import type { EncryptedUnlockedVaultSessionPayload } from "@lfspm/core";
 
 export const DATABASE_NAME = "lfspm-extension";
 export const STORAGE_SCHEMA_VERSION = 1;

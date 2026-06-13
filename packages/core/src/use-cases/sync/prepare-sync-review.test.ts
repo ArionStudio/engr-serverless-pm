@@ -3,6 +3,7 @@ import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import { createUnlockedVaultWithEntries } from "../../__tests__/fixtures/vault-entries";
 import {
+  RemoteVaultSnapshotChangedError,
   RemoteVaultSnapshotNotFoundError,
   SyncNotConfiguredError,
 } from "../../errors/sync.errors";
@@ -178,6 +179,47 @@ describe("PrepareSyncReviewUseCase", () => {
         ],
       },
     });
+
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+    expect(ctx.saved.vaultSnapshot).toBe(ctx.localSnapshot);
+  });
+
+  it("fails when the downloaded remote snapshot no longer matches the descriptor", async () => {
+    const ctx = createContext();
+    const remoteVault: Vault = {
+      ...ctx.saved.unlockedVaultSession!.unlockedVault.vault,
+      versionVector: {
+        [ctx.values.deviceId]: 4,
+      },
+    };
+    const remoteSnapshotDescriptor = createRemoteSnapshotDescriptor(
+      ctx.values,
+      {
+        versionVector: remoteVault.versionVector,
+        revisionTimestamp: ctx.values.timestamp + 1,
+      },
+    );
+    const remoteSnapshot = createSnapshot(ctx.values, {
+      revision: 4,
+      revisionTimestamp: ctx.values.timestamp + 2,
+    });
+
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValueOnce(remoteSnapshotDescriptor);
+    vi.mocked(
+      ctx.ports.syncProvider.downloadVaultSnapshot,
+    ).mockResolvedValueOnce(remoteSnapshot);
+    vi.mocked(
+      ctx.ports.crypto.decryptVaultSnapshotContent,
+    ).mockResolvedValueOnce(remoteVault);
+
+    await expect(
+      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toBeInstanceOf(RemoteVaultSnapshotChangedError);
 
     expect(
       ctx.ports.vaultLocalRepository.saveVaultSnapshot,

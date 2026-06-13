@@ -1,5 +1,7 @@
-import type { EncryptedUnlockedVaultSessionPayload } from "@lfspm/core/domain";
-import type { EncryptedUnlockedVaultSessionPayloadRepositoryPort } from "@lfspm/core/ports";
+import type {
+  EncryptedUnlockedVaultSessionPayload,
+  EncryptedUnlockedVaultSessionPayloadRepositoryPort,
+} from "@lfspm/core";
 import {
   ACTIVE_UNLOCKED_VAULT_SESSION_PAYLOAD_ID,
   db,

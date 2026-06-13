@@ -205,6 +205,33 @@ describe("LockVaultUseCase", () => {
     ).toHaveBeenCalledTimes(1);
   });
 
+  it("removes unlocked vault state when reading lock task metadata fails", async () => {
+    const ctx = createContext();
+    const error = new Error("lock task metadata unavailable");
+
+    vi.mocked(ctx.ports.vaultLockTasks.get).mockRejectedValueOnce(error);
+
+    await expect(ctx.useCase.execute()).rejects.toBe(error);
+
+    expect(ctx.clipboardClearTasks.get).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.remove,
+    ).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes unlocked vault state when reading clipboard task metadata fails", async () => {
+    const ctx = createContext();
+    const error = new Error("clipboard task metadata unavailable");
+
+    vi.mocked(ctx.clipboardClearTasks.get).mockRejectedValueOnce(error);
+
+    await expect(ctx.useCase.execute()).rejects.toBe(error);
+
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.remove,
+    ).toHaveBeenCalledTimes(1);
+  });
+
   it("preserves clipboard cleanup error when unlocked vault state removal also fails", async () => {
     const ctx = createContext();
     const cleanupError = new Error("clipboard unavailable");

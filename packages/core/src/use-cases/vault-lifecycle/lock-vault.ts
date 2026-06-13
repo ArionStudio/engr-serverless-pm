@@ -30,22 +30,23 @@ export class LockVaultUseCase {
   }
 
   async execute(params: LockVaultCommandParams = {}): Promise<void> {
-    const vaultLockTask = await this.vaultLockTasks.get();
-
-    if (
-      params.actionId !== undefined &&
-      vaultLockTask !== null &&
-      vaultLockTask.actionId !== params.actionId
-    ) {
-      return;
-    }
-
-    const clipboardClearTask = await this.clipboardClearTasks.get();
-
     let executionError: unknown;
     let sessionRemovalError: unknown;
+    let shouldRemoveSession = true;
 
     try {
+      const vaultLockTask = await this.vaultLockTasks.get();
+
+      if (
+        params.actionId !== undefined &&
+        vaultLockTask !== null &&
+        vaultLockTask.actionId !== params.actionId
+      ) {
+        shouldRemoveSession = false;
+        return;
+      }
+
+      const clipboardClearTask = await this.clipboardClearTasks.get();
       let cleanupError: unknown;
 
       try {
@@ -81,11 +82,13 @@ export class LockVaultUseCase {
     } catch (error) {
       executionError = error;
     } finally {
-      try {
-        await this.unlockedVaultSession.remove();
-      } catch (error) {
-        if (executionError === undefined) {
-          sessionRemovalError = error;
+      if (shouldRemoveSession) {
+        try {
+          await this.unlockedVaultSession.remove();
+        } catch (error) {
+          if (executionError === undefined) {
+            sessionRemovalError = error;
+          }
         }
       }
     }
