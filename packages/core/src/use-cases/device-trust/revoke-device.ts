@@ -9,7 +9,6 @@ import {
   VaultSnapshotSignatureVerificationFailedError,
   VaultSnapshotSignerNotTrustedError,
 } from "../../errors/unlock-vault.errors";
-import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
 import type { ClockPort } from "../../ports/system/clock.port";
@@ -59,16 +58,11 @@ export class RevokeDeviceUseCase {
   ): Promise<RevokeDeviceResult> {
     // Revoke can only be performed by the currently unlocked vault, and a
     // device cannot revoke the local identity it is actively using.
-    const unlockedVaultSession = await this.unlockedVaultSession.get();
-
-    if (
-      unlockedVaultSession === null ||
-      unlockedVaultSession.unlockedVault.vaultId !== params.vaultId
-    ) {
-      throw new VaultMustBeUnlockedError(params.vaultId, "revoke device");
-    }
-
-    const { sourceSnapshotRevision, unlockedVault } = unlockedVaultSession;
+    const { sourceSnapshotRevision, unlockedVault } =
+      await this.unlockedVaultSession.requireUnlockedVaultContext(
+        params.vaultId,
+        "revoke device",
+      );
 
     if (params.deviceId === unlockedVault.deviceId) {
       throw new CannotRevokeCurrentDeviceError(params.vaultId, params.deviceId);

@@ -3,7 +3,6 @@ import { sanitizeEntryUrl } from "../../domain/entry/sanitized-entry-url.utils";
 import { addPasswordEntryToVault } from "../../domain/vault/vault-entry.mutations";
 import type { IdPort } from "../../ports/system/id.port";
 import { InvalidPasswordEntryError } from "../../errors/vault-entry.errors";
-import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
 
@@ -40,16 +39,11 @@ export class AddEntryUseCase {
   }
 
   async execute(params: AddEntryCommandParams): Promise<AddEntryResult> {
-    const unlockedVaultSession = await this.unlockedVaultSession.get();
-
-    if (
-      unlockedVaultSession === null ||
-      unlockedVaultSession.unlockedVault.vaultId !== params.vaultId
-    ) {
-      throw new VaultMustBeUnlockedError(params.vaultId, "add entry");
-    }
-
-    const { sourceSnapshotRevision, unlockedVault } = unlockedVaultSession;
+    const { sourceSnapshotRevision, unlockedVault } =
+      await this.unlockedVaultSession.requireUnlockedVaultContext(
+        params.vaultId,
+        "add entry",
+      );
 
     let sanitizedUrl: string;
 

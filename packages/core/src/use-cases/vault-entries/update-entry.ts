@@ -5,7 +5,6 @@ import {
   InvalidPasswordEntryError,
   PasswordEntryNotFoundError,
 } from "../../errors/vault-entry.errors";
-import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
 
@@ -40,16 +39,11 @@ export class UpdateEntryUseCase {
   }
 
   async execute(params: UpdateEntryCommandParams): Promise<UpdateEntryResult> {
-    const unlockedVaultSession = await this.unlockedVaultSession.get();
-
-    if (
-      unlockedVaultSession === null ||
-      unlockedVaultSession.unlockedVault.vaultId !== params.vaultId
-    ) {
-      throw new VaultMustBeUnlockedError(params.vaultId, "update entry");
-    }
-
-    const { sourceSnapshotRevision, unlockedVault } = unlockedVaultSession;
+    const { sourceSnapshotRevision, unlockedVault } =
+      await this.unlockedVaultSession.requireUnlockedVaultContext(
+        params.vaultId,
+        "update entry",
+      );
 
     const entryIndex = unlockedVault.vault.entries.findIndex(
       (entry) => entry.id === params.entryId,

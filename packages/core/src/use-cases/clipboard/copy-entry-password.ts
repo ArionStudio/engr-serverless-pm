@@ -8,7 +8,6 @@ import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard/cli
 import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
 import { InvalidClipboardClearDelayError } from "../../errors/clipboard.errors";
 import { PasswordEntryNotFoundError } from "../../errors/vault-entry.errors";
-import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
 import type { ClipboardClearService } from "../../services/clipboard/clipboard-clear.service";
 
@@ -57,12 +56,11 @@ export class CopyEntryPasswordUseCase {
   ): Promise<CopyEntryPasswordResult> {
     assertValidClipboardClearDelay(params.clearAfterMs);
 
-    const unlockedVaultSession = await this.unlockedVaultSession.get();
-    const unlockedVault = unlockedVaultSession?.unlockedVault;
-
-    if (unlockedVault?.vaultId !== params.vaultId) {
-      throw new VaultMustBeUnlockedError(params.vaultId, "copy entry password");
-    }
+    const { unlockedVault } =
+      await this.unlockedVaultSession.requireUnlockedVaultContext(
+        params.vaultId,
+        "copy entry password",
+      );
 
     const entry = unlockedVault.vault.entries.find(
       (candidate) => candidate.id === params.entryId,
