@@ -1,6 +1,7 @@
 import { areJsonEqual } from "../common/json.utils";
 import type { DeletedTag, Tag } from "../entry/tag.type";
 import type { Vault } from "../vault/vault";
+import { InvalidVaultSyncResolutionError } from "../../errors/sync.errors";
 import type { VersionVector } from "./version-vector.type";
 import {
   getPreselectedSyncAction,
@@ -43,7 +44,7 @@ export function resolveTagStates(
 
   for (const tagResolution of tagResolutions) {
     if (resolutionById.has(tagResolution.tagId)) {
-      throw new Error(
+      throw new InvalidVaultSyncResolutionError(
         `Tag "${tagResolution.tagId}" has multiple sync resolutions.`,
       );
     }
@@ -55,7 +56,7 @@ export function resolveTagStates(
     if (
       !tagReviews.some((tagReview) => tagReview.tagId === tagResolution.tagId)
     ) {
-      throw new Error(
+      throw new InvalidVaultSyncResolutionError(
         `Tag "${tagResolution.tagId}" does not require sync resolution.`,
       );
     }
@@ -67,7 +68,9 @@ export function resolveTagStates(
     const tagResolution = resolutionById.get(tagReview.tagId);
 
     if (tagResolution === undefined) {
-      throw new Error(`Tag "${tagReview.tagId}" must have a sync resolution.`);
+      throw new InvalidVaultSyncResolutionError(
+        `Tag "${tagReview.tagId}" must have a sync resolution.`,
+      );
     }
 
     resolvedStateById.set(
@@ -186,7 +189,9 @@ function selectTagState(
     return tagResolution.state;
   }
 
-  throw new Error(`Unsupported tag resolution action.`);
+  throw new InvalidVaultSyncResolutionError(
+    `Unsupported tag resolution action.`,
+  );
 }
 
 function stampTagState(

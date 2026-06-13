@@ -12,6 +12,7 @@ import {
 } from "../../domain/sync/vault-sync-review.utils";
 import {
   InvalidSyncResolutionError,
+  InvalidVaultSyncResolutionError,
   RemoteVaultSnapshotChangedError,
   SyncConflictDetectedError,
   SyncResolutionIncompleteError,
@@ -151,7 +152,11 @@ export class ApplySyncResolutionUseCase {
         unlockedVault.deviceId,
       );
     } catch (error) {
-      throw new InvalidSyncResolutionError(params.vaultId, error);
+      if (error instanceof InvalidVaultSyncResolutionError) {
+        throw new InvalidSyncResolutionError(params.vaultId, error);
+      }
+
+      throw error;
     }
 
     const updatedUnlockedVault = {

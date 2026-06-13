@@ -3,6 +3,7 @@ import type {
   PasswordEntry,
 } from "../entry/password-entry.type";
 import type { Vault } from "../vault/vault";
+import { InvalidVaultSyncResolutionError } from "../../errors/sync.errors";
 import type { VersionVector } from "./version-vector.type";
 import {
   getPreselectedSyncAction,
@@ -46,7 +47,7 @@ export function resolveEntryStates(
 
   for (const entryResolution of entryResolutions) {
     if (resolutionById.has(entryResolution.entryId)) {
-      throw new Error(
+      throw new InvalidVaultSyncResolutionError(
         `Entry "${entryResolution.entryId}" has multiple sync resolutions.`,
       );
     }
@@ -60,7 +61,7 @@ export function resolveEntryStates(
         (entryReview) => entryReview.entryId === entryResolution.entryId,
       )
     ) {
-      throw new Error(
+      throw new InvalidVaultSyncResolutionError(
         `Entry "${entryResolution.entryId}" does not require sync resolution.`,
       );
     }
@@ -72,7 +73,7 @@ export function resolveEntryStates(
     const entryResolution = resolutionById.get(entryReview.entryId);
 
     if (entryResolution === undefined) {
-      throw new Error(
+      throw new InvalidVaultSyncResolutionError(
         `Entry "${entryReview.entryId}" must have a sync resolution.`,
       );
     }
@@ -193,7 +194,9 @@ function selectEntryState(
     return entryResolution.state;
   }
 
-  throw new Error(`Unsupported entry resolution action.`);
+  throw new InvalidVaultSyncResolutionError(
+    `Unsupported entry resolution action.`,
+  );
 }
 
 function stampEntryState(

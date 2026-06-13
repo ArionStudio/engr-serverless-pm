@@ -49,6 +49,13 @@ export class InvalidSyncResolutionError extends Error {
   }
 }
 
+export class InvalidVaultSyncResolutionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidVaultSyncResolutionError";
+  }
+}
+
 export class SyncTrustChangeRequiresDeviceTrustFlowError extends Error {
   constructor(vaultId: string) {
     super(
