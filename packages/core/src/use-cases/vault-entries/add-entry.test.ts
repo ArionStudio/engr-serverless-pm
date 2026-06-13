@@ -79,6 +79,7 @@ describe("AddEntryUseCase", () => {
           entries: ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries,
         }),
       }),
+      1,
     );
     expect(
       vi.mocked(ctx.vaultSnapshot.persistUnlockedVault).mock

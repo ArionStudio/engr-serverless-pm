@@ -57,6 +57,7 @@ describe("SetupSyncUseCase", () => {
           syncConfig: ctx.values.syncConfig,
         }),
       }),
+      1,
     );
     expect(
       vi.mocked(ctx.ports.syncProvider.setup).mock.invocationCallOrder[0],

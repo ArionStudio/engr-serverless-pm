@@ -12,6 +12,7 @@ import {
   VaultSnapshotSignerNotTrustedError,
 } from "../../application/errors/unlock-vault.errors";
 import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
+import { VaultSnapshotRevisionMismatchError } from "../../application/errors/vault-snapshot.errors";
 import type { UnlockedVaultSessionService } from "../../application/vault-session/unlocked-vault-session.service";
 import type { ClockPort } from "../../ports/system/clock.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
@@ -58,11 +59,15 @@ export class RevokeDeviceUseCase {
     // Revoke can only be performed by the currently unlocked vault, and a
     // device cannot revoke the local identity it is actively using.
     const unlockedVaultSession = await this.unlockedVaultSession.get();
-    const unlockedVault = unlockedVaultSession?.unlockedVault;
 
-    if (unlockedVault?.vaultId !== params.vaultId) {
+    if (
+      unlockedVaultSession === null ||
+      unlockedVaultSession.unlockedVault.vaultId !== params.vaultId
+    ) {
       throw new VaultMustBeUnlockedError(params.vaultId, "revoke device");
     }
+
+    const { sourceSnapshotRevision, unlockedVault } = unlockedVaultSession;
 
     if (params.deviceId === unlockedVault.deviceId) {
       throw new CannotRevokeCurrentDeviceError(params.vaultId, params.deviceId);
@@ -75,6 +80,14 @@ export class RevokeDeviceUseCase {
 
     if (currentVaultSnapshot === null) {
       throw new VaultSnapshotNotFoundError(params.vaultId);
+    }
+
+    if (currentVaultSnapshot.metadata.revision !== sourceSnapshotRevision) {
+      throw new VaultSnapshotRevisionMismatchError({
+        vaultId: params.vaultId,
+        expectedRevision: sourceSnapshotRevision,
+        actualRevision: currentVaultSnapshot.metadata.revision,
+      });
     }
 
     if (

@@ -13,6 +13,7 @@ import {
   VaultSnapshotSignerNotTrustedError,
 } from "../../application/errors/unlock-vault.errors";
 import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
+import { VaultSnapshotRevisionMismatchError } from "../../application/errors/vault-snapshot.errors";
 import { CURRENT_ALGORITHM_SUITE } from "../../domain/crypto/algorithm-suite.const";
 import type { DevicePublicSignKey } from "../../domain/device/brand-keys";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
@@ -305,6 +306,31 @@ describe("RevokeDeviceUseCase", () => {
         deviceId: revokedDeviceId,
       }),
     ).rejects.toBeInstanceOf(VaultSnapshotNotFoundError);
+
+    expect(
+      ctx.ports.crypto.verifyVaultSnapshotSignature,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("fails when the local snapshot revision no longer matches the unlocked session", async () => {
+    const ctx = createContext();
+    ctx.saved.vaultSnapshot = {
+      ...ctx.vaultSnapshot,
+      metadata: {
+        ...ctx.vaultSnapshot.metadata,
+        revision: ctx.vaultSnapshot.metadata.revision + 1,
+      },
+    };
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        deviceId: revokedDeviceId,
+      }),
+    ).rejects.toBeInstanceOf(VaultSnapshotRevisionMismatchError);
 
     expect(
       ctx.ports.crypto.verifyVaultSnapshotSignature,

@@ -27,11 +27,15 @@ export class SetupSyncUseCase {
 
   async execute(params: SetupSyncCommandParams): Promise<void> {
     const unlockedVaultSession = await this.unlockedVaultSession.get();
-    const unlockedVault = unlockedVaultSession?.unlockedVault;
 
-    if (unlockedVault?.vaultId !== params.vaultId) {
+    if (
+      unlockedVaultSession === null ||
+      unlockedVaultSession.unlockedVault.vaultId !== params.vaultId
+    ) {
       throw new VaultMustBeUnlockedError(params.vaultId, "setup sync");
     }
+
+    const { sourceSnapshotRevision, unlockedVault } = unlockedVaultSession;
 
     let syncConfig: SyncConfig;
 
@@ -52,6 +56,7 @@ export class SetupSyncUseCase {
     const persistedSnapshot = await this.vaultSnapshot.persistUnlockedVault(
       params.vaultId,
       updatedUnlockedVault,
+      sourceSnapshotRevision,
     );
 
     await this.unlockedVaultSession.commitPersistedSnapshot(

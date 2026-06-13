@@ -54,6 +54,7 @@ describe("RemoveLocalSyncCredentialsUseCase", () => {
     expect(ctx.vaultSnapshot.persistUnlockedVault).toHaveBeenCalledWith(
       ctx.values.vaultId,
       expect.objectContaining({}),
+      1,
     );
     const persistedUnlockedVault = vi.mocked(
       ctx.vaultSnapshot.persistUnlockedVault,

@@ -110,6 +110,7 @@ export function createVaultSnapshotServiceMock(
   values: CoreTestValues,
 ): VaultSnapshotService {
   return {
+    assertCanPersistUnlockedVault: vi.fn(async () => undefined),
     persistUnlockedVault: vi.fn(async () => ({
       revision: 2,
       revisionTimestamp: values.timestamp + 1,

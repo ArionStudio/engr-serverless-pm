@@ -13,7 +13,10 @@ import {
   VaultSnapshotNotFoundError,
   VaultSnapshotSignerNotTrustedError,
 } from "../errors/unlock-vault.errors";
-import { PersistedVaultMismatchError } from "../errors/vault-snapshot.errors";
+import {
+  PersistedVaultMismatchError,
+  VaultSnapshotRevisionMismatchError,
+} from "../errors/vault-snapshot.errors";
 import { VaultSnapshotService } from "./vault-snapshot.service";
 
 describe("VaultSnapshotService", () => {
@@ -81,6 +84,7 @@ describe("VaultSnapshotService", () => {
     const result = await ctx.service.persistUnlockedVault(
       ctx.values.vaultId,
       ctx.unlockedVault,
+      ctx.currentSnapshot.metadata.revision,
     );
 
     expect(result).toEqual({
@@ -120,11 +124,31 @@ describe("VaultSnapshotService", () => {
     });
   });
 
+  it("preflights unlocked vault persistence without saving a snapshot", async () => {
+    const ctx = createContext();
+
+    await ctx.service.assertCanPersistUnlockedVault(
+      ctx.values.vaultId,
+      ctx.unlockedVault,
+      ctx.currentSnapshot.metadata.revision,
+    );
+
+    expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.signVaultSnapshot).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+    ).not.toHaveBeenCalled();
+  });
+
   it("fails when the unlocked vault belongs to another vault", async () => {
     const ctx = createContext();
 
     await expect(
-      ctx.service.persistUnlockedVault("another-vault-id", ctx.unlockedVault),
+      ctx.service.persistUnlockedVault(
+        "another-vault-id",
+        ctx.unlockedVault,
+        ctx.currentSnapshot.metadata.revision,
+      ),
     ).rejects.toThrow(PersistedVaultMismatchError);
 
     expect(
@@ -140,8 +164,29 @@ describe("VaultSnapshotService", () => {
     ctx.saved.vaultSnapshot = undefined;
 
     await expect(
-      ctx.service.persistUnlockedVault(ctx.values.vaultId, ctx.unlockedVault),
+      ctx.service.persistUnlockedVault(
+        ctx.values.vaultId,
+        ctx.unlockedVault,
+        ctx.currentSnapshot.metadata.revision,
+      ),
     ).rejects.toThrow(VaultSnapshotNotFoundError);
+
+    expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("fails when the current local snapshot revision does not match the session source revision", async () => {
+    const ctx = createContext();
+
+    await expect(
+      ctx.service.persistUnlockedVault(
+        ctx.values.vaultId,
+        ctx.unlockedVault,
+        ctx.currentSnapshot.metadata.revision - 1,
+      ),
+    ).rejects.toBeInstanceOf(VaultSnapshotRevisionMismatchError);
 
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
     expect(
@@ -160,7 +205,11 @@ describe("VaultSnapshotService", () => {
     };
 
     await expect(
-      ctx.service.persistUnlockedVault(ctx.values.vaultId, ctx.unlockedVault),
+      ctx.service.persistUnlockedVault(
+        ctx.values.vaultId,
+        ctx.unlockedVault,
+        ctx.currentSnapshot.metadata.revision,
+      ),
     ).rejects.toThrow(UnsupportedAlgorithmSuiteError);
 
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
@@ -177,7 +226,11 @@ describe("VaultSnapshotService", () => {
     };
 
     await expect(
-      ctx.service.persistUnlockedVault(ctx.values.vaultId, ctx.unlockedVault),
+      ctx.service.persistUnlockedVault(
+        ctx.values.vaultId,
+        ctx.unlockedVault,
+        ctx.currentSnapshot.metadata.revision,
+      ),
     ).rejects.toThrow(VaultSnapshotSignerNotTrustedError);
 
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
@@ -195,7 +248,11 @@ describe("VaultSnapshotService", () => {
     ).mockRejectedValueOnce(error);
 
     await expect(
-      ctx.service.persistUnlockedVault(ctx.values.vaultId, ctx.unlockedVault),
+      ctx.service.persistUnlockedVault(
+        ctx.values.vaultId,
+        ctx.unlockedVault,
+        ctx.currentSnapshot.metadata.revision,
+      ),
     ).rejects.toThrow(error);
 
     expect(ctx.ports.crypto.signVaultSnapshot).not.toHaveBeenCalled();
@@ -211,7 +268,11 @@ describe("VaultSnapshotService", () => {
     vi.mocked(ctx.ports.crypto.signVaultSnapshot).mockRejectedValueOnce(error);
 
     await expect(
-      ctx.service.persistUnlockedVault(ctx.values.vaultId, ctx.unlockedVault),
+      ctx.service.persistUnlockedVault(
+        ctx.values.vaultId,
+        ctx.unlockedVault,
+        ctx.currentSnapshot.metadata.revision,
+      ),
     ).rejects.toThrow(error);
 
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).toHaveBeenCalledWith(
