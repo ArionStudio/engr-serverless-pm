@@ -46,7 +46,7 @@ Run project commands from repo root unless a task explicitly requires a subdirec
 - **NEVER** use `console.log` in production
 - **NEVER** use `npm` or `yarn` - pnpm only
 - **NEVER** use `react-icons` - use `@phosphor-icons/react`
-- **NEVER** use shadcn directly - we use Base UI now
+- **NEVER** use Radix UI - we use Base UI now
 
 ---
 
@@ -58,7 +58,7 @@ Run project commands from repo root unless a task explicitly requires a subdirec
 - **Base UI migration**: Some shadcn remnants exist. Use Base UI patterns for new code.
 - **Theme context**: Components using `useTheme()` need `ThemeProvider` wrapper.
 - **CVA + cn()**: Always merge CVA variants with `cn()` utility.
-- **Context files**: Use `/* eslint-disable react-refresh/only-export-components */` for files exporting both Provider and hook (e.g., `theme.context.tsx`). This pattern is idiomatic React.
+- **No `delete` operator**: Do not use JavaScript `delete` anywhere in code.
 
 ---
 
@@ -73,70 +73,15 @@ Run project commands from repo root unless a task explicitly requires a subdirec
 │        Adapters Layer               │  WebCrypto, Dexie.js, AWS SDK
 │  (apps/extension/src/adapters/)     │
 ├─────────────────────────────────────┤
-│          Core Layer                 │  Types + Ports (NO dependencies)
+│          Core Layer                 │  packages/core/src
 │  (packages/core/src/)               │
 └─────────────────────────────────────┘
 ```
 
 **Import direction**: `core` → `adapters` → `ui`
 
-Never violate this flow. Core is pure, adapters implement core, UI consumes adapters.
-
----
-
-## Security Model
-
-### Encryption (WebCrypto)
-
-- **Key Derivation**: PBKDF2-SHA256, 600,000 iterations
-- **Symmetric**: AES-256-GCM with random IV per operation
-- **Signing**: Ed25519 for device identity
-- **Key Exchange**: ECDH P-256 for device key slots
-- **Key Storage**: Encrypted vault + wrapped device keys in IndexedDB; Vault Key in memory only
-- **Sync Credentials**: Stored inside encrypted vault data; sync requires an unlocked local vault
-
-### Serverless Constraints
-
-| CAN Do                        | CANNOT Do                  |
-| ----------------------------- | -------------------------- |
-| Client-side encryption        | Server-side validation     |
-| Store encrypted data in cloud | Real-time push sync        |
-| Client-enforced device list   | Server-enforced revocation |
-| Manual pull-based sync        | Central session management |
-
----
-
-## Data Flow
-
-```
-User → Extension UI → Core (encrypt) → Adapters → IndexedDB (primary)
-                                                        ↓
-                                              S3 (optional, if sync enabled)
-                                                        ↓
-Other Device ← Extension UI ← Core (decrypt) ← Adapters ← IndexedDB
-```
-
-> **Local-first:** IndexedDB is the primary storage. S3 sync is optional for multi-device use.
-
----
-
-## Before Completing Any Task
-
-- [ ] `pnpm ext:lint` passes
-- [ ] `pnpm ext:build` succeeds
-- [ ] No unused imports/variables
-- [ ] Type-only imports use `import type`
-
----
-
-## Key Files
-
-| File                                      | Purpose                   |
-| ----------------------------------------- | ------------------------- |
-| `docs/security/security-specification.md` | Detailed security model   |
-| `CONTRIBUTING.md`                         | Commit conventions        |
-| `docs/aws/s3/`                            | CloudFormation + AWS docs |
-| `apps/extension/`                         | Chrome extension source   |
+Follow this project import direction. Core-specific architecture decisions live
+in `docs/development/core-architecture.md`.
 
 ---
 
