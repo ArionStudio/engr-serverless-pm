@@ -8,7 +8,7 @@ import {
 import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard/clipboard-clear-task-repository.port";
 import type { ClipboardPort } from "../../ports/clipboard/clipboard.port";
 import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
-import { ClearClipboardTaskUseCase } from "../clipboard/clear-clipboard-task";
+import { ClipboardClearService } from "../../services/clipboard/clipboard-clear.service";
 import { LockVaultUseCase } from "./lock-vault";
 
 function createContext() {
@@ -33,14 +33,14 @@ function createContext() {
     scheduleTask: vi.fn(async () => undefined),
     cancelTask: vi.fn(async () => undefined),
   };
-  const clearClipboardTask = new ClearClipboardTaskUseCase(
+  const clipboardClear = new ClipboardClearService(
     clipboard,
     clipboardClearTasks,
     clock,
     ports.crypto,
   );
   const useCase = new LockVaultUseCase(
-    clearClipboardTask,
+    clipboardClear,
     clipboardClearTasks,
     scheduledTasks,
     ports.vaultLockTasks,

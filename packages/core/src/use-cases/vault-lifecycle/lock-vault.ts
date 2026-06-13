@@ -1,28 +1,28 @@
 import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard/clipboard-clear-task-repository.port";
 import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
 import type { VaultLockTaskRepositoryPort } from "../../ports/vault/vault-lock-task-repository.port";
-import type { ClearClipboardTaskUseCase } from "../clipboard/clear-clipboard-task";
-import type { UnlockedVaultSessionService } from "../../application/vault-session/unlocked-vault-session.service";
+import type { ClipboardClearService } from "../../services/clipboard/clipboard-clear.service";
+import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
 
 export type LockVaultCommandParams = {
   actionId?: string;
 };
 
 export class LockVaultUseCase {
-  private readonly clearClipboardTask: ClearClipboardTaskUseCase;
+  private readonly clipboardClear: ClipboardClearService;
   private readonly clipboardClearTasks: ClipboardClearTaskRepositoryPort;
   private readonly scheduledTasks: ScheduledTaskPort;
   private readonly vaultLockTasks: VaultLockTaskRepositoryPort;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
 
   constructor(
-    clearClipboardTask: ClearClipboardTaskUseCase,
+    clipboardClear: ClipboardClearService,
     clipboardClearTasks: ClipboardClearTaskRepositoryPort,
     scheduledTasks: ScheduledTaskPort,
     vaultLockTasks: VaultLockTaskRepositoryPort,
     unlockedVaultSession: UnlockedVaultSessionService,
   ) {
-    this.clearClipboardTask = clearClipboardTask;
+    this.clipboardClear = clipboardClear;
     this.clipboardClearTasks = clipboardClearTasks;
     this.scheduledTasks = scheduledTasks;
     this.vaultLockTasks = vaultLockTasks;
@@ -49,7 +49,7 @@ export class LockVaultUseCase {
       let cleanupError: unknown;
 
       try {
-        await this.clearClipboardTask.execute({
+        await this.clipboardClear.clearTask({
           task: clipboardClearTask,
           requireExpired: false,
         });

@@ -5,8 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./application": "./src/application/index.ts",
-    "./application/*": "./src/application/*",
+    "./services": "./src/services/index.ts",
+    "./services/*": "./src/services/*",
     "./domain": "./src/domain/index.ts",
     "./domain/*": "./src/domain/*",
     "./lib": "./src/lib/index.ts",

@@ -13,7 +13,13 @@ import type { UnlockedVaultSessionMaterialRepositoryPort } from "../../ports/vau
 import {
   ActiveUnlockedVaultMismatchError,
   UnlockedVaultSessionInvalidError,
+  VaultMustBeUnlockedError,
 } from "../errors/vault-session.errors";
+
+export type UnlockedVaultContext = Pick<
+  UnlockedVaultSession,
+  "unlockedVault" | "sourceSnapshotRevision"
+>;
 
 export class UnlockedVaultSessionService {
   private readonly materialRepository: UnlockedVaultSessionMaterialRepositoryPort;
@@ -63,6 +69,25 @@ export class UnlockedVaultSessionService {
     }
 
     return this.restore(material, encryptedPayload);
+  }
+
+  async getUnlockedVaultContext(
+    vaultId: string,
+    operation: string,
+  ): Promise<UnlockedVaultContext> {
+    const unlockedVaultSession = await this.get();
+
+    if (
+      unlockedVaultSession === null ||
+      unlockedVaultSession.unlockedVault.vaultId !== vaultId
+    ) {
+      throw new VaultMustBeUnlockedError(vaultId, operation);
+    }
+
+    return {
+      unlockedVault: unlockedVaultSession.unlockedVault,
+      sourceSnapshotRevision: unlockedVaultSession.sourceSnapshotRevision,
+    };
   }
 
   async commit(

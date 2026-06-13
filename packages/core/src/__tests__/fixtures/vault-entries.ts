@@ -5,7 +5,7 @@ import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import type { Tag } from "../../domain/entry/tag.type";
 import type { UnlockedVault } from "../../domain/vault/unlocked-vault";
 import type { UnlockedVaultSession } from "../../domain/vault/unlocked-vault-session";
-import type { VaultSnapshotService } from "../../application/vault-snapshots/vault-snapshot.service";
+import type { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
 import type { CoreTestPorts } from "./ports";
 import type { CoreTestValues } from "./values";
 

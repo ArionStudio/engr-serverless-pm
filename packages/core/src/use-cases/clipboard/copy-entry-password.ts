@@ -6,11 +6,11 @@ import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { IdPort } from "../../ports/system/id.port";
 import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard/clipboard-clear-task-repository.port";
 import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
-import { InvalidClipboardClearDelayError } from "../../application/errors/clipboard.errors";
-import { PasswordEntryNotFoundError } from "../../application/errors/vault-entry.errors";
-import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
-import type { UnlockedVaultSessionService } from "../../application/vault-session/unlocked-vault-session.service";
-import type { ClearClipboardTaskUseCase } from "./clear-clipboard-task";
+import { InvalidClipboardClearDelayError } from "../../services/errors/clipboard.errors";
+import { PasswordEntryNotFoundError } from "../../services/errors/vault-entry.errors";
+import { VaultMustBeUnlockedError } from "../../services/errors/vault-session.errors";
+import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
+import type { ClipboardClearService } from "../../services/clipboard/clipboard-clear.service";
 
 export type CopyEntryPasswordCommandParams = {
   vaultId: string;
@@ -24,7 +24,7 @@ export type CopyEntryPasswordResult = {
 
 export class CopyEntryPasswordUseCase {
   private readonly clipboard: ClipboardPort;
-  private readonly clearClipboardTask: ClearClipboardTaskUseCase;
+  private readonly clipboardClear: ClipboardClearService;
   private readonly crypto: CryptoPort;
   private readonly ids: IdPort;
   private readonly clipboardClearTasks: ClipboardClearTaskRepositoryPort;
@@ -34,7 +34,7 @@ export class CopyEntryPasswordUseCase {
 
   constructor(
     clipboard: ClipboardPort,
-    clearClipboardTask: ClearClipboardTaskUseCase,
+    clipboardClear: ClipboardClearService,
     crypto: CryptoPort,
     ids: IdPort,
     clipboardClearTasks: ClipboardClearTaskRepositoryPort,
@@ -43,7 +43,7 @@ export class CopyEntryPasswordUseCase {
     unlockedVaultSession: UnlockedVaultSessionService,
   ) {
     this.clipboard = clipboard;
-    this.clearClipboardTask = clearClipboardTask;
+    this.clipboardClear = clipboardClear;
     this.crypto = crypto;
     this.ids = ids;
     this.clipboardClearTasks = clipboardClearTasks;
@@ -79,7 +79,7 @@ export class CopyEntryPasswordUseCase {
       let previousClearError: unknown;
 
       try {
-        await this.clearClipboardTask.execute({
+        await this.clipboardClear.clearTask({
           task: previousClipboardClearTask,
           requireExpired: false,
         });

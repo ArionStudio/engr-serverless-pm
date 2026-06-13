@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import { createUnlockedVaultWithEntries } from "../../__tests__/fixtures/vault-entries";
-import { VaultSnapshotService } from "../../application/vault-snapshots/vault-snapshot.service";
+import { VaultSyncUploadService } from "../../services/sync/vault-sync-upload.service";
+import { VaultSyncReviewService } from "../../services/sync/vault-sync-review.service";
+import { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
 import { CURRENT_ALGORITHM_SUITE } from "../../domain/crypto/algorithm-suite.const";
 import type { PasswordEntry } from "../../domain/entry/password-entry.type";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
@@ -12,9 +14,9 @@ import {
   RemoteVaultSnapshotChangedError,
   SyncResolutionIncompleteError,
   SyncTrustChangeRequiresDeviceTrustFlowError,
-} from "../../application/errors/sync.errors";
-import { VaultSnapshotSignerNotTrustedError } from "../../application/errors/unlock-vault.errors";
-import { ResolveSyncConflictUseCase } from "./resolve-sync-conflict";
+} from "../../services/errors/sync.errors";
+import { VaultSnapshotSignerNotTrustedError } from "../../services/errors/unlock-vault.errors";
+import { ApplySyncResolutionUseCase } from "./apply-sync-resolution";
 
 function createSnapshot(
   values: ReturnType<typeof createCoreTestValues>,
@@ -126,17 +128,22 @@ function createContext() {
     saved: ports.saved,
     localSnapshot,
     persistUnlockedVault,
-    useCase: new ResolveSyncConflictUseCase(
+    useCase: new ApplySyncResolutionUseCase(
       ports.syncProvider,
       ports.sessionServices.unlockedVaultSession,
       ports.vaultLocalRepository,
-      ports.crypto,
+      new VaultSyncReviewService(
+        ports.syncProvider,
+        ports.vaultLocalRepository,
+        ports.crypto,
+      ),
       vaultSnapshot,
+      new VaultSyncUploadService(ports.syncProvider),
     ),
   };
 }
 
-describe("ResolveSyncConflictUseCase", () => {
+describe("ApplySyncResolutionUseCase", () => {
   it("applies explicit resolutions, persists locally, commits session, and uploads", async () => {
     const ctx = createContext();
     const remoteEntry = createEntry("remote-entry", {

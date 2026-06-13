@@ -10,9 +10,10 @@ import {
   RemoteVaultSnapshotChangedError,
   SyncConflictDetectedError,
   SyncNotConfiguredError,
-} from "../../application/errors/sync.errors";
-import { VaultSnapshotNotFoundError } from "../../application/errors/unlock-vault.errors";
-import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
+} from "../../services/errors/sync.errors";
+import { VaultSyncUploadService } from "../../services/sync/vault-sync-upload.service";
+import { VaultSnapshotNotFoundError } from "../../services/errors/unlock-vault.errors";
+import { VaultMustBeUnlockedError } from "../../services/errors/vault-session.errors";
 import { SyncUploadUseCase } from "./sync-upload";
 
 function createSnapshot(
@@ -98,9 +99,9 @@ function createContext() {
     saved: ports.saved,
     localSnapshot,
     useCase: new SyncUploadUseCase(
-      ports.syncProvider,
-      ports.sessionServices.unlockedVaultSession,
       ports.vaultLocalRepository,
+      ports.sessionServices.unlockedVaultSession,
+      new VaultSyncUploadService(ports.syncProvider),
     ),
   };
 }

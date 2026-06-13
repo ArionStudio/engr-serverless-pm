@@ -68,6 +68,30 @@ export function createVaultSyncReview(
   };
 }
 
+export function createPreselectedVaultSyncResolution(
+  review: VaultSyncReview,
+): VaultSyncResolution {
+  return {
+    entryResolutions: review.entryReviews.map((entryReview) => ({
+      kind: "password_entry" as const,
+      entryId: entryReview.entryId,
+      action: entryReview.preselectedAction,
+    })),
+    tagResolutions: review.tagReviews.map((tagReview) => ({
+      kind: "tag" as const,
+      tagId: tagReview.tagId,
+      action: tagReview.preselectedAction,
+    })),
+    deviceProfileResolutions: review.deviceProfileReviews.map(
+      (deviceProfileReview) => ({
+        kind: "device_profile" as const,
+        deviceId: deviceProfileReview.deviceId,
+        action: deviceProfileReview.preselectedAction,
+      }),
+    ),
+  };
+}
+
 export function applyVaultSyncResolution(
   localVault: Vault,
   remoteVault: Vault,

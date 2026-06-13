@@ -1,7 +1,7 @@
-import { SyncNotConfiguredError } from "../../application/errors/sync.errors";
-import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
-import type { UnlockedVaultSessionService } from "../../application/vault-session/unlocked-vault-session.service";
-import type { VaultSnapshotService } from "../../application/vault-snapshots/vault-snapshot.service";
+import { requireVaultSyncConfig } from "../../services/sync/sync-config.utils";
+import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
+import type { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
+import { removeVaultSyncConfig } from "../../domain/vault/vault-sync-config.mutations";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 
 export type DisableSyncCommandParams = {
@@ -24,32 +24,20 @@ export class DisableSyncUseCase {
   }
 
   async execute(params: DisableSyncCommandParams): Promise<void> {
-    const unlockedVaultSession = await this.unlockedVaultSession.get();
-
-    if (
-      unlockedVaultSession === null ||
-      unlockedVaultSession.unlockedVault.vaultId !== params.vaultId
-    ) {
-      throw new VaultMustBeUnlockedError(params.vaultId, "disable sync");
-    }
-
-    const { sourceSnapshotRevision, unlockedVault } = unlockedVaultSession;
-
-    const syncConfig = unlockedVault.vault.syncConfig;
-
-    if (syncConfig === undefined) {
-      throw new SyncNotConfiguredError(params.vaultId, "disable sync");
-    }
-
-    const updatedVault = {
-      ...unlockedVault.vault,
-    };
-
-    delete updatedVault.syncConfig;
+    const { sourceSnapshotRevision, unlockedVault } =
+      await this.unlockedVaultSession.getUnlockedVaultContext(
+        params.vaultId,
+        "disable sync",
+      );
+    const syncConfig = requireVaultSyncConfig(
+      params.vaultId,
+      "disable sync",
+      unlockedVault.vault,
+    );
 
     const updatedUnlockedVault = {
       ...unlockedVault,
-      vault: updatedVault,
+      vault: removeVaultSyncConfig(unlockedVault.vault),
     };
 
     await this.vaultSnapshot.assertCanPersistUnlockedVault(

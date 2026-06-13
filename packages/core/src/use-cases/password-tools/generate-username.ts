@@ -1,8 +1,8 @@
 import { generatedUsernameSettingsSchema } from "../../domain/password-tools/generated-username.schema";
 import type { GeneratedUsernameSettings } from "../../domain/password-tools/generated-username.type";
 import { generateUsernameValue } from "../../domain/password-tools/generated-username.utils";
-import { InvalidGeneratedUsernameSettingsError } from "../../application/errors/generate-username.errors";
-import type { RandomSamplerService } from "../../application/randomness/random-sampler.service";
+import { InvalidGeneratedUsernameSettingsError } from "../../services/errors/generate-username.errors";
+import type { RandomSamplerService } from "../../services/randomness/random-sampler.service";
 
 export type GenerateUsernameCommandParams = Partial<GeneratedUsernameSettings>;
 

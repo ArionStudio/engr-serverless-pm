@@ -1,6 +1,5 @@
-import { SyncNotConfiguredError } from "../../application/errors/sync.errors";
-import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
-import type { UnlockedVaultSessionService } from "../../application/vault-session/unlocked-vault-session.service";
+import { requireVaultSyncConfig } from "../../services/sync/sync-config.utils";
+import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 
 export type RemoveCloudSyncFilesCommandParams = {
@@ -24,24 +23,16 @@ export class RemoveCloudSyncFilesUseCase {
   }
 
   async execute(params: RemoveCloudSyncFilesCommandParams): Promise<void> {
-    const unlockedVaultSession = await this.unlockedVaultSession.get();
-    const unlockedVault = unlockedVaultSession?.unlockedVault;
-
-    if (unlockedVault?.vaultId !== params.vaultId) {
-      throw new VaultMustBeUnlockedError(
+    const { unlockedVault } =
+      await this.unlockedVaultSession.getUnlockedVaultContext(
         params.vaultId,
         "remove cloud sync files",
       );
-    }
-
-    const syncConfig = unlockedVault.vault.syncConfig;
-
-    if (syncConfig === undefined) {
-      throw new SyncNotConfiguredError(
-        params.vaultId,
-        "remove cloud sync files",
-      );
-    }
+    const syncConfig = requireVaultSyncConfig(
+      params.vaultId,
+      "remove cloud sync files",
+      unlockedVault.vault,
+    );
 
     await this.syncProvider.removeVaultSnapshots(syncConfig, params.vaultId);
   }

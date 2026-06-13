@@ -5,9 +5,9 @@ import {
   createUnlockedVaultWithEntries,
   createVaultSnapshotServiceMock,
 } from "../../__tests__/fixtures/vault-entries";
-import { SyncNotConfiguredError } from "../../application/errors/sync.errors";
-import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
-import { VaultSnapshotRevisionMismatchError } from "../../application/errors/vault-snapshot.errors";
+import { SyncNotConfiguredError } from "../../services/errors/sync.errors";
+import { VaultMustBeUnlockedError } from "../../services/errors/vault-session.errors";
+import { VaultSnapshotRevisionMismatchError } from "../../services/errors/vault-snapshot.errors";
 import { DisableSyncUseCase } from "./disable-sync";
 
 function createContext(syncConfigured = true) {

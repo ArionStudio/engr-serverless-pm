@@ -22,7 +22,7 @@ import type { VaultDisplayNamePort } from "../../ports/vault/vault-display-name.
 import type { VaultLockTaskRepositoryPort } from "../../ports/vault/vault-lock-task-repository.port";
 import type { UnlockedVaultSessionMaterialRepositoryPort } from "../../ports/vault/unlocked-vault-session-material-repository.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
-import { UnlockedVaultSessionService } from "../../application/vault-session/unlocked-vault-session.service";
+import { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
 import { createCoreTestValues, type CoreTestValues } from "./values";
 
 export type SavedCoreRecords = {

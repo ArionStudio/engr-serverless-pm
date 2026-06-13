@@ -1,7 +1,7 @@
-import { SyncNotConfiguredError } from "../../application/errors/sync.errors";
-import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
-import type { UnlockedVaultSessionService } from "../../application/vault-session/unlocked-vault-session.service";
-import type { VaultSnapshotService } from "../../application/vault-snapshots/vault-snapshot.service";
+import { requireVaultSyncConfig } from "../../services/sync/sync-config.utils";
+import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
+import type { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
+import { removeVaultSyncConfig } from "../../domain/vault/vault-sync-config.mutations";
 
 export type RemoveLocalSyncCredentialsCommandParams = {
   readonly vaultId: string;
@@ -22,36 +22,20 @@ export class RemoveLocalSyncCredentialsUseCase {
   async execute(
     params: RemoveLocalSyncCredentialsCommandParams,
   ): Promise<void> {
-    const unlockedVaultSession = await this.unlockedVaultSession.get();
-
-    if (
-      unlockedVaultSession === null ||
-      unlockedVaultSession.unlockedVault.vaultId !== params.vaultId
-    ) {
-      throw new VaultMustBeUnlockedError(
+    const { sourceSnapshotRevision, unlockedVault } =
+      await this.unlockedVaultSession.getUnlockedVaultContext(
         params.vaultId,
         "remove local sync credentials",
       );
-    }
-
-    const { sourceSnapshotRevision, unlockedVault } = unlockedVaultSession;
-
-    if (unlockedVault.vault.syncConfig === undefined) {
-      throw new SyncNotConfiguredError(
-        params.vaultId,
-        "remove local sync credentials",
-      );
-    }
-
-    const updatedVault = {
-      ...unlockedVault.vault,
-    };
-
-    delete updatedVault.syncConfig;
+    requireVaultSyncConfig(
+      params.vaultId,
+      "remove local sync credentials",
+      unlockedVault.vault,
+    );
 
     const updatedUnlockedVault = {
       ...unlockedVault,
-      vault: updatedVault,
+      vault: removeVaultSyncConfig(unlockedVault.vault),
     };
 
     const persistedSnapshot = await this.vaultSnapshot.persistUnlockedVault(

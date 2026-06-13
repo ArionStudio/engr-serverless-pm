@@ -5,6 +5,7 @@ import type { Tag } from "../entry/tag.type";
 import type { Vault } from "../vault/vault";
 import {
   applyVaultSyncResolution,
+  createPreselectedVaultSyncResolution,
   createVaultSyncReview,
 } from "./vault-sync-review.utils";
 import type { VaultSyncTrustState } from "./vault-sync-review.type";
@@ -212,6 +213,48 @@ describe("vault sync review utils", () => {
       informational: true,
       localTrustState,
       remoteTrustState,
+    });
+  });
+
+  it("creates explicit resolutions from preselected review actions", () => {
+    const localEntry = createEntry("local-entry", { A: 1 });
+    const remoteEntry = createEntry("remote-entry", { B: 1 });
+    const remoteTag = createTag(2, "Remote", { B: 1 });
+    const localDeviceProfile = createDeviceProfile("device-a", "A", { A: 1 });
+
+    const review = createVaultSyncReview(
+      createVault({
+        entries: [localEntry],
+        deviceProfiles: [localDeviceProfile],
+      }),
+      createVault({
+        entries: [localEntry, remoteEntry],
+        tags: [remoteTag],
+      }),
+    );
+
+    expect(createPreselectedVaultSyncResolution(review)).toEqual({
+      entryResolutions: [
+        {
+          kind: "password_entry",
+          entryId: "remote-entry",
+          action: "use_remote",
+        },
+      ],
+      tagResolutions: [
+        {
+          kind: "tag",
+          tagId: 2,
+          action: "use_remote",
+        },
+      ],
+      deviceProfileResolutions: [
+        {
+          kind: "device_profile",
+          deviceId: "device-a",
+          action: "use_local",
+        },
+      ],
     });
   });
 

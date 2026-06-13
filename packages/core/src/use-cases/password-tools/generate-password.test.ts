@@ -2,11 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { RandomBytes } from "../../domain/crypto/brand-keys";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
-import { RandomSamplerService } from "../../application/randomness/random-sampler.service";
+import { RandomSamplerService } from "../../services/randomness/random-sampler.service";
 import {
   InvalidGeneratedPasswordSettingsError,
   PasswordGenerationImpossibleError,
-} from "../../application/errors/generate-password.errors";
+} from "../../services/errors/generate-password.errors";
 import { GeneratePasswordUseCase } from "./generate-password";
 
 function randomBytesFromUint32(value: number): RandomBytes {

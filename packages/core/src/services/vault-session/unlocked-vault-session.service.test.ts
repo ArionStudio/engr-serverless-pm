@@ -12,6 +12,7 @@ import type {
 import {
   ActiveUnlockedVaultMismatchError,
   UnlockedVaultSessionInvalidError,
+  VaultMustBeUnlockedError,
 } from "../errors/vault-session.errors";
 import { UnlockedVaultSessionService } from "./unlocked-vault-session.service";
 
@@ -148,6 +149,50 @@ describe("UnlockedVaultSessionService", () => {
         sourceSnapshotRevision: 7,
       },
     );
+  });
+
+  it("returns unlocked vault context for the requested active vault", async () => {
+    const ctx = createContext();
+    ctx.ports.saved.unlockedVaultSessionMaterial = createMaterial(ctx);
+    ctx.ports.saved.encryptedUnlockedVaultSessionPayload =
+      createEncryptedPayload(ctx);
+
+    await expect(
+      ctx.service.getUnlockedVaultContext(ctx.values.vaultId, "test operation"),
+    ).resolves.toEqual({
+      unlockedVault: {
+        vaultId: ctx.values.vaultId,
+        deviceId: ctx.values.deviceId,
+        vault: ctx.values.decryptedVault,
+        vaultMasterKey: ctx.values.vaultMasterKey,
+        devicePrivateSignKey: ctx.values.devicePrivateSignKey,
+      },
+      sourceSnapshotRevision: 7,
+    });
+  });
+
+  it("rejects unlocked vault context when no vault is unlocked", async () => {
+    const ctx = createContext();
+
+    await expect(
+      ctx.service.getUnlockedVaultContext(ctx.values.vaultId, "test operation"),
+    ).rejects.toBeInstanceOf(VaultMustBeUnlockedError);
+
+    expect(
+      ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
+        .getEncryptedUnlockedVaultSessionPayload,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("rejects unlocked vault context for another active vault", async () => {
+    const ctx = createContext();
+    ctx.ports.saved.unlockedVaultSessionMaterial = createMaterial(ctx);
+    ctx.ports.saved.encryptedUnlockedVaultSessionPayload =
+      createEncryptedPayload(ctx);
+
+    await expect(
+      ctx.service.getUnlockedVaultContext("other-vault-id", "test operation"),
+    ).rejects.toBeInstanceOf(VaultMustBeUnlockedError);
   });
 
   it("fails when session material exists without encrypted payload", async () => {

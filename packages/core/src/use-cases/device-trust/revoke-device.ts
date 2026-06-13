@@ -3,15 +3,15 @@ import type {
   VaultSnapshot,
 } from "../../domain/snapshot/vault-snapshot";
 import type { Vault } from "../../domain/vault/vault";
-import { revokeDeviceProfileFromVault } from "../../domain/vault/vault-device-mutations.utils";
+import { revokeDeviceProfileFromVault } from "../../domain/vault/vault-device.mutations";
 import {
   DeviceKeySlotNotFoundError,
   VaultSnapshotSignatureVerificationFailedError,
   VaultSnapshotSignerNotTrustedError,
-} from "../../application/errors/unlock-vault.errors";
-import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
-import type { UnlockedVaultSessionService } from "../../application/vault-session/unlocked-vault-session.service";
-import type { VaultSnapshotService } from "../../application/vault-snapshots/vault-snapshot.service";
+} from "../../services/errors/unlock-vault.errors";
+import { VaultMustBeUnlockedError } from "../../services/errors/vault-session.errors";
+import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
+import type { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
 import type { ClockPort } from "../../ports/system/clock.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";

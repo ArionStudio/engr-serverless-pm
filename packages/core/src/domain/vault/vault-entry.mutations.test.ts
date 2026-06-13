@@ -5,7 +5,7 @@ import {
   addPasswordEntryToVault,
   removePasswordEntryFromVault,
   updatePasswordEntryInVault,
-} from "./vault-entry-mutations.utils";
+} from "./vault-entry.mutations";
 
 function createVault(): Vault {
   return {

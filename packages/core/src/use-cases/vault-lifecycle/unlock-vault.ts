@@ -11,16 +11,16 @@ import type { IdPort } from "../../ports/system/id.port";
 import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import type { VaultLockTaskRepositoryPort } from "../../ports/vault/vault-lock-task-repository.port";
-import { UnsupportedAlgorithmSuiteError } from "../../application/errors/algorithm-suite.errors";
+import { UnsupportedAlgorithmSuiteError } from "../../services/errors/algorithm-suite.errors";
 import {
   DeviceAccessMaterialNotFoundError,
   DeviceKeySlotNotFoundError,
   VaultSnapshotNotFoundError,
   VaultSnapshotSignatureVerificationFailedError,
   VaultSnapshotSignerNotTrustedError,
-} from "../../application/errors/unlock-vault.errors";
-import { InvalidVaultLockDelayError } from "../../application/errors/vault-session.errors";
-import type { UnlockedVaultSessionService } from "../../application/vault-session/unlocked-vault-session.service";
+} from "../../services/errors/unlock-vault.errors";
+import { InvalidVaultLockDelayError } from "../../services/errors/vault-session.errors";
+import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
 
 export type UnlockVaultCommandParams = {
   vaultId: string;

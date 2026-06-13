@@ -8,14 +8,14 @@ import type {
 } from "../../domain/snapshot/vault-snapshot";
 import type { UnlockedVault } from "../../domain/vault/unlocked-vault";
 import type { Vault } from "../../domain/vault/vault";
-import { addRecoveredDeviceProfileToVault } from "../../domain/vault/vault-device-mutations.utils";
-import { UnsupportedAlgorithmSuiteError } from "../../application/errors/algorithm-suite.errors";
+import { addRecoveredDeviceProfileToVault } from "../../domain/vault/vault-device.mutations";
+import { UnsupportedAlgorithmSuiteError } from "../../services/errors/algorithm-suite.errors";
 import {
   VaultSnapshotNotFoundError,
   VaultSnapshotSignatureVerificationFailedError,
   VaultSnapshotSignerNotTrustedError,
-} from "../../application/errors/unlock-vault.errors";
-import type { UnlockedVaultSessionService } from "../../application/vault-session/unlocked-vault-session.service";
+} from "../../services/errors/unlock-vault.errors";
+import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
 import type { Bip39Port } from "../../ports/crypto/bip39.port";
 import type { ClockPort } from "../../ports/system/clock.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";

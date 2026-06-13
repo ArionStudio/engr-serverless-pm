@@ -5,8 +5,8 @@ import {
   saveUnlockedVaultWithEntries,
   singlePasswordEntry,
 } from "../../__tests__/fixtures/vault-entries";
-import { PasswordEntryNotFoundError } from "../../application/errors/vault-entry.errors";
-import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
+import { PasswordEntryNotFoundError } from "../../services/errors/vault-entry.errors";
+import { VaultMustBeUnlockedError } from "../../services/errors/vault-session.errors";
 import { GetEntryPasswordUseCase } from "./get-entry-password";
 
 function createContext() {

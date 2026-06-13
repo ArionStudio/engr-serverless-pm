@@ -2,21 +2,18 @@ import { describe, expect, it, vi } from "vitest";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import { createUnlockedVaultWithEntries } from "../../__tests__/fixtures/vault-entries";
+import {
+  RemoteVaultSnapshotNotFoundError,
+  SyncNotConfiguredError,
+} from "../../services/errors/sync.errors";
+import { VaultSyncReviewService } from "../../services/sync/vault-sync-review.service";
+import { VaultMustBeUnlockedError } from "../../services/errors/vault-session.errors";
 import { CURRENT_ALGORITHM_SUITE } from "../../domain/crypto/algorithm-suite.const";
 import type { PasswordEntry } from "../../domain/entry/password-entry.type";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import type { RemoteVaultSnapshotDescriptor } from "../../domain/sync/remote-vault-snapshot-descriptor.type";
 import type { Vault } from "../../domain/vault/vault";
-import {
-  RemoteVaultSnapshotNotFoundError,
-  SyncNotConfiguredError,
-} from "../../application/errors/sync.errors";
-import {
-  VaultSnapshotNotFoundError,
-  VaultSnapshotSignerNotTrustedError,
-} from "../../application/errors/unlock-vault.errors";
-import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
-import { SyncDownloadUseCase } from "./sync-download";
+import { PrepareSyncReviewUseCase } from "./prepare-sync-review";
 
 function createSnapshot(
   values: ReturnType<typeof createCoreTestValues>,
@@ -114,17 +111,19 @@ function createContext() {
     ports,
     saved: ports.saved,
     localSnapshot,
-    useCase: new SyncDownloadUseCase(
-      ports.syncProvider,
+    useCase: new PrepareSyncReviewUseCase(
       ports.sessionServices.unlockedVaultSession,
-      ports.vaultLocalRepository,
-      ports.crypto,
+      new VaultSyncReviewService(
+        ports.syncProvider,
+        ports.vaultLocalRepository,
+        ports.crypto,
+      ),
     ),
   };
 }
 
-describe("SyncDownloadUseCase", () => {
-  it("downloads remote data and returns review without saving when remote is ahead of local", async () => {
+describe("PrepareSyncReviewUseCase", () => {
+  it("prepares a remote-ahead review with the descriptor needed for apply", async () => {
     const ctx = createContext();
     const remoteEntry = createEntry("remote-entry", {
       [ctx.values.deviceId]: 4,
@@ -178,17 +177,14 @@ describe("SyncDownloadUseCase", () => {
       },
     });
 
-    expect(ctx.ports.syncProvider.downloadVaultSnapshot).toHaveBeenCalledWith(
-      ctx.values.syncConfig,
-      remoteSnapshotDescriptor,
-    );
     expect(
       ctx.ports.vaultLocalRepository.saveVaultSnapshot,
     ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
     expect(ctx.saved.vaultSnapshot).toBe(ctx.localSnapshot);
   });
 
-  it("skips full download and returns an empty review when local is ahead of remote", async () => {
+  it("skips full download when local is safely ahead of remote", async () => {
     const ctx = createContext();
     const remoteSnapshotDescriptor = createRemoteSnapshotDescriptor(
       ctx.values,
@@ -217,118 +213,11 @@ describe("SyncDownloadUseCase", () => {
     });
 
     expect(ctx.ports.syncProvider.downloadVaultSnapshot).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
     expect(ctx.saved.vaultSnapshot).toBe(ctx.localSnapshot);
   });
 
-  it("returns conflict review items when local and remote vectors diverged", async () => {
-    const ctx = createContext();
-    const localEntry = createEntry("entry-id", { A: 7, B: 3 });
-    const remoteEntry = createEntry("entry-id", { A: 2, B: 4 });
-    const remoteVault: Vault = {
-      ...ctx.saved.unlockedVaultSession!.unlockedVault.vault,
-      versionVector: {
-        A: 2,
-        B: 4,
-      },
-      entries: [remoteEntry],
-    };
-
-    ctx.saved.unlockedVaultSession = {
-      ...ctx.saved.unlockedVaultSession!,
-      unlockedVault: {
-        ...ctx.saved.unlockedVaultSession!.unlockedVault,
-        vault: {
-          ...ctx.saved.unlockedVaultSession!.unlockedVault.vault,
-          versionVector: {
-            A: 7,
-            B: 3,
-          },
-          entries: [localEntry],
-        },
-      },
-    };
-
-    const remoteSnapshotDescriptor = createRemoteSnapshotDescriptor(
-      ctx.values,
-      {
-        versionVector: remoteVault.versionVector,
-      },
-    );
-    const remoteSnapshot = createSnapshot(ctx.values);
-
-    vi.mocked(
-      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
-    ).mockResolvedValueOnce(remoteSnapshotDescriptor);
-    vi.mocked(
-      ctx.ports.syncProvider.downloadVaultSnapshot,
-    ).mockResolvedValueOnce(remoteSnapshot);
-    vi.mocked(
-      ctx.ports.crypto.decryptVaultSnapshotContent,
-    ).mockResolvedValueOnce(remoteVault);
-
-    await expect(
-      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
-    ).resolves.toMatchObject({
-      remoteSnapshotDescriptor,
-      relation: "diverged",
-      review: {
-        hasChanges: true,
-        hasConflicts: true,
-        entryReviews: [
-          {
-            kind: "password_entry",
-            entryId: "entry-id",
-            relation: "diverged",
-            conflict: true,
-            preselectedAction: "use_local",
-          },
-        ],
-      },
-    });
-
-    expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("rejects remote snapshots signed by devices not trusted locally", async () => {
-    const ctx = createContext();
-    const remoteVault: Vault = {
-      ...ctx.saved.unlockedVaultSession!.unlockedVault.vault,
-      versionVector: {
-        [ctx.values.deviceId]: 4,
-      },
-    };
-    const remoteSnapshotDescriptor = createRemoteSnapshotDescriptor(
-      ctx.values,
-      {
-        versionVector: remoteVault.versionVector,
-      },
-    );
-    const remoteSnapshot = createSnapshot(ctx.values, {
-      createdByDeviceId: "remote-device-id",
-    });
-
-    vi.mocked(
-      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
-    ).mockResolvedValueOnce(remoteSnapshotDescriptor);
-    vi.mocked(
-      ctx.ports.syncProvider.downloadVaultSnapshot,
-    ).mockResolvedValueOnce(remoteSnapshot);
-
-    await expect(
-      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
-    ).rejects.toBeInstanceOf(VaultSnapshotSignerNotTrustedError);
-
-    expect(
-      ctx.ports.crypto.verifyVaultSnapshotSignature,
-    ).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("fails when no remote descriptor exists for the vault", async () => {
+  it("fails when no remote descriptor exists for review", async () => {
     const ctx = createContext();
 
     await expect(
@@ -338,32 +227,7 @@ describe("SyncDownloadUseCase", () => {
     expect(ctx.saved.vaultSnapshot).toBe(ctx.localSnapshot);
   });
 
-  it("fails when the local snapshot is missing", async () => {
-    const ctx = createContext();
-    const remoteSnapshotDescriptor = createRemoteSnapshotDescriptor(
-      ctx.values,
-      {
-        versionVector: {
-          [ctx.values.deviceId]: 4,
-        },
-      },
-    );
-
-    ctx.saved.vaultSnapshot = undefined;
-    vi.mocked(
-      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
-    ).mockResolvedValueOnce(remoteSnapshotDescriptor);
-
-    await expect(
-      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
-    ).rejects.toBeInstanceOf(VaultSnapshotNotFoundError);
-
-    expect(ctx.ports.syncProvider.downloadVaultSnapshot).not.toHaveBeenCalled();
-    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
-    expect(ctx.saved.vaultSnapshot).toBeUndefined();
-  });
-
-  it("fails when the target vault is not unlocked", async () => {
+  it("fails before provider reads when the vault is not unlocked", async () => {
     const ctx = createContext();
     ctx.saved.unlockedVaultSession = undefined;
 
@@ -376,7 +240,7 @@ describe("SyncDownloadUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("fails when sync is not configured", async () => {
+  it("fails before provider reads when sync is not configured", async () => {
     const ctx = createContext();
     ctx.saved.unlockedVaultSession = {
       unlockedVault: createUnlockedVaultWithEntries(ctx.values, []),

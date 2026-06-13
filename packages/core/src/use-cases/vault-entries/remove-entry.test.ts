@@ -8,8 +8,8 @@ import {
   secondPasswordEntry,
   standardPasswordEntries,
 } from "../../__tests__/fixtures/vault-entries";
-import { PasswordEntryNotFoundError } from "../../application/errors/vault-entry.errors";
-import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
+import { PasswordEntryNotFoundError } from "../../services/errors/vault-entry.errors";
+import { VaultMustBeUnlockedError } from "../../services/errors/vault-session.errors";
 import { RemoveEntryUseCase } from "./remove-entry";
 
 function createContext() {
