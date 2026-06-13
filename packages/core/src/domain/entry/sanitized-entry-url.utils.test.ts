@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { UnsupportedEntryUrlProtocolError } from "../../errors/vault-entry.errors";
 import { sanitizeEntryUrl } from "./sanitized-entry-url.utils";
 
 describe("sanitizeEntryUrl", () => {
@@ -23,14 +24,16 @@ describe("sanitizeEntryUrl", () => {
   });
 
   it("rejects javascript entry urls", () => {
-    expect(() => sanitizeEntryUrl("javascript:alert(1)")).toThrow(
-      'Unsupported entry URL protocol "javascript:".',
-    );
+    const action = () => sanitizeEntryUrl("javascript:alert(1)");
+
+    expect(action).toThrow(UnsupportedEntryUrlProtocolError);
+    expect(action).toThrow('Unsupported entry URL protocol "javascript:".');
   });
 
   it("rejects data entry urls", () => {
-    expect(() => sanitizeEntryUrl("data:text/html,<script></script>")).toThrow(
-      'Unsupported entry URL protocol "data:".',
-    );
+    const action = () => sanitizeEntryUrl("data:text/html,<script></script>");
+
+    expect(action).toThrow(UnsupportedEntryUrlProtocolError);
+    expect(action).toThrow('Unsupported entry URL protocol "data:".');
   });
 });

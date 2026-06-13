@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { InvalidBase64UrlError } from "../errors/base64-url.errors";
 import type { Base64URLString } from "./base64Url.type";
 import { decodeBase64Url, encodeBase64Url } from "./base64Url.utils";
 
@@ -21,14 +22,23 @@ describe("base64url utilities", () => {
   });
 
   it("rejects padding before the end of the input", () => {
-    expect(() => decodeBase64Url(b64("aG=s"))).toThrow(
-      "Invalid base64/base64url character",
-    );
+    const action = () => decodeBase64Url(b64("aG=s"));
+
+    expect(action).toThrow(InvalidBase64UrlError);
+    expect(action).toThrow("Invalid base64/base64url character");
   });
 
   it("rejects partial padded input", () => {
-    expect(() => decodeBase64Url(b64("ab="))).toThrow(
-      "Invalid base64/base64url padding",
-    );
+    const action = () => decodeBase64Url(b64("ab="));
+
+    expect(action).toThrow(InvalidBase64UrlError);
+    expect(action).toThrow("Invalid base64/base64url padding");
+  });
+
+  it("rejects impossible unpadded input length", () => {
+    const action = () => decodeBase64Url(b64("a"));
+
+    expect(action).toThrow(InvalidBase64UrlError);
+    expect(action).toThrow("Invalid base64/base64url length");
   });
 });
