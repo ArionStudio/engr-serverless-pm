@@ -124,6 +124,24 @@ describe("VaultSnapshotService", () => {
     });
   });
 
+  it("returns the current snapshot for an unlocked mutation without saving", async () => {
+    const ctx = createContext();
+
+    await expect(
+      ctx.service.getCurrentVaultSnapshotForUnlockedMutation(
+        ctx.values.vaultId,
+        ctx.unlockedVault,
+        ctx.currentSnapshot.metadata.revision,
+      ),
+    ).resolves.toBe(ctx.currentSnapshot);
+
+    expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.signVaultSnapshot).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+    ).not.toHaveBeenCalled();
+  });
+
   it("preflights unlocked vault persistence without saving a snapshot", async () => {
     const ctx = createContext();
 

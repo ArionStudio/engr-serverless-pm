@@ -42,7 +42,7 @@ export class VaultSnapshotService {
     unlockedVault: UnlockedVault,
     sourceSnapshotRevision: number,
   ): Promise<void> {
-    await this.getCurrentVaultSnapshotForPersist(
+    await this.getCurrentVaultSnapshotForUnlockedMutation(
       vaultId,
       unlockedVault,
       sourceSnapshotRevision,
@@ -54,11 +54,12 @@ export class VaultSnapshotService {
     unlockedVault: UnlockedVault,
     sourceSnapshotRevision: number,
   ): Promise<PersistUnlockedVaultResult> {
-    const currentVaultSnapshot = await this.getCurrentVaultSnapshotForPersist(
-      vaultId,
-      unlockedVault,
-      sourceSnapshotRevision,
-    );
+    const currentVaultSnapshot =
+      await this.getCurrentVaultSnapshotForUnlockedMutation(
+        vaultId,
+        unlockedVault,
+        sourceSnapshotRevision,
+      );
 
     const revisionTimestamp = this.clock.now();
 
@@ -94,7 +95,7 @@ export class VaultSnapshotService {
     };
   }
 
-  private async getCurrentVaultSnapshotForPersist(
+  async getCurrentVaultSnapshotForUnlockedMutation(
     vaultId: string,
     unlockedVault: UnlockedVault,
     sourceSnapshotRevision: number,

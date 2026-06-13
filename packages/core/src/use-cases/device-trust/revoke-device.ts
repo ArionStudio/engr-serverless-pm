@@ -4,16 +4,14 @@ import type {
 } from "../../domain/snapshot/vault-snapshot";
 import type { Vault } from "../../domain/vault/vault";
 import { revokeDeviceProfileFromVault } from "../../domain/vault/vault-device-mutations.utils";
-import { UnsupportedAlgorithmSuiteError } from "../../application/errors/algorithm-suite.errors";
 import {
   DeviceKeySlotNotFoundError,
-  VaultSnapshotNotFoundError,
   VaultSnapshotSignatureVerificationFailedError,
   VaultSnapshotSignerNotTrustedError,
 } from "../../application/errors/unlock-vault.errors";
 import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
-import { VaultSnapshotRevisionMismatchError } from "../../application/errors/vault-snapshot.errors";
 import type { UnlockedVaultSessionService } from "../../application/vault-session/unlocked-vault-session.service";
+import type { VaultSnapshotService } from "../../application/vault-snapshots/vault-snapshot.service";
 import type { ClockPort } from "../../ports/system/clock.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
@@ -40,17 +38,20 @@ export class RevokeDeviceUseCase {
   private readonly crypto: CryptoPort;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
+  private readonly vaultSnapshot: VaultSnapshotService;
 
   constructor(
     clock: ClockPort,
     crypto: CryptoPort,
     unlockedVaultSession: UnlockedVaultSessionService,
     vaultLocalRepository: VaultLocalRepositoryPort,
+    vaultSnapshot: VaultSnapshotService,
   ) {
     this.clock = clock;
     this.crypto = crypto;
     this.unlockedVaultSession = unlockedVaultSession;
     this.vaultLocalRepository = vaultLocalRepository;
+    this.vaultSnapshot = vaultSnapshot;
   }
 
   async execute(
@@ -76,31 +77,11 @@ export class RevokeDeviceUseCase {
     // Start from the current local snapshot and verify its provenance before
     // using its trust and key-slot state as the basis for the new snapshot.
     const currentVaultSnapshot =
-      await this.vaultLocalRepository.getVaultSnapshot(params.vaultId);
-
-    if (currentVaultSnapshot === null) {
-      throw new VaultSnapshotNotFoundError(params.vaultId);
-    }
-
-    if (currentVaultSnapshot.metadata.revision !== sourceSnapshotRevision) {
-      throw new VaultSnapshotRevisionMismatchError({
-        vaultId: params.vaultId,
-        expectedRevision: sourceSnapshotRevision,
-        actualRevision: currentVaultSnapshot.metadata.revision,
-      });
-    }
-
-    if (
-      currentVaultSnapshot.metadata.algorithmSuiteId !==
-      this.crypto.algorithmSuite.id
-    ) {
-      throw new UnsupportedAlgorithmSuiteError({
-        vaultId: params.vaultId,
-        artifact: "vault snapshot",
-        expectedAlgorithmSuiteId: this.crypto.algorithmSuite.id,
-        actualAlgorithmSuiteId: currentVaultSnapshot.metadata.algorithmSuiteId,
-      });
-    }
+      await this.vaultSnapshot.getCurrentVaultSnapshotForUnlockedMutation(
+        params.vaultId,
+        unlockedVault,
+        sourceSnapshotRevision,
+      );
 
     const signerDevice = currentVaultSnapshot.trustedDevices.find(
       (device) => device.id === currentVaultSnapshot.metadata.createdByDeviceId,
@@ -122,19 +103,8 @@ export class RevokeDeviceUseCase {
       throw new VaultSnapshotSignatureVerificationFailedError(params.vaultId);
     }
 
-    // The local unlocked device must still be trusted, and the target must
-    // exist in every trust surface we are about to remove it from.
-    const isCurrentDeviceTrusted = currentVaultSnapshot.trustedDevices.some(
-      (device) => device.id === unlockedVault.deviceId,
-    );
-
-    if (!isCurrentDeviceTrusted) {
-      throw new VaultSnapshotSignerNotTrustedError(
-        params.vaultId,
-        unlockedVault.deviceId,
-      );
-    }
-
+    // The target must exist in every trust surface we are about to remove it
+    // from.
     const isRevokedDeviceTrusted = currentVaultSnapshot.trustedDevices.some(
       (device) => device.id === params.deviceId,
     );
