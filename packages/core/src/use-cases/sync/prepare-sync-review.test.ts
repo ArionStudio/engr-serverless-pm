@@ -5,9 +5,9 @@ import { createUnlockedVaultWithEntries } from "../../__tests__/fixtures/vault-e
 import {
   RemoteVaultSnapshotNotFoundError,
   SyncNotConfiguredError,
-} from "../../services/errors/sync.errors";
+} from "../../errors/sync.errors";
 import { VaultSyncReviewService } from "../../services/sync/vault-sync-review.service";
-import { VaultMustBeUnlockedError } from "../../services/errors/vault-session.errors";
+import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 import { CURRENT_ALGORITHM_SUITE } from "../../domain/crypto/algorithm-suite.const";
 import type { PasswordEntry } from "../../domain/entry/password-entry.type";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";

@@ -1,5 +1,5 @@
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
-import { VaultSnapshotNotFoundError } from "../../services/errors/unlock-vault.errors";
+import { VaultSnapshotNotFoundError } from "../../errors/unlock-vault.errors";
 import { requireVaultSyncConfig } from "../../services/sync/sync-config.utils";
 import type { VaultSyncUploadService } from "../../services/sync/vault-sync-upload.service";
 import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";

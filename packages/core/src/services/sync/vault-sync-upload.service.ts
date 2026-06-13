@@ -12,7 +12,7 @@ import {
   RemoteVaultSnapshotAheadError,
   RemoteVaultSnapshotChangedError,
   SyncConflictDetectedError,
-} from "../errors/sync.errors";
+} from "../../errors/sync.errors";
 
 export type UploadLocalSnapshotIfAllowedParams = {
   readonly vaultId: string;

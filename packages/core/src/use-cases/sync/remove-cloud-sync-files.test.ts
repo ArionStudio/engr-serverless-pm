@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import { createUnlockedVaultWithEntries } from "../../__tests__/fixtures/vault-entries";
-import { SyncNotConfiguredError } from "../../services/errors/sync.errors";
-import { VaultMustBeUnlockedError } from "../../services/errors/vault-session.errors";
+import { SyncNotConfiguredError } from "../../errors/sync.errors";
+import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 import { RemoveCloudSyncFilesUseCase } from "./remove-cloud-sync-files";
 
 function createContext(syncConfigured = true) {

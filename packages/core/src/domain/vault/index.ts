@@ -3,7 +3,4 @@ export * from "./unlocked-vault";
 export * from "./unlocked-vault-session";
 export * from "./vault";
 export * from "./vault-device.errors";
-export * from "./vault-device.mutations";
 export * from "./vault-entry.errors";
-export * from "./vault-entry.mutations";
-export * from "./vault-sync-config.mutations";

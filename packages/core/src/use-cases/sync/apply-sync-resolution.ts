@@ -9,8 +9,8 @@ import {
   RemoteVaultSnapshotChangedError,
   SyncResolutionIncompleteError,
   SyncTrustChangeRequiresDeviceTrustFlowError,
-} from "../../services/errors/sync.errors";
-import { VaultSnapshotNotFoundError } from "../../services/errors/unlock-vault.errors";
+} from "../../errors/sync.errors";
+import { VaultSnapshotNotFoundError } from "../../errors/unlock-vault.errors";
 import { requireVaultSyncConfig } from "../../services/sync/sync-config.utils";
 import type { VaultSyncUploadService } from "../../services/sync/vault-sync-upload.service";
 import type { VaultSyncReviewService } from "../../services/sync/vault-sync-review.service";

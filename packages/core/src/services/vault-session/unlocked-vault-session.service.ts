@@ -14,7 +14,7 @@ import {
   ActiveUnlockedVaultMismatchError,
   UnlockedVaultSessionInvalidError,
   VaultMustBeUnlockedError,
-} from "../errors/vault-session.errors";
+} from "../../errors/vault-session.errors";
 
 export type UnlockedVaultContext = Pick<
   UnlockedVaultSession,

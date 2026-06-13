@@ -1,6 +1,6 @@
 import type { SyncConfig } from "../../domain/sync/sync-config.type";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
-import { InvalidSyncConfigError } from "../../services/errors/sync.errors";
+import { InvalidSyncConfigError } from "../../errors/sync.errors";
 import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
 

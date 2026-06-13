@@ -5,8 +5,8 @@ import {
   createUnlockedVaultWithEntries,
   createVaultSnapshotServiceMock,
 } from "../../__tests__/fixtures/vault-entries";
-import { SyncNotConfiguredError } from "../../services/errors/sync.errors";
-import { VaultMustBeUnlockedError } from "../../services/errors/vault-session.errors";
+import { SyncNotConfiguredError } from "../../errors/sync.errors";
+import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 import { RemoveLocalSyncCredentialsUseCase } from "./remove-local-sync-credentials";
 
 function createContext(syncConfigured = true) {

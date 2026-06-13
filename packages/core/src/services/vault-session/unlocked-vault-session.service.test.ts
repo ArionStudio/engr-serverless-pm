@@ -13,7 +13,7 @@ import {
   ActiveUnlockedVaultMismatchError,
   UnlockedVaultSessionInvalidError,
   VaultMustBeUnlockedError,
-} from "../errors/vault-session.errors";
+} from "../../errors/vault-session.errors";
 import { UnlockedVaultSessionService } from "./unlocked-vault-session.service";
 
 function createContext() {

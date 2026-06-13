@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { createChangeMasterPasswordTestContext } from "../../__tests__/fixtures/change-master-password";
-import { UnsupportedAlgorithmSuiteError } from "../../services/errors/algorithm-suite.errors";
+import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
 import {
   DeviceAccessMaterialNotFoundForMasterPasswordChangeError,
   VaultMustBeUnlockedForMasterPasswordChangeError,
-} from "../../services/errors/change-master-password.errors";
+} from "../../errors/change-master-password.errors";
 
 describe("ChangeMasterPasswordUseCase", () => {
   it("re-protects local device access material with the new master password", async () => {

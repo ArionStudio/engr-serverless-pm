@@ -5,8 +5,8 @@ import {
   createVaultSnapshotServiceMock,
   saveUnlockedVaultWithEntries,
 } from "../../__tests__/fixtures/vault-entries";
-import { InvalidPasswordEntryError } from "../../services/errors/vault-entry.errors";
-import { VaultMustBeUnlockedError } from "../../services/errors/vault-session.errors";
+import { InvalidPasswordEntryError } from "../../errors/vault-entry.errors";
+import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 import { AddEntryUseCase } from "./add-entry";
 
 function createContext() {

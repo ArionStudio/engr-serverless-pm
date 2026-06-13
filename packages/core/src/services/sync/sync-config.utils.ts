@@ -1,6 +1,6 @@
 import type { SyncConfig } from "../../domain/sync/sync-config.type";
 import type { Vault } from "../../domain/vault/vault";
-import { SyncNotConfiguredError } from "../errors/sync.errors";
+import { SyncNotConfiguredError } from "../../errors/sync.errors";
 
 export function requireVaultSyncConfig(
   vaultId: string,

@@ -14,16 +14,16 @@ import type { Vault } from "../../domain/vault/vault";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
-import { UnsupportedAlgorithmSuiteError } from "../errors/algorithm-suite.errors";
+import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
 import {
   RemoteVaultSnapshotChangedError,
   RemoteVaultSnapshotNotFoundError,
-} from "../errors/sync.errors";
+} from "../../errors/sync.errors";
 import {
   VaultSnapshotNotFoundError,
   VaultSnapshotSignatureVerificationFailedError,
   VaultSnapshotSignerNotTrustedError,
-} from "../errors/unlock-vault.errors";
+} from "../../errors/unlock-vault.errors";
 
 export type VaultSyncReviewSubject = {
   readonly localVault: Vault;

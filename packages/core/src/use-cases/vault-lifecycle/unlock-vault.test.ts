@@ -1,16 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
-import { UnsupportedAlgorithmSuiteError } from "../../services/errors/algorithm-suite.errors";
+import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
 import {
   DeviceAccessMaterialNotFoundError,
   DeviceKeySlotNotFoundError,
   VaultSnapshotNotFoundError,
   VaultSnapshotSignatureVerificationFailedError,
   VaultSnapshotSignerNotTrustedError,
-} from "../../services/errors/unlock-vault.errors";
+} from "../../errors/unlock-vault.errors";
 import {
   ActiveUnlockedVaultMismatchError,
   InvalidVaultLockDelayError,
-} from "../../services/errors/vault-session.errors";
+} from "../../errors/vault-session.errors";
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
 
 describe("UnlockVaultUseCase", () => {

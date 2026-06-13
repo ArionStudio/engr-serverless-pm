@@ -6,13 +6,13 @@ import type { Vault } from "../../domain/vault/vault";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
-import { UnsupportedAlgorithmSuiteError } from "../../services/errors/algorithm-suite.errors";
-import { ActiveUnlockedVaultMismatchError } from "../../services/errors/vault-session.errors";
+import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
+import { ActiveUnlockedVaultMismatchError } from "../../errors/vault-session.errors";
 import {
   VaultSnapshotNotFoundError,
   VaultSnapshotSignatureVerificationFailedError,
   VaultSnapshotSignerNotTrustedError,
-} from "../../services/errors/unlock-vault.errors";
+} from "../../errors/unlock-vault.errors";
 import { RecoverVaultAccessUseCase } from "./recover-vault-access";
 
 const recoveredDeviceId = "recovered-device-id";

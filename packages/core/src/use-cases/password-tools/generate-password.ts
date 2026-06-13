@@ -9,7 +9,7 @@ import {
 import {
   InvalidGeneratedPasswordSettingsError,
   PasswordGenerationImpossibleError,
-} from "../../services/errors/generate-password.errors";
+} from "../../errors/generate-password.errors";
 import type { RandomSamplerService } from "../../services/randomness/random-sampler.service";
 
 export type GeneratePasswordCommandParams = Partial<GeneratedPasswordSettings>;

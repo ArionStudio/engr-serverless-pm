@@ -5,8 +5,8 @@ import {
   createVaultSnapshotServiceMock,
   createUnlockedVaultWithEntries,
 } from "../../__tests__/fixtures/vault-entries";
-import { InvalidSyncConfigError } from "../../services/errors/sync.errors";
-import { VaultMustBeUnlockedError } from "../../services/errors/vault-session.errors";
+import { InvalidSyncConfigError } from "../../errors/sync.errors";
+import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 import { SetupSyncUseCase } from "./setup-sync";
 
 function createContext() {

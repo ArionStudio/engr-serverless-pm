@@ -10,10 +10,10 @@ import {
   RemoteVaultSnapshotChangedError,
   SyncConflictDetectedError,
   SyncNotConfiguredError,
-} from "../../services/errors/sync.errors";
+} from "../../errors/sync.errors";
 import { VaultSyncUploadService } from "../../services/sync/vault-sync-upload.service";
-import { VaultSnapshotNotFoundError } from "../../services/errors/unlock-vault.errors";
-import { VaultMustBeUnlockedError } from "../../services/errors/vault-session.errors";
+import { VaultSnapshotNotFoundError } from "../../errors/unlock-vault.errors";
+import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 import { SyncUploadUseCase } from "./sync-upload";
 
 function createSnapshot(

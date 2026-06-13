@@ -6,15 +6,15 @@ import type { UnlockedVault } from "../../domain/vault/unlocked-vault";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { ClockPort } from "../../ports/system/clock.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
-import { UnsupportedAlgorithmSuiteError } from "../errors/algorithm-suite.errors";
+import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
 import {
   VaultSnapshotNotFoundError,
   VaultSnapshotSignerNotTrustedError,
-} from "../errors/unlock-vault.errors";
+} from "../../errors/unlock-vault.errors";
 import {
   PersistedVaultMismatchError,
   VaultSnapshotRevisionMismatchError,
-} from "../errors/vault-snapshot.errors";
+} from "../../errors/vault-snapshot.errors";
 
 export type PersistUnlockedVaultResult = {
   revision: number;

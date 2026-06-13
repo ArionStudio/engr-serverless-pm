@@ -8,9 +8,9 @@ import {
 import type { ClipboardPort } from "../../ports/clipboard/clipboard.port";
 import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard/clipboard-clear-task-repository.port";
 import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
-import { InvalidClipboardClearDelayError } from "../../services/errors/clipboard.errors";
-import { PasswordEntryNotFoundError } from "../../services/errors/vault-entry.errors";
-import { VaultMustBeUnlockedError } from "../../services/errors/vault-session.errors";
+import { InvalidClipboardClearDelayError } from "../../errors/clipboard.errors";
+import { PasswordEntryNotFoundError } from "../../errors/vault-entry.errors";
+import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 import { ClipboardClearService } from "../../services/clipboard/clipboard-clear.service";
 import {
   CopyEntryPasswordUseCase,

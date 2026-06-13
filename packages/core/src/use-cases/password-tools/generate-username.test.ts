@@ -3,7 +3,7 @@ import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import { RandomSamplerService } from "../../services/randomness/random-sampler.service";
 import type { RandomBytes } from "../../domain/crypto/brand-keys";
-import { InvalidGeneratedUsernameSettingsError } from "../../services/errors/generate-username.errors";
+import { InvalidGeneratedUsernameSettingsError } from "../../errors/generate-username.errors";
 import { GenerateUsernameUseCase } from "./generate-username";
 
 function randomBytesFromUint32(value: number): RandomBytes {

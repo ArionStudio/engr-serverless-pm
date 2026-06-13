@@ -6,7 +6,7 @@ import { RandomSamplerService } from "../../services/randomness/random-sampler.s
 import {
   InvalidGeneratedPasswordSettingsError,
   PasswordGenerationImpossibleError,
-} from "../../services/errors/generate-password.errors";
+} from "../../errors/generate-password.errors";
 import { GeneratePasswordUseCase } from "./generate-password";
 
 function randomBytesFromUint32(value: number): RandomBytes {
