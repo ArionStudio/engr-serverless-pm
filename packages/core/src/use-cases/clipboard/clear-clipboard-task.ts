@@ -1,11 +1,24 @@
-import type {
-  ClearClipboardTaskParams,
-  ClearClipboardTaskResult,
-  ClipboardClearService,
-} from "../../services/clipboard/clipboard-clear.service";
+import type { ClipboardClearTask } from "../../ports/clipboard/clipboard-clear-task-repository.port";
+import type { ClipboardClearService } from "../../services/clipboard/clipboard-clear.service";
 
-export type ClearClipboardTaskCommandParams = ClearClipboardTaskParams;
-export type { ClearClipboardTaskResult };
+export type ClearClipboardTaskCommandParams = {
+  readonly actionId?: string;
+  readonly requireExpired: boolean;
+  readonly task?: ClipboardClearTask | null;
+};
+
+export type ClearClipboardTaskResult =
+  | {
+      readonly cleared: true;
+    }
+  | {
+      readonly cleared: false;
+      readonly reason:
+        | "clipboardChanged"
+        | "noClipboardClearTask"
+        | "notExpired"
+        | "staleAction";
+    };
 
 export class ClearClipboardTaskUseCase {
   private readonly clipboardClear: ClipboardClearService;

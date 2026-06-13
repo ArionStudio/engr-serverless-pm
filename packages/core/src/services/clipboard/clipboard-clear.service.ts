@@ -6,25 +6,6 @@ import type { ClipboardPort } from "../../ports/clipboard/clipboard.port";
 import type { ClockPort } from "../../ports/system/clock.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 
-export type ClearClipboardTaskParams = {
-  actionId?: string;
-  requireExpired: boolean;
-  task?: ClipboardClearTask | null;
-};
-
-export type ClearClipboardTaskResult =
-  | {
-      cleared: true;
-    }
-  | {
-      cleared: false;
-      reason:
-        | "clipboardChanged"
-        | "noClipboardClearTask"
-        | "notExpired"
-        | "staleAction";
-    };
-
 export class ClipboardClearService {
   private readonly clipboard: ClipboardPort;
   private readonly clipboardClearTasks: ClipboardClearTaskRepositoryPort;
@@ -43,9 +24,23 @@ export class ClipboardClearService {
     this.crypto = crypto;
   }
 
-  async clearTask(
-    params: ClearClipboardTaskParams,
-  ): Promise<ClearClipboardTaskResult> {
+  async clearTask(params: {
+    readonly actionId?: string;
+    readonly requireExpired: boolean;
+    readonly task?: ClipboardClearTask | null;
+  }): Promise<
+    | {
+        readonly cleared: true;
+      }
+    | {
+        readonly cleared: false;
+        readonly reason:
+          | "clipboardChanged"
+          | "noClipboardClearTask"
+          | "notExpired"
+          | "staleAction";
+      }
+  > {
     const task =
       "task" in params
         ? (params.task ?? null)

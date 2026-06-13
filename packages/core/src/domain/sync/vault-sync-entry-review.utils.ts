@@ -17,11 +17,6 @@ import type {
 } from "./vault-sync-entry-review.type";
 import { areJsonEqual } from "../common/json.utils";
 
-export type ResolvedVaultEntries = {
-  readonly entries: PasswordEntry[];
-  readonly deletedEntries: DeletedPasswordEntry[];
-};
-
 export function createEntryReviews(
   localVault: Vault,
   remoteVault: Vault,
@@ -100,7 +95,10 @@ export function buildResolvedVaultEntries(
   localVault: Vault,
   remoteVault: Vault,
   resolvedStateById: ReadonlyMap<string, VaultSyncEntryState>,
-): ResolvedVaultEntries {
+): {
+  readonly entries: PasswordEntry[];
+  readonly deletedEntries: DeletedPasswordEntry[];
+} {
   const entries: PasswordEntry[] = [];
   const deletedEntries: DeletedPasswordEntry[] = [];
 

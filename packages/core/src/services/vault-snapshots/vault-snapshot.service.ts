@@ -16,12 +16,6 @@ import {
   VaultSnapshotRevisionMismatchError,
 } from "../../errors/vault-snapshot.errors";
 
-export type PersistUnlockedVaultResult = {
-  revision: number;
-  revisionTimestamp: number;
-  deviceId: string;
-};
-
 export class VaultSnapshotService {
   private readonly crypto: CryptoPort;
   private readonly clock: ClockPort;
@@ -53,7 +47,11 @@ export class VaultSnapshotService {
     vaultId: string,
     unlockedVault: UnlockedVault,
     sourceSnapshotRevision: number,
-  ): Promise<PersistUnlockedVaultResult> {
+  ): Promise<{
+    readonly revision: number;
+    readonly revisionTimestamp: number;
+    readonly deviceId: string;
+  }> {
     const currentVaultSnapshot =
       await this.getCurrentVaultSnapshotForUnlockedMutation(
         vaultId,

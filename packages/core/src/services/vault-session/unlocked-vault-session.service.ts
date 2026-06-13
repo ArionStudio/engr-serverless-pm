@@ -16,11 +16,6 @@ import {
   VaultMustBeUnlockedError,
 } from "../../errors/vault-session.errors";
 
-export type UnlockedVaultContext = Pick<
-  UnlockedVaultSession,
-  "unlockedVault" | "sourceSnapshotRevision"
->;
-
 export class UnlockedVaultSessionService {
   private readonly materialRepository: UnlockedVaultSessionMaterialRepositoryPort;
   private readonly encryptedPayloadRepository: EncryptedUnlockedVaultSessionPayloadRepositoryPort;
@@ -74,7 +69,9 @@ export class UnlockedVaultSessionService {
   async getUnlockedVaultContext(
     vaultId: string,
     operation: string,
-  ): Promise<UnlockedVaultContext> {
+  ): Promise<
+    Pick<UnlockedVaultSession, "unlockedVault" | "sourceSnapshotRevision">
+  > {
     const unlockedVaultSession = await this.get();
 
     if (

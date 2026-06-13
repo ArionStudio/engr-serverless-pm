@@ -14,11 +14,6 @@ import type {
   VaultSyncTagState,
 } from "./vault-sync-tag-review.type";
 
-export type ResolvedVaultTags = {
-  readonly tags: Tag[];
-  readonly deletedTags: DeletedTag[];
-};
-
 export function createTagReviews(
   localVault: Vault,
   remoteVault: Vault,
@@ -93,7 +88,10 @@ export function buildResolvedVaultTags(
   localVault: Vault,
   remoteVault: Vault,
   resolvedStateById: ReadonlyMap<number, VaultSyncTagState>,
-): ResolvedVaultTags {
+): {
+  readonly tags: Tag[];
+  readonly deletedTags: DeletedTag[];
+} {
   const tags: Tag[] = [];
   const deletedTags: DeletedTag[] = [];
 

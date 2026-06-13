@@ -1,7 +1,7 @@
-import type {
-  VaultSyncReviewPreparation,
-  VaultSyncReviewService,
-} from "../../services/sync/vault-sync-review.service";
+import type { RemoteVaultSnapshotDescriptor } from "../../domain/sync/remote-vault-snapshot-descriptor.type";
+import type { VaultSyncReview } from "../../domain/sync/vault-sync-review.type";
+import type { VersionVectorRelation } from "../../domain/sync/version-vector.type";
+import type { VaultSyncReviewService } from "../../services/sync/vault-sync-review.service";
 import { requireVaultSyncConfig } from "../../services/sync/sync-config.utils";
 import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
 
@@ -9,7 +9,11 @@ export type PrepareSyncReviewCommandParams = {
   readonly vaultId: string;
 };
 
-export type PrepareSyncReviewResult = VaultSyncReviewPreparation;
+export type PrepareSyncReviewResult = {
+  readonly remoteSnapshotDescriptor: RemoteVaultSnapshotDescriptor;
+  readonly relation: VersionVectorRelation;
+  readonly review: VaultSyncReview;
+};
 
 export class PrepareSyncReviewUseCase {
   private readonly unlockedVaultSession: UnlockedVaultSessionService;

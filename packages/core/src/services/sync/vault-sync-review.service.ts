@@ -25,34 +25,6 @@ import {
   VaultSnapshotSignerNotTrustedError,
 } from "../../errors/unlock-vault.errors";
 
-export type VaultSyncReviewSubject = {
-  readonly localVault: Vault;
-  readonly vaultMasterKey: VaultMasterKey;
-};
-
-export type PrepareVaultSyncReviewParams = VaultSyncReviewSubject & {
-  readonly vaultId: string;
-  readonly syncConfig: SyncConfig;
-};
-
-export type VaultSyncReviewPreparation = {
-  readonly remoteSnapshotDescriptor: RemoteVaultSnapshotDescriptor;
-  readonly relation: VersionVectorRelation;
-  readonly review: VaultSyncReview;
-};
-
-export type LoadVaultSyncReviewForRemoteDescriptorParams =
-  VaultSyncReviewSubject & {
-    readonly vaultId: string;
-    readonly syncConfig: SyncConfig;
-    readonly remoteSnapshotDescriptor: RemoteVaultSnapshotDescriptor;
-  };
-
-export type VaultSyncReviewLoadResult = {
-  readonly remoteVault: Vault;
-  readonly review: VaultSyncReview;
-};
-
 export class VaultSyncReviewService {
   private readonly syncProvider: SyncProviderPort;
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
@@ -68,9 +40,16 @@ export class VaultSyncReviewService {
     this.crypto = crypto;
   }
 
-  async prepareReview(
-    params: PrepareVaultSyncReviewParams,
-  ): Promise<VaultSyncReviewPreparation> {
+  async prepareReview(params: {
+    readonly vaultId: string;
+    readonly syncConfig: SyncConfig;
+    readonly localVault: Vault;
+    readonly vaultMasterKey: VaultMasterKey;
+  }): Promise<{
+    readonly remoteSnapshotDescriptor: RemoteVaultSnapshotDescriptor;
+    readonly relation: VersionVectorRelation;
+    readonly review: VaultSyncReview;
+  }> {
     const remoteSnapshotDescriptor =
       await this.syncProvider.getLatestVaultSnapshotDescriptor(
         params.syncConfig,
@@ -143,9 +122,16 @@ export class VaultSyncReviewService {
     };
   }
 
-  async loadReviewForRemoteDescriptor(
-    params: LoadVaultSyncReviewForRemoteDescriptorParams,
-  ): Promise<VaultSyncReviewLoadResult> {
+  async loadReviewForRemoteDescriptor(params: {
+    readonly vaultId: string;
+    readonly syncConfig: SyncConfig;
+    readonly remoteSnapshotDescriptor: RemoteVaultSnapshotDescriptor;
+    readonly localVault: Vault;
+    readonly vaultMasterKey: VaultMasterKey;
+  }): Promise<{
+    readonly remoteVault: Vault;
+    readonly review: VaultSyncReview;
+  }> {
     return this.loadReviewForRemoteDescriptorWithSnapshot(
       params,
       await this.getLocalSnapshot(params.vaultId),
@@ -153,9 +139,18 @@ export class VaultSyncReviewService {
   }
 
   private async loadReviewForRemoteDescriptorWithSnapshot(
-    params: LoadVaultSyncReviewForRemoteDescriptorParams,
+    params: {
+      readonly vaultId: string;
+      readonly syncConfig: SyncConfig;
+      readonly remoteSnapshotDescriptor: RemoteVaultSnapshotDescriptor;
+      readonly localVault: Vault;
+      readonly vaultMasterKey: VaultMasterKey;
+    },
     localSnapshot: VaultSnapshot,
-  ): Promise<VaultSyncReviewLoadResult> {
+  ): Promise<{
+    readonly remoteVault: Vault;
+    readonly review: VaultSyncReview;
+  }> {
     const remoteSnapshot = await this.downloadVerifiedRemoteSnapshot(
       params.syncConfig,
       params.remoteSnapshotDescriptor,

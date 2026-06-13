@@ -14,20 +14,6 @@ import {
   SyncConflictDetectedError,
 } from "../../errors/sync.errors";
 
-export type UploadLocalSnapshotIfAllowedParams = {
-  readonly vaultId: string;
-  readonly syncConfig: SyncConfig;
-  readonly localVault: Vault;
-  readonly localSnapshot: VaultSnapshot;
-};
-
-export type UploadSnapshotWithExpectedDescriptorParams = {
-  readonly vaultId: string;
-  readonly syncConfig: SyncConfig;
-  readonly vaultSnapshot: VaultSnapshot;
-  readonly expectedRemoteSnapshotDescriptor: RemoteVaultSnapshotDescriptor | null;
-};
-
 export class VaultSyncUploadService {
   private readonly syncProvider: SyncProviderPort;
 
@@ -35,9 +21,12 @@ export class VaultSyncUploadService {
     this.syncProvider = syncProvider;
   }
 
-  async uploadLocalSnapshotIfAllowed(
-    params: UploadLocalSnapshotIfAllowedParams,
-  ): Promise<void> {
+  async uploadLocalSnapshotIfAllowed(params: {
+    readonly vaultId: string;
+    readonly syncConfig: SyncConfig;
+    readonly localVault: Vault;
+    readonly localSnapshot: VaultSnapshot;
+  }): Promise<void> {
     const remoteSnapshotDescriptor =
       await this.syncProvider.getLatestVaultSnapshotDescriptor(
         params.syncConfig,
@@ -92,9 +81,12 @@ export class VaultSyncUploadService {
     }
   }
 
-  async uploadSnapshotWithExpectedDescriptor(
-    params: UploadSnapshotWithExpectedDescriptorParams,
-  ): Promise<void> {
+  async uploadSnapshotWithExpectedDescriptor(params: {
+    readonly vaultId: string;
+    readonly syncConfig: SyncConfig;
+    readonly vaultSnapshot: VaultSnapshot;
+    readonly expectedRemoteSnapshotDescriptor: RemoteVaultSnapshotDescriptor | null;
+  }): Promise<void> {
     try {
       await this.syncProvider.uploadVaultSnapshot(
         params.syncConfig,

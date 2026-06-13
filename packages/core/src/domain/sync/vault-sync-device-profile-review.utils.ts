@@ -14,11 +14,6 @@ import {
   stampResolvedVersionVector,
 } from "./vault-sync-item-review.utils";
 
-export type ResolvedVaultDeviceProfiles = {
-  readonly deviceProfiles: DeviceProfile[];
-  readonly deletedDeviceProfiles: DeletedDeviceProfile[];
-};
-
 export function createDeviceProfileReviews(
   localVault: Vault,
   remoteVault: Vault,
@@ -105,7 +100,10 @@ export function buildResolvedVaultDeviceProfiles(
   localVault: Vault,
   remoteVault: Vault,
   resolvedStateById: ReadonlyMap<string, VaultSyncDeviceProfileState>,
-): ResolvedVaultDeviceProfiles {
+): {
+  readonly deviceProfiles: DeviceProfile[];
+  readonly deletedDeviceProfiles: DeletedDeviceProfile[];
+} {
   const deviceProfiles: DeviceProfile[] = [];
   const deletedDeviceProfiles: DeletedDeviceProfile[] = [];
 

@@ -15,10 +15,7 @@ import { requireVaultSyncConfig } from "../../services/sync/sync-config.utils";
 import type { VaultSyncUploadService } from "../../services/sync/vault-sync-upload.service";
 import type { VaultSyncReviewService } from "../../services/sync/vault-sync-review.service";
 import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
-import type {
-  PersistUnlockedVaultResult,
-  VaultSnapshotService,
-} from "../../services/vault-snapshots/vault-snapshot.service";
+import type { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
 
 export type ApplySyncResolutionCommandParams = {
   readonly vaultId: string;
@@ -26,7 +23,11 @@ export type ApplySyncResolutionCommandParams = {
   readonly resolution: VaultSyncResolution;
 };
 
-export type ApplySyncResolutionResult = PersistUnlockedVaultResult;
+export type ApplySyncResolutionResult = {
+  readonly revision: number;
+  readonly revisionTimestamp: number;
+  readonly deviceId: string;
+};
 
 export class ApplySyncResolutionUseCase {
   private readonly syncProvider: SyncProviderPort;
