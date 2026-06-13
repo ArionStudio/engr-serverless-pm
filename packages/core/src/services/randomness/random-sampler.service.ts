@@ -1,4 +1,8 @@
 import type { RandomBytes } from "../../domain/crypto/brand-keys";
+import {
+  InvalidRandomBytesLengthError,
+  InvalidRandomIndexUpperBoundError,
+} from "../../errors/randomness.errors";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 
 const UINT32_RANGE = 0x1_0000_0000;
@@ -16,9 +20,7 @@ export class RandomSamplerService {
       maxExclusive <= 0 ||
       maxExclusive > UINT32_RANGE
     ) {
-      throw new Error(
-        "Random index upper bound must be a positive safe integer within uint32 range.",
-      );
+      throw new InvalidRandomIndexUpperBoundError();
     }
 
     // Rejection sampling avoids modulo bias: using value % maxExclusive directly
@@ -27,19 +29,19 @@ export class RandomSamplerService {
     const limit = UINT32_RANGE - (UINT32_RANGE % maxExclusive);
 
     while (true) {
-      const value = readUint32(await this.crypto.generateRandomBytes(4));
+      const value = this.readUint32(await this.crypto.generateRandomBytes(4));
 
       if (value < limit) {
         return value % maxExclusive;
       }
     }
   }
-}
 
-function readUint32(randomBytes: RandomBytes): number {
-  if (randomBytes.byteLength !== 4) {
-    throw new Error("Random byte source returned invalid byte length.");
+  private readUint32(randomBytes: RandomBytes): number {
+    if (randomBytes.byteLength !== 4) {
+      throw new InvalidRandomBytesLengthError(randomBytes.byteLength);
+    }
+
+    return new DataView(randomBytes).getUint32(0);
   }
-
-  return new DataView(randomBytes).getUint32(0);
 }

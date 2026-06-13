@@ -5,16 +5,16 @@ import {
   createCoreTestValues,
   type CoreTestValues,
 } from "../../__tests__/fixtures/values";
-import { UnsupportedAlgorithmSuiteError } from "../../application/errors/algorithm-suite.errors";
+import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
 import {
   DeviceKeySlotNotFoundError,
   VaultSnapshotNotFoundError,
   VaultSnapshotSignatureVerificationFailedError,
   VaultSnapshotSignerNotTrustedError,
-} from "../../application/errors/unlock-vault.errors";
-import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
-import { VaultSnapshotRevisionMismatchError } from "../../application/errors/vault-snapshot.errors";
-import { VaultSnapshotService } from "../../application/vault-snapshots/vault-snapshot.service";
+} from "../../errors/unlock-vault.errors";
+import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
+import { VaultSnapshotRevisionMismatchError } from "../../errors/vault-snapshot.errors";
+import { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
 import { CURRENT_ALGORITHM_SUITE } from "../../domain/crypto/algorithm-suite.const";
 import type { DevicePublicSignKey } from "../../domain/device/brand-keys";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";

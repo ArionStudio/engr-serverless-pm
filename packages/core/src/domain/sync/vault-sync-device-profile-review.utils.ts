@@ -1,6 +1,7 @@
 import { areJsonEqual } from "../common/json.utils";
 import type { DeletedDeviceProfile, DeviceProfile } from "../device/device";
 import type { Vault } from "../vault/vault";
+import { InvalidVaultSyncResolutionError } from "../../errors/sync.errors";
 import type { VersionVector } from "./version-vector.type";
 import type {
   VaultSyncDeviceProfileResolution,
@@ -13,11 +14,6 @@ import {
   hasSyncItemConflict,
   stampResolvedVersionVector,
 } from "./vault-sync-item-review.utils";
-
-export type ResolvedVaultDeviceProfiles = {
-  readonly deviceProfiles: DeviceProfile[];
-  readonly deletedDeviceProfiles: DeletedDeviceProfile[];
-};
 
 export function createDeviceProfileReviews(
   localVault: Vault,
@@ -50,7 +46,7 @@ export function resolveDeviceProfileStates(
 
   for (const deviceProfileResolution of deviceProfileResolutions) {
     if (resolutionById.has(deviceProfileResolution.deviceId)) {
-      throw new Error(
+      throw new InvalidVaultSyncResolutionError(
         `Device profile "${deviceProfileResolution.deviceId}" has multiple sync resolutions.`,
       );
     }
@@ -68,7 +64,7 @@ export function resolveDeviceProfileStates(
           deviceProfileReview.deviceId === deviceProfileResolution.deviceId,
       )
     ) {
-      throw new Error(
+      throw new InvalidVaultSyncResolutionError(
         `Device profile "${deviceProfileResolution.deviceId}" does not require sync resolution.`,
       );
     }
@@ -82,7 +78,7 @@ export function resolveDeviceProfileStates(
     );
 
     if (deviceProfileResolution === undefined) {
-      throw new Error(
+      throw new InvalidVaultSyncResolutionError(
         `Device profile "${deviceProfileReview.deviceId}" must have a sync resolution.`,
       );
     }
@@ -105,7 +101,10 @@ export function buildResolvedVaultDeviceProfiles(
   localVault: Vault,
   remoteVault: Vault,
   resolvedStateById: ReadonlyMap<string, VaultSyncDeviceProfileState>,
-): ResolvedVaultDeviceProfiles {
+): {
+  readonly deviceProfiles: DeviceProfile[];
+  readonly deletedDeviceProfiles: DeletedDeviceProfile[];
+} {
   const deviceProfiles: DeviceProfile[] = [];
   const deletedDeviceProfiles: DeletedDeviceProfile[] = [];
 
@@ -213,7 +212,9 @@ function selectDeviceProfileState(
     return deviceProfileResolution.state;
   }
 
-  throw new Error(`Unsupported device profile resolution action.`);
+  throw new InvalidVaultSyncResolutionError(
+    `Unsupported device profile resolution action.`,
+  );
 }
 
 function stampDeviceProfileState(

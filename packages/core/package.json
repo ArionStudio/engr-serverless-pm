@@ -5,17 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./application": "./src/application/index.ts",
-    "./application/*": "./src/application/*",
-    "./domain": "./src/domain/index.ts",
-    "./domain/*": "./src/domain/*",
-    "./lib": "./src/lib/index.ts",
-    "./lib/*": "./src/lib/*",
-    "./ports": "./src/ports/index.ts",
-    "./ports/*": "./src/ports/*",
-    "./use-cases": "./src/use-cases/index.ts",
-    "./use-cases/*": "./src/use-cases/*",
-    "./*": "./src/*"
+    "./lib": "./src/lib/index.ts"
   },
   "scripts": {
     "test": "vitest",

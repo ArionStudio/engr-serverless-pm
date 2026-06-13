@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
-import { RandomSamplerService } from "../../application/randomness/random-sampler.service";
+import { RandomSamplerService } from "../../services/randomness/random-sampler.service";
 import type { RandomBytes } from "../../domain/crypto/brand-keys";
-import { InvalidGeneratedUsernameSettingsError } from "../../application/errors/generate-username.errors";
+import { InvalidGeneratedUsernameSettingsError } from "../../errors/generate-username.errors";
 import { GenerateUsernameUseCase } from "./generate-username";
 
 function randomBytesFromUint32(value: number): RandomBytes {

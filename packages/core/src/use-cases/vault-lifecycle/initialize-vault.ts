@@ -16,7 +16,7 @@ import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { IdPort } from "../../ports/system/id.port";
 import type { VaultDisplayNamePort } from "../../ports/vault/vault-display-name.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
-import type { UnlockedVaultSessionService } from "../../application/vault-session/unlocked-vault-session.service";
+import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
 
 export type InitializeVaultCommandParams = {
   masterPassword: RawMasterPassword;
@@ -59,7 +59,7 @@ export class InitializeVaultUseCase {
     initializeVaultCommandParams: InitializeVaultCommandParams,
   ): Promise<InitializeVaultResult> {
     const vaultId = await this.ids.generateId();
-    await this.unlockedVaultSession.assertCanActivate(vaultId);
+    await this.unlockedVaultSession.requireVaultCanBeActivated(vaultId);
 
     const deviceId = await this.ids.generateId();
     const timestamp = this.clock.now();

@@ -5,9 +5,9 @@ import {
   createUnlockedVaultWithEntries,
   createVaultSnapshotServiceMock,
 } from "../../__tests__/fixtures/vault-entries";
-import { SyncNotConfiguredError } from "../../application/errors/sync.errors";
-import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
-import { VaultSnapshotRevisionMismatchError } from "../../application/errors/vault-snapshot.errors";
+import { SyncNotConfiguredError } from "../../errors/sync.errors";
+import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
+import { VaultSnapshotRevisionMismatchError } from "../../errors/vault-snapshot.errors";
 import { DisableSyncUseCase } from "./disable-sync";
 
 function createContext(syncConfigured = true) {
@@ -68,14 +68,14 @@ describe("DisableSyncUseCase", () => {
     expect("syncConfig" in persistedUnlockedVault!.vault).toBe(false);
     expect(sourceSnapshotRevision).toBe(1);
     expect(
-      ctx.vaultSnapshot.assertCanPersistUnlockedVault,
+      ctx.vaultSnapshot.requireCurrentSnapshotForUnlockedVault,
     ).toHaveBeenCalledWith(
       ctx.values.vaultId,
       persistedUnlockedVault,
       sourceSnapshotRevision,
     );
     expect(
-      vi.mocked(ctx.vaultSnapshot.assertCanPersistUnlockedVault).mock
+      vi.mocked(ctx.vaultSnapshot.requireCurrentSnapshotForUnlockedVault).mock
         .invocationCallOrder[0],
     ).toBeLessThan(
       vi.mocked(ctx.ports.syncProvider.removeVaultSnapshots).mock
@@ -133,7 +133,7 @@ describe("DisableSyncUseCase", () => {
     });
 
     vi.mocked(
-      ctx.vaultSnapshot.assertCanPersistUnlockedVault,
+      ctx.vaultSnapshot.requireCurrentSnapshotForUnlockedVault,
     ).mockRejectedValueOnce(error);
 
     await expect(

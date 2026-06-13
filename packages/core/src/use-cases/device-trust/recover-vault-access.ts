@@ -8,14 +8,14 @@ import type {
 } from "../../domain/snapshot/vault-snapshot";
 import type { UnlockedVault } from "../../domain/vault/unlocked-vault";
 import type { Vault } from "../../domain/vault/vault";
-import { addRecoveredDeviceProfileToVault } from "../../domain/vault/vault-device-mutations.utils";
-import { UnsupportedAlgorithmSuiteError } from "../../application/errors/algorithm-suite.errors";
+import { addRecoveredDeviceProfileToVault } from "../../domain/vault/vault-device.mutations";
+import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
 import {
   VaultSnapshotNotFoundError,
   VaultSnapshotSignatureVerificationFailedError,
   VaultSnapshotSignerNotTrustedError,
-} from "../../application/errors/unlock-vault.errors";
-import type { UnlockedVaultSessionService } from "../../application/vault-session/unlocked-vault-session.service";
+} from "../../errors/unlock-vault.errors";
+import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
 import type { Bip39Port } from "../../ports/crypto/bip39.port";
 import type { ClockPort } from "../../ports/system/clock.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
@@ -64,7 +64,7 @@ export class RecoverVaultAccessUseCase {
     // source of truth.
     // Recovery activates this vault locally, so it must not replace another
     // already-unlocked vault session.
-    await this.unlockedVaultSession.assertCanActivate(params.vaultId);
+    await this.unlockedVaultSession.requireVaultCanBeActivated(params.vaultId);
 
     // Start from the local encrypted snapshot. Sync credentials are inside the
     // encrypted vault content, so recovery cannot download first.

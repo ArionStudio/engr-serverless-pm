@@ -8,11 +8,13 @@ import type { RemoteVaultSnapshotDescriptor } from "../../domain/sync/remote-vau
 import {
   RemoteVaultSnapshotAheadError,
   RemoteVaultSnapshotChangedError,
+  RemoteVaultSnapshotIntegrityError,
   SyncConflictDetectedError,
   SyncNotConfiguredError,
-} from "../../application/errors/sync.errors";
-import { VaultSnapshotNotFoundError } from "../../application/errors/unlock-vault.errors";
-import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
+} from "../../errors/sync.errors";
+import { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
+import { VaultSnapshotNotFoundError } from "../../errors/unlock-vault.errors";
+import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 import { SyncUploadUseCase } from "./sync-upload";
 
 function createSnapshot(
@@ -91,6 +93,11 @@ function createContext() {
     sourceSnapshotRevision: 1,
   };
   ports.saved.vaultSnapshot = localSnapshot;
+  const vaultSnapshot = new VaultSnapshotService(
+    ports.crypto,
+    ports.clock,
+    ports.vaultLocalRepository,
+  );
 
   return {
     values,
@@ -100,7 +107,7 @@ function createContext() {
     useCase: new SyncUploadUseCase(
       ports.syncProvider,
       ports.sessionServices.unlockedVaultSession,
-      ports.vaultLocalRepository,
+      vaultSnapshot,
     ),
   };
 }
@@ -174,7 +181,7 @@ describe("SyncUploadUseCase", () => {
     expect(ctx.saved.vaultSnapshot).toBe(ctx.localSnapshot);
   });
 
-  it("blocks upload when the remote snapshot changed without a vector change", async () => {
+  it("fails integrity validation when the remote snapshot changed without a vector change", async () => {
     const ctx = createContext();
     const remoteSnapshotDescriptor = createRemoteSnapshotDescriptor(
       ctx.values,
@@ -192,7 +199,7 @@ describe("SyncUploadUseCase", () => {
 
     await expect(
       ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
-    ).rejects.toBeInstanceOf(RemoteVaultSnapshotAheadError);
+    ).rejects.toBeInstanceOf(RemoteVaultSnapshotIntegrityError);
 
     expect(ctx.ports.syncProvider.downloadVaultSnapshot).not.toHaveBeenCalled();
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();

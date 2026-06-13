@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { RandomBytes } from "../../domain/crypto/brand-keys";
+import {
+  InvalidRandomBytesLengthError,
+  InvalidRandomIndexUpperBoundError,
+} from "../../errors/randomness.errors";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import { RandomSamplerService } from "./random-sampler.service";
@@ -53,8 +57,12 @@ describe("RandomSamplerService", () => {
 
     for (const maxExclusive of invalidUpperBounds) {
       const ctx = createContext();
+      const result = ctx.service.pickIndex(maxExclusive);
 
-      await expect(ctx.service.pickIndex(maxExclusive)).rejects.toThrow(
+      await expect(result).rejects.toBeInstanceOf(
+        InvalidRandomIndexUpperBoundError,
+      );
+      await expect(result).rejects.toThrow(
         "Random index upper bound must be a positive safe integer within uint32 range.",
       );
 
@@ -76,9 +84,14 @@ describe("RandomSamplerService", () => {
     vi.mocked(ctx.ports.crypto.generateRandomBytes).mockResolvedValueOnce(
       new ArrayBuffer(3) as RandomBytes,
     );
+    const result = ctx.service.pickIndex(5);
 
-    await expect(ctx.service.pickIndex(5)).rejects.toThrow(
-      "Random byte source returned invalid byte length.",
+    await expect(result).rejects.toBeInstanceOf(InvalidRandomBytesLengthError);
+    await expect(result).rejects.toMatchObject({
+      actualByteLength: 3,
+    });
+    await expect(result).rejects.toThrow(
+      "Random byte source returned invalid byte length: 3.",
     );
   });
 });

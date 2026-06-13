@@ -17,6 +17,7 @@
  */
 
 import type { Base64URLString } from "./base64Url.type";
+import { InvalidBase64UrlError } from "../errors/base64-url.errors";
 
 /**
  * Base64 alphabet (RFC 4648 §4).
@@ -97,16 +98,16 @@ export function decodeBase64Url(b64url: Base64URLString): Uint8Array {
   const b64 = b64url.replace(/-/g, "+").replace(/_/g, "/");
 
   if (!/^[A-Za-z0-9+/]*={0,2}$/.test(b64)) {
-    throw new Error("Invalid base64/base64url character");
+    throw new InvalidBase64UrlError("character");
   }
 
   if (b64.includes("=") && b64.length % 4 !== 0) {
-    throw new Error("Invalid base64/base64url padding");
+    throw new InvalidBase64UrlError("padding");
   }
 
   // Base64 length cannot be mod 4 == 1 (unpadded). Reject early.
   if (b64.length % 4 === 1) {
-    throw new Error("Invalid base64/base64url length");
+    throw new InvalidBase64UrlError("length");
   }
 
   // Add padding to a multiple of 4
@@ -129,7 +130,7 @@ export function decodeBase64Url(b64url: Base64URLString): Uint8Array {
     const c3 = B64REV[s.charCodeAt(i + 3)];
 
     if (c0 < 0 || c1 < 0 || c2 < 0 || c3 < 0) {
-      throw new Error("Invalid base64/base64url character");
+      throw new InvalidBase64UrlError("character");
     }
 
     const n = (c0 << 18) | (c1 << 12) | (c2 << 6) | c3;

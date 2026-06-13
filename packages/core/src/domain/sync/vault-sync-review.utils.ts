@@ -1,4 +1,5 @@
 import { areJsonEqual } from "../common/json.utils";
+import type { VaultSnapshot } from "../snapshot/vault-snapshot";
 import type { Vault } from "../vault/vault";
 import {
   incrementVersionVector,
@@ -24,6 +25,13 @@ import type {
   VaultSyncReview,
   VaultSyncTrustState,
 } from "./vault-sync-review.type";
+
+export function createVaultSyncTrustState(snapshot: VaultSnapshot) {
+  return {
+    trustedDevices: snapshot.trustedDevices,
+    keySlots: snapshot.keySlots,
+  };
+}
 
 export function createVaultSyncReview(
   localVault: Vault,
@@ -65,6 +73,30 @@ export function createVaultSyncReview(
       entryReviews.some((review) => review.conflict) ||
       tagReviews.some((review) => review.conflict) ||
       deviceProfileReviews.some((review) => review.conflict),
+  };
+}
+
+export function createPreselectedVaultSyncResolution(
+  review: VaultSyncReview,
+): VaultSyncResolution {
+  return {
+    entryResolutions: review.entryReviews.map((entryReview) => ({
+      kind: "password_entry" as const,
+      entryId: entryReview.entryId,
+      action: entryReview.preselectedAction,
+    })),
+    tagResolutions: review.tagReviews.map((tagReview) => ({
+      kind: "tag" as const,
+      tagId: tagReview.tagId,
+      action: tagReview.preselectedAction,
+    })),
+    deviceProfileResolutions: review.deviceProfileReviews.map(
+      (deviceProfileReview) => ({
+        kind: "device_profile" as const,
+        deviceId: deviceProfileReview.deviceId,
+        action: deviceProfileReview.preselectedAction,
+      }),
+    ),
   };
 }
 

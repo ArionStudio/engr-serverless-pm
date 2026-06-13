@@ -3,15 +3,14 @@ import type {
   VaultSnapshot,
 } from "../../domain/snapshot/vault-snapshot";
 import type { Vault } from "../../domain/vault/vault";
-import { revokeDeviceProfileFromVault } from "../../domain/vault/vault-device-mutations.utils";
+import { revokeDeviceProfileFromVault } from "../../domain/vault/vault-device.mutations";
 import {
   DeviceKeySlotNotFoundError,
   VaultSnapshotSignatureVerificationFailedError,
   VaultSnapshotSignerNotTrustedError,
-} from "../../application/errors/unlock-vault.errors";
-import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
-import type { UnlockedVaultSessionService } from "../../application/vault-session/unlocked-vault-session.service";
-import type { VaultSnapshotService } from "../../application/vault-snapshots/vault-snapshot.service";
+} from "../../errors/unlock-vault.errors";
+import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
+import type { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
 import type { ClockPort } from "../../ports/system/clock.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
@@ -59,16 +58,11 @@ export class RevokeDeviceUseCase {
   ): Promise<RevokeDeviceResult> {
     // Revoke can only be performed by the currently unlocked vault, and a
     // device cannot revoke the local identity it is actively using.
-    const unlockedVaultSession = await this.unlockedVaultSession.get();
-
-    if (
-      unlockedVaultSession === null ||
-      unlockedVaultSession.unlockedVault.vaultId !== params.vaultId
-    ) {
-      throw new VaultMustBeUnlockedError(params.vaultId, "revoke device");
-    }
-
-    const { sourceSnapshotRevision, unlockedVault } = unlockedVaultSession;
+    const { sourceSnapshotRevision, unlockedVault } =
+      await this.unlockedVaultSession.requireUnlockedVaultContext(
+        params.vaultId,
+        "revoke device",
+      );
 
     if (params.deviceId === unlockedVault.deviceId) {
       throw new CannotRevokeCurrentDeviceError(params.vaultId, params.deviceId);
@@ -77,7 +71,7 @@ export class RevokeDeviceUseCase {
     // Start from the current local snapshot and verify its provenance before
     // using its trust and key-slot state as the basis for the new snapshot.
     const currentVaultSnapshot =
-      await this.vaultSnapshot.getCurrentVaultSnapshotForUnlockedMutation(
+      await this.vaultSnapshot.requireCurrentSnapshotForUnlockedVault(
         params.vaultId,
         unlockedVault,
         sourceSnapshotRevision,

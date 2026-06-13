@@ -4,7 +4,7 @@ import { DuplicateVaultDeviceProfileError } from "./vault-device.errors";
 import {
   addRecoveredDeviceProfileToVault,
   revokeDeviceProfileFromVault,
-} from "./vault-device-mutations.utils";
+} from "./vault-device.mutations";
 
 function createVault(): Vault {
   return {

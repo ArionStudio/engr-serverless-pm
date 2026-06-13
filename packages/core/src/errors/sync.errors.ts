@@ -35,6 +35,15 @@ export class RemoteVaultSnapshotAheadError extends Error {
   }
 }
 
+export class RemoteVaultSnapshotIntegrityError extends Error {
+  constructor(vaultId: string) {
+    super(
+      `Remote vault snapshot descriptor for vault "${vaultId}" is inconsistent with the local descriptor.`,
+    );
+    this.name = "RemoteVaultSnapshotIntegrityError";
+  }
+}
+
 export class SyncResolutionIncompleteError extends Error {
   constructor(vaultId: string) {
     super(`Vault "${vaultId}" sync resolution is incomplete.`);
@@ -46,6 +55,13 @@ export class InvalidSyncResolutionError extends Error {
   constructor(vaultId: string, cause: unknown) {
     super(`Vault "${vaultId}" sync resolution is invalid.`, { cause });
     this.name = "InvalidSyncResolutionError";
+  }
+}
+
+export class InvalidVaultSyncResolutionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidVaultSyncResolutionError";
   }
 }
 

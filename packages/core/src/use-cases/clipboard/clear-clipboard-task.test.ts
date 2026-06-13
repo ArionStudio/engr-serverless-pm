@@ -11,6 +11,7 @@ import type {
   ClipboardClearTaskRepositoryPort,
 } from "../../ports/clipboard/clipboard-clear-task-repository.port";
 import { ClearClipboardTaskUseCase } from "./clear-clipboard-task";
+import { ClipboardClearService } from "../../services/clipboard/clipboard-clear.service";
 
 function createContext(
   clipboardClearTask: ClipboardClearTask | null = {
@@ -44,10 +45,12 @@ function createContext(
     clipboardClearTasks,
     clock,
     useCase: new ClearClipboardTaskUseCase(
-      clipboard,
-      clipboardClearTasks,
-      clock,
-      ports.crypto,
+      new ClipboardClearService(
+        clipboard,
+        clipboardClearTasks,
+        clock,
+        ports.crypto,
+      ),
     ),
   };
 }

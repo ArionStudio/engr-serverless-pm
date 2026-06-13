@@ -1,7 +1,7 @@
-import { SyncNotConfiguredError } from "../../application/errors/sync.errors";
-import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
-import type { UnlockedVaultSessionService } from "../../application/vault-session/unlocked-vault-session.service";
-import type { VaultSnapshotService } from "../../application/vault-snapshots/vault-snapshot.service";
+import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
+import type { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
+import { removeVaultSyncConfig } from "../../domain/vault/vault-sync-config.mutations";
+import { SyncNotConfiguredError } from "../../errors/sync.errors";
 
 export type RemoveLocalSyncCredentialsCommandParams = {
   readonly vaultId: string;
@@ -22,20 +22,11 @@ export class RemoveLocalSyncCredentialsUseCase {
   async execute(
     params: RemoveLocalSyncCredentialsCommandParams,
   ): Promise<void> {
-    const unlockedVaultSession = await this.unlockedVaultSession.get();
-
-    if (
-      unlockedVaultSession === null ||
-      unlockedVaultSession.unlockedVault.vaultId !== params.vaultId
-    ) {
-      throw new VaultMustBeUnlockedError(
+    const { sourceSnapshotRevision, unlockedVault } =
+      await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
         "remove local sync credentials",
       );
-    }
-
-    const { sourceSnapshotRevision, unlockedVault } = unlockedVaultSession;
-
     if (unlockedVault.vault.syncConfig === undefined) {
       throw new SyncNotConfiguredError(
         params.vaultId,
@@ -43,15 +34,9 @@ export class RemoveLocalSyncCredentialsUseCase {
       );
     }
 
-    const updatedVault = {
-      ...unlockedVault.vault,
-    };
-
-    delete updatedVault.syncConfig;
-
     const updatedUnlockedVault = {
       ...unlockedVault,
-      vault: updatedVault,
+      vault: removeVaultSyncConfig(unlockedVault.vault),
     };
 
     const persistedSnapshot = await this.vaultSnapshot.persistUnlockedVault(

@@ -11,8 +11,8 @@ import {
 import {
   InvalidPasswordEntryError,
   PasswordEntryNotFoundError,
-} from "../../application/errors/vault-entry.errors";
-import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
+} from "../../errors/vault-entry.errors";
+import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 import { UpdateEntryUseCase } from "./update-entry";
 
 function createContext() {

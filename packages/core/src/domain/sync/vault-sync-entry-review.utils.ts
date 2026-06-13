@@ -3,6 +3,7 @@ import type {
   PasswordEntry,
 } from "../entry/password-entry.type";
 import type { Vault } from "../vault/vault";
+import { InvalidVaultSyncResolutionError } from "../../errors/sync.errors";
 import type { VersionVector } from "./version-vector.type";
 import {
   getPreselectedSyncAction,
@@ -16,11 +17,6 @@ import type {
   VaultSyncEntryState,
 } from "./vault-sync-entry-review.type";
 import { areJsonEqual } from "../common/json.utils";
-
-export type ResolvedVaultEntries = {
-  readonly entries: PasswordEntry[];
-  readonly deletedEntries: DeletedPasswordEntry[];
-};
 
 export function createEntryReviews(
   localVault: Vault,
@@ -51,7 +47,7 @@ export function resolveEntryStates(
 
   for (const entryResolution of entryResolutions) {
     if (resolutionById.has(entryResolution.entryId)) {
-      throw new Error(
+      throw new InvalidVaultSyncResolutionError(
         `Entry "${entryResolution.entryId}" has multiple sync resolutions.`,
       );
     }
@@ -65,7 +61,7 @@ export function resolveEntryStates(
         (entryReview) => entryReview.entryId === entryResolution.entryId,
       )
     ) {
-      throw new Error(
+      throw new InvalidVaultSyncResolutionError(
         `Entry "${entryResolution.entryId}" does not require sync resolution.`,
       );
     }
@@ -77,7 +73,7 @@ export function resolveEntryStates(
     const entryResolution = resolutionById.get(entryReview.entryId);
 
     if (entryResolution === undefined) {
-      throw new Error(
+      throw new InvalidVaultSyncResolutionError(
         `Entry "${entryReview.entryId}" must have a sync resolution.`,
       );
     }
@@ -100,7 +96,10 @@ export function buildResolvedVaultEntries(
   localVault: Vault,
   remoteVault: Vault,
   resolvedStateById: ReadonlyMap<string, VaultSyncEntryState>,
-): ResolvedVaultEntries {
+): {
+  readonly entries: PasswordEntry[];
+  readonly deletedEntries: DeletedPasswordEntry[];
+} {
   const entries: PasswordEntry[] = [];
   const deletedEntries: DeletedPasswordEntry[] = [];
 
@@ -195,7 +194,9 @@ function selectEntryState(
     return entryResolution.state;
   }
 
-  throw new Error(`Unsupported entry resolution action.`);
+  throw new InvalidVaultSyncResolutionError(
+    `Unsupported entry resolution action.`,
+  );
 }
 
 function stampEntryState(

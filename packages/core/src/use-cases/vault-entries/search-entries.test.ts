@@ -8,8 +8,8 @@ import {
   standardVaultTags,
 } from "../../__tests__/fixtures/vault-entries";
 import type { SearchEntryQuery } from "../../domain/entry/search-entry-query.type";
-import { InvalidSearchEntryQueryError } from "../../application/errors/vault-entry.errors";
-import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
+import { InvalidSearchEntryQueryError } from "../../errors/vault-entry.errors";
+import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 import { SearchEntriesUseCase } from "./search-entries";
 
 function createContext() {
