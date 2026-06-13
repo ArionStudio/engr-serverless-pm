@@ -1,5 +1,7 @@
 import { vi } from "vitest";
+import { CURRENT_ALGORITHM_SUITE } from "../../domain/crypto/algorithm-suite.const";
 import type { PasswordEntry } from "../../domain/entry/password-entry.type";
+import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import type { Tag } from "../../domain/entry/tag.type";
 import type { UnlockedVault } from "../../domain/vault/unlocked-vault";
 import type { UnlockedVaultSession } from "../../domain/vault/unlocked-vault-session";
@@ -109,8 +111,44 @@ export function saveUnlockedVaultWithEntries(
 export function createVaultSnapshotServiceMock(
   values: CoreTestValues,
 ): VaultSnapshotService {
+  const currentVaultSnapshot: VaultSnapshot = {
+    metadata: {
+      id: values.vaultId,
+      schemaVersion: 1,
+      vaultCreationTimestamp: values.timestamp - 1_000,
+      revisionTimestamp: values.timestamp,
+      revision: 1,
+      algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
+      createdByDeviceId: values.deviceId,
+    },
+    trustedDevices: [
+      {
+        id: values.deviceId,
+        publicKeys: {
+          signingKey: values.devicePublicSignKey,
+        },
+      },
+    ],
+    keySlots: {
+      deviceSlots: [
+        {
+          deviceId: values.deviceId,
+          protectedVaultMasterKey: values.protectedDeviceVaultMasterKey,
+        },
+      ],
+      recoveryKeySlot: {
+        protectedVaultMasterKey: values.protectedRecoveryVaultMasterKey,
+      },
+    },
+    content: values.encryptedVault,
+    signature: values.snapshotSignature,
+  };
+
   return {
     assertCanPersistUnlockedVault: vi.fn(async () => undefined),
+    getCurrentVaultSnapshotForUnlockedMutation: vi.fn(
+      async () => currentVaultSnapshot,
+    ),
     persistUnlockedVault: vi.fn(async () => ({
       revision: 2,
       revisionTimestamp: values.timestamp + 1,

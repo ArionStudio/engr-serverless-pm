@@ -442,6 +442,9 @@ describe("RevokeDeviceUseCase", () => {
       }),
     ).rejects.toBeInstanceOf(VaultSnapshotSignerNotTrustedError);
 
+    expect(
+      ctx.ports.crypto.verifyVaultSnapshotSignature,
+    ).not.toHaveBeenCalled();
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
     expect(
       ctx.ports.vaultLocalRepository.saveVaultSnapshot,

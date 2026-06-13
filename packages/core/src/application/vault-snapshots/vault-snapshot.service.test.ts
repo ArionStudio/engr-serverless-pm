@@ -167,7 +167,7 @@ describe("VaultSnapshotService", () => {
         ctx.unlockedVault,
         ctx.currentSnapshot.metadata.revision - 1,
       ),
-    ).rejects.toBeInstanceOf(VaultSnapshotRevisionMismatchError);
+    ).rejects.toThrow(VaultSnapshotRevisionMismatchError);
 
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
     expect(ctx.ports.crypto.signVaultSnapshot).not.toHaveBeenCalled();
@@ -222,7 +222,7 @@ describe("VaultSnapshotService", () => {
         ctx.unlockedVault,
         ctx.currentSnapshot.metadata.revision - 1,
       ),
-    ).rejects.toBeInstanceOf(VaultSnapshotRevisionMismatchError);
+    ).rejects.toThrow(VaultSnapshotRevisionMismatchError);
 
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
     expect(
