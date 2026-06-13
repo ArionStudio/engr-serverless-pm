@@ -158,6 +158,24 @@ describe("VaultSnapshotService", () => {
     ).not.toHaveBeenCalled();
   });
 
+  it("fails preflight when the current local snapshot revision does not match the session source revision", async () => {
+    const ctx = createContext();
+
+    await expect(
+      ctx.service.assertCanPersistUnlockedVault(
+        ctx.values.vaultId,
+        ctx.unlockedVault,
+        ctx.currentSnapshot.metadata.revision - 1,
+      ),
+    ).rejects.toBeInstanceOf(VaultSnapshotRevisionMismatchError);
+
+    expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.signVaultSnapshot).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+    ).not.toHaveBeenCalled();
+  });
+
   it("fails when the unlocked vault belongs to another vault", async () => {
     const ctx = createContext();
 
