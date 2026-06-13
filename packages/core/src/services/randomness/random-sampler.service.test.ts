@@ -91,7 +91,7 @@ describe("RandomSamplerService", () => {
       actualByteLength: 3,
     });
     await expect(result).rejects.toThrow(
-      "Random byte source returned invalid byte length.",
+      "Random byte source returned invalid byte length: 3.",
     );
   });
 });

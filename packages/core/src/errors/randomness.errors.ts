@@ -11,7 +11,9 @@ export class InvalidRandomBytesLengthError extends Error {
   readonly actualByteLength: number;
 
   constructor(actualByteLength: number) {
-    super("Random byte source returned invalid byte length.");
+    super(
+      `Random byte source returned invalid byte length: ${actualByteLength}.`,
+    );
     this.name = "InvalidRandomBytesLengthError";
     this.actualByteLength = actualByteLength;
   }

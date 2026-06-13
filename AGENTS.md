@@ -1,6 +1,6 @@
 # AGENTS.md - Agent Rulebook
 
-> Last updated: 2026-01-25
+> Last updated: 2026-06-13
 
 ## Project
 
