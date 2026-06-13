@@ -13,6 +13,8 @@ import {
   VaultSnapshotSignerNotTrustedError,
 } from "../../application/errors/unlock-vault.errors";
 import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
+import { VaultSnapshotRevisionMismatchError } from "../../application/errors/vault-snapshot.errors";
+import { VaultSnapshotService } from "../../application/vault-snapshots/vault-snapshot.service";
 import { CURRENT_ALGORITHM_SUITE } from "../../domain/crypto/algorithm-suite.const";
 import type { DevicePublicSignKey } from "../../domain/device/brand-keys";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
@@ -103,6 +105,11 @@ function createVaultSnapshot(values: CoreTestValues): VaultSnapshot {
 function createContext() {
   const values = createCoreTestValues();
   const ports = createCoreTestPorts(values);
+  const snapshotService = new VaultSnapshotService(
+    ports.crypto,
+    ports.clock,
+    ports.vaultLocalRepository,
+  );
   const vault = createVault(values);
   const vaultSnapshot = createVaultSnapshot(values);
 
@@ -124,11 +131,13 @@ function createContext() {
     saved: ports.saved,
     vault,
     vaultSnapshot,
+    snapshotService,
     useCase: new RevokeDeviceUseCase(
       ports.clock,
       ports.crypto,
       ports.sessionServices.unlockedVaultSession,
       ports.vaultLocalRepository,
+      snapshotService,
     ),
   };
 }
@@ -314,6 +323,31 @@ describe("RevokeDeviceUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
+  it("fails when the local snapshot revision no longer matches the unlocked session", async () => {
+    const ctx = createContext();
+    ctx.saved.vaultSnapshot = {
+      ...ctx.vaultSnapshot,
+      metadata: {
+        ...ctx.vaultSnapshot.metadata,
+        revision: ctx.vaultSnapshot.metadata.revision + 1,
+      },
+    };
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        deviceId: revokedDeviceId,
+      }),
+    ).rejects.toBeInstanceOf(VaultSnapshotRevisionMismatchError);
+
+    expect(
+      ctx.ports.crypto.verifyVaultSnapshotSignature,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+    ).not.toHaveBeenCalled();
+  });
+
   it("fails when vault snapshot uses unsupported algorithm suite", async () => {
     const ctx = createContext();
     ctx.saved.vaultSnapshot = {
@@ -408,6 +442,9 @@ describe("RevokeDeviceUseCase", () => {
       }),
     ).rejects.toBeInstanceOf(VaultSnapshotSignerNotTrustedError);
 
+    expect(
+      ctx.ports.crypto.verifyVaultSnapshotSignature,
+    ).not.toHaveBeenCalled();
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
     expect(
       ctx.ports.vaultLocalRepository.saveVaultSnapshot,

@@ -25,19 +25,21 @@ export class DisableSyncUseCase {
 
   async execute(params: DisableSyncCommandParams): Promise<void> {
     const unlockedVaultSession = await this.unlockedVaultSession.get();
-    const unlockedVault = unlockedVaultSession?.unlockedVault;
 
-    if (unlockedVault?.vaultId !== params.vaultId) {
+    if (
+      unlockedVaultSession === null ||
+      unlockedVaultSession.unlockedVault.vaultId !== params.vaultId
+    ) {
       throw new VaultMustBeUnlockedError(params.vaultId, "disable sync");
     }
+
+    const { sourceSnapshotRevision, unlockedVault } = unlockedVaultSession;
 
     const syncConfig = unlockedVault.vault.syncConfig;
 
     if (syncConfig === undefined) {
       throw new SyncNotConfiguredError(params.vaultId, "disable sync");
     }
-
-    await this.syncProvider.removeVaultSnapshots(syncConfig, params.vaultId);
 
     const updatedVault = {
       ...unlockedVault.vault,
@@ -50,9 +52,18 @@ export class DisableSyncUseCase {
       vault: updatedVault,
     };
 
+    await this.vaultSnapshot.assertCanPersistUnlockedVault(
+      params.vaultId,
+      updatedUnlockedVault,
+      sourceSnapshotRevision,
+    );
+
+    await this.syncProvider.removeVaultSnapshots(syncConfig, params.vaultId);
+
     const persistedSnapshot = await this.vaultSnapshot.persistUnlockedVault(
       params.vaultId,
       updatedUnlockedVault,
+      sourceSnapshotRevision,
     );
 
     await this.unlockedVaultSession.commitPersistedSnapshot(

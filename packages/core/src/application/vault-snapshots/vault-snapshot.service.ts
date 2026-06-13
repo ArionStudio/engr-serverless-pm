@@ -11,7 +11,10 @@ import {
   VaultSnapshotNotFoundError,
   VaultSnapshotSignerNotTrustedError,
 } from "../errors/unlock-vault.errors";
-import { PersistedVaultMismatchError } from "../errors/vault-snapshot.errors";
+import {
+  PersistedVaultMismatchError,
+  VaultSnapshotRevisionMismatchError,
+} from "../errors/vault-snapshot.errors";
 
 export type PersistUnlockedVaultResult = {
   revision: number;
@@ -34,43 +37,29 @@ export class VaultSnapshotService {
     this.vaultLocalRepository = vaultLocalRepository;
   }
 
+  async assertCanPersistUnlockedVault(
+    vaultId: string,
+    unlockedVault: UnlockedVault,
+    sourceSnapshotRevision: number,
+  ): Promise<void> {
+    await this.getCurrentVaultSnapshotForUnlockedMutation(
+      vaultId,
+      unlockedVault,
+      sourceSnapshotRevision,
+    );
+  }
+
   async persistUnlockedVault(
     vaultId: string,
     unlockedVault: UnlockedVault,
+    sourceSnapshotRevision: number,
   ): Promise<PersistUnlockedVaultResult> {
-    if (unlockedVault.vaultId !== vaultId) {
-      throw new PersistedVaultMismatchError(vaultId, unlockedVault.vaultId);
-    }
-
     const currentVaultSnapshot =
-      await this.vaultLocalRepository.getVaultSnapshot(vaultId);
-
-    if (currentVaultSnapshot === null) {
-      throw new VaultSnapshotNotFoundError(vaultId);
-    }
-
-    if (
-      currentVaultSnapshot.metadata.algorithmSuiteId !==
-      this.crypto.algorithmSuite.id
-    ) {
-      throw new UnsupportedAlgorithmSuiteError({
+      await this.getCurrentVaultSnapshotForUnlockedMutation(
         vaultId,
-        artifact: "vault snapshot",
-        expectedAlgorithmSuiteId: this.crypto.algorithmSuite.id,
-        actualAlgorithmSuiteId: currentVaultSnapshot.metadata.algorithmSuiteId,
-      });
-    }
-
-    const signerDevice = currentVaultSnapshot.trustedDevices.find(
-      (device) => device.id === unlockedVault.deviceId,
-    );
-
-    if (signerDevice === undefined) {
-      throw new VaultSnapshotSignerNotTrustedError(
-        vaultId,
-        unlockedVault.deviceId,
+        unlockedVault,
+        sourceSnapshotRevision,
       );
-    }
 
     const revisionTimestamp = this.clock.now();
 
@@ -104,5 +93,55 @@ export class VaultSnapshotService {
       revisionTimestamp: vaultSnapshot.metadata.revisionTimestamp,
       deviceId: vaultSnapshot.metadata.createdByDeviceId,
     };
+  }
+
+  async getCurrentVaultSnapshotForUnlockedMutation(
+    vaultId: string,
+    unlockedVault: UnlockedVault,
+    sourceSnapshotRevision: number,
+  ): Promise<VaultSnapshot> {
+    if (unlockedVault.vaultId !== vaultId) {
+      throw new PersistedVaultMismatchError(vaultId, unlockedVault.vaultId);
+    }
+
+    const currentVaultSnapshot =
+      await this.vaultLocalRepository.getVaultSnapshot(vaultId);
+
+    if (currentVaultSnapshot === null) {
+      throw new VaultSnapshotNotFoundError(vaultId);
+    }
+
+    if (currentVaultSnapshot.metadata.revision !== sourceSnapshotRevision) {
+      throw new VaultSnapshotRevisionMismatchError({
+        vaultId,
+        expectedRevision: sourceSnapshotRevision,
+        actualRevision: currentVaultSnapshot.metadata.revision,
+      });
+    }
+
+    if (
+      currentVaultSnapshot.metadata.algorithmSuiteId !==
+      this.crypto.algorithmSuite.id
+    ) {
+      throw new UnsupportedAlgorithmSuiteError({
+        vaultId,
+        artifact: "vault snapshot",
+        expectedAlgorithmSuiteId: this.crypto.algorithmSuite.id,
+        actualAlgorithmSuiteId: currentVaultSnapshot.metadata.algorithmSuiteId,
+      });
+    }
+
+    const signerDevice = currentVaultSnapshot.trustedDevices.find(
+      (device) => device.id === unlockedVault.deviceId,
+    );
+
+    if (signerDevice === undefined) {
+      throw new VaultSnapshotSignerNotTrustedError(
+        vaultId,
+        unlockedVault.deviceId,
+      );
+    }
+
+    return currentVaultSnapshot;
   }
 }

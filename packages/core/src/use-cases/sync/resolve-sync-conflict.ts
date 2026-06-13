@@ -62,11 +62,15 @@ export class ResolveSyncConflictUseCase {
     params: ResolveSyncConflictCommandParams,
   ): Promise<ResolveSyncConflictResult> {
     const unlockedVaultSession = await this.unlockedVaultSession.get();
-    const unlockedVault = unlockedVaultSession?.unlockedVault;
 
-    if (unlockedVault?.vaultId !== params.vaultId) {
+    if (
+      unlockedVaultSession === null ||
+      unlockedVaultSession.unlockedVault.vaultId !== params.vaultId
+    ) {
       throw new VaultMustBeUnlockedError(params.vaultId, "resolve sync");
     }
+
+    const { sourceSnapshotRevision, unlockedVault } = unlockedVaultSession;
 
     if (params.remoteSnapshotDescriptor.vaultId !== params.vaultId) {
       throw new InvalidSyncResolutionError(
@@ -163,6 +167,7 @@ export class ResolveSyncConflictUseCase {
     const persistedSnapshot = await this.vaultSnapshot.persistUnlockedVault(
       params.vaultId,
       updatedUnlockedVault,
+      sourceSnapshotRevision,
     );
 
     await this.unlockedVaultSession.commitPersistedSnapshot(

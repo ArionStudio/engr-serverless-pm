@@ -7,6 +7,7 @@ import {
 } from "../../__tests__/fixtures/vault-entries";
 import { SyncNotConfiguredError } from "../../application/errors/sync.errors";
 import { VaultMustBeUnlockedError } from "../../application/errors/vault-session.errors";
+import { VaultSnapshotRevisionMismatchError } from "../../application/errors/vault-snapshot.errors";
 import { DisableSyncUseCase } from "./disable-sync";
 
 function createContext(syncConfigured = true) {
@@ -59,9 +60,27 @@ describe("DisableSyncUseCase", () => {
     const persistedUnlockedVault = vi.mocked(
       ctx.vaultSnapshot.persistUnlockedVault,
     ).mock.calls[0]?.[1];
+    const sourceSnapshotRevision = vi.mocked(
+      ctx.vaultSnapshot.persistUnlockedVault,
+    ).mock.calls[0]?.[2];
 
     expect(persistedUnlockedVault).toBeDefined();
     expect("syncConfig" in persistedUnlockedVault!.vault).toBe(false);
+    expect(sourceSnapshotRevision).toBe(1);
+    expect(
+      ctx.vaultSnapshot.assertCanPersistUnlockedVault,
+    ).toHaveBeenCalledWith(
+      ctx.values.vaultId,
+      persistedUnlockedVault,
+      sourceSnapshotRevision,
+    );
+    expect(
+      vi.mocked(ctx.vaultSnapshot.assertCanPersistUnlockedVault).mock
+        .invocationCallOrder[0],
+    ).toBeLessThan(
+      vi.mocked(ctx.ports.syncProvider.removeVaultSnapshots).mock
+        .invocationCallOrder[0],
+    );
     expect(
       vi.mocked(ctx.ports.syncProvider.removeVaultSnapshots).mock
         .invocationCallOrder[0],
@@ -103,6 +122,34 @@ describe("DisableSyncUseCase", () => {
 
     expect(ctx.ports.syncProvider.removeVaultSnapshots).not.toHaveBeenCalled();
     expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
+  });
+
+  it("does not remove remote snapshots when local snapshot preflight fails", async () => {
+    const ctx = createContext();
+    const error = new VaultSnapshotRevisionMismatchError({
+      vaultId: ctx.values.vaultId,
+      expectedRevision: 1,
+      actualRevision: 2,
+    });
+
+    vi.mocked(
+      ctx.vaultSnapshot.assertCanPersistUnlockedVault,
+    ).mockRejectedValueOnce(error);
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+      }),
+    ).rejects.toBe(error);
+
+    expect(ctx.ports.syncProvider.removeVaultSnapshots).not.toHaveBeenCalled();
+    expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
+    ).not.toHaveBeenCalled();
+    expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncConfig).toBe(
+      ctx.values.syncConfig,
+    );
   });
 
   it("does not remove local sync config when remote removal fails", async () => {

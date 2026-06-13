@@ -110,6 +110,7 @@ function createContext() {
     ports.clock,
     ports.vaultLocalRepository,
   );
+  const persistUnlockedVault = vi.spyOn(vaultSnapshot, "persistUnlockedVault");
   ports.saved.unlockedVaultSession = {
     unlockedVault: {
       ...createUnlockedVaultWithEntries(values, []),
@@ -124,6 +125,7 @@ function createContext() {
     ports,
     saved: ports.saved,
     localSnapshot,
+    persistUnlockedVault,
     useCase: new ResolveSyncConflictUseCase(
       ports.syncProvider,
       ports.sessionServices.unlockedVaultSession,
@@ -215,6 +217,18 @@ describe("ResolveSyncConflictUseCase", () => {
           },
         },
       ],
+    );
+    expect(ctx.persistUnlockedVault).toHaveBeenCalledWith(
+      ctx.values.vaultId,
+      expect.objectContaining({
+        vault: expect.objectContaining({
+          versionVector: {
+            [ctx.values.deviceId]: 4,
+            "remote-device-id": 1,
+          },
+        }),
+      }),
+      3,
     );
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).toHaveBeenCalledWith(
       ctx.values.syncConfig,

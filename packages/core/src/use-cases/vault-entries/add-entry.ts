@@ -41,11 +41,15 @@ export class AddEntryUseCase {
 
   async execute(params: AddEntryCommandParams): Promise<AddEntryResult> {
     const unlockedVaultSession = await this.unlockedVaultSession.get();
-    const unlockedVault = unlockedVaultSession?.unlockedVault;
 
-    if (unlockedVault?.vaultId !== params.vaultId) {
+    if (
+      unlockedVaultSession === null ||
+      unlockedVaultSession.unlockedVault.vaultId !== params.vaultId
+    ) {
       throw new VaultMustBeUnlockedError(params.vaultId, "add entry");
     }
+
+    const { sourceSnapshotRevision, unlockedVault } = unlockedVaultSession;
 
     let sanitizedUrl: string;
 
@@ -81,6 +85,7 @@ export class AddEntryUseCase {
     const persistedSnapshot = await this.vaultSnapshot.persistUnlockedVault(
       params.vaultId,
       updatedUnlockedVault,
+      sourceSnapshotRevision,
     );
 
     await this.unlockedVaultSession.commitPersistedSnapshot(

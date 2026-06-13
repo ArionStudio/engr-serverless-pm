@@ -23,14 +23,18 @@ export class RemoveLocalSyncCredentialsUseCase {
     params: RemoveLocalSyncCredentialsCommandParams,
   ): Promise<void> {
     const unlockedVaultSession = await this.unlockedVaultSession.get();
-    const unlockedVault = unlockedVaultSession?.unlockedVault;
 
-    if (unlockedVault?.vaultId !== params.vaultId) {
+    if (
+      unlockedVaultSession === null ||
+      unlockedVaultSession.unlockedVault.vaultId !== params.vaultId
+    ) {
       throw new VaultMustBeUnlockedError(
         params.vaultId,
         "remove local sync credentials",
       );
     }
+
+    const { sourceSnapshotRevision, unlockedVault } = unlockedVaultSession;
 
     if (unlockedVault.vault.syncConfig === undefined) {
       throw new SyncNotConfiguredError(
@@ -53,6 +57,7 @@ export class RemoveLocalSyncCredentialsUseCase {
     const persistedSnapshot = await this.vaultSnapshot.persistUnlockedVault(
       params.vaultId,
       updatedUnlockedVault,
+      sourceSnapshotRevision,
     );
 
     await this.unlockedVaultSession.commitPersistedSnapshot(
