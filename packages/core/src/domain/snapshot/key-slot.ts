@@ -9,3 +9,7 @@ export type DeviceKeySlot = {
 export type RecoveryKeySlot = {
   protectedVaultMasterKey: SerializedWrapped<VaultMasterKey>;
 };
+
+export type EnrollmentKeySlot = {
+  protectedVaultMasterKey: SerializedWrapped<VaultMasterKey>;
+};

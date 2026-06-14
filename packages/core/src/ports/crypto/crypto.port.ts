@@ -7,6 +7,7 @@ import type {
   SerializedWrapped,
 } from "../../domain/crypto/protected-artifact";
 import type {
+  DeviceEnrollmentSecret,
   DevicePrivateSignKey,
   DevicePublicSignKey,
   DeviceSignKeyPair,
@@ -41,6 +42,7 @@ export interface CryptoPort {
   generateDeviceSignKeyPair: () => Promise<DeviceSignKeyPair>;
   generateVaultMasterKey: () => Promise<VaultMasterKey>;
   generateDeviceSlotKey: () => Promise<DeviceSlotKey>;
+  generateDeviceEnrollmentSecret: () => Promise<DeviceEnrollmentSecret>;
   generateRecoveryKey: () => Promise<RecoverySecretKey>;
   generateUnlockedVaultSessionPayloadKey: () => Promise<UnlockedVaultSessionPayloadKey>;
 
@@ -64,6 +66,9 @@ export interface CryptoPort {
   ) => Promise<ProtectionKeyFor<VaultMasterKey>>;
   deriveRecoveryVaultMasterKeyProtectionKey: (
     recoveryKey: RecoverySecretKey,
+  ) => Promise<ProtectionKeyFor<VaultMasterKey>>;
+  deriveEnrollmentVaultMasterKeyProtectionKey: (
+    enrollmentSecret: DeviceEnrollmentSecret,
   ) => Promise<ProtectionKeyFor<VaultMasterKey>>;
 
   // Key wrapping

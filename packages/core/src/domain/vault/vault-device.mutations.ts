@@ -3,6 +3,33 @@ import { DuplicateVaultDeviceProfileError } from "../../errors/vault-device.erro
 import { incrementVersionVector } from "../versioning/version-vector.utils";
 import type { Vault } from "./vault";
 
+export function addDeviceProfileToVault(
+  vault: Vault,
+  deviceId: string,
+  deviceName: string,
+  createdAt: number,
+): Vault {
+  if (hasDeviceProfileState(vault, deviceId)) {
+    throw new DuplicateVaultDeviceProfileError(deviceId);
+  }
+
+  const versionVector = incrementVersionVector(vault.versionVector, deviceId);
+  const deviceProfile: DeviceProfile = {
+    id: deviceId,
+    name: deviceName,
+    createdAt,
+    versionVector: {
+      [deviceId]: versionVector[deviceId],
+    },
+  };
+
+  return {
+    ...vault,
+    versionVector,
+    deviceProfiles: [...vault.deviceProfiles, deviceProfile],
+  };
+}
+
 export function addRecoveredDeviceProfileToVault(
   vault: Vault,
   deviceId: string,

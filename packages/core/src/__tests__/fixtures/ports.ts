@@ -134,6 +134,9 @@ export function createCoreTestPorts(
     generateDeviceSignKeyPair: vi.fn(async () => deviceSignKeyPair),
     generateVaultMasterKey: vi.fn(async () => values.vaultMasterKey),
     generateDeviceSlotKey: vi.fn(async () => values.deviceSlotKey),
+    generateDeviceEnrollmentSecret: vi.fn(
+      async () => values.deviceEnrollmentSecret,
+    ),
     generateRecoveryKey: vi.fn(async () => values.recoverySecretKey),
     generateUnlockedVaultSessionPayloadKey: vi.fn(
       async () => values.unlockedVaultSessionPayloadKey,
@@ -161,6 +164,9 @@ export function createCoreTestPorts(
     deriveRecoveryVaultMasterKeyProtectionKey: vi.fn(
       async () => values.recoveryVaultMasterKeyProtectionKey,
     ),
+    deriveEnrollmentVaultMasterKeyProtectionKey: vi.fn(
+      async () => values.enrollmentVaultMasterKeyProtectionKey,
+    ),
     wrapLocalKeysPayload: vi.fn(async (_localKeysPayload, protectionKey) =>
       protectionKey === values.newLocalKeysProtectionKey
         ? values.reprotectedLocalKeys
@@ -170,10 +176,17 @@ export function createCoreTestPorts(
       deviceSlotKey: values.deviceSlotKey,
       devicePrivateSignKey: values.devicePrivateSignKey,
     })),
-    wrapVaultMasterKey: vi
-      .fn()
-      .mockResolvedValueOnce(values.protectedDeviceVaultMasterKey)
-      .mockResolvedValueOnce(values.protectedRecoveryVaultMasterKey),
+    wrapVaultMasterKey: vi.fn(async (_vaultMasterKey, protectionKey) => {
+      if (protectionKey === values.recoveryVaultMasterKeyProtectionKey) {
+        return values.protectedRecoveryVaultMasterKey;
+      }
+
+      if (protectionKey === values.enrollmentVaultMasterKeyProtectionKey) {
+        return values.protectedEnrollmentVaultMasterKey;
+      }
+
+      return values.protectedDeviceVaultMasterKey;
+    }),
     unwrapVaultMasterKey: vi.fn(async () => values.vaultMasterKey),
     encryptVaultSnapshotContent: vi.fn(async () => values.encryptedVault),
     decryptVaultSnapshotContent: vi.fn(async () => values.decryptedVault),

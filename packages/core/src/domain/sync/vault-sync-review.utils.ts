@@ -163,6 +163,9 @@ function normalizeTrustState(trustState: VaultSyncTrustState) {
           currentDeviceSlot.deviceId.localeCompare(nextDeviceSlot.deviceId),
       ),
       recoveryKeySlot: trustState.keySlots.recoveryKeySlot,
+      ...(trustState.keySlots.enrollmentKeySlot !== undefined
+        ? { enrollmentKeySlot: trustState.keySlots.enrollmentKeySlot }
+        : {}),
     },
   };
 }

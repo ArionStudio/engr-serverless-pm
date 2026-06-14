@@ -4,7 +4,11 @@ import type {
 } from "../crypto/protected-artifact";
 import type { TrustedDevice } from "../device-trust/trusted-device";
 import type { Vault } from "../vault/vault";
-import type { DeviceKeySlot, RecoveryKeySlot } from "./key-slot";
+import type {
+  DeviceKeySlot,
+  EnrollmentKeySlot,
+  RecoveryKeySlot,
+} from "./key-slot";
 
 export type VaultSnapshotSchemaVersion = 1;
 
@@ -24,6 +28,7 @@ export type UnsignedVaultSnapshot = {
   keySlots: {
     deviceSlots: DeviceKeySlot[];
     recoveryKeySlot: RecoveryKeySlot;
+    enrollmentKeySlot?: EnrollmentKeySlot;
   };
   content: SerializedEncrypted<Vault>;
 };

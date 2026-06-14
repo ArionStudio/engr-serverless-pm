@@ -7,6 +7,7 @@ import type {
   SerializedWrapped,
 } from "../../domain/crypto/protected-artifact";
 import type {
+  DeviceEnrollmentSecret,
   DevicePrivateSignKey,
   DevicePublicSignKey,
   DeviceSlotKey,
@@ -54,6 +55,7 @@ export function createCoreTestValues() {
     timestamp: 1_700_000_000_000,
     vaultMasterKey: bytes<VaultMasterKey>(),
     deviceSlotKey: bytes<DeviceSlotKey>(),
+    deviceEnrollmentSecret: bytes<DeviceEnrollmentSecret>(),
     devicePublicSignKey: bytes<DevicePublicSignKey>(),
     devicePrivateSignKey: bytes<DevicePrivateSignKey>(),
     recoverySecretKey: bytes<RecoverySecretKey>(),
@@ -69,6 +71,8 @@ export function createCoreTestValues() {
     deviceSlotVaultMasterKeyProtectionKey:
       bytes<ProtectionKeyFor<VaultMasterKey>>(),
     recoveryVaultMasterKeyProtectionKey:
+      bytes<ProtectionKeyFor<VaultMasterKey>>(),
+    enrollmentVaultMasterKeyProtectionKey:
       bytes<ProtectionKeyFor<VaultMasterKey>>(),
     protectedLocalKeys: {
       wrappedKey: b64("protected-local-keys"),
@@ -89,6 +93,10 @@ export function createCoreTestValues() {
     protectedRecoveryVaultMasterKey: {
       wrappedKey: b64("protected-recovery-vault-master-key"),
       wrappingNonce: b64("protected-recovery-vault-master-key-nonce"),
+    } satisfies SerializedWrapped<VaultMasterKey>,
+    protectedEnrollmentVaultMasterKey: {
+      wrappedKey: b64("protected-enrollment-vault-master-key"),
+      wrappingNonce: b64("protected-enrollment-vault-master-key-nonce"),
     } satisfies SerializedWrapped<VaultMasterKey>,
     encryptedVault: {
       ciphertext: b64("encrypted-vault"),
