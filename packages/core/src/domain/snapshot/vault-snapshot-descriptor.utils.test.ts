@@ -10,12 +10,12 @@ describe("vault snapshot descriptor utils", () => {
       compareVaultSnapshotDescriptors(
         {
           vaultId: "vault-id",
-          versionVector: { A: 7, B: 3 },
+          snapshotVersionVector: { A: 7, B: 3 },
           revisionTimestamp: 1,
         },
         {
           vaultId: "vault-id",
-          versionVector: { A: 7, B: 2 },
+          snapshotVersionVector: { A: 7, B: 2 },
           revisionTimestamp: 99,
         },
       ),
@@ -24,26 +24,26 @@ describe("vault snapshot descriptor utils", () => {
       compareVaultSnapshotDescriptors(
         {
           vaultId: "vault-id",
-          versionVector: { A: 7, B: 3 },
+          snapshotVersionVector: { A: 7, B: 3 },
           revisionTimestamp: 2,
         },
         {
           vaultId: "vault-id",
-          versionVector: { A: 6, B: 4 },
+          snapshotVersionVector: { A: 6, B: 4 },
           revisionTimestamp: 1,
         },
       ),
-    ).toBe("diverged");
+    ).toBe("broken");
     expect(
       compareVaultSnapshotDescriptors(
         {
           vaultId: "vault-id",
-          versionVector: { A: 7 },
+          snapshotVersionVector: { A: 7 },
           revisionTimestamp: 1,
         },
         {
           vaultId: "vault-id",
-          versionVector: { A: 8 },
+          snapshotVersionVector: { A: 8 },
           revisionTimestamp: 2,
         },
       ),
@@ -55,12 +55,12 @@ describe("vault snapshot descriptor utils", () => {
       areVaultSnapshotDescriptorsEqual(
         {
           vaultId: "vault-id",
-          versionVector: { A: 7 },
+          snapshotVersionVector: { A: 7 },
           revisionTimestamp: 1,
         },
         {
           vaultId: "vault-id",
-          versionVector: { A: 7, B: 0 },
+          snapshotVersionVector: { A: 7, B: 0 },
           revisionTimestamp: 1,
         },
       ),
@@ -69,12 +69,12 @@ describe("vault snapshot descriptor utils", () => {
       areVaultSnapshotDescriptorsEqual(
         {
           vaultId: "vault-id",
-          versionVector: { A: 7 },
+          snapshotVersionVector: { A: 7 },
           revisionTimestamp: 1,
         },
         {
           vaultId: "vault-id",
-          versionVector: { A: 8 },
+          snapshotVersionVector: { A: 8 },
           revisionTimestamp: 1,
         },
       ),
@@ -83,12 +83,12 @@ describe("vault snapshot descriptor utils", () => {
       areVaultSnapshotDescriptorsEqual(
         {
           vaultId: "vault-id",
-          versionVector: { A: 7 },
+          snapshotVersionVector: { A: 7 },
           revisionTimestamp: 1,
         },
         {
           vaultId: "other-vault-id",
-          versionVector: { A: 7 },
+          snapshotVersionVector: { A: 7 },
           revisionTimestamp: 1,
         },
       ),
@@ -97,12 +97,12 @@ describe("vault snapshot descriptor utils", () => {
       areVaultSnapshotDescriptorsEqual(
         {
           vaultId: "vault-id",
-          versionVector: { A: 7 },
+          snapshotVersionVector: { A: 7 },
           revisionTimestamp: 1,
         },
         {
           vaultId: "vault-id",
-          versionVector: { A: 7 },
+          snapshotVersionVector: { A: 7 },
           revisionTimestamp: 2,
         },
       ),

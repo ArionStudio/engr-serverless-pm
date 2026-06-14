@@ -27,7 +27,7 @@ export function createChangeMasterPasswordTestContext() {
       vaultMasterKey: values.vaultMasterKey,
       devicePrivateSignKey: values.devicePrivateSignKey,
     },
-    sourceSnapshotRevision: 1,
+    sourceSnapshotVersionVector: { [values.deviceId]: 1 },
   };
 
   vi.mocked(ports.crypto.generateMasterPasswordSalt)

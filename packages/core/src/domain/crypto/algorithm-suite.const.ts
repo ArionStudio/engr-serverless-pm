@@ -47,7 +47,7 @@ export const CURRENT_ALGORITHM_SUITE: AlgorithmSuite = {
   unlockedVaultSessionPayloadEncryption: {
     algorithm: "AES-256-GCM",
     nonceLengthBytes: 12,
-    authenticatedData: ["sessionId", "vaultId", "sourceSnapshotRevision"],
+    authenticatedData: ["sessionId", "vaultId", "sourceSnapshotVersionVector"],
   },
   vaultSnapshotSigning: {
     algorithm: "Ed25519",

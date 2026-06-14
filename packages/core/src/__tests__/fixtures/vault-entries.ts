@@ -4,6 +4,7 @@ import type { PasswordEntry } from "../../domain/entry/password-entry.type";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import type { Tag } from "../../domain/entry/tag.type";
 import type { UnlockedVault } from "../../domain/session/unlocked-vault";
+import type { VersionVector } from "../../domain/versioning/version-vector.type";
 import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import type { CoreTestPorts } from "./ports";
 import type { CoreTestValues } from "./values";
@@ -86,11 +87,11 @@ export function createUnlockedVaultSessionWithEntries(
   values: CoreTestValues,
   entries: PasswordEntry[],
   tags: Tag[] = [],
-  sourceSnapshotRevision = 1,
+  sourceSnapshotVersionVector: VersionVector = { [values.deviceId]: 1 },
 ) {
   return {
     unlockedVault: createUnlockedVaultWithEntries(values, entries, tags),
-    sourceSnapshotRevision,
+    sourceSnapshotVersionVector,
   };
 }
 
@@ -116,23 +117,18 @@ export function createVaultSnapshotServiceMock(
       schemaVersion: 1,
       vaultCreationTimestamp: values.timestamp - 1_000,
       revisionTimestamp: values.timestamp,
-      revision: 1,
+      snapshotVersionVector: {
+        [values.deviceId]: 1,
+      },
       algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
       createdByDeviceId: values.deviceId,
     },
-    trustedDevices: [
-      {
-        id: values.deviceId,
-        publicKeys: {
-          signingKey: values.devicePublicSignKey,
-        },
-      },
-    ],
     keySlots: {
       deviceSlots: [
         {
           deviceId: values.deviceId,
           protectedVaultMasterKey: values.protectedDeviceVaultMasterKey,
+          publicSignKey: values.devicePublicSignKey,
         },
       ],
       recoveryKeySlot: {
@@ -148,9 +144,8 @@ export function createVaultSnapshotServiceMock(
       async () => currentVaultSnapshot,
     ),
     persistUnlockedVault: vi.fn(async () => ({
-      revision: 2,
+      snapshotVersionVector: { [values.deviceId]: 2 },
       revisionTimestamp: values.timestamp + 1,
-      deviceId: values.deviceId,
     })),
   } as unknown as VaultSnapshotService;
 }

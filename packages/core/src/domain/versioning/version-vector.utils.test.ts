@@ -50,9 +50,9 @@ describe("version vector utils", () => {
     );
   });
 
-  it("detects diverged vectors", () => {
+  it("detects broken vectors", () => {
     expect(compareVersionVectors({ A: 7, C: 5 }, { A: 2, C: 10 })).toBe(
-      "diverged",
+      "broken",
     );
   });
 });

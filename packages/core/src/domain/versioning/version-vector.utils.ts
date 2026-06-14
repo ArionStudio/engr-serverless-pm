@@ -46,7 +46,7 @@ export function isVersionVectorAheadOf(
 export function compareVersionVectors(
   local: VersionVector,
   remote: VersionVector,
-): VersionVectorRelation {
+): Exclude<VersionVectorRelation, "remote_missing"> {
   let localHasNewerComponent = false;
   let remoteHasNewerComponent = false;
   const deviceIds = new Set([...Object.keys(local), ...Object.keys(remote)]);
@@ -65,7 +65,7 @@ export function compareVersionVectors(
   }
 
   if (localHasNewerComponent && remoteHasNewerComponent) {
-    return "diverged";
+    return "broken";
   }
 
   if (localHasNewerComponent) {

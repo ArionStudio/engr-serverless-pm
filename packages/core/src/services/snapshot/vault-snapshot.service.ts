@@ -17,8 +17,13 @@ import {
 import {
   PersistedVaultMismatchError,
   SnapshotSigningDeviceNotTrustedError,
-  VaultSnapshotRevisionMismatchError,
+  VaultSnapshotVersionMismatchError,
 } from "../../errors/vault-snapshot.errors";
+import {
+  compareVersionVectors,
+  incrementVersionVector,
+} from "../../domain/versioning/version-vector.utils";
+import type { VersionVector } from "../../domain/versioning/version-vector.type";
 
 export class VaultSnapshotService {
   private readonly crypto: CryptoPort;
@@ -38,17 +43,16 @@ export class VaultSnapshotService {
   async persistUnlockedVault(
     vaultId: string,
     unlockedVault: UnlockedVault,
-    sourceSnapshotRevision: number,
+    sourceSnapshotVersionVector: VersionVector,
   ): Promise<{
-    readonly revision: number;
+    readonly snapshotVersionVector: VersionVector;
     readonly revisionTimestamp: number;
-    readonly deviceId: string;
   }> {
     const currentVaultSnapshot =
       await this.requireCurrentSnapshotForUnlockedVault(
         vaultId,
         unlockedVault,
-        sourceSnapshotRevision,
+        sourceSnapshotVersionVector,
       );
 
     const revisionTimestamp = this.clock.now();
@@ -56,11 +60,13 @@ export class VaultSnapshotService {
     const unsignedVaultSnapshot: UnsignedVaultSnapshot = {
       metadata: {
         ...currentVaultSnapshot.metadata,
-        revision: currentVaultSnapshot.metadata.revision + 1,
         revisionTimestamp,
+        snapshotVersionVector: incrementVersionVector(
+          currentVaultSnapshot.metadata.snapshotVersionVector,
+          unlockedVault.deviceId,
+        ),
         createdByDeviceId: unlockedVault.deviceId,
       },
-      trustedDevices: currentVaultSnapshot.trustedDevices,
       keySlots: currentVaultSnapshot.keySlots,
       content: await this.crypto.encryptVaultSnapshotContent(
         unlockedVault.vault,
@@ -79,9 +85,8 @@ export class VaultSnapshotService {
     await this.vaultLocalRepository.saveVaultSnapshot(vaultSnapshot);
 
     return {
-      revision: vaultSnapshot.metadata.revision,
+      snapshotVersionVector: vaultSnapshot.metadata.snapshotVersionVector,
       revisionTimestamp: vaultSnapshot.metadata.revisionTimestamp,
-      deviceId: vaultSnapshot.metadata.createdByDeviceId,
     };
   }
 
@@ -100,12 +105,74 @@ export class VaultSnapshotService {
     vaultId: string,
     vaultSnapshot: VaultSnapshot,
     vaultMasterKey: VaultMasterKey,
-    trustSourceSnapshot: Pick<VaultSnapshot, "trustedDevices">,
+    trustSourceSnapshot: Pick<VaultSnapshot, "keySlots">,
   ): Promise<Vault> {
     this.requireSupportedSnapshotAlgorithm(vaultId, vaultSnapshot);
+    await this.requireTrustedSnapshotSignature(
+      vaultId,
+      vaultSnapshot,
+      trustSourceSnapshot,
+    );
 
-    const signerDevice = trustSourceSnapshot.trustedDevices.find(
-      (device) => device.id === vaultSnapshot.metadata.createdByDeviceId,
+    return this.crypto.decryptVaultSnapshotContent(
+      vaultSnapshot.content,
+      vaultMasterKey,
+    );
+  }
+
+  async requireCurrentSnapshotForUnlockedVault(
+    vaultId: string,
+    unlockedVault: UnlockedVault,
+    sourceSnapshotVersionVector: VersionVector,
+  ): Promise<VaultSnapshot> {
+    if (unlockedVault.vaultId !== vaultId) {
+      throw new PersistedVaultMismatchError(vaultId, unlockedVault.vaultId);
+    }
+
+    const currentVaultSnapshot = await this.requireLocalVaultSnapshot(vaultId);
+
+    if (
+      compareVersionVectors(
+        currentVaultSnapshot.metadata.snapshotVersionVector,
+        sourceSnapshotVersionVector,
+      ) !== "equal"
+    ) {
+      throw new VaultSnapshotVersionMismatchError(
+        vaultId,
+        sourceSnapshotVersionVector,
+        currentVaultSnapshot.metadata.snapshotVersionVector,
+      );
+    }
+
+    this.requireSupportedSnapshotAlgorithm(vaultId, currentVaultSnapshot);
+    await this.requireTrustedSnapshotSignature(
+      vaultId,
+      currentVaultSnapshot,
+      currentVaultSnapshot,
+    );
+
+    const trustedDevice = currentVaultSnapshot.keySlots.deviceSlots.find(
+      (deviceSlot) => deviceSlot.deviceId === unlockedVault.deviceId,
+    );
+
+    if (trustedDevice === undefined) {
+      throw new SnapshotSigningDeviceNotTrustedError(
+        vaultId,
+        unlockedVault.deviceId,
+      );
+    }
+
+    return currentVaultSnapshot;
+  }
+
+  private async requireTrustedSnapshotSignature(
+    vaultId: string,
+    vaultSnapshot: VaultSnapshot,
+    trustSourceSnapshot: Pick<VaultSnapshot, "keySlots">,
+  ): Promise<void> {
+    const signerDevice = trustSourceSnapshot.keySlots.deviceSlots.find(
+      (deviceSlot) =>
+        deviceSlot.deviceId === vaultSnapshot.metadata.createdByDeviceId,
     );
 
     if (signerDevice === undefined) {
@@ -117,52 +184,12 @@ export class VaultSnapshotService {
 
     const isSnapshotAuthentic = await this.crypto.verifyVaultSnapshotSignature(
       vaultSnapshot,
-      signerDevice.publicKeys.signingKey,
+      signerDevice.publicSignKey,
     );
 
     if (!isSnapshotAuthentic) {
       throw new VaultSnapshotSignatureVerificationFailedError(vaultId);
     }
-
-    return this.crypto.decryptVaultSnapshotContent(
-      vaultSnapshot.content,
-      vaultMasterKey,
-    );
-  }
-
-  async requireCurrentSnapshotForUnlockedVault(
-    vaultId: string,
-    unlockedVault: UnlockedVault,
-    sourceSnapshotRevision: number,
-  ): Promise<VaultSnapshot> {
-    if (unlockedVault.vaultId !== vaultId) {
-      throw new PersistedVaultMismatchError(vaultId, unlockedVault.vaultId);
-    }
-
-    const currentVaultSnapshot = await this.requireLocalVaultSnapshot(vaultId);
-
-    if (currentVaultSnapshot.metadata.revision !== sourceSnapshotRevision) {
-      throw new VaultSnapshotRevisionMismatchError({
-        vaultId,
-        expectedRevision: sourceSnapshotRevision,
-        actualRevision: currentVaultSnapshot.metadata.revision,
-      });
-    }
-
-    this.requireSupportedSnapshotAlgorithm(vaultId, currentVaultSnapshot);
-
-    const trustedDevice = currentVaultSnapshot.trustedDevices.find(
-      (device) => device.id === unlockedVault.deviceId,
-    );
-
-    if (trustedDevice === undefined) {
-      throw new SnapshotSigningDeviceNotTrustedError(
-        vaultId,
-        unlockedVault.deviceId,
-      );
-    }
-
-    return currentVaultSnapshot;
   }
 
   private requireSupportedSnapshotAlgorithm(

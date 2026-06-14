@@ -1,6 +1,6 @@
 import Dexie from "dexie";
 import type { EntityTable } from "dexie";
-import type { SerializedEncrypted, Vault } from "@lfspm/core";
+import type { SerializedEncrypted, Vault, VersionVector } from "@lfspm/core";
 
 export const DATABASE_NAME = "lfspm-extension";
 export const STORAGE_SCHEMA_VERSION = 1;
@@ -16,7 +16,7 @@ export type EncryptedUnlockedVaultSessionPayloadRecord = {
   id: typeof ACTIVE_UNLOCKED_VAULT_SESSION_PAYLOAD_ID;
   sessionId: string;
   vaultId: string;
-  sourceSnapshotRevision: number;
+  sourceSnapshotVersionVector: VersionVector;
   content: SerializedEncrypted<{
     readonly vault: Vault;
   }>;

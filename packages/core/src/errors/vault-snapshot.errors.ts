@@ -1,3 +1,5 @@
+import type { VersionVector } from "../domain/versioning/version-vector.type";
+
 export class PersistedVaultMismatchError extends Error {
   constructor(expectedVaultId: string, actualVaultId: string) {
     super(
@@ -7,16 +9,16 @@ export class PersistedVaultMismatchError extends Error {
   }
 }
 
-export class VaultSnapshotRevisionMismatchError extends Error {
-  constructor(params: {
-    readonly vaultId: string;
-    readonly expectedRevision: number;
-    readonly actualRevision: number;
-  }) {
+export class VaultSnapshotVersionMismatchError extends Error {
+  constructor(
+    vaultId: string,
+    expectedVersionVector: VersionVector,
+    actualVersionVector: VersionVector,
+  ) {
     super(
-      `Vault "${params.vaultId}" local snapshot revision ${params.actualRevision} does not match unlocked session revision ${params.expectedRevision}.`,
+      `Vault "${vaultId}" local snapshot version ${JSON.stringify(actualVersionVector)} does not match unlocked session version ${JSON.stringify(expectedVersionVector)}.`,
     );
-    this.name = "VaultSnapshotRevisionMismatchError";
+    this.name = "VaultSnapshotVersionMismatchError";
   }
 }
 

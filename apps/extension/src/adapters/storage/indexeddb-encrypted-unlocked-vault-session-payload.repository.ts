@@ -1,6 +1,7 @@
 import type {
   EncryptedUnlockedVaultSessionPayloadRepositoryPort,
   SerializedEncrypted,
+  VersionVector,
   Vault,
 } from "@lfspm/core";
 import {
@@ -19,7 +20,7 @@ export class IndexedDbEncryptedUnlockedVaultSessionPayloadRepository implements 
   async saveEncryptedUnlockedVaultSessionPayload(encryptedPayload: {
     readonly sessionId: string;
     readonly vaultId: string;
-    readonly sourceSnapshotRevision: number;
+    readonly sourceSnapshotVersionVector: VersionVector;
     readonly content: SerializedEncrypted<{
       readonly vault: Vault;
     }>;
@@ -33,7 +34,7 @@ export class IndexedDbEncryptedUnlockedVaultSessionPayloadRepository implements 
   async getEncryptedUnlockedVaultSessionPayload(): Promise<{
     readonly sessionId: string;
     readonly vaultId: string;
-    readonly sourceSnapshotRevision: number;
+    readonly sourceSnapshotVersionVector: VersionVector;
     readonly content: SerializedEncrypted<{
       readonly vault: Vault;
     }>;
@@ -50,7 +51,7 @@ export class IndexedDbEncryptedUnlockedVaultSessionPayloadRepository implements 
     return {
       sessionId: record.sessionId,
       vaultId: record.vaultId,
-      sourceSnapshotRevision: record.sourceSnapshotRevision,
+      sourceSnapshotVersionVector: record.sourceSnapshotVersionVector,
       content: record.content,
     };
   }

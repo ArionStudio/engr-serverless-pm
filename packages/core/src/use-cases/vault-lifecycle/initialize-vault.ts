@@ -144,23 +144,18 @@ export class InitializeVaultUseCase {
         schemaVersion: 1,
         vaultCreationTimestamp: timestamp,
         revisionTimestamp: timestamp,
-        revision: 1,
+        snapshotVersionVector: {
+          [deviceId]: 1,
+        },
         algorithmSuiteId: this.crypto.algorithmSuite.id,
         createdByDeviceId: deviceId,
       },
-      trustedDevices: [
-        {
-          id: deviceId,
-          publicKeys: {
-            signingKey: deviceSignKeyPair.publicKey,
-          },
-        },
-      ],
       keySlots: {
         deviceSlots: [
           {
             deviceId,
             protectedVaultMasterKey: protectedDeviceVaultMasterKey,
+            publicSignKey: deviceSignKeyPair.publicKey,
           },
         ],
         recoveryKeySlot: {
@@ -213,7 +208,7 @@ export class InitializeVaultUseCase {
     try {
       await this.unlockedVaultSession.commit(
         unlockedVault,
-        vaultSnapshot.metadata.revision,
+        vaultSnapshot.metadata.snapshotVersionVector,
       );
     } catch (error) {
       try {

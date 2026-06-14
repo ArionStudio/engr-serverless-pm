@@ -1,5 +1,6 @@
 import type { SerializedEncrypted } from "../../domain/crypto/protected-artifact";
 import type { Vault } from "../../domain/vault/vault";
+import type { VersionVector } from "../../domain/versioning/version-vector.type";
 
 /**
  * Stores the encrypted active unlocked-vault session payload.
@@ -13,7 +14,7 @@ export interface EncryptedUnlockedVaultSessionPayloadRepositoryPort {
   saveEncryptedUnlockedVaultSessionPayload: (encryptedPayload: {
     readonly sessionId: string;
     readonly vaultId: string;
-    readonly sourceSnapshotRevision: number;
+    readonly sourceSnapshotVersionVector: VersionVector;
     readonly content: SerializedEncrypted<{
       readonly vault: Vault;
     }>;
@@ -21,7 +22,7 @@ export interface EncryptedUnlockedVaultSessionPayloadRepositoryPort {
   getEncryptedUnlockedVaultSessionPayload: () => Promise<{
     readonly sessionId: string;
     readonly vaultId: string;
-    readonly sourceSnapshotRevision: number;
+    readonly sourceSnapshotVersionVector: VersionVector;
     readonly content: SerializedEncrypted<{
       readonly vault: Vault;
     }>;

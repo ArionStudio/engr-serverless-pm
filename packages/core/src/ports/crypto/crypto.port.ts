@@ -26,6 +26,7 @@ import type {
   VaultSnapshot,
 } from "../../domain/snapshot/vault-snapshot";
 import type { Vault } from "../../domain/vault/vault";
+import type { VersionVector } from "../../domain/versioning/version-vector.type";
 
 export interface CryptoPort {
   // Suite
@@ -108,7 +109,7 @@ export interface CryptoPort {
     context: {
       readonly sessionId: string;
       readonly vaultId: string;
-      readonly sourceSnapshotRevision: number;
+      readonly sourceSnapshotVersionVector: VersionVector;
     },
   ) => Promise<
     SerializedEncrypted<{
@@ -123,7 +124,7 @@ export interface CryptoPort {
     context: {
       readonly sessionId: string;
       readonly vaultId: string;
-      readonly sourceSnapshotRevision: number;
+      readonly sourceSnapshotVersionVector: VersionVector;
     },
   ) => Promise<{
     readonly vault: Vault;

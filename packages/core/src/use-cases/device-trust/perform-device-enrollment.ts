@@ -32,6 +32,8 @@ import type { IdPort } from "../../ports/system/id.port";
 import type { VaultDisplayNamePort } from "../../ports/vault/vault-display-name.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
+import { incrementVersionVector } from "../../domain/versioning/version-vector.utils";
+import type { VersionVector } from "../../domain/versioning/version-vector.type";
 
 export type PerformDeviceEnrollmentCommandParams = {
   readonly enrollmentBundle: DeviceEnrollmentBundle;
@@ -41,7 +43,7 @@ export type PerformDeviceEnrollmentCommandParams = {
 
 export type PerformDeviceEnrollmentResult = {
   readonly vault: Vault;
-  readonly revision: number;
+  readonly snapshotVersionVector: VersionVector;
   readonly revisionTimestamp: number;
   readonly deviceId: string;
 };
@@ -145,8 +147,7 @@ export class PerformDeviceEnrollmentUseCase {
       vaultMasterKey,
     );
     const downloadedDescriptor = toVaultSnapshotDescriptor(
-      remoteSnapshot.metadata.id,
-      vault,
+      enrollmentBundle.vaultId,
       remoteSnapshot,
     );
 
@@ -202,25 +203,21 @@ export class PerformDeviceEnrollmentUseCase {
     const unsignedVaultSnapshot: UnsignedVaultSnapshot = {
       metadata: {
         ...remoteSnapshot.metadata,
-        revision: remoteSnapshot.metadata.revision + 1,
+        id: enrollmentBundle.vaultId,
         revisionTimestamp: timestamp,
+        snapshotVersionVector: incrementVersionVector(
+          remoteSnapshot.metadata.snapshotVersionVector,
+          deviceId,
+        ),
         createdByDeviceId: deviceId,
       },
-      trustedDevices: [
-        ...remoteSnapshot.trustedDevices,
-        {
-          id: deviceId,
-          publicKeys: {
-            signingKey: deviceSignKeyPair.publicKey,
-          },
-        },
-      ],
       keySlots: {
         deviceSlots: [
           ...remoteSnapshot.keySlots.deviceSlots,
           {
             deviceId,
             protectedVaultMasterKey: protectedDeviceVaultMasterKey,
+            publicSignKey: deviceSignKeyPair.publicKey,
           },
         ],
         recoveryKeySlot: remoteSnapshot.keySlots.recoveryKeySlot,
@@ -268,7 +265,7 @@ export class PerformDeviceEnrollmentUseCase {
     try {
       await this.unlockedVaultSession.commit(
         unlockedVault,
-        registeredVaultSnapshot.metadata.revision,
+        registeredVaultSnapshot.metadata.snapshotVersionVector,
       );
     } catch (error) {
       try {
@@ -298,7 +295,8 @@ export class PerformDeviceEnrollmentUseCase {
 
     return {
       vault: registeredVault,
-      revision: registeredVaultSnapshot.metadata.revision,
+      snapshotVersionVector:
+        registeredVaultSnapshot.metadata.snapshotVersionVector,
       revisionTimestamp: registeredVaultSnapshot.metadata.revisionTimestamp,
       deviceId: registeredVaultSnapshot.metadata.createdByDeviceId,
     };

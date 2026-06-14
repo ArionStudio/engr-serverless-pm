@@ -42,23 +42,18 @@ function createRemoteSnapshot(
       schemaVersion: 1,
       vaultCreationTimestamp: values.timestamp - 1_000,
       revisionTimestamp: values.timestamp - 1,
-      revision: 2,
+      snapshotVersionVector: {
+        [values.deviceId]: 2,
+      },
       algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
       createdByDeviceId: values.deviceId,
     },
-    trustedDevices: [
-      {
-        id: values.deviceId,
-        publicKeys: {
-          signingKey: values.devicePublicSignKey,
-        },
-      },
-    ],
     keySlots: {
       deviceSlots: [
         {
           deviceId: values.deviceId,
           protectedVaultMasterKey: values.protectedDeviceVaultMasterKey,
+          publicSignKey: values.devicePublicSignKey,
         },
       ],
       recoveryKeySlot: {
@@ -80,7 +75,7 @@ function createContext() {
   const remoteSnapshot = createRemoteSnapshot(values);
   const remoteSnapshotDescriptor: VaultSnapshotDescriptor = {
     vaultId: values.vaultId,
-    versionVector: remoteVault.versionVector,
+    snapshotVersionVector: remoteSnapshot.metadata.snapshotVersionVector,
     revisionTimestamp: remoteSnapshot.metadata.revisionTimestamp,
   };
   const enrollmentBundle: DeviceEnrollmentBundle = {
@@ -155,7 +150,10 @@ describe("PerformDeviceEnrollmentUseCase", () => {
 
     expect(result).toEqual({
       vault: registeredVault,
-      revision: 3,
+      snapshotVersionVector: {
+        [ctx.values.deviceId]: 2,
+        [enrolledDeviceId]: 1,
+      },
       revisionTimestamp: ctx.values.timestamp,
       deviceId: enrolledDeviceId,
     });
@@ -202,25 +200,20 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     expect(ctx.ports.saved.vaultSnapshot).toEqual({
       metadata: {
         ...ctx.remoteSnapshot.metadata,
-        revision: 3,
+        snapshotVersionVector: {
+          [ctx.values.deviceId]: 2,
+          [enrolledDeviceId]: 1,
+        },
         revisionTimestamp: ctx.values.timestamp,
         createdByDeviceId: enrolledDeviceId,
       },
-      trustedDevices: [
-        ...ctx.remoteSnapshot.trustedDevices,
-        {
-          id: enrolledDeviceId,
-          publicKeys: {
-            signingKey: ctx.values.devicePublicSignKey,
-          },
-        },
-      ],
       keySlots: {
         deviceSlots: [
           ...ctx.remoteSnapshot.keySlots.deviceSlots,
           {
             deviceId: enrolledDeviceId,
             protectedVaultMasterKey: ctx.values.protectedDeviceVaultMasterKey,
+            publicSignKey: ctx.values.devicePublicSignKey,
           },
         ],
         recoveryKeySlot: ctx.remoteSnapshot.keySlots.recoveryKeySlot,
@@ -229,7 +222,10 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       signature: ctx.values.snapshotSignature,
     });
     expect(ctx.ports.saved.unlockedVaultSession).toMatchObject({
-      sourceSnapshotRevision: 3,
+      sourceSnapshotVersionVector: {
+        [ctx.values.deviceId]: 2,
+        [enrolledDeviceId]: 1,
+      },
       unlockedVault: {
         vaultId: ctx.values.vaultId,
         deviceId: enrolledDeviceId,

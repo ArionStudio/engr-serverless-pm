@@ -44,23 +44,18 @@ function createContext() {
       schemaVersion: 1,
       vaultCreationTimestamp: values.timestamp - 1,
       revisionTimestamp: values.timestamp - 1,
-      revision: 1,
+      snapshotVersionVector: {
+        [values.deviceId]: 1,
+      },
       algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
       createdByDeviceId: values.deviceId,
     },
-    trustedDevices: [
-      {
-        id: values.deviceId,
-        publicKeys: {
-          signingKey: values.devicePublicSignKey,
-        },
-      },
-    ],
     keySlots: {
       deviceSlots: [
         {
           deviceId: values.deviceId,
           protectedVaultMasterKey: values.protectedDeviceVaultMasterKey,
+          publicSignKey: values.devicePublicSignKey,
         },
       ],
       recoveryKeySlot: {
@@ -185,25 +180,20 @@ describe("RecoverVaultAccessUseCase", () => {
     expect(ctx.saved.vaultSnapshot).toEqual({
       metadata: {
         ...ctx.vaultSnapshot.metadata,
-        revision: 2,
+        snapshotVersionVector: {
+          [ctx.values.deviceId]: 1,
+          [recoveredDeviceId]: 1,
+        },
         revisionTimestamp: ctx.values.timestamp,
         createdByDeviceId: recoveredDeviceId,
       },
-      trustedDevices: [
-        ...ctx.vaultSnapshot.trustedDevices,
-        {
-          id: recoveredDeviceId,
-          publicKeys: {
-            signingKey: ctx.values.devicePublicSignKey,
-          },
-        },
-      ],
       keySlots: {
         deviceSlots: [
           ...ctx.vaultSnapshot.keySlots.deviceSlots,
           {
             deviceId: recoveredDeviceId,
             protectedVaultMasterKey: ctx.values.protectedDeviceVaultMasterKey,
+            publicSignKey: ctx.values.devicePublicSignKey,
           },
         ],
         recoveryKeySlot: ctx.vaultSnapshot.keySlots.recoveryKeySlot,
@@ -214,7 +204,6 @@ describe("RecoverVaultAccessUseCase", () => {
     expect(ctx.ports.crypto.signVaultSnapshot).toHaveBeenCalledWith(
       {
         metadata: ctx.saved.vaultSnapshot?.metadata,
-        trustedDevices: ctx.saved.vaultSnapshot?.trustedDevices,
         keySlots: ctx.saved.vaultSnapshot?.keySlots,
         content: ctx.saved.vaultSnapshot?.content,
       },
@@ -228,7 +217,10 @@ describe("RecoverVaultAccessUseCase", () => {
         vaultMasterKey: ctx.values.vaultMasterKey,
         devicePrivateSignKey: ctx.values.devicePrivateSignKey,
       },
-      sourceSnapshotRevision: 2,
+      sourceSnapshotVersionVector: {
+        [ctx.values.deviceId]: 1,
+        [recoveredDeviceId]: 1,
+      },
     });
     expect(
       ctx.ports.vaultLocalRepository.saveRecoveredLocalVault,
@@ -287,18 +279,11 @@ describe("RecoverVaultAccessUseCase", () => {
       deviceName: "Recovered laptop",
     });
 
-    expect(ctx.saved.vaultSnapshot?.trustedDevices).toEqual([
-      {
-        id: recoveredDeviceId,
-        publicKeys: {
-          signingKey: ctx.values.devicePublicSignKey,
-        },
-      },
-    ]);
     expect(ctx.saved.vaultSnapshot?.keySlots.deviceSlots).toEqual([
       {
         deviceId: recoveredDeviceId,
         protectedVaultMasterKey: ctx.values.protectedDeviceVaultMasterKey,
+        publicSignKey: ctx.values.devicePublicSignKey,
       },
     ]);
     expect(
@@ -368,7 +353,10 @@ describe("RecoverVaultAccessUseCase", () => {
     const ctx = createContext();
     ctx.saved.vaultSnapshot = {
       ...ctx.vaultSnapshot,
-      trustedDevices: [],
+      keySlots: {
+        ...ctx.vaultSnapshot.keySlots,
+        deviceSlots: [],
+      },
     };
 
     await expect(
@@ -412,7 +400,9 @@ describe("RecoverVaultAccessUseCase", () => {
     ctx.saved.unlockedVaultSessionMaterial = {
       sessionId: ctx.values.sessionId,
       vaultId: "active-vault-id",
-      sourceSnapshotRevision: 7,
+      sourceSnapshotVersionVector: {
+        [ctx.values.deviceId]: 7,
+      },
       deviceId: ctx.values.deviceId,
       vaultMasterKey: ctx.values.vaultMasterKey,
       devicePrivateSignKey: ctx.values.devicePrivateSignKey,
@@ -493,7 +483,10 @@ describe("RecoverVaultAccessUseCase", () => {
     });
     expect(ctx.saved.vaultSnapshot?.metadata).toMatchObject({
       id: ctx.values.vaultId,
-      revision: 2,
+      snapshotVersionVector: {
+        [ctx.values.deviceId]: 1,
+        [recoveredDeviceId]: 1,
+      },
       createdByDeviceId: recoveredDeviceId,
     });
     expect(ctx.saved.unlockedVaultSession).toBeUndefined();

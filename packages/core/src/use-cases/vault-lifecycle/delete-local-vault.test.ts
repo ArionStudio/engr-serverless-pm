@@ -20,7 +20,9 @@ function createContext() {
       vaultMasterKey: values.vaultMasterKey,
       devicePrivateSignKey: values.devicePrivateSignKey,
     },
-    sourceSnapshotRevision: 1,
+    sourceSnapshotVersionVector: {
+      [values.deviceId]: 1,
+    },
   };
 
   return {

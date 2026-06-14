@@ -10,16 +10,19 @@ import {
   UnlockedVaultSessionInvalidError,
   VaultMustBeUnlockedError,
 } from "../../errors/vault-session.errors";
+import type { VersionVector } from "../../domain/versioning/version-vector.type";
 import { UnlockedVaultSessionService } from "./unlocked-vault-session.service";
 
 function createContext() {
   const values = createCoreTestValues();
   const ports = createCoreTestPorts(values);
+  const sourceSnapshotVersionVector = { [values.deviceId]: 7 };
+  const staleSourceSnapshotVersionVector = { [values.deviceId]: 6 };
   const session = createUnlockedVaultSessionWithEntries(
     values,
     [singlePasswordEntry],
     [],
-    7,
+    sourceSnapshotVersionVector,
   );
   const service = new UnlockedVaultSessionService(
     ports.unlockedVaultSessionMaterialRepository,
@@ -35,6 +38,8 @@ function createContext() {
   return {
     values,
     ports,
+    sourceSnapshotVersionVector,
+    staleSourceSnapshotVersionVector,
     session,
     service,
   };
@@ -45,7 +50,7 @@ function createMaterial(
   overrides: Partial<{
     readonly sessionId: string;
     readonly vaultId: string;
-    readonly sourceSnapshotRevision: number;
+    readonly sourceSnapshotVersionVector: VersionVector;
     readonly deviceId: string;
     readonly vaultMasterKey: typeof ctx.values.vaultMasterKey;
     readonly devicePrivateSignKey: typeof ctx.values.devicePrivateSignKey;
@@ -55,7 +60,7 @@ function createMaterial(
   return {
     sessionId: ctx.values.sessionId,
     vaultId: ctx.values.vaultId,
-    sourceSnapshotRevision: 7,
+    sourceSnapshotVersionVector: ctx.sourceSnapshotVersionVector,
     deviceId: ctx.values.deviceId,
     vaultMasterKey: ctx.values.vaultMasterKey,
     devicePrivateSignKey: ctx.values.devicePrivateSignKey,
@@ -69,14 +74,14 @@ function createEncryptedPayload(
   overrides: Partial<{
     readonly sessionId: string;
     readonly vaultId: string;
-    readonly sourceSnapshotRevision: number;
+    readonly sourceSnapshotVersionVector: VersionVector;
     readonly content: typeof ctx.values.encryptedUnlockedVaultSessionPayload;
   }> = {},
 ) {
   return {
     sessionId: ctx.values.sessionId,
     vaultId: ctx.values.vaultId,
-    sourceSnapshotRevision: 7,
+    sourceSnapshotVersionVector: ctx.sourceSnapshotVersionVector,
     content: ctx.values.encryptedUnlockedVaultSessionPayload,
     ...overrides,
   };
@@ -89,7 +94,7 @@ function createActiveMaterial(
   return createMaterial(ctx, {
     sessionId: "active-session-id",
     vaultId,
-    sourceSnapshotRevision: 6,
+    sourceSnapshotVersionVector: ctx.staleSourceSnapshotVersionVector,
   });
 }
 
@@ -145,7 +150,7 @@ describe("UnlockedVaultSessionService", () => {
         vaultMasterKey: ctx.values.vaultMasterKey,
         devicePrivateSignKey: ctx.values.devicePrivateSignKey,
       },
-      sourceSnapshotRevision: 7,
+      sourceSnapshotVersionVector: ctx.sourceSnapshotVersionVector,
     });
     expect(
       ctx.ports.crypto.decryptUnlockedVaultSessionPayload,
@@ -155,7 +160,7 @@ describe("UnlockedVaultSessionService", () => {
       {
         sessionId: ctx.values.sessionId,
         vaultId: ctx.values.vaultId,
-        sourceSnapshotRevision: 7,
+        sourceSnapshotVersionVector: ctx.sourceSnapshotVersionVector,
       },
     );
   });
@@ -179,7 +184,7 @@ describe("UnlockedVaultSessionService", () => {
         vaultMasterKey: ctx.values.vaultMasterKey,
         devicePrivateSignKey: ctx.values.devicePrivateSignKey,
       },
-      sourceSnapshotRevision: 7,
+      sourceSnapshotVersionVector: ctx.sourceSnapshotVersionVector,
     });
   });
 
@@ -238,16 +243,16 @@ describe("UnlockedVaultSessionService", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("uses encrypted payload revision when material revision is stale", async () => {
+  it("uses encrypted payload version when material version is stale", async () => {
     const ctx = createContext();
     ctx.ports.saved.unlockedVaultSessionMaterial = createMaterial(ctx, {
-      sourceSnapshotRevision: 6,
+      sourceSnapshotVersionVector: ctx.staleSourceSnapshotVersionVector,
     });
     ctx.ports.saved.encryptedUnlockedVaultSessionPayload =
       createEncryptedPayload(ctx);
 
     await expect(ctx.service.get()).resolves.toMatchObject({
-      sourceSnapshotRevision: 7,
+      sourceSnapshotVersionVector: ctx.sourceSnapshotVersionVector,
     });
     expect(
       ctx.ports.crypto.decryptUnlockedVaultSessionPayload,
@@ -257,7 +262,7 @@ describe("UnlockedVaultSessionService", () => {
       {
         sessionId: ctx.values.sessionId,
         vaultId: ctx.values.vaultId,
-        sourceSnapshotRevision: 7,
+        sourceSnapshotVersionVector: ctx.sourceSnapshotVersionVector,
       },
     );
   });
@@ -267,7 +272,7 @@ describe("UnlockedVaultSessionService", () => {
     ctx.ports.saved.unlockedVaultSessionMaterial = createMaterial(ctx);
     ctx.ports.saved.encryptedUnlockedVaultSessionPayload =
       createEncryptedPayload(ctx, {
-        sourceSnapshotRevision: 6,
+        sourceSnapshotVersionVector: ctx.staleSourceSnapshotVersionVector,
       });
 
     await expect(ctx.service.get()).rejects.toBeInstanceOf(
@@ -304,7 +309,10 @@ describe("UnlockedVaultSessionService", () => {
   it("commits a new unlocked vault session as encrypted payload then material", async () => {
     const ctx = createContext();
 
-    await ctx.service.commit(ctx.session.unlockedVault, 7);
+    await ctx.service.commit(
+      ctx.session.unlockedVault,
+      ctx.sourceSnapshotVersionVector,
+    );
 
     expect(ctx.ports.ids.generateId).toHaveBeenCalled();
     expect(
@@ -320,19 +328,19 @@ describe("UnlockedVaultSessionService", () => {
       {
         sessionId: ctx.values.sessionId,
         vaultId: ctx.values.vaultId,
-        sourceSnapshotRevision: 7,
+        sourceSnapshotVersionVector: ctx.sourceSnapshotVersionVector,
       },
     );
     expect(ctx.ports.saved.encryptedUnlockedVaultSessionPayload).toEqual({
       sessionId: ctx.values.sessionId,
       vaultId: ctx.values.vaultId,
-      sourceSnapshotRevision: 7,
+      sourceSnapshotVersionVector: ctx.sourceSnapshotVersionVector,
       content: ctx.values.encryptedUnlockedVaultSessionPayload,
     });
     expect(ctx.ports.saved.unlockedVaultSessionMaterial).toEqual({
       sessionId: ctx.values.sessionId,
       vaultId: ctx.values.vaultId,
-      sourceSnapshotRevision: 7,
+      sourceSnapshotVersionVector: ctx.sourceSnapshotVersionVector,
       deviceId: ctx.values.deviceId,
       vaultMasterKey: ctx.values.vaultMasterKey,
       devicePrivateSignKey: ctx.values.devicePrivateSignKey,
@@ -355,7 +363,10 @@ describe("UnlockedVaultSessionService", () => {
     const ctx = createContext();
     ctx.ports.saved.unlockedVaultSessionMaterial = createActiveMaterial(ctx);
 
-    await ctx.service.commit(ctx.session.unlockedVault, 7);
+    await ctx.service.commit(
+      ctx.session.unlockedVault,
+      ctx.sourceSnapshotVersionVector,
+    );
 
     expect(ctx.ports.ids.generateId).not.toHaveBeenCalled();
     expect(
@@ -364,13 +375,13 @@ describe("UnlockedVaultSessionService", () => {
     expect(ctx.ports.saved.encryptedUnlockedVaultSessionPayload).toEqual({
       sessionId: "active-session-id",
       vaultId: ctx.values.vaultId,
-      sourceSnapshotRevision: 7,
+      sourceSnapshotVersionVector: ctx.sourceSnapshotVersionVector,
       content: ctx.values.encryptedUnlockedVaultSessionPayload,
     });
     expect(ctx.ports.saved.unlockedVaultSessionMaterial).toEqual({
       sessionId: "active-session-id",
       vaultId: ctx.values.vaultId,
-      sourceSnapshotRevision: 7,
+      sourceSnapshotVersionVector: ctx.sourceSnapshotVersionVector,
       deviceId: ctx.values.deviceId,
       vaultMasterKey: ctx.values.vaultMasterKey,
       devicePrivateSignKey: ctx.values.devicePrivateSignKey,
@@ -386,7 +397,10 @@ describe("UnlockedVaultSessionService", () => {
     );
 
     await expect(
-      ctx.service.commit(ctx.session.unlockedVault, 7),
+      ctx.service.commit(
+        ctx.session.unlockedVault,
+        ctx.sourceSnapshotVersionVector,
+      ),
     ).rejects.toBeInstanceOf(ActiveUnlockedVaultMismatchError);
 
     expect(
@@ -407,9 +421,12 @@ describe("UnlockedVaultSessionService", () => {
         .saveEncryptedUnlockedVaultSessionPayload,
     ).mockRejectedValueOnce(error);
 
-    await expect(ctx.service.commit(ctx.session.unlockedVault, 7)).rejects.toBe(
-      error,
-    );
+    await expect(
+      ctx.service.commit(
+        ctx.session.unlockedVault,
+        ctx.sourceSnapshotVersionVector,
+      ),
+    ).rejects.toBe(error);
 
     expect(
       ctx.ports.unlockedVaultSessionMaterialRepository
@@ -433,9 +450,12 @@ describe("UnlockedVaultSessionService", () => {
       ctx.ports.crypto.encryptUnlockedVaultSessionPayload,
     ).mockRejectedValueOnce(error);
 
-    await expect(ctx.service.commit(ctx.session.unlockedVault, 7)).rejects.toBe(
-      error,
-    );
+    await expect(
+      ctx.service.commit(
+        ctx.session.unlockedVault,
+        ctx.sourceSnapshotVersionVector,
+      ),
+    ).rejects.toBe(error);
 
     expect(
       ctx.ports.unlockedVaultSessionMaterialRepository
@@ -456,7 +476,10 @@ describe("UnlockedVaultSessionService", () => {
     ).mockRejectedValueOnce(error);
 
     await expect(
-      ctx.service.commitPersistedSnapshot(ctx.session.unlockedVault, 7),
+      ctx.service.commitPersistedSnapshot(
+        ctx.session.unlockedVault,
+        ctx.sourceSnapshotVersionVector,
+      ),
     ).rejects.toBe(error);
 
     expect(
@@ -477,7 +500,10 @@ describe("UnlockedVaultSessionService", () => {
     );
 
     await expect(
-      ctx.service.commitPersistedSnapshot(ctx.session.unlockedVault, 7),
+      ctx.service.commitPersistedSnapshot(
+        ctx.session.unlockedVault,
+        ctx.sourceSnapshotVersionVector,
+      ),
     ).rejects.toBeInstanceOf(ActiveUnlockedVaultMismatchError);
 
     expect(

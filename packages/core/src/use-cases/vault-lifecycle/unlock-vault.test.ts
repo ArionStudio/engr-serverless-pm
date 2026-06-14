@@ -69,7 +69,9 @@ describe("UnlockVaultUseCase", () => {
         vaultMasterKey: ctx.values.vaultMasterKey,
         devicePrivateSignKey: ctx.values.devicePrivateSignKey,
       },
-      sourceSnapshotRevision: 1,
+      sourceSnapshotVersionVector: {
+        [ctx.values.deviceId]: 1,
+      },
     });
     expect(ctx.ports.vaultLockTasks.save).toHaveBeenCalledWith({
       actionId: ctx.values.vaultLockActionId,
@@ -201,7 +203,10 @@ describe("UnlockVaultUseCase", () => {
     const ctx = createUnlockVaultTestContext();
     ctx.saved.vaultSnapshot = {
       ...ctx.vaultSnapshot,
-      trustedDevices: [],
+      keySlots: {
+        ...ctx.vaultSnapshot.keySlots,
+        deviceSlots: [],
+      },
     };
 
     await expect(
@@ -321,7 +326,9 @@ describe("UnlockVaultUseCase", () => {
     ctx.saved.unlockedVaultSessionMaterial = {
       sessionId: ctx.values.sessionId,
       vaultId: "active-vault-id",
-      sourceSnapshotRevision: 7,
+      sourceSnapshotVersionVector: {
+        [ctx.values.deviceId]: 7,
+      },
       deviceId: ctx.values.deviceId,
       vaultMasterKey: ctx.values.vaultMasterKey,
       devicePrivateSignKey: ctx.values.devicePrivateSignKey,

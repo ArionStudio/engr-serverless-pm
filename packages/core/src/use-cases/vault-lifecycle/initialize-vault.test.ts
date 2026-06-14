@@ -83,15 +83,6 @@ describe("InitializeVaultUseCase", () => {
       deletedTags: [],
     };
 
-    const expectedTrustedDevices = [
-      {
-        id: ctx.values.deviceId,
-        publicKeys: {
-          signingKey: ctx.values.devicePublicSignKey,
-        },
-      },
-    ];
-
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).toHaveBeenCalledWith(
       expectedVault,
       ctx.values.vaultMasterKey,
@@ -119,16 +110,18 @@ describe("InitializeVaultUseCase", () => {
         schemaVersion: 1,
         vaultCreationTimestamp: ctx.values.timestamp,
         revisionTimestamp: ctx.values.timestamp,
-        revision: 1,
+        snapshotVersionVector: {
+          [ctx.values.deviceId]: 1,
+        },
         algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
         createdByDeviceId: ctx.values.deviceId,
       },
-      trustedDevices: expectedTrustedDevices,
       keySlots: {
         deviceSlots: [
           {
             deviceId: ctx.values.deviceId,
             protectedVaultMasterKey: ctx.values.protectedDeviceVaultMasterKey,
+            publicSignKey: ctx.values.devicePublicSignKey,
           },
         ],
         recoveryKeySlot: {
@@ -142,7 +135,6 @@ describe("InitializeVaultUseCase", () => {
     expect(ctx.ports.crypto.signVaultSnapshot).toHaveBeenCalledWith(
       {
         metadata: ctx.saved.vaultSnapshot?.metadata,
-        trustedDevices: ctx.saved.vaultSnapshot?.trustedDevices,
         keySlots: ctx.saved.vaultSnapshot?.keySlots,
         content: ctx.saved.vaultSnapshot?.content,
       },
@@ -157,7 +149,9 @@ describe("InitializeVaultUseCase", () => {
         vaultMasterKey: ctx.values.vaultMasterKey,
         devicePrivateSignKey: ctx.values.devicePrivateSignKey,
       },
-      sourceSnapshotRevision: 1,
+      sourceSnapshotVersionVector: {
+        [ctx.values.deviceId]: 1,
+      },
     });
   });
 
@@ -248,7 +242,9 @@ describe("InitializeVaultUseCase", () => {
     ctx.saved.unlockedVaultSessionMaterial = {
       sessionId: ctx.values.sessionId,
       vaultId: "active-vault-id",
-      sourceSnapshotRevision: 7,
+      sourceSnapshotVersionVector: {
+        [ctx.values.deviceId]: 7,
+      },
       deviceId: ctx.values.deviceId,
       vaultMasterKey: ctx.values.vaultMasterKey,
       devicePrivateSignKey: ctx.values.devicePrivateSignKey,

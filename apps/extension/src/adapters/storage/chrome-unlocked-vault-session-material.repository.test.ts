@@ -50,7 +50,9 @@ function createMaterial() {
   return {
     sessionId: "session-id",
     vaultId: "vault-id",
-    sourceSnapshotRevision: 7,
+    sourceSnapshotVersionVector: {
+      "device-id": 7,
+    },
     deviceId: "device-id",
     vaultMasterKey: arrayBuffer(1, 2, 3) as VaultMasterKey,
     devicePrivateSignKey: arrayBuffer(4, 5, 6) as DevicePrivateSignKey,
@@ -70,7 +72,9 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
     expect(getRecords()[UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY]).toEqual({
       sessionId: "session-id",
       vaultId: "vault-id",
-      sourceSnapshotRevision: 7,
+      sourceSnapshotVersionVector: {
+        "device-id": 7,
+      },
       deviceId: "device-id",
       vaultMasterKey: "AQID",
       devicePrivateSignKey: "BAUG",
@@ -83,7 +87,9 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
       [UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY]: {
         sessionId: "session-id",
         vaultId: "vault-id",
-        sourceSnapshotRevision: 7,
+        sourceSnapshotVersionVector: {
+          "device-id": 7,
+        },
         deviceId: "device-id",
         vaultMasterKey: "AQID",
         devicePrivateSignKey: "BAUG",
@@ -115,7 +121,9 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
       [UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY]: {
         sessionId: "session-id",
         vaultId: "vault-id",
-        sourceSnapshotRevision: 7,
+        sourceSnapshotVersionVector: {
+          "device-id": 7,
+        },
         deviceId: "device-id",
         vaultMasterKey: "AQID",
         devicePrivateSignKey: "BAUG",

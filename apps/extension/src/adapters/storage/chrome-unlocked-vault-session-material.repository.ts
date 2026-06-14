@@ -2,6 +2,7 @@ import type {
   DevicePrivateSignKey,
   UnlockedVaultSessionMaterialRepositoryPort,
   UnlockedVaultSessionPayloadKey,
+  VersionVector,
   VaultMasterKey,
 } from "@lfspm/core";
 import {
@@ -34,7 +35,7 @@ export class ChromeUnlockedVaultSessionMaterialRepository implements UnlockedVau
   async saveUnlockedVaultSessionMaterial(material: {
     readonly sessionId: string;
     readonly vaultId: string;
-    readonly sourceSnapshotRevision: number;
+    readonly sourceSnapshotVersionVector: VersionVector;
     readonly deviceId: string;
     readonly vaultMasterKey: VaultMasterKey;
     readonly devicePrivateSignKey: DevicePrivateSignKey;
@@ -48,7 +49,7 @@ export class ChromeUnlockedVaultSessionMaterialRepository implements UnlockedVau
   async getUnlockedVaultSessionMaterial(): Promise<{
     readonly sessionId: string;
     readonly vaultId: string;
-    readonly sourceSnapshotRevision: number;
+    readonly sourceSnapshotVersionVector: VersionVector;
     readonly deviceId: string;
     readonly vaultMasterKey: VaultMasterKey;
     readonly devicePrivateSignKey: DevicePrivateSignKey;
