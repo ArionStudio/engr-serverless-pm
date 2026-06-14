@@ -9,12 +9,15 @@ import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import type { VaultSnapshotDescriptor } from "../../domain/snapshot/vault-snapshot-descriptor.type";
 import type { Vault } from "../../domain/vault/vault";
 import {
+  LocalVaultSnapshotAheadError,
   RemoteVaultSnapshotChangedError,
+  RemoteVaultSnapshotIntegrityError,
   SyncAlreadyResolvedError,
   SyncResolutionIncompleteError,
   SyncTrustChangeRequiresDeviceTrustFlowError,
 } from "../../errors/sync.errors";
 import { VaultSnapshotSignerNotTrustedError } from "../../errors/unlock-vault.errors";
+import { VaultSnapshotVersionMismatchError } from "../../errors/vault-snapshot.errors";
 import { ApplySyncResolutionUseCase } from "./apply-sync-resolution";
 
 function createSnapshot(
@@ -27,24 +30,19 @@ function createSnapshot(
       schemaVersion: 1,
       vaultCreationTimestamp: values.timestamp - 1_000,
       revisionTimestamp: values.timestamp,
-      revision: 1,
+      snapshotVersionVector: {
+        [values.deviceId]: 1,
+      },
       algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
       createdByDeviceId: values.deviceId,
       ...overrides.metadata,
     },
-    trustedDevices: [
-      {
-        id: values.deviceId,
-        publicKeys: {
-          signingKey: values.devicePublicSignKey,
-        },
-      },
-    ],
     keySlots: {
       deviceSlots: [
         {
           deviceId: values.deviceId,
           protectedVaultMasterKey: values.protectedDeviceVaultMasterKey,
+          publicSignKey: values.devicePublicSignKey,
         },
       ],
       recoveryKeySlot: {
@@ -77,7 +75,7 @@ function createRemoteSnapshotDescriptor(
 ): VaultSnapshotDescriptor {
   return {
     vaultId: values.vaultId,
-    versionVector: {
+    snapshotVersionVector: {
       [values.deviceId]: 1,
     },
     revisionTimestamp: values.timestamp,
@@ -101,7 +99,9 @@ function createContext() {
       schemaVersion: 1,
       vaultCreationTimestamp: values.timestamp - 1_000,
       revisionTimestamp: values.timestamp,
-      revision: 3,
+      snapshotVersionVector: {
+        [values.deviceId]: 3,
+      },
       algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
       createdByDeviceId: values.deviceId,
     },
@@ -117,7 +117,9 @@ function createContext() {
       ...createUnlockedVaultWithEntries(values, []),
       vault: localVault,
     },
-    sourceSnapshotRevision: 3,
+    sourceSnapshotVersionVector: {
+      [values.deviceId]: 3,
+    },
   };
   ports.saved.vaultSnapshot = localSnapshot;
 
@@ -152,7 +154,10 @@ describe("ApplySyncResolutionUseCase", () => {
     const remoteSnapshotDescriptor = createRemoteSnapshotDescriptor(
       ctx.values,
       {
-        versionVector: remoteVault.versionVector,
+        snapshotVersionVector: {
+          [ctx.values.deviceId]: 3,
+          "remote-device-id": 1,
+        },
         revisionTimestamp: ctx.values.timestamp + 1,
       },
     );
@@ -162,7 +167,10 @@ describe("ApplySyncResolutionUseCase", () => {
         schemaVersion: 1,
         vaultCreationTimestamp: ctx.values.timestamp - 1_000,
         revisionTimestamp: ctx.values.timestamp + 1,
-        revision: 4,
+        snapshotVersionVector: {
+          [ctx.values.deviceId]: 3,
+          "remote-device-id": 1,
+        },
         algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
         createdByDeviceId: ctx.values.deviceId,
       },
@@ -185,7 +193,6 @@ describe("ApplySyncResolutionUseCase", () => {
         resolution: {
           entryResolutions: [
             {
-              kind: "password_entry",
               entryId: "remote-entry",
               action: "use_remote",
             },
@@ -195,7 +202,9 @@ describe("ApplySyncResolutionUseCase", () => {
         },
       }),
     ).resolves.toEqual({
-      revision: 4,
+      snapshotVersionVector: {
+        [ctx.values.deviceId]: 4,
+      },
       revisionTimestamp: ctx.values.timestamp,
     });
 
@@ -226,7 +235,9 @@ describe("ApplySyncResolutionUseCase", () => {
           },
         }),
       }),
-      3,
+      {
+        [ctx.values.deviceId]: 3,
+      },
     );
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).toHaveBeenCalledWith(
       ctx.values.syncConfig,
@@ -238,13 +249,13 @@ describe("ApplySyncResolutionUseCase", () => {
   it("fails before writing when the remote descriptor changed after review", async () => {
     const ctx = createContext();
     const reviewedDescriptor = createRemoteSnapshotDescriptor(ctx.values, {
-      versionVector: {
+      snapshotVersionVector: {
         [ctx.values.deviceId]: 3,
         "remote-device-id": 1,
       },
     });
     const currentDescriptor = createRemoteSnapshotDescriptor(ctx.values, {
-      versionVector: {
+      snapshotVersionVector: {
         [ctx.values.deviceId]: 3,
         "remote-device-id": 2,
       },
@@ -294,10 +305,26 @@ describe("ApplySyncResolutionUseCase", () => {
     const remoteSnapshotDescriptor = createRemoteSnapshotDescriptor(
       ctx.values,
       {
-        versionVector: remoteVault.versionVector,
+        snapshotVersionVector: {
+          [ctx.values.deviceId]: 3,
+          "remote-device-id": 1,
+        },
       },
     );
-    const remoteSnapshot = createSnapshot(ctx.values);
+    const remoteSnapshot = createSnapshot(ctx.values, {
+      metadata: {
+        id: ctx.values.vaultId,
+        schemaVersion: 1,
+        vaultCreationTimestamp: ctx.values.timestamp - 1_000,
+        revisionTimestamp: ctx.values.timestamp,
+        snapshotVersionVector: {
+          [ctx.values.deviceId]: 3,
+          "remote-device-id": 1,
+        },
+        algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
+        createdByDeviceId: ctx.values.deviceId,
+      },
+    });
 
     vi.mocked(
       ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
@@ -333,10 +360,24 @@ describe("ApplySyncResolutionUseCase", () => {
     const remoteSnapshotDescriptor = createRemoteSnapshotDescriptor(
       ctx.values,
       {
-        versionVector: remoteVault.versionVector,
+        snapshotVersionVector: {
+          [ctx.values.deviceId]: 3,
+        },
       },
     );
-    const remoteSnapshot = createSnapshot(ctx.values);
+    const remoteSnapshot = createSnapshot(ctx.values, {
+      metadata: {
+        id: ctx.values.vaultId,
+        schemaVersion: 1,
+        vaultCreationTimestamp: ctx.values.timestamp - 1_000,
+        revisionTimestamp: ctx.values.timestamp,
+        snapshotVersionVector: {
+          [ctx.values.deviceId]: 3,
+        },
+        algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
+        createdByDeviceId: ctx.values.deviceId,
+      },
+    });
 
     vi.mocked(
       ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
@@ -368,26 +409,13 @@ describe("ApplySyncResolutionUseCase", () => {
 
   it("rejects remote snapshots signed by devices not trusted locally", async () => {
     const ctx = createContext();
-    const remoteVault: Vault = {
-      ...ctx.saved.unlockedVaultSession!.unlockedVault.vault,
-      versionVector: {
-        [ctx.values.deviceId]: 3,
-        "remote-device-id": 1,
-      },
-      tags: [
-        {
-          id: 1,
-          name: "Remote",
-          versionVector: {
-            "remote-device-id": 1,
-          },
-        },
-      ],
-    };
     const remoteSnapshotDescriptor = createRemoteSnapshotDescriptor(
       ctx.values,
       {
-        versionVector: remoteVault.versionVector,
+        snapshotVersionVector: {
+          [ctx.values.deviceId]: 3,
+          "remote-device-id": 1,
+        },
       },
     );
     const remoteSnapshot = createSnapshot(ctx.values, {
@@ -396,18 +424,23 @@ describe("ApplySyncResolutionUseCase", () => {
         schemaVersion: 1,
         vaultCreationTimestamp: ctx.values.timestamp - 1_000,
         revisionTimestamp: ctx.values.timestamp,
-        revision: 4,
+        snapshotVersionVector: {
+          [ctx.values.deviceId]: 3,
+          "remote-device-id": 1,
+        },
         algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
         createdByDeviceId: "remote-device-id",
       },
-      trustedDevices: [
-        {
-          id: "remote-device-id",
-          publicKeys: {
-            signingKey: ctx.values.devicePublicSignKey,
+      keySlots: {
+        ...ctx.localSnapshot.keySlots,
+        deviceSlots: [
+          {
+            deviceId: "remote-device-id",
+            protectedVaultMasterKey: ctx.values.protectedDeviceVaultMasterKey,
+            publicSignKey: ctx.values.devicePublicSignKey,
           },
-        },
-      ],
+        ],
+      },
     });
 
     vi.mocked(
@@ -425,7 +458,6 @@ describe("ApplySyncResolutionUseCase", () => {
           entryResolutions: [],
           tagResolutions: [
             {
-              kind: "tag",
               tagId: 1,
               action: "use_remote",
             },
@@ -437,7 +469,160 @@ describe("ApplySyncResolutionUseCase", () => {
 
     expect(
       ctx.ports.crypto.verifyVaultSnapshotSignature,
+    ).toHaveBeenCalledOnce();
+    expect(ctx.ports.crypto.verifyVaultSnapshotSignature).toHaveBeenCalledWith(
+      ctx.localSnapshot,
+      ctx.values.devicePublicSignKey,
+    );
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
     ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("fails before provider reads when the local snapshot changed outside the unlocked session", async () => {
+    const ctx = createContext();
+    ctx.saved.vaultSnapshot = createSnapshot(ctx.values, {
+      metadata: {
+        id: ctx.values.vaultId,
+        schemaVersion: 1,
+        vaultCreationTimestamp: ctx.values.timestamp - 1_000,
+        revisionTimestamp: ctx.values.timestamp + 1,
+        snapshotVersionVector: {
+          [ctx.values.deviceId]: 4,
+        },
+        algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
+        createdByDeviceId: ctx.values.deviceId,
+      },
+    });
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        remoteSnapshotDescriptor: createRemoteSnapshotDescriptor(ctx.values, {
+          snapshotVersionVector: {
+            [ctx.values.deviceId]: 3,
+            "remote-device-id": 1,
+          },
+        }),
+        resolution: {
+          entryResolutions: [],
+          tagResolutions: [],
+          deviceProfileResolutions: [],
+        },
+      }),
+    ).rejects.toBeInstanceOf(VaultSnapshotVersionMismatchError);
+
+    expect(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.downloadVaultSnapshot).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("fails before writing when the local snapshot is ahead of the reviewed remote descriptor", async () => {
+    const ctx = createContext();
+    ctx.saved.vaultSnapshot = createSnapshot(ctx.values, {
+      metadata: {
+        id: ctx.values.vaultId,
+        schemaVersion: 1,
+        vaultCreationTimestamp: ctx.values.timestamp - 1_000,
+        revisionTimestamp: ctx.values.timestamp + 1,
+        snapshotVersionVector: {
+          [ctx.values.deviceId]: 4,
+        },
+        algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
+        createdByDeviceId: ctx.values.deviceId,
+      },
+    });
+    ctx.saved.unlockedVaultSession = {
+      ...ctx.saved.unlockedVaultSession!,
+      sourceSnapshotVersionVector: {
+        [ctx.values.deviceId]: 4,
+      },
+    };
+    const remoteSnapshotDescriptor = createRemoteSnapshotDescriptor(
+      ctx.values,
+      {
+        snapshotVersionVector: {
+          [ctx.values.deviceId]: 3,
+        },
+      },
+    );
+
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValueOnce(remoteSnapshotDescriptor);
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        remoteSnapshotDescriptor,
+        resolution: {
+          entryResolutions: [],
+          tagResolutions: [],
+          deviceProfileResolutions: [],
+        },
+      }),
+    ).rejects.toBeInstanceOf(LocalVaultSnapshotAheadError);
+
+    expect(ctx.ports.syncProvider.downloadVaultSnapshot).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("fails before writing when local and remote descriptors are broken", async () => {
+    const ctx = createContext();
+    ctx.saved.vaultSnapshot = createSnapshot(ctx.values, {
+      metadata: {
+        id: ctx.values.vaultId,
+        schemaVersion: 1,
+        vaultCreationTimestamp: ctx.values.timestamp - 1_000,
+        revisionTimestamp: ctx.values.timestamp + 1,
+        snapshotVersionVector: {
+          [ctx.values.deviceId]: 4,
+          A: 1,
+        },
+        algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
+        createdByDeviceId: ctx.values.deviceId,
+      },
+    });
+    ctx.saved.unlockedVaultSession = {
+      ...ctx.saved.unlockedVaultSession!,
+      sourceSnapshotVersionVector: {
+        [ctx.values.deviceId]: 4,
+        A: 1,
+      },
+    };
+    const remoteSnapshotDescriptor = createRemoteSnapshotDescriptor(
+      ctx.values,
+      {
+        snapshotVersionVector: {
+          [ctx.values.deviceId]: 3,
+          A: 2,
+        },
+      },
+    );
+
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValueOnce(remoteSnapshotDescriptor);
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        remoteSnapshotDescriptor,
+        resolution: {
+          entryResolutions: [],
+          tagResolutions: [],
+          deviceProfileResolutions: [],
+        },
+      }),
+    ).rejects.toBeInstanceOf(RemoteVaultSnapshotIntegrityError);
+
+    expect(ctx.ports.syncProvider.downloadVaultSnapshot).not.toHaveBeenCalled();
     expect(
       ctx.ports.vaultLocalRepository.saveVaultSnapshot,
     ).not.toHaveBeenCalled();
@@ -465,19 +650,36 @@ describe("ApplySyncResolutionUseCase", () => {
     const remoteSnapshotDescriptor = createRemoteSnapshotDescriptor(
       ctx.values,
       {
-        versionVector: remoteVault.versionVector,
+        snapshotVersionVector: {
+          [ctx.values.deviceId]: 3,
+          "remote-device-id": 1,
+        },
       },
     );
     const remoteSnapshot = createSnapshot(ctx.values, {
-      trustedDevices: [
-        ...ctx.localSnapshot.trustedDevices,
-        {
-          id: "remote-device-id",
-          publicKeys: {
-            signingKey: ctx.values.devicePublicSignKey,
-          },
+      metadata: {
+        id: ctx.values.vaultId,
+        schemaVersion: 1,
+        vaultCreationTimestamp: ctx.values.timestamp - 1_000,
+        revisionTimestamp: ctx.values.timestamp,
+        snapshotVersionVector: {
+          [ctx.values.deviceId]: 3,
+          "remote-device-id": 1,
         },
-      ],
+        algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
+        createdByDeviceId: ctx.values.deviceId,
+      },
+      keySlots: {
+        ...ctx.localSnapshot.keySlots,
+        deviceSlots: [
+          ...ctx.localSnapshot.keySlots.deviceSlots,
+          {
+            deviceId: "remote-device-id",
+            protectedVaultMasterKey: ctx.values.protectedDeviceVaultMasterKey,
+            publicSignKey: ctx.values.devicePublicSignKey,
+          },
+        ],
+      },
     });
 
     vi.mocked(
@@ -498,7 +700,6 @@ describe("ApplySyncResolutionUseCase", () => {
           entryResolutions: [],
           tagResolutions: [
             {
-              kind: "tag",
               tagId: 1,
               action: "use_remote",
             },

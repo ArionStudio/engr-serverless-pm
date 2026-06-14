@@ -1,23 +1,29 @@
 import type { VaultSnapshotDescriptor } from "../../domain/snapshot/vault-snapshot-descriptor.type";
-import type { VaultSyncReview } from "../../domain/sync/vault-sync-review.type";
 import type { VersionVectorRelation } from "../../domain/versioning/version-vector.type";
 import {
   areVaultSnapshotDescriptorsEqual,
   compareVaultSnapshotDescriptors,
   toVaultSnapshotDescriptor,
 } from "../../domain/snapshot/vault-snapshot-descriptor.utils";
+
 import {
-  createVaultSyncReview,
-  createVaultSyncTrustState,
-} from "../../domain/sync/vault-sync-review.utils";
-import {
+  LocalVaultSnapshotAheadError,
   RemoteVaultSnapshotChangedError,
+  RemoteVaultSnapshotIntegrityError,
   RemoteVaultSnapshotNotFoundError,
   SyncNotConfiguredError,
 } from "../../errors/sync.errors";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
+import { findChangedEntries } from "../../domain/sync/entry-review.utils";
+import type { EntryReviewItem } from "../../domain/sync/entry-review.type";
+import { findChangedTags } from "../../domain/sync/tag-review.utils";
+import type { TagReviewItem } from "../../domain/sync/tag-review.type";
+import { findChangedDeviceProfiles } from "../../domain/sync/device-profile-review.utils";
+import type { DeviceProfileReviewItem } from "../../domain/sync/device-profile-review.type";
+import { findChangesInKeySlots } from "../../domain/sync/key-slot-review.utils";
+import type { KeySlotReviewItem } from "../../domain/sync/key-slot-review.type";
 
 export type PrepareSyncReviewCommandParams = {
   readonly vaultId: string;
@@ -26,7 +32,18 @@ export type PrepareSyncReviewCommandParams = {
 export type PrepareSyncReviewResult = {
   readonly remoteSnapshotDescriptor: VaultSnapshotDescriptor;
   readonly relation: VersionVectorRelation;
-  readonly review: VaultSyncReview;
+  readonly review: VaultSyncReview | null;
+};
+
+type VaultSyncReview = {
+  readonly actionable: {
+    readonly entryReviews: readonly EntryReviewItem[];
+    readonly tagReviews: readonly TagReviewItem[];
+    readonly deviceProfileReviews: readonly DeviceProfileReviewItem[];
+  };
+  readonly readOnly: {
+    readonly keySlotsChanges: KeySlotReviewItem;
+  };
 };
 
 export class PrepareSyncReviewUseCase {
@@ -47,7 +64,7 @@ export class PrepareSyncReviewUseCase {
   async execute(
     params: PrepareSyncReviewCommandParams,
   ): Promise<PrepareSyncReviewResult> {
-    const { unlockedVault } =
+    const { sourceSnapshotVersionVector, unlockedVault } =
       await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
         "prepare sync review",
@@ -58,6 +75,12 @@ export class PrepareSyncReviewUseCase {
       throw new SyncNotConfiguredError(params.vaultId, "prepare sync review");
     }
 
+    const localSnapshot =
+      await this.vaultSnapshot.requireCurrentSnapshotForUnlockedVault(
+        params.vaultId,
+        unlockedVault,
+        sourceSnapshotVersionVector,
+      );
     const remoteSnapshotDescriptor =
       await this.syncProvider.getLatestVaultSnapshotDescriptor(
         syncConfig,
@@ -68,12 +91,8 @@ export class PrepareSyncReviewUseCase {
       throw new RemoteVaultSnapshotNotFoundError(params.vaultId);
     }
 
-    const localSnapshot = await this.vaultSnapshot.requireLocalVaultSnapshot(
-      params.vaultId,
-    );
     const localSnapshotDescriptor = toVaultSnapshotDescriptor(
       params.vaultId,
-      unlockedVault.vault,
       localSnapshot,
     );
     const relation = compareVaultSnapshotDescriptors(
@@ -81,39 +100,28 @@ export class PrepareSyncReviewUseCase {
       remoteSnapshotDescriptor,
     );
 
-    if (
-      relation === "local_ahead" &&
-      remoteSnapshotDescriptor.revisionTimestamp <=
-        localSnapshot.metadata.revisionTimestamp
-    ) {
-      return {
-        remoteSnapshotDescriptor,
-        relation,
-        review: createVaultSyncReview(
-          unlockedVault.vault,
-          unlockedVault.vault,
-          createVaultSyncTrustState(localSnapshot),
-          createVaultSyncTrustState(localSnapshot),
-        ),
-      };
+    if (relation === "broken") {
+      throw new RemoteVaultSnapshotIntegrityError(params.vaultId);
     }
 
-    if (
-      relation === "equal" &&
-      areVaultSnapshotDescriptorsEqual(
-        remoteSnapshotDescriptor,
-        localSnapshotDescriptor,
-      )
-    ) {
+    if (relation === "local_ahead") {
+      throw new LocalVaultSnapshotAheadError(params.vaultId);
+    }
+
+    if (relation === "equal") {
+      if (
+        !areVaultSnapshotDescriptorsEqual(
+          remoteSnapshotDescriptor,
+          localSnapshotDescriptor,
+        )
+      ) {
+        throw new RemoteVaultSnapshotIntegrityError(params.vaultId);
+      }
+
       return {
         remoteSnapshotDescriptor,
         relation,
-        review: createVaultSyncReview(
-          unlockedVault.vault,
-          unlockedVault.vault,
-          createVaultSyncTrustState(localSnapshot),
-          createVaultSyncTrustState(localSnapshot),
-        ),
+        review: null,
       };
     }
 
@@ -129,7 +137,6 @@ export class PrepareSyncReviewUseCase {
     );
     const downloadedDescriptor = toVaultSnapshotDescriptor(
       params.vaultId,
-      remoteVault,
       remoteSnapshot,
     );
 
@@ -142,15 +149,29 @@ export class PrepareSyncReviewUseCase {
       throw new RemoteVaultSnapshotChangedError(params.vaultId);
     }
 
+    const deviceProfileReviews = findChangedDeviceProfiles(
+      unlockedVault.vault,
+      remoteVault,
+    );
+
+    const keySlotsChanges = findChangesInKeySlots(
+      localSnapshot.keySlots,
+      remoteSnapshot.keySlots,
+    );
+
     return {
       remoteSnapshotDescriptor,
       relation,
-      review: createVaultSyncReview(
-        unlockedVault.vault,
-        remoteVault,
-        createVaultSyncTrustState(localSnapshot),
-        createVaultSyncTrustState(remoteSnapshot),
-      ),
+      review: {
+        actionable: {
+          entryReviews: findChangedEntries(unlockedVault.vault, remoteVault),
+          tagReviews: findChangedTags(unlockedVault.vault, remoteVault),
+          deviceProfileReviews,
+        },
+        readOnly: {
+          keySlotsChanges,
+        },
+      },
     };
   }
 }
