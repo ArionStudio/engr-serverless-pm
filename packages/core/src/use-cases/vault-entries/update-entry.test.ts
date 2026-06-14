@@ -13,12 +13,17 @@ import {
   PasswordEntryNotFoundError,
 } from "../../errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
+import { VaultSyncGuardService } from "../../services/sync";
 import { UpdateEntryUseCase } from "./update-entry";
 
 function createContext() {
   const values = createCoreTestValues();
   const ports = createCoreTestPorts(values);
   const vaultSnapshot = createVaultSnapshotServiceMock(values);
+  const vaultSyncGuard = new VaultSyncGuardService(
+    ports.syncProvider,
+    vaultSnapshot,
+  );
   saveUnlockedVaultWithEntries(ports, values, standardPasswordEntries);
 
   return {
@@ -28,6 +33,7 @@ function createContext() {
     vaultSnapshot,
     useCase: new UpdateEntryUseCase(
       ports.sessionServices.unlockedVaultSession,
+      vaultSyncGuard,
       vaultSnapshot,
     ),
   };
@@ -50,9 +56,10 @@ describe("UpdateEntryUseCase", () => {
 
     expect(result).toEqual({
       entryId: firstPasswordEntry.id,
-      revision: 2,
+      snapshotVersionVector: {
+        [ctx.values.deviceId]: 2,
+      },
       revisionTimestamp: ctx.values.timestamp + 1,
-      deviceId: ctx.values.deviceId,
     });
     expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries).toEqual(
       [
@@ -74,7 +81,11 @@ describe("UpdateEntryUseCase", () => {
     ).toEqual({
       [ctx.values.deviceId]: 2,
     });
-    expect(ctx.saved.unlockedVaultSession?.sourceSnapshotRevision).toBe(2);
+    expect(ctx.saved.unlockedVaultSession?.sourceSnapshotVersionVector).toEqual(
+      {
+        [ctx.values.deviceId]: 2,
+      },
+    );
     expect(ctx.vaultSnapshot.persistUnlockedVault).toHaveBeenCalledWith(
       ctx.values.vaultId,
       expect.objectContaining({
@@ -82,7 +93,9 @@ describe("UpdateEntryUseCase", () => {
           entries: ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries,
         }),
       }),
-      1,
+      {
+        [ctx.values.deviceId]: 1,
+      },
     );
     expect(
       vi.mocked(ctx.vaultSnapshot.persistUnlockedVault).mock

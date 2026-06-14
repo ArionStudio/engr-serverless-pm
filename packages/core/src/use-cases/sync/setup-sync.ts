@@ -3,6 +3,7 @@ import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import { InvalidSyncConfigError } from "../../errors/sync.errors";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
+import type { VaultSyncGuardService } from "../../services/sync";
 
 export type SetupSyncCommandParams = {
   readonly vaultId: string;
@@ -12,24 +13,33 @@ export type SetupSyncCommandParams = {
 export class SetupSyncUseCase {
   private readonly syncProvider: SyncProviderPort;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
+  private readonly vaultSyncGuard: VaultSyncGuardService;
   private readonly vaultSnapshot: VaultSnapshotService;
 
   constructor(
     syncProvider: SyncProviderPort,
     unlockedVaultSession: UnlockedVaultSessionService,
+    vaultSyncGuard: VaultSyncGuardService,
     vaultSnapshot: VaultSnapshotService,
   ) {
     this.syncProvider = syncProvider;
     this.unlockedVaultSession = unlockedVaultSession;
+    this.vaultSyncGuard = vaultSyncGuard;
     this.vaultSnapshot = vaultSnapshot;
   }
 
   async execute(params: SetupSyncCommandParams): Promise<void> {
-    const { sourceSnapshotRevision, unlockedVault } =
+    const { sourceSnapshotVersionVector, unlockedVault } =
       await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
         "setup sync",
       );
+
+    await this.vaultSyncGuard.requireReadyForLocalMutation(
+      params.vaultId,
+      unlockedVault,
+      sourceSnapshotVersionVector,
+    );
 
     let syncConfig: SyncConfig;
 
@@ -50,12 +60,12 @@ export class SetupSyncUseCase {
     const persistedSnapshot = await this.vaultSnapshot.persistUnlockedVault(
       params.vaultId,
       updatedUnlockedVault,
-      sourceSnapshotRevision,
+      sourceSnapshotVersionVector,
     );
 
     await this.unlockedVaultSession.commitPersistedSnapshot(
       updatedUnlockedVault,
-      persistedSnapshot.revision,
+      persistedSnapshot.snapshotVersionVector,
     );
   }
 }

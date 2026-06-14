@@ -5,6 +5,8 @@ import type { IdPort } from "../../ports/system/id.port";
 import { InvalidPasswordEntryError } from "../../errors/vault-entry.errors";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
+import type { VersionVector } from "../../domain/versioning/version-vector.type";
+import type { VaultSyncGuardService } from "../../services/sync";
 
 export type AddEntryCommandParams = {
   vaultId: string;
@@ -18,28 +20,30 @@ export type AddEntryCommandParams = {
 
 export type AddEntryResult = {
   entryId: string;
-  revision: number;
+  snapshotVersionVector: VersionVector;
   revisionTimestamp: number;
-  deviceId: string;
 };
 
 export class AddEntryUseCase {
   private readonly ids: IdPort;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
+  private readonly vaultSyncGuard: VaultSyncGuardService;
   private readonly vaultSnapshot: VaultSnapshotService;
 
   constructor(
     ids: IdPort,
     unlockedVaultSession: UnlockedVaultSessionService,
+    vaultSyncGuard: VaultSyncGuardService,
     vaultSnapshot: VaultSnapshotService,
   ) {
     this.ids = ids;
     this.unlockedVaultSession = unlockedVaultSession;
+    this.vaultSyncGuard = vaultSyncGuard;
     this.vaultSnapshot = vaultSnapshot;
   }
 
   async execute(params: AddEntryCommandParams): Promise<AddEntryResult> {
-    const { sourceSnapshotRevision, unlockedVault } =
+    const { sourceSnapshotVersionVector, unlockedVault } =
       await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
         "add entry",
@@ -64,6 +68,12 @@ export class AddEntryUseCase {
       throw new InvalidPasswordEntryError(entryPayloadResult.error);
     }
 
+    await this.vaultSyncGuard.requireReadyForLocalMutation(
+      params.vaultId,
+      unlockedVault,
+      sourceSnapshotVersionVector,
+    );
+
     const entryId = await this.ids.generateId();
 
     const updatedUnlockedVault = {
@@ -79,12 +89,12 @@ export class AddEntryUseCase {
     const persistedSnapshot = await this.vaultSnapshot.persistUnlockedVault(
       params.vaultId,
       updatedUnlockedVault,
-      sourceSnapshotRevision,
+      sourceSnapshotVersionVector,
     );
 
     await this.unlockedVaultSession.commitPersistedSnapshot(
       updatedUnlockedVault,
-      persistedSnapshot.revision,
+      persistedSnapshot.snapshotVersionVector,
     );
 
     return {

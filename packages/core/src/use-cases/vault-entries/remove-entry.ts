@@ -3,6 +3,8 @@ import { PasswordEntryNotFoundError } from "../../errors/vault-entry.errors";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import type { ClockPort } from "../../ports/system/clock.port";
+import type { VersionVector } from "../../domain/versioning/version-vector.type";
+import type { VaultSyncGuardService } from "../../services/sync";
 
 export type RemoveEntryCommandParams = {
   vaultId: string;
@@ -11,28 +13,30 @@ export type RemoveEntryCommandParams = {
 
 export type RemoveEntryResult = {
   entryId: string;
-  revision: number;
+  snapshotVersionVector: VersionVector;
   revisionTimestamp: number;
-  deviceId: string;
 };
 
 export class RemoveEntryUseCase {
   private readonly clock: ClockPort;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
+  private readonly vaultSyncGuard: VaultSyncGuardService;
   private readonly vaultSnapshot: VaultSnapshotService;
 
   constructor(
     clock: ClockPort,
     unlockedVaultSession: UnlockedVaultSessionService,
+    vaultSyncGuard: VaultSyncGuardService,
     vaultSnapshot: VaultSnapshotService,
   ) {
     this.clock = clock;
     this.unlockedVaultSession = unlockedVaultSession;
+    this.vaultSyncGuard = vaultSyncGuard;
     this.vaultSnapshot = vaultSnapshot;
   }
 
   async execute(params: RemoveEntryCommandParams): Promise<RemoveEntryResult> {
-    const { sourceSnapshotRevision, unlockedVault } =
+    const { sourceSnapshotVersionVector, unlockedVault } =
       await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
         "remove entry",
@@ -45,6 +49,12 @@ export class RemoveEntryUseCase {
     if (!entryExists) {
       throw new PasswordEntryNotFoundError(params.vaultId, params.entryId);
     }
+
+    await this.vaultSyncGuard.requireReadyForLocalMutation(
+      params.vaultId,
+      unlockedVault,
+      sourceSnapshotVersionVector,
+    );
 
     const updatedUnlockedVault = {
       ...unlockedVault,
@@ -59,12 +69,12 @@ export class RemoveEntryUseCase {
     const persistedSnapshot = await this.vaultSnapshot.persistUnlockedVault(
       params.vaultId,
       updatedUnlockedVault,
-      sourceSnapshotRevision,
+      sourceSnapshotVersionVector,
     );
 
     await this.unlockedVaultSession.commitPersistedSnapshot(
       updatedUnlockedVault,
-      persistedSnapshot.revision,
+      persistedSnapshot.snapshotVersionVector,
     );
 
     return {

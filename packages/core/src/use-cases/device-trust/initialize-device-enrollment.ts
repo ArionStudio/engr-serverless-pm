@@ -19,7 +19,9 @@ import type { ClockPort } from "../../ports/system/clock.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
-import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
+import type { VaultSyncGuardService } from "../../services/sync";
+import { incrementVersionVector } from "../../domain/versioning/version-vector.utils";
+import type { VersionVector } from "../../domain/versioning/version-vector.type";
 
 export type InitializeDeviceEnrollmentCommandParams = {
   readonly vaultId: string;
@@ -28,7 +30,7 @@ export type InitializeDeviceEnrollmentCommandParams = {
 
 export type InitializeDeviceEnrollmentResult = {
   readonly enrollmentBundle: DeviceEnrollmentBundle;
-  readonly revision: number;
+  readonly snapshotVersionVector: VersionVector;
   readonly revisionTimestamp: number;
 };
 
@@ -36,27 +38,27 @@ export class InitializeDeviceEnrollmentUseCase {
   private readonly clock: ClockPort;
   private readonly crypto: CryptoPort;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
+  private readonly vaultSyncGuard: VaultSyncGuardService;
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
-  private readonly vaultSnapshot: VaultSnapshotService;
 
   constructor(
     clock: ClockPort,
     crypto: CryptoPort,
     unlockedVaultSession: UnlockedVaultSessionService,
+    vaultSyncGuard: VaultSyncGuardService,
     vaultLocalRepository: VaultLocalRepositoryPort,
-    vaultSnapshot: VaultSnapshotService,
   ) {
     this.clock = clock;
     this.crypto = crypto;
     this.unlockedVaultSession = unlockedVaultSession;
+    this.vaultSyncGuard = vaultSyncGuard;
     this.vaultLocalRepository = vaultLocalRepository;
-    this.vaultSnapshot = vaultSnapshot;
   }
 
   async execute(
     params: InitializeDeviceEnrollmentCommandParams,
   ): Promise<InitializeDeviceEnrollmentResult> {
-    const { sourceSnapshotRevision, unlockedVault } =
+    const { sourceSnapshotVersionVector, unlockedVault } =
       await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
         "initialize device enrollment",
@@ -71,14 +73,13 @@ export class InitializeDeviceEnrollmentUseCase {
     }
 
     const currentVaultSnapshot =
-      await this.vaultSnapshot.requireCurrentSnapshotForUnlockedVault(
+      await this.vaultSyncGuard.requireReadyForLocalMutation(
         params.vaultId,
         unlockedVault,
-        sourceSnapshotRevision,
+        sourceSnapshotVersionVector,
       );
     const localSnapshotDescriptor = toVaultSnapshotDescriptor(
-      currentVaultSnapshot.metadata.id,
-      unlockedVault.vault,
+      params.vaultId,
       currentVaultSnapshot,
     );
 
@@ -91,8 +92,9 @@ export class InitializeDeviceEnrollmentUseCase {
       throw new DeviceEnrollmentVaultNotSynchronizedError(params.vaultId);
     }
 
-    const signerDevice = currentVaultSnapshot.trustedDevices.find(
-      (device) => device.id === currentVaultSnapshot.metadata.createdByDeviceId,
+    const signerDevice = currentVaultSnapshot.keySlots.deviceSlots.find(
+      (deviceSlot) =>
+        deviceSlot.deviceId === currentVaultSnapshot.metadata.createdByDeviceId,
     );
 
     if (signerDevice === undefined) {
@@ -104,15 +106,15 @@ export class InitializeDeviceEnrollmentUseCase {
 
     const isSnapshotAuthentic = await this.crypto.verifyVaultSnapshotSignature(
       currentVaultSnapshot,
-      signerDevice.publicKeys.signingKey,
+      signerDevice.publicSignKey,
     );
 
     if (!isSnapshotAuthentic) {
       throw new VaultSnapshotSignatureVerificationFailedError(params.vaultId);
     }
 
-    const currentTrustedDevice = currentVaultSnapshot.trustedDevices.find(
-      (device) => device.id === unlockedVault.deviceId,
+    const currentTrustedDevice = currentVaultSnapshot.keySlots.deviceSlots.find(
+      (deviceSlot) => deviceSlot.deviceId === unlockedVault.deviceId,
     );
 
     if (currentTrustedDevice === undefined) {
@@ -136,11 +138,14 @@ export class InitializeDeviceEnrollmentUseCase {
     const unsignedVaultSnapshot: UnsignedVaultSnapshot = {
       metadata: {
         ...currentVaultSnapshot.metadata,
-        revision: currentVaultSnapshot.metadata.revision + 1,
+        id: params.vaultId,
         revisionTimestamp,
+        snapshotVersionVector: incrementVersionVector(
+          currentVaultSnapshot.metadata.snapshotVersionVector,
+          unlockedVault.deviceId,
+        ),
         createdByDeviceId: unlockedVault.deviceId,
       },
-      trustedDevices: currentVaultSnapshot.trustedDevices,
       keySlots: {
         deviceSlots: currentVaultSnapshot.keySlots.deviceSlots,
         recoveryKeySlot: currentVaultSnapshot.keySlots.recoveryKeySlot,
@@ -163,7 +168,7 @@ export class InitializeDeviceEnrollmentUseCase {
     await this.vaultLocalRepository.saveVaultSnapshot(enrollmentVaultSnapshot);
     await this.unlockedVaultSession.commitPersistedSnapshot(
       unlockedVault,
-      enrollmentVaultSnapshot.metadata.revision,
+      enrollmentVaultSnapshot.metadata.snapshotVersionVector,
     );
 
     return {
@@ -171,10 +176,11 @@ export class InitializeDeviceEnrollmentUseCase {
         version: 1,
         vaultId: params.vaultId,
         syncConfig,
-        snapshotSignerPublicKey: currentTrustedDevice.publicKeys.signingKey,
+        snapshotSignerPublicKey: currentTrustedDevice.publicSignKey,
         enrollmentSecret,
       },
-      revision: enrollmentVaultSnapshot.metadata.revision,
+      snapshotVersionVector:
+        enrollmentVaultSnapshot.metadata.snapshotVersionVector,
       revisionTimestamp: enrollmentVaultSnapshot.metadata.revisionTimestamp,
     };
   }

@@ -5,14 +5,20 @@ import {
   createVaultSnapshotServiceMock,
   saveUnlockedVaultWithEntries,
 } from "../../__tests__/fixtures/vault-entries";
+import { RemoteVaultSnapshotAheadError } from "../../errors/sync.errors";
 import { InvalidPasswordEntryError } from "../../errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
+import { VaultSyncGuardService } from "../../services/sync";
 import { AddEntryUseCase } from "./add-entry";
 
 function createContext() {
   const values = createCoreTestValues();
   const ports = createCoreTestPorts(values);
   const vaultSnapshot = createVaultSnapshotServiceMock(values);
+  const vaultSyncGuard = new VaultSyncGuardService(
+    ports.syncProvider,
+    vaultSnapshot,
+  );
   vi.mocked(ports.ids.generateId).mockReset().mockResolvedValue("entry-id");
 
   saveUnlockedVaultWithEntries(ports, values, []);
@@ -20,6 +26,7 @@ function createContext() {
   const useCase = new AddEntryUseCase(
     ports.ids,
     ports.sessionServices.unlockedVaultSession,
+    vaultSyncGuard,
     vaultSnapshot,
   );
 
@@ -27,6 +34,7 @@ function createContext() {
     values,
     ports,
     saved: ports.saved,
+    vaultSyncGuard,
     vaultSnapshot,
     useCase,
   };
@@ -48,9 +56,10 @@ describe("AddEntryUseCase", () => {
 
     expect(result).toEqual({
       entryId: "entry-id",
-      revision: 2,
+      snapshotVersionVector: {
+        [ctx.values.deviceId]: 2,
+      },
       revisionTimestamp: ctx.values.timestamp + 1,
-      deviceId: ctx.values.deviceId,
     });
     expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries).toEqual(
       [
@@ -71,7 +80,11 @@ describe("AddEntryUseCase", () => {
     ).toEqual({
       [ctx.values.deviceId]: 2,
     });
-    expect(ctx.saved.unlockedVaultSession?.sourceSnapshotRevision).toBe(2);
+    expect(ctx.saved.unlockedVaultSession?.sourceSnapshotVersionVector).toEqual(
+      {
+        [ctx.values.deviceId]: 2,
+      },
+    );
     expect(ctx.vaultSnapshot.persistUnlockedVault).toHaveBeenCalledWith(
       ctx.values.vaultId,
       expect.objectContaining({
@@ -79,7 +92,9 @@ describe("AddEntryUseCase", () => {
           entries: ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries,
         }),
       }),
-      1,
+      {
+        [ctx.values.deviceId]: 1,
+      },
     );
     expect(
       vi.mocked(ctx.vaultSnapshot.persistUnlockedVault).mock
@@ -133,6 +148,53 @@ describe("AddEntryUseCase", () => {
       ctx.ports.sessionServices.unlockedVaultSession.commit,
     ).not.toHaveBeenCalled();
     expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
+  });
+
+  it("does not add an entry when synced remote changes must be downloaded first", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession!;
+
+    ctx.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          syncConfig: ctx.values.syncConfig,
+        },
+      },
+    };
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValueOnce({
+      vaultId: ctx.values.vaultId,
+      snapshotVersionVector: {
+        [ctx.values.deviceId]: 1,
+        "remote-device-id": 1,
+      },
+      revisionTimestamp: ctx.values.timestamp + 1,
+    });
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        entry: {
+          password: "secret-password",
+          login: "user@example.com",
+          tags: [],
+          url: "https://example.com/login",
+        },
+      }),
+    ).rejects.toBeInstanceOf(RemoteVaultSnapshotAheadError);
+
+    expect(ctx.ports.ids.generateId).not.toHaveBeenCalled();
+    expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
+    ).not.toHaveBeenCalled();
+    expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries).toEqual(
+      [],
+    );
   });
 
   it("does not save the session vault when snapshot persistence fails", async () => {

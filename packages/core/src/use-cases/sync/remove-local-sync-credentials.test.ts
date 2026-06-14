@@ -5,14 +5,22 @@ import {
   createUnlockedVaultWithEntries,
   createVaultSnapshotServiceMock,
 } from "../../__tests__/fixtures/vault-entries";
-import { SyncNotConfiguredError } from "../../errors/sync.errors";
+import {
+  RemoteVaultSnapshotAheadError,
+  SyncNotConfiguredError,
+} from "../../errors/sync.errors";
 import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
+import { VaultSyncGuardService } from "../../services/sync";
 import { RemoveLocalSyncCredentialsUseCase } from "./remove-local-sync-credentials";
 
 function createContext(syncConfigured = true) {
   const values = createCoreTestValues();
   const ports = createCoreTestPorts(values);
   const vaultSnapshot = createVaultSnapshotServiceMock(values);
+  const vaultSyncGuard = new VaultSyncGuardService(
+    ports.syncProvider,
+    vaultSnapshot,
+  );
   const unlockedVault = {
     ...createUnlockedVaultWithEntries(values, []),
     vault: {
@@ -23,8 +31,19 @@ function createContext(syncConfigured = true) {
 
   ports.saved.unlockedVaultSession = {
     unlockedVault,
-    sourceSnapshotRevision: 1,
+    sourceSnapshotVersionVector: {
+      [values.deviceId]: 1,
+    },
   };
+  vi.mocked(
+    ports.syncProvider.getLatestVaultSnapshotDescriptor,
+  ).mockResolvedValue({
+    vaultId: values.vaultId,
+    snapshotVersionVector: {
+      [values.deviceId]: 1,
+    },
+    revisionTimestamp: values.timestamp,
+  });
 
   return {
     values,
@@ -34,6 +53,7 @@ function createContext(syncConfigured = true) {
     unlockedVault,
     useCase: new RemoveLocalSyncCredentialsUseCase(
       ports.sessionServices.unlockedVaultSession,
+      vaultSyncGuard,
       vaultSnapshot,
     ),
   };
@@ -50,11 +70,17 @@ describe("RemoveLocalSyncCredentialsUseCase", () => {
     expect(
       ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncConfig,
     ).toBeUndefined();
-    expect(ctx.saved.unlockedVaultSession?.sourceSnapshotRevision).toBe(2);
+    expect(ctx.saved.unlockedVaultSession?.sourceSnapshotVersionVector).toEqual(
+      {
+        [ctx.values.deviceId]: 2,
+      },
+    );
     expect(ctx.vaultSnapshot.persistUnlockedVault).toHaveBeenCalledWith(
       ctx.values.vaultId,
       expect.objectContaining({}),
-      1,
+      {
+        [ctx.values.deviceId]: 1,
+      },
     );
     const persistedUnlockedVault = vi.mocked(
       ctx.vaultSnapshot.persistUnlockedVault,
@@ -97,6 +123,35 @@ describe("RemoveLocalSyncCredentialsUseCase", () => {
     expect(
       ctx.ports.sessionServices.unlockedVaultSession.commit,
     ).not.toHaveBeenCalled();
+  });
+
+  it("does not remove local sync credentials when remote changes must be downloaded first", async () => {
+    const ctx = createContext();
+
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValueOnce({
+      vaultId: ctx.values.vaultId,
+      snapshotVersionVector: {
+        [ctx.values.deviceId]: 1,
+        "remote-device-id": 1,
+      },
+      revisionTimestamp: ctx.values.timestamp + 1,
+    });
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+      }),
+    ).rejects.toBeInstanceOf(RemoteVaultSnapshotAheadError);
+
+    expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
+    ).not.toHaveBeenCalled();
+    expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncConfig).toBe(
+      ctx.values.syncConfig,
+    );
   });
 
   it("does not update the session when snapshot persistence fails", async () => {
