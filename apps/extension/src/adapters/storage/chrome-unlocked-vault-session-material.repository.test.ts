@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type {
   DevicePrivateSignKey,
-  UnlockedVaultSessionMaterial,
   UnlockedVaultSessionPayloadKey,
   VaultMasterKey,
 } from "@lfspm/core";
@@ -12,7 +11,7 @@ import {
 } from "./chrome-unlocked-vault-session-material.repository";
 
 function createStorageArea(initialRecords: Record<string, unknown> = {}) {
-  const records = { ...initialRecords };
+  let records = { ...initialRecords };
   const storageArea: ChromeStorageArea = {
     async get(keys?: unknown) {
       if (typeof keys === "string") {
@@ -26,22 +25,28 @@ function createStorageArea(initialRecords: Record<string, unknown> = {}) {
       return { ...records };
     },
     async set(items: Record<string, unknown>) {
-      Object.assign(records, items);
+      records = {
+        ...records,
+        ...items,
+      };
     },
     async remove(keys: string | string[]) {
-      for (const key of Array.isArray(keys) ? keys : [keys]) {
-        delete records[key];
-      }
+      const keysToRemove = new Set(Array.isArray(keys) ? keys : [keys]);
+      records = Object.fromEntries(
+        Object.entries(records).filter(
+          ([recordKey]) => !keysToRemove.has(recordKey),
+        ),
+      );
     },
   };
 
   return {
-    records,
+    getRecords: () => records,
     storageArea,
   };
 }
 
-function createMaterial(): UnlockedVaultSessionMaterial {
+function createMaterial() {
   return {
     sessionId: "session-id",
     vaultId: "vault-id",
@@ -55,14 +60,14 @@ function createMaterial(): UnlockedVaultSessionMaterial {
 
 describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
   it("saves session material as storage-safe strings", async () => {
-    const { records, storageArea } = createStorageArea();
+    const { getRecords, storageArea } = createStorageArea();
     const repository = new ChromeUnlockedVaultSessionMaterialRepository(
       storageArea,
     );
 
     await repository.saveUnlockedVaultSessionMaterial(createMaterial());
 
-    expect(records[UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY]).toEqual({
+    expect(getRecords()[UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY]).toEqual({
       sessionId: "session-id",
       vaultId: "vault-id",
       sourceSnapshotRevision: 7,
@@ -127,7 +132,7 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
   });
 
   it("removes session material", async () => {
-    const { records, storageArea } = createStorageArea({
+    const { getRecords, storageArea } = createStorageArea({
       [UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY]: {
         sessionId: "session-id",
       },
@@ -138,7 +143,7 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
 
     await repository.removeUnlockedVaultSessionMaterial();
 
-    expect(records).not.toHaveProperty(
+    expect(getRecords()).not.toHaveProperty(
       UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY,
     );
   });

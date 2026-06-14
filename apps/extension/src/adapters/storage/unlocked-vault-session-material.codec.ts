@@ -5,7 +5,6 @@ import {
 } from "@lfspm/core/lib";
 import type {
   DevicePrivateSignKey,
-  UnlockedVaultSessionMaterial,
   UnlockedVaultSessionPayloadKey,
   VaultMasterKey,
 } from "@lfspm/core";
@@ -20,9 +19,15 @@ export type StoredUnlockedVaultSessionMaterial = {
   payloadKey: Base64URLString;
 };
 
-export function serializeUnlockedVaultSessionMaterial(
-  material: UnlockedVaultSessionMaterial,
-): StoredUnlockedVaultSessionMaterial {
+export function serializeUnlockedVaultSessionMaterial(material: {
+  readonly sessionId: string;
+  readonly vaultId: string;
+  readonly sourceSnapshotRevision: number;
+  readonly deviceId: string;
+  readonly vaultMasterKey: VaultMasterKey;
+  readonly devicePrivateSignKey: DevicePrivateSignKey;
+  readonly payloadKey: UnlockedVaultSessionPayloadKey;
+}): StoredUnlockedVaultSessionMaterial {
   return {
     sessionId: material.sessionId,
     vaultId: material.vaultId,
@@ -34,9 +39,15 @@ export function serializeUnlockedVaultSessionMaterial(
   };
 }
 
-export function deserializeUnlockedVaultSessionMaterial(
-  material: unknown,
-): UnlockedVaultSessionMaterial {
+export function deserializeUnlockedVaultSessionMaterial(material: unknown): {
+  readonly sessionId: string;
+  readonly vaultId: string;
+  readonly sourceSnapshotRevision: number;
+  readonly deviceId: string;
+  readonly vaultMasterKey: VaultMasterKey;
+  readonly devicePrivateSignKey: DevicePrivateSignKey;
+  readonly payloadKey: UnlockedVaultSessionPayloadKey;
+} {
   assertStoredMaterial(material);
 
   return {
