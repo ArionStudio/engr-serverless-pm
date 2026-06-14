@@ -14,7 +14,7 @@ import {
 } from "../../errors/unlock-vault.errors";
 import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 import {
-  DeviceNotTrustedForVaultMutationError,
+  SnapshotSigningDeviceNotTrustedError,
   VaultSnapshotRevisionMismatchError,
 } from "../../errors/vault-snapshot.errors";
 import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
@@ -186,7 +186,6 @@ describe("RevokeDeviceUseCase", () => {
       vault: expectedVault,
       revision: 2,
       revisionTimestamp: ctx.values.timestamp,
-      deviceId: ctx.values.deviceId,
     });
     expect(ctx.ports.crypto.verifyVaultSnapshotSignature).toHaveBeenCalledWith(
       ctx.vaultSnapshot,
@@ -443,7 +442,7 @@ describe("RevokeDeviceUseCase", () => {
         vaultId: ctx.values.vaultId,
         deviceId: revokedDeviceId,
       }),
-    ).rejects.toBeInstanceOf(DeviceNotTrustedForVaultMutationError);
+    ).rejects.toBeInstanceOf(SnapshotSigningDeviceNotTrustedError);
 
     expect(
       ctx.ports.crypto.verifyVaultSnapshotSignature,

@@ -32,7 +32,6 @@ export type ApplySyncResolutionCommandParams = {
 export type ApplySyncResolutionResult = {
   readonly revision: number;
   readonly revisionTimestamp: number;
-  readonly deviceId: string;
 };
 
 export class ApplySyncResolutionUseCase {
@@ -193,6 +192,9 @@ export class ApplySyncResolutionUseCase {
       throw error;
     }
 
-    return persistedSnapshot;
+    return {
+      revision: persistedSnapshot.revision,
+      revisionTimestamp: persistedSnapshot.revisionTimestamp,
+    };
   }
 }

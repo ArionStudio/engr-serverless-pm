@@ -29,7 +29,6 @@ export type RevokeDeviceResult = {
   readonly vault: Vault;
   readonly revision: number;
   readonly revisionTimestamp: number;
-  readonly deviceId: string;
 };
 
 export class RevokeDeviceUseCase {
@@ -187,7 +186,6 @@ export class RevokeDeviceUseCase {
       vault: revokedVault,
       revision: revokedVaultSnapshot.metadata.revision,
       revisionTimestamp: revokedVaultSnapshot.metadata.revisionTimestamp,
-      deviceId: revokedVaultSnapshot.metadata.createdByDeviceId,
     };
   }
 }

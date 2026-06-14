@@ -15,8 +15,8 @@ import {
   VaultSnapshotSignerNotTrustedError,
 } from "../../errors/unlock-vault.errors";
 import {
-  DeviceNotTrustedForVaultMutationError,
   PersistedVaultMismatchError,
+  SnapshotSigningDeviceNotTrustedError,
   VaultSnapshotRevisionMismatchError,
 } from "../../errors/vault-snapshot.errors";
 
@@ -156,7 +156,7 @@ export class VaultSnapshotService {
     );
 
     if (trustedDevice === undefined) {
-      throw new DeviceNotTrustedForVaultMutationError(
+      throw new SnapshotSigningDeviceNotTrustedError(
         vaultId,
         unlockedVault.deviceId,
       );

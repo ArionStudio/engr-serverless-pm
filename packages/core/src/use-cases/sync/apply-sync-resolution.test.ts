@@ -197,7 +197,6 @@ describe("ApplySyncResolutionUseCase", () => {
     ).resolves.toEqual({
       revision: 4,
       revisionTimestamp: ctx.values.timestamp,
-      deviceId: ctx.values.deviceId,
     });
 
     expect(

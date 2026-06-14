@@ -15,8 +15,8 @@ import {
   VaultSnapshotSignerNotTrustedError,
 } from "../../errors/unlock-vault.errors";
 import {
-  DeviceNotTrustedForVaultMutationError,
   PersistedVaultMismatchError,
+  SnapshotSigningDeviceNotTrustedError,
   VaultSnapshotRevisionMismatchError,
 } from "../../errors/vault-snapshot.errors";
 import { VaultSnapshotService } from "./vault-snapshot.service";
@@ -366,7 +366,7 @@ describe("VaultSnapshotService", () => {
         ctx.unlockedVault,
         ctx.currentSnapshot.metadata.revision,
       ),
-    ).rejects.toThrow(DeviceNotTrustedForVaultMutationError);
+    ).rejects.toThrow(SnapshotSigningDeviceNotTrustedError);
 
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
     expect(
