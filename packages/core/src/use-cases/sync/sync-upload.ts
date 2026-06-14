@@ -56,7 +56,7 @@ export class SyncUploadUseCase {
 
     if (remoteSnapshotDescriptor !== null) {
       const localSnapshotDescriptor = toVaultSnapshotDescriptor(
-        localSnapshot.metadata.id,
+        params.vaultId,
         unlockedVault.vault,
         localSnapshot,
       );
