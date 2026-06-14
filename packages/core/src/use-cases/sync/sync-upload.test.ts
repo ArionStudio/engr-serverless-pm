@@ -155,6 +155,34 @@ describe("SyncUploadUseCase", () => {
     );
   });
 
+  it("does not upload when the remote descriptor already matches the vault", async () => {
+    const ctx = createContext();
+    const localSnapshot = createSnapshot(ctx.values, {
+      id: "snapshot-id",
+      revision: 3,
+      revisionTimestamp: ctx.values.timestamp,
+    });
+    vi.mocked(
+      ctx.ports.vaultLocalRepository.getVaultSnapshot,
+    ).mockResolvedValueOnce(localSnapshot);
+    const remoteSnapshotDescriptor = createRemoteSnapshotDescriptor(
+      ctx.values,
+      {
+        versionVector:
+          ctx.saved.unlockedVaultSession!.unlockedVault.vault.versionVector,
+      },
+    );
+
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValueOnce(remoteSnapshotDescriptor);
+
+    await ctx.useCase.execute({ vaultId: ctx.values.vaultId });
+
+    expect(ctx.ports.syncProvider.downloadVaultSnapshot).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
   it("blocks upload when the remote vector has a component ahead of local", async () => {
     const ctx = createContext();
     const remoteSnapshotDescriptor = createRemoteSnapshotDescriptor(

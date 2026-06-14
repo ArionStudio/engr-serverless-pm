@@ -79,5 +79,33 @@ describe("vault snapshot descriptor utils", () => {
         },
       ),
     ).toBe(false);
+    expect(
+      areVaultSnapshotDescriptorsEqual(
+        {
+          vaultId: "vault-id",
+          versionVector: { A: 7 },
+          revisionTimestamp: 1,
+        },
+        {
+          vaultId: "other-vault-id",
+          versionVector: { A: 7 },
+          revisionTimestamp: 1,
+        },
+      ),
+    ).toBe(false);
+    expect(
+      areVaultSnapshotDescriptorsEqual(
+        {
+          vaultId: "vault-id",
+          versionVector: { A: 7 },
+          revisionTimestamp: 1,
+        },
+        {
+          vaultId: "vault-id",
+          versionVector: { A: 7 },
+          revisionTimestamp: 2,
+        },
+      ),
+    ).toBe(false);
   });
 });

@@ -72,7 +72,7 @@ export class PrepareSyncReviewUseCase {
       params.vaultId,
     );
     const localSnapshotDescriptor = toVaultSnapshotDescriptor(
-      localSnapshot.metadata.id,
+      params.vaultId,
       unlockedVault.vault,
       localSnapshot,
     );
@@ -128,7 +128,7 @@ export class PrepareSyncReviewUseCase {
       localSnapshot,
     );
     const downloadedDescriptor = toVaultSnapshotDescriptor(
-      remoteSnapshot.metadata.id,
+      params.vaultId,
       remoteVault,
       remoteSnapshot,
     );

@@ -103,7 +103,7 @@ export class ApplySyncResolutionUseCase {
       localSnapshot,
     );
     const downloadedDescriptor = toVaultSnapshotDescriptor(
-      remoteSnapshot.metadata.id,
+      params.vaultId,
       remoteVault,
       remoteSnapshot,
     );
