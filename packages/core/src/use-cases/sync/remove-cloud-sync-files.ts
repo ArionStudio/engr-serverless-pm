@@ -1,6 +1,15 @@
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
+import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
-import { SyncNotConfiguredError } from "../../errors/sync.errors";
+import {
+  compareVaultSnapshotDescriptors,
+  toVaultSnapshotDescriptor,
+} from "../../domain/snapshot/vault-snapshot-descriptor.utils";
+import {
+  RemoteVaultSnapshotAheadError,
+  RemoteVaultSnapshotIntegrityError,
+  SyncNotConfiguredError,
+} from "../../errors/sync.errors";
 
 export type RemoveCloudSyncFilesCommandParams = {
   readonly vaultId: string;
@@ -13,17 +22,20 @@ export type RemoveCloudSyncFilesCommandParams = {
 export class RemoveCloudSyncFilesUseCase {
   private readonly syncProvider: SyncProviderPort;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
+  private readonly vaultSnapshot: VaultSnapshotService;
 
   constructor(
     syncProvider: SyncProviderPort,
     unlockedVaultSession: UnlockedVaultSessionService,
+    vaultSnapshot: VaultSnapshotService,
   ) {
     this.syncProvider = syncProvider;
     this.unlockedVaultSession = unlockedVaultSession;
+    this.vaultSnapshot = vaultSnapshot;
   }
 
   async execute(params: RemoveCloudSyncFilesCommandParams): Promise<void> {
-    const { unlockedVault } =
+    const { sourceSnapshotVersionVector, unlockedVault } =
       await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
         "remove cloud sync files",
@@ -35,6 +47,33 @@ export class RemoveCloudSyncFilesUseCase {
         params.vaultId,
         "remove cloud sync files",
       );
+    }
+
+    const localSnapshot =
+      await this.vaultSnapshot.requireCurrentSnapshotForUnlockedVault(
+        params.vaultId,
+        unlockedVault,
+        sourceSnapshotVersionVector,
+      );
+    const remoteSnapshotDescriptor =
+      await this.syncProvider.getLatestVaultSnapshotDescriptor(
+        syncConfig,
+        params.vaultId,
+      );
+
+    if (remoteSnapshotDescriptor !== null) {
+      const relation = compareVaultSnapshotDescriptors(
+        toVaultSnapshotDescriptor(params.vaultId, localSnapshot),
+        remoteSnapshotDescriptor,
+      );
+
+      if (relation === "remote_ahead") {
+        throw new RemoteVaultSnapshotAheadError(params.vaultId);
+      }
+
+      if (relation === "broken") {
+        throw new RemoteVaultSnapshotIntegrityError(params.vaultId);
+      }
     }
 
     await this.syncProvider.removeVaultSnapshots(syncConfig, params.vaultId);

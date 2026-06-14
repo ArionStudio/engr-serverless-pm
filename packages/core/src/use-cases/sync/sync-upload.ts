@@ -7,6 +7,7 @@ import {
   RemoteVaultSnapshotAheadError,
   RemoteVaultSnapshotChangedError,
   RemoteVaultSnapshotIntegrityError,
+  RemoteVaultSnapshotNotFoundError,
   SyncConflictDetectedError,
   SyncNotConfiguredError,
 } from "../../errors/sync.errors";
@@ -34,7 +35,7 @@ export class SyncUploadUseCase {
   }
 
   async execute(params: SyncUploadCommandParams): Promise<void> {
-    const { unlockedVault } =
+    const { sourceSnapshotVersionVector, unlockedVault } =
       await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
         "sync upload",
@@ -45,47 +46,50 @@ export class SyncUploadUseCase {
       throw new SyncNotConfiguredError(params.vaultId, "sync upload");
     }
 
-    const localSnapshot = await this.vaultSnapshot.requireLocalVaultSnapshot(
-      params.vaultId,
-    );
+    const localSnapshot =
+      await this.vaultSnapshot.requireCurrentSnapshotForUnlockedVault(
+        params.vaultId,
+        unlockedVault,
+        sourceSnapshotVersionVector,
+      );
     const remoteSnapshotDescriptor =
       await this.syncProvider.getLatestVaultSnapshotDescriptor(
         syncConfig,
         params.vaultId,
       );
 
-    if (remoteSnapshotDescriptor !== null) {
-      const localSnapshotDescriptor = toVaultSnapshotDescriptor(
-        params.vaultId,
-        unlockedVault.vault,
-        localSnapshot,
-      );
-      const relation = compareVaultSnapshotDescriptors(
-        localSnapshotDescriptor,
-        remoteSnapshotDescriptor,
-      );
+    if (remoteSnapshotDescriptor === null) {
+      throw new RemoteVaultSnapshotNotFoundError(params.vaultId);
+    }
 
+    const localSnapshotDescriptor = toVaultSnapshotDescriptor(
+      params.vaultId,
+      localSnapshot,
+    );
+    const relation = compareVaultSnapshotDescriptors(
+      localSnapshotDescriptor,
+      remoteSnapshotDescriptor,
+    );
+
+    if (relation === "equal") {
       if (
-        relation === "equal" &&
-        areVaultSnapshotDescriptorsEqual(
+        !areVaultSnapshotDescriptorsEqual(
           remoteSnapshotDescriptor,
           localSnapshotDescriptor,
         )
       ) {
-        return;
-      }
-
-      if (relation === "equal") {
         throw new RemoteVaultSnapshotIntegrityError(params.vaultId);
       }
 
-      if (relation === "remote_ahead") {
-        throw new RemoteVaultSnapshotAheadError(params.vaultId);
-      }
+      return;
+    }
 
-      if (relation === "diverged") {
-        throw new SyncConflictDetectedError(params.vaultId);
-      }
+    if (relation === "remote_ahead") {
+      throw new RemoteVaultSnapshotAheadError(params.vaultId);
+    }
+
+    if (relation === "broken") {
+      throw new RemoteVaultSnapshotIntegrityError(params.vaultId);
     }
 
     try {
