@@ -4,7 +4,7 @@ import type { Vault } from "../vault/vault";
 import {
   incrementVersionVector,
   mergeVersionVectors,
-} from "./version-vector.utils";
+} from "../versioning/version-vector.utils";
 import {
   buildResolvedVaultDeviceProfiles,
   createDeviceProfileReviews,

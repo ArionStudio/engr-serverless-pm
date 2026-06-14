@@ -2,7 +2,7 @@ import type {
   SerializedEncrypted,
   SerializedSignatureOf,
 } from "../crypto/protected-artifact";
-import type { TrustedDevice } from "../device/device";
+import type { TrustedDevice } from "../device-trust/trusted-device";
 import type { Vault } from "../vault/vault";
 import type { DeviceKeySlot, RecoveryKeySlot } from "./key-slot";
 

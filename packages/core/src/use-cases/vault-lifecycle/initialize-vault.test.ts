@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { CURRENT_ALGORITHM_SUITE } from "../../domain/crypto/algorithm-suite.const";
-import type { LocalKeysPayload } from "../../domain/local-protection/local-protection.type";
+import type { LocalKeysPayload } from "../../domain/device-trust/local-protection.type";
 import type { Vault } from "../../domain/vault/vault";
 import { createInitializeVaultTestContext } from "../../__tests__/fixtures/initialize-vault";
 import { ActiveUnlockedVaultMismatchError } from "../../errors/vault-session.errors";

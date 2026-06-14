@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
-  areRemoteVaultSnapshotDescriptorsEqual,
-  compareLocalAndRemoteSnapshotDescriptors,
-} from "./vault-snapshot-version.utils";
+  areVaultSnapshotDescriptorsEqual,
+  compareVaultSnapshotDescriptors,
+} from "./vault-snapshot-descriptor.utils";
 
-describe("vault snapshot version utils", () => {
-  it("compares local and remote snapshot descriptors using sync relation names", () => {
+describe("vault snapshot descriptor utils", () => {
+  it("compares snapshot descriptors using sync relation names", () => {
     expect(
-      compareLocalAndRemoteSnapshotDescriptors(
+      compareVaultSnapshotDescriptors(
         {
           vaultId: "vault-id",
           versionVector: { A: 7, B: 3 },
@@ -21,7 +21,7 @@ describe("vault snapshot version utils", () => {
       ),
     ).toBe("local_ahead");
     expect(
-      compareLocalAndRemoteSnapshotDescriptors(
+      compareVaultSnapshotDescriptors(
         {
           vaultId: "vault-id",
           versionVector: { A: 7, B: 3 },
@@ -35,7 +35,7 @@ describe("vault snapshot version utils", () => {
       ),
     ).toBe("diverged");
     expect(
-      compareLocalAndRemoteSnapshotDescriptors(
+      compareVaultSnapshotDescriptors(
         {
           vaultId: "vault-id",
           versionVector: { A: 7 },
@@ -52,7 +52,7 @@ describe("vault snapshot version utils", () => {
 
   it("checks descriptor equality by vault id, vector, and timestamp", () => {
     expect(
-      areRemoteVaultSnapshotDescriptorsEqual(
+      areVaultSnapshotDescriptorsEqual(
         {
           vaultId: "vault-id",
           versionVector: { A: 7 },
@@ -66,7 +66,7 @@ describe("vault snapshot version utils", () => {
       ),
     ).toBe(true);
     expect(
-      areRemoteVaultSnapshotDescriptorsEqual(
+      areVaultSnapshotDescriptorsEqual(
         {
           vaultId: "vault-id",
           versionVector: { A: 7 },

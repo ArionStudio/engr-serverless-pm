@@ -10,21 +10,18 @@ import type {
   DevicePrivateSignKey,
   DevicePublicSignKey,
   DeviceSlotKey,
-} from "../../domain/device/brand-keys";
+} from "../../domain/device-trust/brand-keys";
 import type {
   LocalKeysPayload,
   LocalRootKey,
-} from "../../domain/local-protection/local-protection.type";
+} from "../../domain/device-trust/local-protection.type";
 import type { RawMasterPassword } from "../../domain/master-password";
 import type { RecoveryKeyMnemonic } from "../../domain/recovery/bip39-mnemonic";
 import type { RecoverySecretKey } from "../../domain/recovery/brand-keys";
 import type { VaultMasterKey } from "../../domain/snapshot/brand-keys";
 import type { SyncConfig } from "../../domain/sync/sync-config.type";
 import type { UnsignedVaultSnapshot } from "../../domain/snapshot/vault-snapshot";
-import type {
-  UnlockedVaultSessionPayload,
-  UnlockedVaultSessionPayloadKey,
-} from "../../domain/vault/unlocked-vault-session";
+import type { UnlockedVaultSessionPayloadKey } from "../../domain/session/unlocked-vault-session-payload-key";
 import type { Vault } from "../../domain/vault/vault";
 
 export const bytes = <T extends ArrayBuffer>() => new ArrayBuffer(1) as T;
@@ -100,7 +97,9 @@ export function createCoreTestValues() {
     encryptedUnlockedVaultSessionPayload: {
       ciphertext: b64("encrypted-unlocked-vault-session-payload"),
       encryptionNonce: b64("encrypted-unlocked-vault-session-payload-nonce"),
-    } satisfies SerializedEncrypted<UnlockedVaultSessionPayload>,
+    } satisfies SerializedEncrypted<{
+      readonly vault: Vault;
+    }>,
     decryptedVault: {
       versionVector: {
         "device-id": 1,

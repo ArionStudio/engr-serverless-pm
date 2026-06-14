@@ -1,7 +1,7 @@
-import type { DeviceProfile } from "../device/device";
-import { incrementVersionVector } from "../sync/version-vector.utils";
+import type { DeviceProfile } from "../device-profile/device-profile";
+import { DuplicateVaultDeviceProfileError } from "../../errors/vault-device.errors";
+import { incrementVersionVector } from "../versioning/version-vector.utils";
 import type { Vault } from "./vault";
-import { DuplicateVaultDeviceProfileError } from "./vault-device.errors";
 
 export function addRecoveredDeviceProfileToVault(
   vault: Vault,

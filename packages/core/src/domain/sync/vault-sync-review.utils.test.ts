@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { DeviceProfile } from "../device/device";
+import type { DeviceProfile } from "../device-profile/device-profile";
 import type { PasswordEntry } from "../entry/password-entry.type";
 import type { Tag } from "../entry/tag.type";
 import type { Vault } from "../vault/vault";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { DuplicateVaultEntryError } from "../../errors/vault-entry.errors";
 import type { Vault } from "./vault";
-import { DuplicateVaultEntryError } from "./vault-entry.errors";
 import {
   addPasswordEntryToVault,
   removePasswordEntryFromVault,

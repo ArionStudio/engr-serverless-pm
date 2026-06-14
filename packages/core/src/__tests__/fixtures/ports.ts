@@ -1,38 +1,56 @@
 import { vi } from "vitest";
 import { CURRENT_ALGORITHM_SUITE } from "../../domain/crypto/algorithm-suite.const";
 import type { RandomBytes } from "../../domain/crypto/brand-keys";
-import type { DeviceSignKeyPair } from "../../domain/device/brand-keys";
-import type { DeviceAccessMaterial } from "../../domain/device/device-access-material";
+import type { DeviceSignKeyPair } from "../../domain/device-trust/brand-keys";
+import type { DeviceAccessMaterial } from "../../domain/device-trust/device-access-material";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import type { LocalVaultDescriptor } from "../../domain/vault/local-vault-descriptor";
-import type {
-  EncryptedUnlockedVaultSessionPayload,
-  UnlockedVaultSession,
-  UnlockedVaultSessionMaterial,
-  UnlockedVaultSessionPayload,
-} from "../../domain/vault/unlocked-vault-session";
+import type { UnlockedVault } from "../../domain/session/unlocked-vault";
+import type { UnlockedVaultSessionPayloadKey } from "../../domain/session/unlocked-vault-session-payload-key";
+import type { Vault } from "../../domain/vault/vault";
 import type { Bip39Port } from "../../ports/crypto/bip39.port";
 import type { ClockPort } from "../../ports/system/clock.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
-import type { EncryptedUnlockedVaultSessionPayloadRepositoryPort } from "../../ports/vault/encrypted-unlocked-vault-session-payload-repository.port";
+import type { EncryptedUnlockedVaultSessionPayloadRepositoryPort } from "../../ports/session/encrypted-unlocked-vault-session-payload-repository.port";
 import type { IdPort } from "../../ports/system/id.port";
 import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { VaultDisplayNamePort } from "../../ports/vault/vault-display-name.port";
 import type { VaultLockTaskRepositoryPort } from "../../ports/vault/vault-lock-task-repository.port";
-import type { UnlockedVaultSessionMaterialRepositoryPort } from "../../ports/vault/unlocked-vault-session-material-repository.port";
+import type { UnlockedVaultSessionMaterialRepositoryPort } from "../../ports/session/unlocked-vault-session-material-repository.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
-import { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
+import { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import { createCoreTestValues, type CoreTestValues } from "./values";
+import type { SerializedEncrypted } from "../../domain";
 
 export type SavedCoreRecords = {
   localVaultDescriptor?: LocalVaultDescriptor;
   deviceAccessMaterial?: DeviceAccessMaterial;
   vaultSnapshot?: VaultSnapshot;
-  unlockedVaultSession?: UnlockedVaultSession;
-  unlockedVaultSessionMaterial?: UnlockedVaultSessionMaterial;
-  encryptedUnlockedVaultSessionPayload?: EncryptedUnlockedVaultSessionPayload;
-  unlockedVaultSessionPayload?: UnlockedVaultSessionPayload;
+  unlockedVaultSession?: {
+    readonly unlockedVault: UnlockedVault;
+    readonly sourceSnapshotRevision: number;
+  };
+  unlockedVaultSessionMaterial?: {
+    readonly sessionId: string;
+    readonly vaultId: string;
+    readonly sourceSnapshotRevision: number;
+    readonly deviceId: string;
+    readonly vaultMasterKey: UnlockedVault["vaultMasterKey"];
+    readonly devicePrivateSignKey: UnlockedVault["devicePrivateSignKey"];
+    readonly payloadKey: UnlockedVaultSessionPayloadKey;
+  };
+  encryptedUnlockedVaultSessionPayload?: {
+    readonly sessionId: string;
+    readonly vaultId: string;
+    readonly sourceSnapshotRevision: number;
+    readonly content: SerializedEncrypted<{
+      readonly vault: Vault;
+    }>;
+  };
+  unlockedVaultSessionPayload?: {
+    readonly vault: Vault;
+  };
 };
 
 export type CoreTestPorts = ReturnType<typeof createCoreTestPorts>;
@@ -41,11 +59,17 @@ export function createCoreTestPorts(
   values: CoreTestValues = createCoreTestValues(),
 ) {
   const saved: SavedCoreRecords = {};
-  let unlockedVaultSessionMirror: UnlockedVaultSession | undefined;
+  let unlockedVaultSessionMirror:
+    | {
+        readonly unlockedVault: UnlockedVault;
+        readonly sourceSnapshotRevision: number;
+      }
+    | undefined;
 
-  function writeSplitUnlockedVaultSessionRecords(
-    session: UnlockedVaultSession,
-  ): void {
+  function writeSplitUnlockedVaultSessionRecords(session: {
+    readonly unlockedVault: UnlockedVault;
+    readonly sourceSnapshotRevision: number;
+  }): void {
     const context = {
       sessionId: values.sessionId,
       vaultId: session.unlockedVault.vaultId,
@@ -76,7 +100,14 @@ export function createCoreTestPorts(
 
   Object.defineProperty(saved, "unlockedVaultSession", {
     get: () => unlockedVaultSessionMirror,
-    set: (session: UnlockedVaultSession | undefined) => {
+    set: (
+      session:
+        | {
+            readonly unlockedVault: UnlockedVault;
+            readonly sourceSnapshotRevision: number;
+          }
+        | undefined,
+    ) => {
       unlockedVaultSessionMirror = session;
 
       if (session === undefined) {

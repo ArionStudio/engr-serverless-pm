@@ -2,7 +2,7 @@ import { areJsonEqual } from "../common/json.utils";
 import type { DeletedTag, Tag } from "../entry/tag.type";
 import type { Vault } from "../vault/vault";
 import { InvalidVaultSyncResolutionError } from "../../errors/sync.errors";
-import type { VersionVector } from "./version-vector.type";
+import type { VersionVector } from "../versioning/version-vector.type";
 import {
   getPreselectedSyncAction,
   getSyncItemRelation,

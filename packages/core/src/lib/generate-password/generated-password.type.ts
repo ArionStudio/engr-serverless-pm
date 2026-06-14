@@ -1,4 +1,4 @@
-import { z } from "zod";
+import type { z } from "zod";
 import { generatedPasswordSettingsSchema } from "./generated-password.schema";
 
 export type GeneratedPasswordSettings = z.infer<

@@ -1,4 +1,4 @@
-import type { TrustedDevice } from "../device/device";
+import type { TrustedDevice } from "../device-trust/trusted-device";
 import type { VaultSnapshot } from "../snapshot/vault-snapshot";
 import type {
   VaultSyncDeviceProfileResolution,

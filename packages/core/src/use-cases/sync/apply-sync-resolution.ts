@@ -1,10 +1,10 @@
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
-import type { RemoteVaultSnapshotDescriptor } from "../../domain/sync/remote-vault-snapshot-descriptor.type";
+import type { VaultSnapshotDescriptor } from "../../domain/snapshot/vault-snapshot-descriptor.type";
 import type { VaultSyncResolution } from "../../domain/sync/vault-sync-review.type";
 import {
-  areRemoteVaultSnapshotDescriptorsEqual,
-  toRemoteVaultSnapshotDescriptor,
-} from "../../domain/sync/vault-snapshot-version.utils";
+  areVaultSnapshotDescriptorsEqual,
+  toVaultSnapshotDescriptor,
+} from "../../domain/snapshot/vault-snapshot-descriptor.utils";
 import {
   applyVaultSyncResolution,
   createVaultSyncReview,
@@ -20,12 +20,12 @@ import {
   SyncResolutionIncompleteError,
   SyncTrustChangeRequiresDeviceTrustFlowError,
 } from "../../errors/sync.errors";
-import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
-import type { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
+import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
+import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 
 export type ApplySyncResolutionCommandParams = {
   readonly vaultId: string;
-  readonly remoteSnapshotDescriptor: RemoteVaultSnapshotDescriptor;
+  readonly remoteSnapshotDescriptor: VaultSnapshotDescriptor;
   readonly resolution: VaultSyncResolution;
 };
 
@@ -82,7 +82,7 @@ export class ApplySyncResolutionUseCase {
     }
 
     if (
-      !areRemoteVaultSnapshotDescriptorsEqual(
+      !areVaultSnapshotDescriptorsEqual(
         currentRemoteSnapshotDescriptor,
         params.remoteSnapshotDescriptor,
       )
@@ -103,14 +103,14 @@ export class ApplySyncResolutionUseCase {
       unlockedVault.vaultMasterKey,
       localSnapshot,
     );
-    const downloadedDescriptor = toRemoteVaultSnapshotDescriptor(
+    const downloadedDescriptor = toVaultSnapshotDescriptor(
       remoteSnapshot.metadata.id,
       remoteVault,
       remoteSnapshot,
     );
 
     if (
-      !areRemoteVaultSnapshotDescriptorsEqual(
+      !areVaultSnapshotDescriptorsEqual(
         downloadedDescriptor,
         params.remoteSnapshotDescriptor,
       )

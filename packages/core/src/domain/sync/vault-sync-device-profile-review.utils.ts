@@ -1,8 +1,11 @@
 import { areJsonEqual } from "../common/json.utils";
-import type { DeletedDeviceProfile, DeviceProfile } from "../device/device";
+import type {
+  DeletedDeviceProfile,
+  DeviceProfile,
+} from "../device-profile/device-profile";
 import type { Vault } from "../vault/vault";
 import { InvalidVaultSyncResolutionError } from "../../errors/sync.errors";
-import type { VersionVector } from "./version-vector.type";
+import type { VersionVector } from "../versioning/version-vector.type";
 import type {
   VaultSyncDeviceProfileResolution,
   VaultSyncDeviceProfileReview,

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { CURRENT_ALGORITHM_SUITE } from "../../domain/crypto/algorithm-suite.const";
-import type { DeviceAccessMaterial } from "../../domain/device/device-access-material";
-import type { LocalKeysPayload } from "../../domain/local-protection/local-protection.type";
+import type { DeviceAccessMaterial } from "../../domain/device-trust/device-access-material";
+import type { LocalKeysPayload } from "../../domain/device-trust/local-protection.type";
 import type { Vault } from "../../domain/vault/vault";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";

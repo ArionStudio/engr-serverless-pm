@@ -1,11 +1,11 @@
-import type { RemoteVaultSnapshotDescriptor } from "../../domain/sync/remote-vault-snapshot-descriptor.type";
+import type { VaultSnapshotDescriptor } from "../../domain/snapshot/vault-snapshot-descriptor.type";
 import type { VaultSyncReview } from "../../domain/sync/vault-sync-review.type";
-import type { VersionVectorRelation } from "../../domain/sync/version-vector.type";
+import type { VersionVectorRelation } from "../../domain/versioning/version-vector.type";
 import {
-  areRemoteVaultSnapshotDescriptorsEqual,
-  compareLocalAndRemoteSnapshotDescriptors,
-  toRemoteVaultSnapshotDescriptor,
-} from "../../domain/sync/vault-snapshot-version.utils";
+  areVaultSnapshotDescriptorsEqual,
+  compareVaultSnapshotDescriptors,
+  toVaultSnapshotDescriptor,
+} from "../../domain/snapshot/vault-snapshot-descriptor.utils";
 import {
   createVaultSyncReview,
   createVaultSyncTrustState,
@@ -16,15 +16,15 @@ import {
   SyncNotConfiguredError,
 } from "../../errors/sync.errors";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
-import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
-import type { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
+import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
+import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 
 export type PrepareSyncReviewCommandParams = {
   readonly vaultId: string;
 };
 
 export type PrepareSyncReviewResult = {
-  readonly remoteSnapshotDescriptor: RemoteVaultSnapshotDescriptor;
+  readonly remoteSnapshotDescriptor: VaultSnapshotDescriptor;
   readonly relation: VersionVectorRelation;
   readonly review: VaultSyncReview;
 };
@@ -71,12 +71,12 @@ export class PrepareSyncReviewUseCase {
     const localSnapshot = await this.vaultSnapshot.requireLocalVaultSnapshot(
       params.vaultId,
     );
-    const localSnapshotDescriptor = toRemoteVaultSnapshotDescriptor(
+    const localSnapshotDescriptor = toVaultSnapshotDescriptor(
       localSnapshot.metadata.id,
       unlockedVault.vault,
       localSnapshot,
     );
-    const relation = compareLocalAndRemoteSnapshotDescriptors(
+    const relation = compareVaultSnapshotDescriptors(
       localSnapshotDescriptor,
       remoteSnapshotDescriptor,
     );
@@ -100,7 +100,7 @@ export class PrepareSyncReviewUseCase {
 
     if (
       relation === "equal" &&
-      areRemoteVaultSnapshotDescriptorsEqual(
+      areVaultSnapshotDescriptorsEqual(
         remoteSnapshotDescriptor,
         localSnapshotDescriptor,
       )
@@ -127,14 +127,14 @@ export class PrepareSyncReviewUseCase {
       unlockedVault.vaultMasterKey,
       localSnapshot,
     );
-    const downloadedDescriptor = toRemoteVaultSnapshotDescriptor(
+    const downloadedDescriptor = toVaultSnapshotDescriptor(
       remoteSnapshot.metadata.id,
       remoteVault,
       remoteSnapshot,
     );
 
     if (
-      !areRemoteVaultSnapshotDescriptorsEqual(
+      !areVaultSnapshotDescriptorsEqual(
         downloadedDescriptor,
         remoteSnapshotDescriptor,
       )

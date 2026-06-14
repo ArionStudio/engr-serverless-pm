@@ -1,4 +1,4 @@
-import type { DeviceAccessMaterial } from "../../domain/device/device-access-material";
+import type { DeviceAccessMaterial } from "../../domain/device-trust/device-access-material";
 import type { RawMasterPassword } from "../../domain/master-password";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
@@ -7,7 +7,7 @@ import {
   DeviceAccessMaterialNotFoundForMasterPasswordChangeError,
   VaultMustBeUnlockedForMasterPasswordChangeError,
 } from "../../errors/change-master-password.errors";
-import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
+import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 
 export type ChangeMasterPasswordCommandParams = {
   vaultId: string;

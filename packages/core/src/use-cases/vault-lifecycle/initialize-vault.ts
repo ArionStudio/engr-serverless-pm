@@ -1,6 +1,6 @@
-import type { DeviceAccessMaterial } from "../../domain/device/device-access-material";
-import type { DeviceProfile } from "../../domain/device/device";
-import type { LocalKeysPayload } from "../../domain/local-protection/local-protection.type";
+import type { DeviceAccessMaterial } from "../../domain/device-trust/device-access-material";
+import type { DeviceProfile } from "../../domain/device-profile/device-profile";
+import type { LocalKeysPayload } from "../../domain/device-trust/local-protection.type";
 import type { RawMasterPassword } from "../../domain/master-password";
 import type { RecoveryKeyMnemonic } from "../../domain/recovery/bip39-mnemonic";
 import type {
@@ -8,7 +8,7 @@ import type {
   VaultSnapshot,
 } from "../../domain/snapshot/vault-snapshot";
 import type { LocalVaultDescriptor } from "../../domain/vault/local-vault-descriptor";
-import type { UnlockedVault } from "../../domain/vault/unlocked-vault";
+import type { UnlockedVault } from "../../domain/session/unlocked-vault";
 import type { Vault } from "../../domain/vault/vault";
 import type { Bip39Port } from "../../ports/crypto/bip39.port";
 import type { ClockPort } from "../../ports/system/clock.port";
@@ -16,7 +16,7 @@ import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { IdPort } from "../../ports/system/id.port";
 import type { VaultDisplayNamePort } from "../../ports/vault/vault-display-name.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
-import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
+import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 
 export type InitializeVaultCommandParams = {
   masterPassword: RawMasterPassword;

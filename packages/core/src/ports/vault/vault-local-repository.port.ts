@@ -1,4 +1,4 @@
-import type { DeviceAccessMaterial } from "../../domain/device/device-access-material";
+import type { DeviceAccessMaterial } from "../../domain/device-trust/device-access-material";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import type { LocalVaultDescriptor } from "../../domain/vault/local-vault-descriptor";
 

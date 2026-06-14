@@ -1,6 +1,6 @@
-import type { DevicePrivateSignKey } from "../device/brand-keys";
+import type { DevicePrivateSignKey } from "../device-trust/brand-keys";
 import type { VaultMasterKey } from "../snapshot/brand-keys";
-import type { Vault } from "./vault";
+import type { Vault } from "../vault/vault";
 
 export type UnlockedVault = {
   readonly vaultId: string;

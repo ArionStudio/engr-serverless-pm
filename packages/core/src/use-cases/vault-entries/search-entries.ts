@@ -4,7 +4,7 @@ import type { SearchEntryQuery } from "../../domain/entry/search-entry-query.typ
 import { entryMatchesSearchQuery } from "../../domain/entry/search-entry-query.utils";
 import type { VisiblePasswordEntryFields } from "../../domain/entry/password-entry.type";
 import { InvalidSearchEntryQueryError } from "../../errors/vault-entry.errors";
-import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
+import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 
 export type SearchEntriesCommandParams = {
   vaultId: string;

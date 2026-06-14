@@ -1,6 +1,5 @@
 import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it } from "vitest";
-import type { EncryptedUnlockedVaultSessionPayload } from "@lfspm/core";
 import type { Base64URLString } from "@lfspm/core/lib";
 import {
   ACTIVE_UNLOCKED_VAULT_SESSION_PAYLOAD_ID,
@@ -88,9 +87,7 @@ describe("IndexedDbEncryptedUnlockedVaultSessionPayloadRepository", () => {
   });
 });
 
-function createPayload(
-  sourceSnapshotRevision: number,
-): EncryptedUnlockedVaultSessionPayload {
+function createPayload(sourceSnapshotRevision: number) {
   return {
     sessionId: "session-id",
     vaultId: "vault-id",

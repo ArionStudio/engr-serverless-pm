@@ -5,10 +5,6 @@ import {
   createUnlockedVaultSessionWithEntries,
   singlePasswordEntry,
 } from "../../__tests__/fixtures/vault-entries";
-import type {
-  EncryptedUnlockedVaultSessionPayload,
-  UnlockedVaultSessionMaterial,
-} from "../../domain/vault/unlocked-vault-session";
 import {
   ActiveUnlockedVaultMismatchError,
   UnlockedVaultSessionInvalidError,
@@ -46,8 +42,16 @@ function createContext() {
 
 function createMaterial(
   ctx: ReturnType<typeof createContext>,
-  overrides: Partial<UnlockedVaultSessionMaterial> = {},
-): UnlockedVaultSessionMaterial {
+  overrides: Partial<{
+    readonly sessionId: string;
+    readonly vaultId: string;
+    readonly sourceSnapshotRevision: number;
+    readonly deviceId: string;
+    readonly vaultMasterKey: typeof ctx.values.vaultMasterKey;
+    readonly devicePrivateSignKey: typeof ctx.values.devicePrivateSignKey;
+    readonly payloadKey: typeof ctx.values.unlockedVaultSessionPayloadKey;
+  }> = {},
+) {
   return {
     sessionId: ctx.values.sessionId,
     vaultId: ctx.values.vaultId,
@@ -62,8 +66,13 @@ function createMaterial(
 
 function createEncryptedPayload(
   ctx: ReturnType<typeof createContext>,
-  overrides: Partial<EncryptedUnlockedVaultSessionPayload> = {},
-): EncryptedUnlockedVaultSessionPayload {
+  overrides: Partial<{
+    readonly sessionId: string;
+    readonly vaultId: string;
+    readonly sourceSnapshotRevision: number;
+    readonly content: typeof ctx.values.encryptedUnlockedVaultSessionPayload;
+  }> = {},
+) {
   return {
     sessionId: ctx.values.sessionId,
     vaultId: ctx.values.vaultId,
@@ -76,7 +85,7 @@ function createEncryptedPayload(
 function createActiveMaterial(
   ctx: ReturnType<typeof createContext>,
   vaultId = ctx.values.vaultId,
-): UnlockedVaultSessionMaterial {
+) {
   return createMaterial(ctx, {
     sessionId: "active-session-id",
     vaultId,

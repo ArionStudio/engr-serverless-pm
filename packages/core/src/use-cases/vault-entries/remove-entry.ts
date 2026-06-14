@@ -1,7 +1,7 @@
 import { removePasswordEntryFromVault } from "../../domain/vault/vault-entry.mutations";
 import { PasswordEntryNotFoundError } from "../../errors/vault-entry.errors";
-import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
-import type { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
+import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
+import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import type { ClockPort } from "../../ports/system/clock.port";
 
 export type RemoveEntryCommandParams = {

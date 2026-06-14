@@ -1,10 +1,10 @@
 import { areJsonEqual } from "../common/json.utils";
-import type { VersionVector } from "./version-vector.type";
+import type { VersionVector } from "../versioning/version-vector.type";
 import {
   compareVersionVectors,
   incrementVersionVector,
   mergeVersionVectors,
-} from "./version-vector.utils";
+} from "../versioning/version-vector.utils";
 import type {
   VaultSyncItemRelation,
   VaultSyncReviewAction,

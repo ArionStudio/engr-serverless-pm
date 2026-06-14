@@ -1,8 +1,8 @@
 import type { SyncConfig } from "../../domain/sync/sync-config.type";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import { InvalidSyncConfigError } from "../../errors/sync.errors";
-import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
-import type { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
+import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
+import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 
 export type SetupSyncCommandParams = {
   readonly vaultId: string;
