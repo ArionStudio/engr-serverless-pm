@@ -3,7 +3,7 @@ import type {
   VaultSnapshot,
 } from "../../domain/snapshot/vault-snapshot";
 import type { VaultMasterKey } from "../../domain/snapshot/brand-keys";
-import type { UnlockedVault } from "../../domain/vault/unlocked-vault";
+import type { UnlockedVault } from "../../domain/session/unlocked-vault";
 import type { Vault } from "../../domain/vault/vault";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { ClockPort } from "../../ports/system/clock.port";

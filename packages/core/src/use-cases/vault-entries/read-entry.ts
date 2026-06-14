@@ -1,7 +1,7 @@
 import { toVisiblePasswordEntryFields } from "../../domain/entry/password-entry.mapper";
 import type { VisiblePasswordEntryFields } from "../../domain/entry/password-entry.type";
 import { PasswordEntryNotFoundError } from "../../errors/vault-entry.errors";
-import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
+import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 
 export type ReadEntryCommandParams = {
   vaultId: string;

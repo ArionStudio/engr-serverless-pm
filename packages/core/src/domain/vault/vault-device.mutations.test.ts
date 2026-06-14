@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { DuplicateVaultDeviceProfileError } from "../../errors/vault-device.errors";
 import type { Vault } from "./vault";
-import { DuplicateVaultDeviceProfileError } from "./vault-device.errors";
 import {
   addRecoveredDeviceProfileToVault,
   revokeDeviceProfileFromVault,

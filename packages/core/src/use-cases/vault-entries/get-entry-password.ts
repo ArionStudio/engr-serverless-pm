@@ -1,5 +1,5 @@
 import { PasswordEntryNotFoundError } from "../../errors/vault-entry.errors";
-import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
+import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 
 export type GetEntryPasswordCommandParams = {
   vaultId: string;

@@ -3,9 +3,8 @@ import { CURRENT_ALGORITHM_SUITE } from "../../domain/crypto/algorithm-suite.con
 import type { PasswordEntry } from "../../domain/entry/password-entry.type";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import type { Tag } from "../../domain/entry/tag.type";
-import type { UnlockedVault } from "../../domain/vault/unlocked-vault";
-import type { UnlockedVaultSession } from "../../domain/vault/unlocked-vault-session";
-import type { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
+import type { UnlockedVault } from "../../domain/session/unlocked-vault";
+import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import type { CoreTestPorts } from "./ports";
 import type { CoreTestValues } from "./values";
 
@@ -88,7 +87,7 @@ export function createUnlockedVaultSessionWithEntries(
   entries: PasswordEntry[],
   tags: Tag[] = [],
   sourceSnapshotRevision = 1,
-): UnlockedVaultSession {
+) {
   return {
     unlockedVault: createUnlockedVaultWithEntries(values, entries, tags),
     sourceSnapshotRevision,

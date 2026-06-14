@@ -8,6 +8,7 @@ export * from "./generate-username.errors";
 export * from "./randomness.errors";
 export * from "./sync.errors";
 export * from "./unlock-vault.errors";
+export * from "./vault-device.errors";
 export * from "./vault-entry.errors";
 export * from "./vault-session.errors";
 export * from "./vault-snapshot.errors";

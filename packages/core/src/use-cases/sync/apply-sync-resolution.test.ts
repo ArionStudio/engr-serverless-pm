@@ -2,11 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import { createUnlockedVaultWithEntries } from "../../__tests__/fixtures/vault-entries";
-import { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
+import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import { CURRENT_ALGORITHM_SUITE } from "../../domain/crypto/algorithm-suite.const";
 import type { PasswordEntry } from "../../domain/entry/password-entry.type";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
-import type { RemoteVaultSnapshotDescriptor } from "../../domain/sync/remote-vault-snapshot-descriptor.type";
+import type { VaultSnapshotDescriptor } from "../../domain/snapshot/vault-snapshot-descriptor.type";
 import type { Vault } from "../../domain/vault/vault";
 import {
   RemoteVaultSnapshotChangedError,
@@ -73,8 +73,8 @@ function createEntry(
 
 function createRemoteSnapshotDescriptor(
   values: ReturnType<typeof createCoreTestValues>,
-  overrides: Partial<RemoteVaultSnapshotDescriptor> = {},
-): RemoteVaultSnapshotDescriptor {
+  overrides: Partial<VaultSnapshotDescriptor> = {},
+): VaultSnapshotDescriptor {
   return {
     vaultId: values.vaultId,
     versionVector: {

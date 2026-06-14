@@ -1,4 +1,7 @@
-import type { DeletedDeviceProfile, DeviceProfile } from "../device/device";
+import type {
+  DeletedDeviceProfile,
+  DeviceProfile,
+} from "../device-profile/device-profile";
 import type {
   VaultSyncItemRelation,
   VaultSyncReviewAction,

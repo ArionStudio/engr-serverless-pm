@@ -1,4 +1,4 @@
-import type { RemoteVaultSnapshotDescriptor } from "../../domain/sync/remote-vault-snapshot-descriptor.type";
+import type { VaultSnapshotDescriptor } from "../../domain/snapshot/vault-snapshot-descriptor.type";
 import type { SyncConfig } from "../../domain/sync/sync-config.type";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 
@@ -13,15 +13,15 @@ export interface SyncProviderPort {
   getLatestVaultSnapshotDescriptor: (
     syncConfig: SyncConfig,
     vaultId: string,
-  ) => Promise<RemoteVaultSnapshotDescriptor | null>;
+  ) => Promise<VaultSnapshotDescriptor | null>;
   downloadVaultSnapshot: (
     syncConfig: SyncConfig,
-    descriptor: RemoteVaultSnapshotDescriptor,
+    descriptor: VaultSnapshotDescriptor,
   ) => Promise<VaultSnapshot>;
   uploadVaultSnapshot: (
     syncConfig: SyncConfig,
     vaultSnapshot: VaultSnapshot,
-    expectedRemoteSnapshotDescriptor: RemoteVaultSnapshotDescriptor | null,
+    expectedRemoteSnapshotDescriptor: VaultSnapshotDescriptor | null,
   ) => Promise<void>;
   removeVaultSnapshots: (
     syncConfig: SyncConfig,

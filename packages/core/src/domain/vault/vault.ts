@@ -1,10 +1,13 @@
-import type { DeletedDeviceProfile, DeviceProfile } from "../device/device";
+import type {
+  DeletedDeviceProfile,
+  DeviceProfile,
+} from "../device-profile/device-profile";
 import type {
   DeletedPasswordEntry,
   PasswordEntry,
 } from "../entry/password-entry.type";
 import type { SyncConfig } from "../sync/sync-config.type";
-import type { VersionVector } from "../sync/version-vector.type";
+import type { VersionVector } from "../versioning/version-vector.type";
 import type { DeletedTag, Tag } from "../entry/tag.type";
 
 export interface Vault {

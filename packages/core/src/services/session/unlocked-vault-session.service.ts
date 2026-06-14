@@ -1,15 +1,13 @@
-import type { UnlockedVault } from "../../domain/vault/unlocked-vault";
-import type {
-  EncryptedUnlockedVaultSessionPayload,
-  ProtectedUnlockedVaultSession,
-  UnlockedVaultSession,
-  UnlockedVaultSessionMaterial,
-  UnlockedVaultSessionPayloadEncryptionContext,
-} from "../../domain/vault/unlocked-vault-session";
+import type { SerializedEncrypted } from "../../domain/crypto/protected-artifact";
+import type { DevicePrivateSignKey } from "../../domain/device-trust/brand-keys";
+import type { UnlockedVault } from "../../domain/session/unlocked-vault";
+import type { UnlockedVaultSessionPayloadKey } from "../../domain/session/unlocked-vault-session-payload-key";
+import type { VaultMasterKey } from "../../domain/snapshot/brand-keys";
+import type { Vault } from "../../domain/vault/vault";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { IdPort } from "../../ports/system/id.port";
-import type { EncryptedUnlockedVaultSessionPayloadRepositoryPort } from "../../ports/vault/encrypted-unlocked-vault-session-payload-repository.port";
-import type { UnlockedVaultSessionMaterialRepositoryPort } from "../../ports/vault/unlocked-vault-session-material-repository.port";
+import type { EncryptedUnlockedVaultSessionPayloadRepositoryPort } from "../../ports/session/encrypted-unlocked-vault-session-payload-repository.port";
+import type { UnlockedVaultSessionMaterialRepositoryPort } from "../../ports/session/unlocked-vault-session-material-repository.port";
 import {
   ActiveUnlockedVaultMismatchError,
   UnlockedVaultSessionInvalidError,
@@ -46,7 +44,10 @@ export class UnlockedVaultSessionService {
     }
   }
 
-  async get(): Promise<UnlockedVaultSession | null> {
+  async get(): Promise<{
+    readonly unlockedVault: UnlockedVault;
+    readonly sourceSnapshotRevision: number;
+  } | null> {
     const material =
       await this.materialRepository.getUnlockedVaultSessionMaterial();
 
@@ -69,9 +70,10 @@ export class UnlockedVaultSessionService {
   async requireUnlockedVaultContext(
     vaultId: string,
     operation: string,
-  ): Promise<
-    Pick<UnlockedVaultSession, "unlockedVault" | "sourceSnapshotRevision">
-  > {
+  ): Promise<{
+    readonly unlockedVault: UnlockedVault;
+    readonly sourceSnapshotRevision: number;
+  }> {
     const unlockedVaultSession = await this.get();
 
     if (
@@ -134,7 +136,10 @@ export class UnlockedVaultSessionService {
     }
   }
 
-  private async save(session: UnlockedVaultSession): Promise<void> {
+  private async save(session: {
+    readonly unlockedVault: UnlockedVault;
+    readonly sourceSnapshotRevision: number;
+  }): Promise<void> {
     const activeMaterial =
       await this.materialRepository.getUnlockedVaultSessionMaterial();
     const incomingVaultId = session.unlockedVault.vaultId;
@@ -165,19 +170,40 @@ export class UnlockedVaultSessionService {
   }
 
   private async protect(
-    session: UnlockedVaultSession,
-    activeMaterial?: Pick<
-      UnlockedVaultSessionMaterial,
-      "sessionId" | "payloadKey"
-    >,
-  ): Promise<ProtectedUnlockedVaultSession> {
+    session: {
+      readonly unlockedVault: UnlockedVault;
+      readonly sourceSnapshotRevision: number;
+    },
+    activeMaterial?: {
+      readonly sessionId: string;
+      readonly payloadKey: UnlockedVaultSessionPayloadKey;
+    },
+  ): Promise<{
+    readonly material: {
+      readonly sessionId: string;
+      readonly vaultId: string;
+      readonly sourceSnapshotRevision: number;
+      readonly deviceId: string;
+      readonly vaultMasterKey: VaultMasterKey;
+      readonly devicePrivateSignKey: DevicePrivateSignKey;
+      readonly payloadKey: UnlockedVaultSessionPayloadKey;
+    };
+    readonly encryptedPayload: {
+      readonly sessionId: string;
+      readonly vaultId: string;
+      readonly sourceSnapshotRevision: number;
+      readonly content: SerializedEncrypted<{
+        readonly vault: Vault;
+      }>;
+    };
+  }> {
     const sessionId =
       activeMaterial?.sessionId ?? (await this.ids.generateId());
     const payloadKey =
       activeMaterial?.payloadKey ??
       (await this.crypto.generateUnlockedVaultSessionPayloadKey());
     const { unlockedVault, sourceSnapshotRevision } = session;
-    const context: UnlockedVaultSessionPayloadEncryptionContext = {
+    const context = {
       sessionId,
       vaultId: unlockedVault.vaultId,
       sourceSnapshotRevision,
@@ -206,18 +232,38 @@ export class UnlockedVaultSessionService {
   }
 
   private async restore(
-    material: UnlockedVaultSessionMaterial,
-    encryptedPayload: EncryptedUnlockedVaultSessionPayload,
-  ): Promise<UnlockedVaultSession> {
+    material: {
+      readonly sessionId: string;
+      readonly vaultId: string;
+      readonly sourceSnapshotRevision: number;
+      readonly deviceId: string;
+      readonly vaultMasterKey: VaultMasterKey;
+      readonly devicePrivateSignKey: DevicePrivateSignKey;
+      readonly payloadKey: UnlockedVaultSessionPayloadKey;
+    },
+    encryptedPayload: {
+      readonly sessionId: string;
+      readonly vaultId: string;
+      readonly sourceSnapshotRevision: number;
+      readonly content: SerializedEncrypted<{
+        readonly vault: Vault;
+      }>;
+    },
+  ): Promise<{
+    readonly unlockedVault: UnlockedVault;
+    readonly sourceSnapshotRevision: number;
+  }> {
     this.requireMatchingSessionRecords(material, encryptedPayload);
 
-    const context: UnlockedVaultSessionPayloadEncryptionContext = {
+    const context = {
       sessionId: encryptedPayload.sessionId,
       vaultId: encryptedPayload.vaultId,
       sourceSnapshotRevision: encryptedPayload.sourceSnapshotRevision,
     };
 
-    let payload;
+    let payload: {
+      readonly vault: Vault;
+    };
 
     try {
       payload = await this.crypto.decryptUnlockedVaultSessionPayload(
@@ -253,8 +299,16 @@ export class UnlockedVaultSessionService {
   }
 
   private requireMatchingSessionRecords(
-    material: UnlockedVaultSessionMaterial,
-    encryptedPayload: EncryptedUnlockedVaultSessionPayload,
+    material: {
+      readonly sessionId: string;
+      readonly vaultId: string;
+      readonly sourceSnapshotRevision: number;
+    },
+    encryptedPayload: {
+      readonly sessionId: string;
+      readonly vaultId: string;
+      readonly sourceSnapshotRevision: number;
+    },
   ): void {
     if (
       material.sessionId !== encryptedPayload.sessionId ||

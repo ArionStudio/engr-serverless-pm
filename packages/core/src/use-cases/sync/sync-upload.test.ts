@@ -4,7 +4,7 @@ import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import { createUnlockedVaultWithEntries } from "../../__tests__/fixtures/vault-entries";
 import { CURRENT_ALGORITHM_SUITE } from "../../domain/crypto/algorithm-suite.const";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
-import type { RemoteVaultSnapshotDescriptor } from "../../domain/sync/remote-vault-snapshot-descriptor.type";
+import type { VaultSnapshotDescriptor } from "../../domain/snapshot/vault-snapshot-descriptor.type";
 import {
   RemoteVaultSnapshotAheadError,
   RemoteVaultSnapshotChangedError,
@@ -12,7 +12,7 @@ import {
   SyncConflictDetectedError,
   SyncNotConfiguredError,
 } from "../../errors/sync.errors";
-import { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
+import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import { VaultSnapshotNotFoundError } from "../../errors/unlock-vault.errors";
 import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 import { SyncUploadUseCase } from "./sync-upload";
@@ -58,8 +58,8 @@ function createSnapshot(
 
 function createRemoteSnapshotDescriptor(
   values: ReturnType<typeof createCoreTestValues>,
-  overrides: Partial<RemoteVaultSnapshotDescriptor> = {},
-): RemoteVaultSnapshotDescriptor {
+  overrides: Partial<VaultSnapshotDescriptor> = {},
+): VaultSnapshotDescriptor {
   return {
     vaultId: values.vaultId,
     versionVector: {

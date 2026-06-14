@@ -2,7 +2,7 @@ import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard/cli
 import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
 import type { VaultLockTaskRepositoryPort } from "../../ports/vault/vault-lock-task-repository.port";
 import type { ClipboardClearService } from "../../services/clipboard/clipboard-clear.service";
-import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
+import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 
 export type LockVaultCommandParams = {
   actionId?: string;

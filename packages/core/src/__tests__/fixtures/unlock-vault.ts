@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { DeviceAccessMaterial } from "../../domain/device/device-access-material";
+import type { DeviceAccessMaterial } from "../../domain/device-trust/device-access-material";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import { UnlockVaultUseCase } from "../../use-cases/vault-lifecycle/unlock-vault";
 import { createCoreTestPorts } from "./ports";

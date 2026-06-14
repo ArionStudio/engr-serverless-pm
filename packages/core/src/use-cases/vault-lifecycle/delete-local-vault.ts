@@ -1,6 +1,6 @@
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import { VaultMustBeUnlockedForLocalDeletionError } from "../../errors/delete-local-vault.errors";
-import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
+import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 
 export type DeleteLocalVaultCommandParams = {
   vaultId: string;

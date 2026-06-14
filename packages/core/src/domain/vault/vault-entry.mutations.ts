@@ -2,9 +2,9 @@ import type {
   PasswordEntry,
   PasswordEntryInput,
 } from "../entry/password-entry.type";
-import { incrementVersionVector } from "../sync/version-vector.utils";
+import { DuplicateVaultEntryError } from "../../errors/vault-entry.errors";
+import { incrementVersionVector } from "../versioning/version-vector.utils";
 import type { Vault } from "./vault";
-import { DuplicateVaultEntryError } from "./vault-entry.errors";
 
 export function addPasswordEntryToVault(
   vault: Vault,

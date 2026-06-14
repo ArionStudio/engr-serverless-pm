@@ -3,8 +3,8 @@ import { sanitizeEntryUrl } from "../../domain/entry/sanitized-entry-url.utils";
 import { addPasswordEntryToVault } from "../../domain/vault/vault-entry.mutations";
 import type { IdPort } from "../../ports/system/id.port";
 import { InvalidPasswordEntryError } from "../../errors/vault-entry.errors";
-import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
-import type { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
+import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
+import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 
 export type AddEntryCommandParams = {
   vaultId: string;

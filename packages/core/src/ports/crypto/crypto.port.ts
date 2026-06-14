@@ -11,19 +11,15 @@ import type {
   DevicePublicSignKey,
   DeviceSignKeyPair,
   DeviceSlotKey,
-} from "../../domain/device/brand-keys";
+} from "../../domain/device-trust/brand-keys";
 import type {
   LocalKeysPayload,
   LocalRootKey,
-} from "../../domain/local-protection/local-protection.type";
+} from "../../domain/device-trust/local-protection.type";
 import type { RawMasterPassword } from "../../domain/master-password";
 import type { RecoverySecretKey } from "../../domain/recovery/brand-keys";
 import type { VaultMasterKey } from "../../domain/snapshot/brand-keys";
-import type {
-  UnlockedVaultSessionPayload,
-  UnlockedVaultSessionPayloadEncryptionContext,
-  UnlockedVaultSessionPayloadKey,
-} from "../../domain/vault/unlocked-vault-session";
+import type { UnlockedVaultSessionPayloadKey } from "../../domain/session/unlocked-vault-session-payload-key";
 import type {
   UnsignedVaultSnapshot,
   VaultSnapshot,
@@ -100,15 +96,33 @@ export interface CryptoPort {
 
   // Unlocked vault session payload protection
   encryptUnlockedVaultSessionPayload: (
-    payload: UnlockedVaultSessionPayload,
+    payload: {
+      readonly vault: Vault;
+    },
     payloadKey: UnlockedVaultSessionPayloadKey,
-    context: UnlockedVaultSessionPayloadEncryptionContext,
-  ) => Promise<SerializedEncrypted<UnlockedVaultSessionPayload>>;
+    context: {
+      readonly sessionId: string;
+      readonly vaultId: string;
+      readonly sourceSnapshotRevision: number;
+    },
+  ) => Promise<
+    SerializedEncrypted<{
+      readonly vault: Vault;
+    }>
+  >;
   decryptUnlockedVaultSessionPayload: (
-    encryptedPayload: SerializedEncrypted<UnlockedVaultSessionPayload>,
+    encryptedPayload: SerializedEncrypted<{
+      readonly vault: Vault;
+    }>,
     payloadKey: UnlockedVaultSessionPayloadKey,
-    context: UnlockedVaultSessionPayloadEncryptionContext,
-  ) => Promise<UnlockedVaultSessionPayload>;
+    context: {
+      readonly sessionId: string;
+      readonly vaultId: string;
+      readonly sourceSnapshotRevision: number;
+    },
+  ) => Promise<{
+    readonly vault: Vault;
+  }>;
 
   // Vault snapshot authenticity
   signVaultSnapshot: (

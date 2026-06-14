@@ -1,4 +1,4 @@
-import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
+import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import { SyncNotConfiguredError } from "../../errors/sync.errors";
 

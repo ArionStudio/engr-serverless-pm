@@ -7,12 +7,12 @@ import {
   RemoteVaultSnapshotNotFoundError,
   SyncNotConfiguredError,
 } from "../../errors/sync.errors";
-import { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
+import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 import { CURRENT_ALGORITHM_SUITE } from "../../domain/crypto/algorithm-suite.const";
 import type { PasswordEntry } from "../../domain/entry/password-entry.type";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
-import type { RemoteVaultSnapshotDescriptor } from "../../domain/sync/remote-vault-snapshot-descriptor.type";
+import type { VaultSnapshotDescriptor } from "../../domain/snapshot/vault-snapshot-descriptor.type";
 import type { Vault } from "../../domain/vault/vault";
 import { PrepareSyncReviewUseCase } from "./prepare-sync-review";
 
@@ -71,8 +71,8 @@ function createEntry(
 
 function createRemoteSnapshotDescriptor(
   values: ReturnType<typeof createCoreTestValues>,
-  overrides: Partial<RemoteVaultSnapshotDescriptor> = {},
-): RemoteVaultSnapshotDescriptor {
+  overrides: Partial<VaultSnapshotDescriptor> = {},
+): VaultSnapshotDescriptor {
   return {
     vaultId: values.vaultId,
     versionVector: {

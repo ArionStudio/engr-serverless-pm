@@ -1,8 +1,8 @@
 import {
-  areRemoteVaultSnapshotDescriptorsEqual,
-  compareLocalAndRemoteSnapshotDescriptors,
-  toRemoteVaultSnapshotDescriptor,
-} from "../../domain/sync/vault-snapshot-version.utils";
+  areVaultSnapshotDescriptorsEqual,
+  compareVaultSnapshotDescriptors,
+  toVaultSnapshotDescriptor,
+} from "../../domain/snapshot/vault-snapshot-descriptor.utils";
 import {
   RemoteVaultSnapshotAheadError,
   RemoteVaultSnapshotChangedError,
@@ -11,8 +11,8 @@ import {
   SyncNotConfiguredError,
 } from "../../errors/sync.errors";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
-import type { UnlockedVaultSessionService } from "../../services/vault-session/unlocked-vault-session.service";
-import type { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
+import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
+import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 
 export type SyncUploadCommandParams = {
   readonly vaultId: string;
@@ -55,19 +55,19 @@ export class SyncUploadUseCase {
       );
 
     if (remoteSnapshotDescriptor !== null) {
-      const localSnapshotDescriptor = toRemoteVaultSnapshotDescriptor(
+      const localSnapshotDescriptor = toVaultSnapshotDescriptor(
         localSnapshot.metadata.id,
         unlockedVault.vault,
         localSnapshot,
       );
-      const relation = compareLocalAndRemoteSnapshotDescriptors(
+      const relation = compareVaultSnapshotDescriptors(
         localSnapshotDescriptor,
         remoteSnapshotDescriptor,
       );
 
       if (
         relation === "equal" &&
-        areRemoteVaultSnapshotDescriptorsEqual(
+        areVaultSnapshotDescriptorsEqual(
           remoteSnapshotDescriptor,
           localSnapshotDescriptor,
         )

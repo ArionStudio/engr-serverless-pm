@@ -17,9 +17,9 @@ import {
   DeviceNotTrustedForVaultMutationError,
   VaultSnapshotRevisionMismatchError,
 } from "../../errors/vault-snapshot.errors";
-import { VaultSnapshotService } from "../../services/vault-snapshots/vault-snapshot.service";
+import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import { CURRENT_ALGORITHM_SUITE } from "../../domain/crypto/algorithm-suite.const";
-import type { DevicePublicSignKey } from "../../domain/device/brand-keys";
+import type { DevicePublicSignKey } from "../../domain/device-trust/brand-keys";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import type { Vault } from "../../domain/vault/vault";
 import {

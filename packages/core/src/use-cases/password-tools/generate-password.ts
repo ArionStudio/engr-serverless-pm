@@ -1,11 +1,11 @@
-import { generatedPasswordSettingsSchema } from "../../domain/password-tools/generated-password.schema";
-import type { GeneratedPasswordSettings } from "../../domain/password-tools/generated-password.type";
+import { generatedPasswordSettingsSchema } from "../../lib/generate-password/generated-password.schema";
+import type { GeneratedPasswordSettings } from "../../lib/generate-password/generated-password.type";
 import {
   canGeneratePassword,
   getGeneratedPasswordCharacterSets,
   pickGeneratedPasswordCharacters,
   shuffleGeneratedPasswordCharacters,
-} from "../../domain/password-tools/generated-password.utils";
+} from "../../lib/generate-password/generated-password.utils";
 import {
   InvalidGeneratedPasswordSettingsError,
   PasswordGenerationImpossibleError,
