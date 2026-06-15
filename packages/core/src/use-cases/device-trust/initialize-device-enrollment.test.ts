@@ -389,6 +389,21 @@ describe("InitializeDeviceEnrollmentUseCase", () => {
     expect(
       ctx.ports.vaultLocalRepository.saveVaultSnapshot,
     ).toHaveBeenCalledTimes(2);
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+    ).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          snapshotVersionVector: {
+            [ctx.values.deviceId]: 1,
+          },
+        }),
+        keySlots: expect.not.objectContaining({
+          enrollmentKeySlot: expect.anything(),
+        }),
+      }),
+    );
     expect(ctx.ports.saved.vaultSnapshot).toEqual(
       expect.objectContaining({
         metadata: expect.objectContaining({
