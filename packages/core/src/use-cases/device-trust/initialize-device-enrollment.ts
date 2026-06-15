@@ -186,15 +186,11 @@ export class InitializeDeviceEnrollmentUseCase {
         params.remoteSnapshotDescriptor,
       );
     } catch (error) {
-      try {
-        await this.vaultLocalRepository.saveVaultSnapshot(currentVaultSnapshot);
-        await this.unlockedVaultSession.commitPersistedSnapshot(
-          unlockedVault,
-          sourceSnapshotVersionVector,
-        );
-      } catch {
-        // Preserve the upload failure as the root cause.
-      }
+      await this.vaultLocalRepository.saveVaultSnapshot(currentVaultSnapshot);
+      await this.unlockedVaultSession.commitPersistedSnapshot(
+        unlockedVault,
+        sourceSnapshotVersionVector,
+      );
 
       if (error instanceof RemoteVaultSnapshotChangedError) {
         throw new SyncConflictDetectedError(params.vaultId);

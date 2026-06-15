@@ -365,4 +365,46 @@ describe("InitializeDeviceEnrollmentUseCase", () => {
       },
     });
   });
+
+  it("surfaces rollback failures when enrollment upload detects a remote change", async () => {
+    const ctx = createContext();
+    const rollbackError = new Error("rollback failed");
+
+    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockRejectedValueOnce(
+      new RemoteVaultSnapshotChangedError(ctx.values.vaultId),
+    );
+    vi.mocked(ctx.ports.vaultLocalRepository.saveVaultSnapshot)
+      .mockImplementationOnce(async (vaultSnapshot) => {
+        ctx.ports.saved.vaultSnapshot = vaultSnapshot;
+      })
+      .mockRejectedValueOnce(rollbackError);
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        remoteSnapshotDescriptor: ctx.remoteSnapshotDescriptor,
+      }),
+    ).rejects.toBe(rollbackError);
+
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+    ).toHaveBeenCalledTimes(2);
+    expect(ctx.ports.saved.vaultSnapshot).toEqual(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          snapshotVersionVector: {
+            [ctx.values.deviceId]: 2,
+          },
+        }),
+        keySlots: expect.objectContaining({
+          enrollmentKeySlot: expect.anything(),
+        }),
+      }),
+    );
+    expect(ctx.ports.saved.unlockedVaultSession).toMatchObject({
+      sourceSnapshotVersionVector: {
+        [ctx.values.deviceId]: 2,
+      },
+    });
+  });
 });
