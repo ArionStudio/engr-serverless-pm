@@ -6,7 +6,7 @@ import type { VersionVectorRelation } from "../versioning/version-vector.type";
 export function compareVaultSnapshotDescriptors(
   local: VaultSnapshotDescriptor,
   remote: VaultSnapshotDescriptor,
-): VersionVectorRelation {
+): Exclude<VersionVectorRelation, "remote_missing"> {
   return compareVersionVectors(
     local.snapshotVersionVector,
     remote.snapshotVersionVector,

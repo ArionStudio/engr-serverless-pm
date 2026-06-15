@@ -9,7 +9,11 @@ import type {
   VaultSnapshot,
 } from "../../domain/snapshot/vault-snapshot";
 import { DeviceEnrollmentVaultNotSynchronizedError } from "../../errors/device-enrollment.errors";
-import { SyncNotConfiguredError } from "../../errors/sync.errors";
+import {
+  RemoteVaultSnapshotChangedError,
+  SyncConflictDetectedError,
+  SyncNotConfiguredError,
+} from "../../errors/sync.errors";
 import {
   VaultSnapshotSignatureVerificationFailedError,
   VaultSnapshotSignerNotTrustedError,
@@ -22,6 +26,7 @@ import type { UnlockedVaultSessionService } from "../../services/session/unlocke
 import type { VaultSyncGuardService } from "../../services/sync";
 import { incrementVersionVector } from "../../domain/versioning/version-vector.utils";
 import type { VersionVector } from "../../domain/versioning/version-vector.type";
+import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 
 export type InitializeDeviceEnrollmentCommandParams = {
   readonly vaultId: string;
@@ -37,6 +42,7 @@ export type InitializeDeviceEnrollmentResult = {
 export class InitializeDeviceEnrollmentUseCase {
   private readonly clock: ClockPort;
   private readonly crypto: CryptoPort;
+  private readonly syncProvider: SyncProviderPort;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
   private readonly vaultSyncGuard: VaultSyncGuardService;
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
@@ -44,12 +50,14 @@ export class InitializeDeviceEnrollmentUseCase {
   constructor(
     clock: ClockPort,
     crypto: CryptoPort,
+    syncProvider: SyncProviderPort,
     unlockedVaultSession: UnlockedVaultSessionService,
     vaultSyncGuard: VaultSyncGuardService,
     vaultLocalRepository: VaultLocalRepositoryPort,
   ) {
     this.clock = clock;
     this.crypto = crypto;
+    this.syncProvider = syncProvider;
     this.unlockedVaultSession = unlockedVaultSession;
     this.vaultSyncGuard = vaultSyncGuard;
     this.vaultLocalRepository = vaultLocalRepository;
@@ -171,11 +179,38 @@ export class InitializeDeviceEnrollmentUseCase {
       enrollmentVaultSnapshot.metadata.snapshotVersionVector,
     );
 
+    try {
+      await this.syncProvider.uploadVaultSnapshot(
+        syncConfig,
+        enrollmentVaultSnapshot,
+        params.remoteSnapshotDescriptor,
+      );
+    } catch (error) {
+      try {
+        await this.vaultLocalRepository.saveVaultSnapshot(currentVaultSnapshot);
+        await this.unlockedVaultSession.commitPersistedSnapshot(
+          unlockedVault,
+          sourceSnapshotVersionVector,
+        );
+      } catch {
+        // Preserve the upload failure as the root cause.
+      }
+
+      if (error instanceof RemoteVaultSnapshotChangedError) {
+        throw new SyncConflictDetectedError(params.vaultId);
+      }
+
+      throw error;
+    }
+
     return {
       enrollmentBundle: {
         version: 1,
         vaultId: params.vaultId,
         syncConfig,
+        snapshotVersionVector:
+          enrollmentVaultSnapshot.metadata.snapshotVersionVector,
+        revisionTimestamp: enrollmentVaultSnapshot.metadata.revisionTimestamp,
         snapshotSignerPublicKey: currentTrustedDevice.publicSignKey,
         enrollmentSecret,
       },

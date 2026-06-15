@@ -63,7 +63,8 @@ export function findChangesInKeySlots(
       deviceSlots.addedDeviceIds.length > 0 ||
       deviceSlots.removedDeviceIds.length > 0 ||
       recoveryKeySlot === "changed" ||
-      enrollmentKeySlot === "existing",
+      enrollmentKeySlot === "added" ||
+      enrollmentKeySlot === "removed",
   };
 }
 
@@ -164,9 +165,11 @@ function findRecoveryKeySlotState(
   localRecoveryKeySlot: RecoveryKeySlot,
   remoteRecoveryKeySlot: RecoveryKeySlot,
 ): KeySlotRecoverySlotState {
-  return areJsonEqual(localRecoveryKeySlot, remoteRecoveryKeySlot)
-    ? "same"
-    : "changed";
+  if (areJsonEqual(localRecoveryKeySlot, remoteRecoveryKeySlot)) {
+    return "same";
+  }
+
+  return "changed";
 }
 
 function findEnrollmentKeySlotState(
@@ -186,6 +189,14 @@ function findEnrollmentKeySlotState(
     areJsonEqual(localEnrollmentKeySlot, remoteEnrollmentKeySlot)
   ) {
     return "existing";
+  }
+
+  if (localEnrollmentKeySlot === undefined) {
+    return "added";
+  }
+
+  if (remoteEnrollmentKeySlot === undefined) {
+    return "removed";
   }
 
   return "changed";

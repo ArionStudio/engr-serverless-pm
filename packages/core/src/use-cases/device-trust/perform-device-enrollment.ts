@@ -16,6 +16,7 @@ import type { Vault } from "../../domain/vault/vault";
 import { addDeviceProfileToVault } from "../../domain/vault/vault-device.mutations";
 import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
 import {
+  DeviceEnrollmentRemoteSnapshotChangedError,
   DeviceEnrollmentKeySlotNotFoundError,
   DeviceEnrollmentSnapshotMismatchError,
 } from "../../errors/device-enrollment.errors";
@@ -92,6 +93,23 @@ export class PerformDeviceEnrollmentUseCase {
 
     if (remoteSnapshotDescriptor === null) {
       throw new RemoteVaultSnapshotNotFoundError(enrollmentBundle.vaultId);
+    }
+
+    const expectedSnapshotDescriptor = {
+      vaultId: enrollmentBundle.vaultId,
+      snapshotVersionVector: enrollmentBundle.snapshotVersionVector,
+      revisionTimestamp: enrollmentBundle.revisionTimestamp,
+    };
+
+    if (
+      !areVaultSnapshotDescriptorsEqual(
+        remoteSnapshotDescriptor,
+        expectedSnapshotDescriptor,
+      )
+    ) {
+      throw new DeviceEnrollmentRemoteSnapshotChangedError(
+        enrollmentBundle.vaultId,
+      );
     }
 
     const remoteSnapshot = await this.syncProvider.downloadVaultSnapshot(
@@ -286,11 +304,26 @@ export class PerformDeviceEnrollmentUseCase {
         remoteSnapshotDescriptor,
       );
     } catch (error) {
-      if (error instanceof RemoteVaultSnapshotChangedError) {
-        throw new SyncConflictDetectedError(enrollmentBundle.vaultId);
+      const mappedError =
+        error instanceof RemoteVaultSnapshotChangedError
+          ? new SyncConflictDetectedError(enrollmentBundle.vaultId)
+          : error;
+
+      try {
+        await this.unlockedVaultSession.remove();
+      } catch {
+        // Preserve the upload failure as the root cause.
       }
 
-      throw error;
+      try {
+        await this.vaultLocalRepository.removePersistedLocalVault(
+          enrollmentBundle.vaultId,
+        );
+      } catch {
+        // Preserve the upload failure as the root cause.
+      }
+
+      throw mappedError;
     }
 
     return {

@@ -8,7 +8,9 @@ import {
 import type { VaultSnapshotDescriptor } from "../../domain/snapshot/vault-snapshot-descriptor.type";
 import { DeviceEnrollmentVaultNotSynchronizedError } from "../../errors/device-enrollment.errors";
 import {
+  RemoteVaultSnapshotChangedError,
   RemoteVaultSnapshotAheadError,
+  SyncConflictDetectedError,
   SyncNotConfiguredError,
 } from "../../errors/sync.errors";
 import { VaultSnapshotSignatureVerificationFailedError } from "../../errors/unlock-vault.errors";
@@ -58,6 +60,7 @@ function createContext() {
     useCase: new InitializeDeviceEnrollmentUseCase(
       ports.clock,
       ports.crypto,
+      ports.syncProvider,
       ports.sessionServices.unlockedVaultSession,
       vaultSyncGuard,
       ports.vaultLocalRepository,
@@ -81,6 +84,10 @@ describe("InitializeDeviceEnrollmentUseCase", () => {
         version: 1,
         vaultId: ctx.values.vaultId,
         syncConfig: ctx.values.syncConfig,
+        snapshotVersionVector: {
+          [ctx.values.deviceId]: 2,
+        },
+        revisionTimestamp: ctx.values.timestamp,
         snapshotSignerPublicKey: ctx.values.devicePublicSignKey,
         enrollmentSecret: ctx.values.deviceEnrollmentSecret,
       },
@@ -163,7 +170,11 @@ describe("InitializeDeviceEnrollmentUseCase", () => {
         },
       },
     });
-    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).toHaveBeenCalledWith(
+      ctx.values.syncConfig,
+      ctx.ports.saved.vaultSnapshot,
+      ctx.remoteSnapshotDescriptor,
+    );
     expect(
       ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
     ).toHaveBeenCalledWith(ctx.values.syncConfig, ctx.values.vaultId);
@@ -319,5 +330,39 @@ describe("InitializeDeviceEnrollmentUseCase", () => {
     expect(
       ctx.ports.vaultLocalRepository.saveVaultSnapshot,
     ).not.toHaveBeenCalled();
+  });
+
+  it("restores the local snapshot when enrollment upload detects a remote change", async () => {
+    const ctx = createContext();
+
+    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockRejectedValueOnce(
+      new RemoteVaultSnapshotChangedError(ctx.values.vaultId),
+    );
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        remoteSnapshotDescriptor: ctx.remoteSnapshotDescriptor,
+      }),
+    ).rejects.toBeInstanceOf(SyncConflictDetectedError);
+
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).toHaveBeenCalled();
+    expect(ctx.ports.saved.vaultSnapshot).toEqual(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          snapshotVersionVector: {
+            [ctx.values.deviceId]: 1,
+          },
+        }),
+        keySlots: expect.not.objectContaining({
+          enrollmentKeySlot: expect.anything(),
+        }),
+      }),
+    );
+    expect(ctx.ports.saved.unlockedVaultSession).toMatchObject({
+      sourceSnapshotVersionVector: {
+        [ctx.values.deviceId]: 1,
+      },
+    });
   });
 });

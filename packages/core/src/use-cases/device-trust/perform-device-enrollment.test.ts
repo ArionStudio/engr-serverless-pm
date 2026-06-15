@@ -6,8 +6,15 @@ import type { DeviceEnrollmentBundle } from "../../domain/device-trust/device-en
 import type { VaultSnapshotDescriptor } from "../../domain/snapshot/vault-snapshot-descriptor.type";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import type { Vault } from "../../domain/vault/vault";
-import { DeviceEnrollmentKeySlotNotFoundError } from "../../errors/device-enrollment.errors";
-import { RemoteVaultSnapshotNotFoundError } from "../../errors/sync.errors";
+import {
+  DeviceEnrollmentKeySlotNotFoundError,
+  DeviceEnrollmentRemoteSnapshotChangedError,
+} from "../../errors/device-enrollment.errors";
+import {
+  RemoteVaultSnapshotChangedError,
+  RemoteVaultSnapshotNotFoundError,
+  SyncConflictDetectedError,
+} from "../../errors/sync.errors";
 import { VaultSnapshotSignatureVerificationFailedError } from "../../errors/unlock-vault.errors";
 import { PerformDeviceEnrollmentUseCase } from "./perform-device-enrollment";
 
@@ -82,6 +89,8 @@ function createContext() {
     version: 1,
     vaultId: values.vaultId,
     syncConfig: values.syncConfig,
+    snapshotVersionVector: remoteSnapshotDescriptor.snapshotVersionVector,
+    revisionTimestamp: remoteSnapshotDescriptor.revisionTimestamp,
     snapshotSignerPublicKey: values.devicePublicSignKey,
     enrollmentSecret: values.deviceEnrollmentSecret,
   };
@@ -260,6 +269,35 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
+  it("rejects a stale enrollment bundle before downloading the snapshot", async () => {
+    const ctx = createContext();
+
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValueOnce({
+      ...ctx.remoteSnapshotDescriptor,
+      snapshotVersionVector: {
+        [ctx.values.deviceId]: 3,
+      },
+    });
+
+    await expect(
+      ctx.useCase.execute({
+        enrollmentBundle: ctx.enrollmentBundle,
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "New laptop",
+      }),
+    ).rejects.toBeInstanceOf(DeviceEnrollmentRemoteSnapshotChangedError);
+
+    expect(ctx.ports.syncProvider.downloadVaultSnapshot).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.crypto.verifyVaultSnapshotSignature,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
+    ).not.toHaveBeenCalled();
+  });
+
   it("rejects a snapshot that is not signed by the package key", async () => {
     const ctx = createContext();
 
@@ -306,5 +344,61 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     expect(
       ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
     ).not.toHaveBeenCalled();
+  });
+
+  it("removes initialized local vault when session commit fails", async () => {
+    const ctx = createContext();
+    const error = new Error("commit failed");
+
+    vi.mocked(
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
+    ).mockRejectedValueOnce(error);
+
+    await expect(
+      ctx.useCase.execute({
+        enrollmentBundle: ctx.enrollmentBundle,
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "New laptop",
+      }),
+    ).rejects.toBe(error);
+
+    expect(
+      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
+    ).toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.removePersistedLocalVault,
+    ).toHaveBeenCalledWith(ctx.values.vaultId);
+    expect(ctx.ports.saved.localVaultDescriptor).toBeUndefined();
+    expect(ctx.ports.saved.deviceAccessMaterial).toBeUndefined();
+    expect(ctx.ports.saved.vaultSnapshot).toBeUndefined();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("cleans local enrollment state and maps remote upload change to conflict", async () => {
+    const ctx = createContext();
+
+    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockRejectedValueOnce(
+      new RemoteVaultSnapshotChangedError(ctx.values.vaultId),
+    );
+
+    await expect(
+      ctx.useCase.execute({
+        enrollmentBundle: ctx.enrollmentBundle,
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "New laptop",
+      }),
+    ).rejects.toBeInstanceOf(SyncConflictDetectedError);
+
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).toHaveBeenCalled();
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.remove,
+    ).toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.removePersistedLocalVault,
+    ).toHaveBeenCalledWith(ctx.values.vaultId);
+    expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
+    expect(ctx.ports.saved.localVaultDescriptor).toBeUndefined();
+    expect(ctx.ports.saved.deviceAccessMaterial).toBeUndefined();
+    expect(ctx.ports.saved.vaultSnapshot).toBeUndefined();
   });
 });

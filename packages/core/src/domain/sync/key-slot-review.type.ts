@@ -1,6 +1,11 @@
 import type { DeviceKeySlot } from "../snapshot";
 
-export type KeySlotEnrollmentSlotState = "missing" | "existing" | "changed";
+export type KeySlotEnrollmentSlotState =
+  | "missing"
+  | "existing"
+  | "added"
+  | "removed"
+  | "changed";
 export type KeySlotRecoverySlotState = "same" | "changed";
 
 export type KeySlotDeviceSlotsChanges = {
