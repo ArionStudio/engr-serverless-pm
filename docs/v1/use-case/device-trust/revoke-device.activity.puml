@@ -1,0 +1,55 @@
+@startuml revoke-device-activity
+title RevokeDeviceUseCase - Activity
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #E3F2FD
+  BorderColor #1976D2
+}
+
+start
+:Input:\nvaultId, deviceId to revoke;
+:Source:\npackages/core/src/use-cases/device-trust/revoke-device.ts;
+:Require unlocked vault context for "revoke device";
+if (target device is current device?) then (yes)
+  :Throw CannotRevokeCurrentDeviceError;
+  stop
+endif
+
+:Prepare local mutation with VaultSyncGuardService;
+:Use syncState.localSnapshot as current snapshot;
+:Find snapshot signing device in device slots;
+if (signer missing?) then (yes)
+  :Throw VaultSnapshotSignerNotTrustedError;
+  stop
+endif
+:Verify current snapshot signature;
+if (signature invalid?) then (yes)
+  :Throw VaultSnapshotSignatureVerificationFailedError;
+  stop
+endif
+:Check target device exists in key slots;
+if (target not trusted?) then (yes)
+  :Throw DeviceToRevokeNotTrustedError;
+  stop
+endif
+:Check target device profile exists in vault;
+if (profile missing?) then (yes)
+  :Throw DeviceProfileNotFoundForRevocationError;
+  stop
+endif
+
+:Get revisionTimestamp from ClockPort;
+:Tombstone revoked device profile inside encrypted vault content;
+:Build snapshot keySlots without revoked device slot;
+:Encrypt revoked vault content;
+:Sign revoked snapshot with current device private signing key;
+:Save revoked snapshot locally;
+:Build updated unlocked vault;
+:Upload persisted local mutation through sync guard;
+:Commit revoked snapshot vector to unlocked session;
+:Return vault, snapshotVersionVector, revisionTimestamp;
+stop
+@enduml

@@ -1,0 +1,26 @@
+@startuml get-vault-session-status-activity
+title GetVaultSessionStatusUseCase - Activity
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #E3F2FD
+  BorderColor #1976D2
+}
+
+start
+:Input:\nnone;
+:Source:\npackages/core/src/use-cases/session/get-vault-session-status.ts;
+:Read unlocked vault session material only;
+note right
+This use case does not read or decrypt the session payload.
+end note
+if (material missing?) then (yes)
+  :Return { status: "locked" };
+  stop
+else (no)
+  :Return { status: "unlocked", vaultId };
+  stop
+endif
+@enduml

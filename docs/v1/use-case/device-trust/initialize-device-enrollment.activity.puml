@@ -1,0 +1,80 @@
+@startuml initialize-device-enrollment-activity
+title InitializeDeviceEnrollmentUseCase - Activity
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #E3F2FD
+  BorderColor #1976D2
+}
+
+start
+:Input:\nvaultId, remoteSnapshotDescriptor, optional expiresAt;
+:Source:\npackages/core/src/use-cases/device-trust/initialize-device-enrollment.ts;
+:Require unlocked vault context for "initialize device enrollment";
+if (syncConfig missing?) then (yes)
+  :Throw SyncNotConfiguredError;
+  stop
+endif
+
+:Require vault ready for local mutation via VaultSyncGuardService;
+:Build local snapshot descriptor;
+if (local descriptor does not equal provided remote descriptor?) then (yes)
+  :Throw DeviceEnrollmentVaultNotSynchronizedError;
+  stop
+endif
+
+:Find snapshot signing device in device slots;
+if (signer missing?) then (yes)
+  :Throw VaultSnapshotSignerNotTrustedError;
+  stop
+endif
+:Verify current snapshot signature;
+if (signature invalid?) then (yes)
+  :Throw VaultSnapshotSignatureVerificationFailedError;
+  stop
+endif
+:Find current device slot;
+if (current device not trusted?) then (yes)
+  :Throw SnapshotSigningDeviceNotTrustedError;
+  stop
+endif
+
+:Compute revisionTimestamp and enrollment expiry;
+:Generate enrollmentSecret, enrollmentId, pendingDeviceId;
+:Generate pending device signing key pair;
+:Digest pending public signing key;
+:Derive enrollment vault-master-key protection key;
+:Wrap vaultMasterKey for enrollment;
+:Digest protected enrollment vaultMasterKey;
+:Build enrollment authorization payload;
+:Sign authorization with current device private signing key;
+:Build unsigned snapshot with enrollmentKeySlot;
+:Encrypt unchanged vault content;
+:Sign enrollment snapshot with current device private signing key;
+:Save enrollment snapshot locally;
+
+if (commit session to enrollment snapshot vector succeeds?) then (yes)
+  :Continue;
+else (no)
+  :Best effort restore previous local snapshot;
+  :Throw original session commit error;
+  stop
+endif
+
+if (upload enrollment snapshot succeeds?) then (yes)
+  :Return enrollmentBundle,\nsnapshotVersionVector,\nrevisionTimestamp;
+  stop
+else (no)
+  :Best effort restore previous local snapshot;
+  :Best effort commit session back to source vector;
+  if (failure is RemoteVaultSnapshotChangedError?) then (yes)
+    :Throw SyncConflictDetectedError;
+    stop
+  else (no)
+    :Throw original upload error;
+    stop
+  endif
+endif
+@enduml

@@ -1,0 +1,36 @@
+@startuml vault-session-state-machine
+title Vault Session - State Machine From Use Cases
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam state {
+  BackgroundColor #E3F2FD
+  BorderColor #1976D2
+}
+
+[*] --> NoActiveSession
+
+NoActiveSession --> Initializing : InitializeVaultUseCase
+Initializing --> Unlocked : save local vault + commit session
+Initializing --> NoActiveSession : commit fails / remove local vault
+
+NoActiveSession --> Unlocking : UnlockVaultUseCase
+Unlocking --> Unlocked : verify snapshot + decrypt + schedule lock + commit
+Unlocking --> NoActiveSession : validation, crypto, schedule, or commit failure
+
+Unlocked --> Locked : LockVaultUseCase removes session
+Unlocked --> Unlocked : stale lock actionId ignored
+Unlocked --> NoLocalVault : DeleteLocalVaultUseCase removes session and local vault
+Unlocked --> Unlocked : ChangeMasterPasswordUseCase rewraps local keys
+Unlocked --> Unlocked : Entry, sync, and trust mutations commit persisted snapshot
+
+Locked --> Unlocking : UnlockVaultUseCase
+NoLocalVault --> [*]
+
+note right of Unlocked
+Hot secrets live in unlocked session material/payload.
+Use cases commit or remove session through UnlockedVaultSessionService.
+end note
+
+@enduml

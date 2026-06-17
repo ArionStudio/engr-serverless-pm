@@ -1,0 +1,22 @@
+@startuml list-local-vaults-activity
+title ListLocalVaultsUseCase - Activity
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #E3F2FD
+  BorderColor #1976D2
+}
+
+start
+:Input:\nnone;
+:Source:\npackages/core/src/use-cases/vault-lifecycle/list-local-vaults.ts;
+:Load local vault descriptors from VaultLocalRepositoryPort;
+:Return { vaults };
+note right
+Returned descriptors are non-secret local metadata.
+The use case does not read snapshots or session payload.
+end note
+stop
+@enduml

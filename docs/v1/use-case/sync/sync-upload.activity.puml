@@ -1,0 +1,58 @@
+@startuml sync-upload-activity
+title SyncUploadUseCase - Activity
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #E3F2FD
+  BorderColor #1976D2
+}
+
+start
+:Input:\nvaultId;
+:Source:\npackages/core/src/use-cases/sync/sync-upload.ts;
+:Require unlocked vault context for "sync upload";
+if (syncConfig missing?) then (yes)
+  :Throw SyncNotConfiguredError;
+  stop
+endif
+
+:Require current local snapshot for unlocked vault and source vector;
+:Read latest remote snapshot descriptor;
+if (remote descriptor exists?) then (yes)
+  :Build local snapshot descriptor;
+  :Compare local descriptor vs remote descriptor;
+  if (relation is equal?) then (yes)
+    if (descriptor fields exactly equal?) then (yes)
+      :Remote already has this snapshot;
+      :Return void;
+      stop
+    else (no)
+      :Throw RemoteVaultSnapshotIntegrityError;
+      stop
+    endif
+  endif
+  if (relation is remote_ahead?) then (yes)
+    :Throw RemoteVaultSnapshotAheadError;
+    stop
+  endif
+  if (relation is broken?) then (yes)
+    :Throw RemoteVaultSnapshotIntegrityError;
+    stop
+  endif
+endif
+
+if (upload local snapshot succeeds?) then (yes)
+  :Return void;
+  stop
+else (no)
+  if (failure is RemoteVaultSnapshotChangedError?) then (yes)
+    :Throw SyncConflictDetectedError;
+    stop
+  else (no)
+    :Throw original error;
+    stop
+  endif
+endif
+@enduml

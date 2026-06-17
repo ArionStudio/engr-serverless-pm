@@ -1,0 +1,41 @@
+@startuml update-entry-activity
+title UpdateEntryUseCase - Activity
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #E3F2FD
+  BorderColor #1976D2
+}
+
+start
+:Input:\nvaultId, entryId, entry {password, login, tags, url};
+:Source:\npackages/core/src/use-cases/vault-entries/update-entry.ts;
+:Require unlocked vault context for "update entry";
+:Find active entry by entryId;
+if (entry missing?) then (yes)
+  :Throw PasswordEntryNotFoundError;
+  stop
+endif
+:Sanitize entry.url;
+if (URL invalid?) then (yes)
+  :Throw InvalidPasswordEntryError;
+  stop
+endif
+:Validate password, login, tags, sanitizedUrl;
+if (entry invalid?) then (yes)
+  :Throw InvalidPasswordEntryError;
+  stop
+endif
+:Prepare local mutation with VaultSyncGuardService;
+:Build updated unlocked vault with updatePasswordEntryInVault;
+:Persist updated vault as signed local snapshot;
+if (syncConfig exists?) then (yes)
+  :Require saved local snapshot;
+  :Upload persisted local mutation through sync guard;
+endif
+:Commit persisted snapshot vector to unlocked session;
+:Return entryId, snapshotVersionVector, revisionTimestamp;
+stop
+@enduml

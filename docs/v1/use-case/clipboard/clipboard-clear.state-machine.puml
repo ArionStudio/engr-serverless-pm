@@ -1,0 +1,28 @@
+@startuml clipboard-clear-state-machine
+title Clipboard Clear Task - State Machine From Use Cases
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam state {
+  BackgroundColor #E3F2FD
+  BorderColor #1976D2
+}
+
+[*] --> NoPendingCopy
+
+NoPendingCopy --> PendingClear : CopyEntryPasswordUseCase saves hash metadata\nand schedules clearClipboard
+PendingClear --> PendingClear : CopyEntryPasswordUseCase clears/cancels previous task\nthen saves replacement task
+PendingClear --> NoPendingCopy : ClearClipboardTaskUseCase clears matching clipboard value
+PendingClear --> NoPendingCopy : clipboard changed, metadata removed by service
+PendingClear --> PendingClear : stale action ignored
+PendingClear --> PendingClear : requireExpired and not expired
+PendingClear --> NoPendingCopy : LockVaultUseCase clears with requireExpired = false
+PendingClear --> NoPendingCopy : schedule or clipboard write failure cleanup
+
+note right of PendingClear
+Pending metadata is actionId, copiedValueHash, expiresAt.
+The plaintext password is only written to ClipboardPort.
+end note
+
+@enduml

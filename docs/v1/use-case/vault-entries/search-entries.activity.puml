@@ -1,0 +1,28 @@
+@startuml search-entries-activity
+title SearchEntriesUseCase - Activity
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #E3F2FD
+  BorderColor #1976D2
+}
+
+start
+:Input:\nvaultId, query;
+:Source:\npackages/core/src/use-cases/vault-entries/search-entries.ts;
+:Require unlocked vault context for "search entries";
+:Validate query with searchEntryQuerySchema;
+if (query invalid?) then (yes)
+  :Throw InvalidSearchEntryQueryError;
+  stop
+endif
+:Filter active entries with entryMatchesSearchQuery;
+:Map matching entries to visible fields;
+note right
+Search results do not expose plaintext passwords.
+end note
+:Return { entries };
+stop
+@enduml

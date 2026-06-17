@@ -1,0 +1,53 @@
+@startuml unlock-vault-sequence
+title UnlockVaultUseCase - Service And Port Collaboration
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam sequence {
+  ArrowColor #1976D2
+  LifeLineBorderColor #1976D2
+  ParticipantBackgroundColor #E3F2FD
+  ParticipantBorderColor #1976D2
+}
+
+actor Caller
+participant "UnlockVaultUseCase" as UC
+participant "UnlockedVaultSessionService" as Session
+database "VaultLocalRepositoryPort" as LocalRepo
+participant "CryptoPort" as Crypto
+database "VaultLockTaskRepositoryPort" as LockRepo
+participant "ScheduledTaskPort" as Tasks
+
+Caller -> UC : execute(vaultId, masterPassword, lockAfterMs)
+UC -> UC : validate lockAfterMs
+UC -> Session : requireVaultCanBeActivated(vaultId)
+UC -> LocalRepo : getDeviceAccessMaterial(vaultId)
+UC -> LocalRepo : getVaultSnapshot(vaultId)
+UC -> UC : check algorithm suites, signer, device slot
+UC -> Crypto : verifyVaultSnapshotSignature(snapshot, slot.publicSignKey)
+UC -> Crypto : deriveLocalRootKey(masterPassword, salt)
+UC -> Crypto : deriveLocalKeysProtectionKey(localRootKey, salt)
+UC -> Crypto : unwrapLocalKeysPayload(protectedLocalKeys, key)
+UC -> Crypto : verifyDeviceSignKeyPair(slot.publicSignKey, privateKey)
+UC -> Crypto : verifyDeviceSignKeyPair(material.publicSignKey, privateKey)
+UC -> Crypto : deriveDeviceSlotVaultMasterKeyProtectionKey(deviceSlotKey)
+UC -> Crypto : unwrapVaultMasterKey(protectedVaultMasterKey, protectionKey)
+UC -> Crypto : decryptVaultSnapshotContent(content, vaultMasterKey)
+UC -> LockRepo : save(actionId, vaultId, expiresAt)
+UC -> Tasks : scheduleTask(lockVault, runAt)
+alt scheduling fails
+  UC -> LockRepo : remove()
+  UC --> Caller : throw schedule failure
+else scheduled
+  UC -> Session : commit(unlockedVault, snapshotVersionVector)
+  alt commit fails
+    UC -> Tasks : cancelTask(lockVault)
+    UC -> LockRepo : remove()
+    UC --> Caller : throw commit failure
+  else committed
+    UC --> Caller : { vault }
+  end
+end
+
+@enduml

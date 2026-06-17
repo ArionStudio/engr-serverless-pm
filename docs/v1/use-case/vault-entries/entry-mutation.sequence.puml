@@ -1,0 +1,41 @@
+@startuml entry-mutation-sequence
+title Entry Mutation Use Cases - Shared Persistence And Sync Pattern
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam sequence {
+  ArrowColor #1976D2
+  LifeLineBorderColor #1976D2
+  ParticipantBackgroundColor #E3F2FD
+  ParticipantBorderColor #1976D2
+}
+
+actor Caller
+participant "Add / Update / Remove\nEntry Use Case" as UC
+participant "UnlockedVaultSessionService" as Session
+participant "VaultSyncGuardService" as SyncGuard
+participant "Domain mutation" as Domain
+participant "VaultSnapshotService" as Snapshot
+
+Caller -> UC : execute(command)
+UC -> Session : requireUnlockedVaultContext(vaultId, action)
+UC -> UC : validate input or check entry exists
+UC -> SyncGuard : prepareLocalMutation(vaultId, unlockedVault, sourceVector)
+UC -> Domain : add/update/remove entry
+Domain --> UC : updated vault
+UC -> Snapshot : persistUnlockedVault(vaultId, updatedUnlockedVault, sourceVector)
+Snapshot --> UC : snapshotVersionVector, revisionTimestamp
+alt sync configured
+  UC -> Snapshot : requireLocalVaultSnapshot(vaultId)
+  UC -> SyncGuard : uploadPersistedLocalMutation(vaultId, syncState, localSnapshot)
+end
+UC -> Session : commitPersistedSnapshot(updatedUnlockedVault, snapshotVersionVector)
+UC --> Caller : mutation result
+
+note over UC, Session
+If snapshot persistence fails, the session is not advanced.
+If session commit fails after persistence, the session service owns invalidation policy.
+end note
+
+@enduml

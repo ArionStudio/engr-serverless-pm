@@ -1,0 +1,62 @@
+@startuml prepare-sync-review-activity
+title PrepareSyncReviewUseCase - Activity
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #E3F2FD
+  BorderColor #1976D2
+}
+
+start
+:Input:\nvaultId;
+:Source:\npackages/core/src/use-cases/sync/prepare-sync-review.ts;
+:Require unlocked vault context for "prepare sync review";
+if (syncConfig missing?) then (yes)
+  :Throw SyncNotConfiguredError;
+  stop
+endif
+
+:Require current local snapshot for unlocked vault and source vector;
+:Read latest remote snapshot descriptor;
+if (remote descriptor missing?) then (yes)
+  :Throw RemoteVaultSnapshotNotFoundError;
+  stop
+endif
+
+:Build local snapshot descriptor;
+:Compare local descriptor vs remote descriptor;
+if (relation is broken?) then (yes)
+  :Throw RemoteVaultSnapshotIntegrityError;
+  stop
+endif
+if (relation is local_ahead?) then (yes)
+  :Throw LocalVaultSnapshotAheadError;
+  stop
+endif
+if (relation is equal?) then (yes)
+  if (descriptor fields exactly equal?) then (yes)
+    :Return remoteSnapshotDescriptor,\nrelation, review = null;
+    stop
+  else (no)
+    :Throw RemoteVaultSnapshotIntegrityError;
+    stop
+  endif
+endif
+
+:Download remote snapshot;
+:Open trusted remote snapshot with local master key and local snapshot trust;
+:Build descriptor from downloaded snapshot;
+if (downloaded descriptor differs from earlier descriptor?) then (yes)
+  :Throw RemoteVaultSnapshotChangedError;
+  stop
+endif
+
+:Find changed entries;
+:Find changed tags;
+:Find changed device profiles;
+:Find read-only key slot changes;
+:Return remoteSnapshotDescriptor, relation,\nreview { actionable changes, readOnly keySlotsChanges };
+stop
+@enduml

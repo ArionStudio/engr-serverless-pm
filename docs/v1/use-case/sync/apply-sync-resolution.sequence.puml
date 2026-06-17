@@ -1,0 +1,46 @@
+@startuml apply-sync-resolution-sequence
+title ApplySyncResolutionUseCase - Collaboration
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam sequence {
+  ArrowColor #1976D2
+  LifeLineBorderColor #1976D2
+  ParticipantBackgroundColor #E3F2FD
+  ParticipantBorderColor #1976D2
+}
+
+actor Caller
+participant "ApplySyncResolutionUseCase" as UC
+participant "UnlockedVaultSessionService" as Session
+participant "VaultSnapshotService" as Snapshot
+participant "SyncProviderPort" as Sync
+participant "Domain review/resolution utilities" as Domain
+
+Caller -> UC : execute(vaultId, remoteDescriptor, resolution)
+UC -> Session : requireUnlockedVaultContext(vaultId, "apply sync resolution")
+UC -> Snapshot : requireCurrentSnapshotForUnlockedVault(...)
+UC -> Sync : getLatestVaultSnapshotDescriptor(syncConfig, vaultId)
+UC -> UC : verify descriptor belongs to vault and has not changed
+UC -> Sync : downloadVaultSnapshot(syncConfig, remoteDescriptor)
+UC -> Snapshot : openTrustedVaultSnapshotWithTrustResult(...)
+UC -> Domain : findChangesInKeySlots(local.keySlots, remote.keySlots)
+UC -> UC : accept only completed enrollment trust change\nor reject trust changes
+UC -> Domain : findChangedEntries / Tags / DeviceProfiles
+UC -> Domain : applyVaultSyncResolution(...)
+UC -> Snapshot : persistUnlockedVault(..., mergedVector, optional keySlots)
+UC -> Snapshot : requireLocalVaultSnapshot(vaultId)
+UC -> Sync : uploadVaultSnapshot(syncConfig, resolvedSnapshot, remoteDescriptor)
+alt upload changed remotely
+  UC -> Snapshot : restoreLocalVaultSnapshot(previousLocalSnapshot)
+  UC --> Caller : throw SyncConflictDetectedError
+else upload fails otherwise
+  UC -> Snapshot : restoreLocalVaultSnapshot(previousLocalSnapshot)
+  UC --> Caller : throw original upload error
+else upload succeeds
+  UC -> Session : commitPersistedSnapshot(updatedUnlockedVault, vector)
+  UC --> Caller : snapshotVersionVector, revisionTimestamp
+end
+
+@enduml

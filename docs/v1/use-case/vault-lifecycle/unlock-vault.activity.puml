@@ -1,0 +1,98 @@
+@startuml unlock-vault-activity
+title UnlockVaultUseCase - Activity
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #E3F2FD
+  BorderColor #1976D2
+}
+
+start
+:Input:\nvaultId, masterPassword, lockAfterMs;
+:Source:\npackages/core/src/use-cases/vault-lifecycle/unlock-vault.ts;
+:Validate lockAfterMs before reading secrets;
+if (invalid delay?) then (yes)
+  :Throw InvalidVaultLockDelayError;
+  stop
+endif
+
+:Require vault can be activated;
+:Load device access material;
+if (missing?) then (yes)
+  :Throw DeviceAccessMaterialNotFoundError;
+  stop
+endif
+
+:Load local vault snapshot;
+if (missing?) then (yes)
+  :Throw VaultSnapshotNotFoundError;
+  stop
+endif
+
+if (device access material algorithm unsupported?) then (yes)
+  :Throw UnsupportedAlgorithmSuiteError;
+  stop
+endif
+if (snapshot algorithm unsupported?) then (yes)
+  :Throw UnsupportedAlgorithmSuiteError;
+  stop
+endif
+if (snapshot signer is not current device?) then (yes)
+  :Throw VaultSnapshotSignerNotTrustedError;
+  stop
+endif
+
+:Find device key slot for current device;
+if (device key slot missing?) then (yes)
+  :Throw DeviceKeySlotNotFoundError;
+  stop
+endif
+
+:Verify snapshot signature with slot public signing key;
+if (signature invalid?) then (yes)
+  :Throw VaultSnapshotSignatureVerificationFailedError;
+  stop
+endif
+
+:Derive localRootKey from masterPassword and stored salt;
+:Derive localKeysProtectionKey;
+:Unwrap local keys payload;
+:Verify private signing key matches device slot public key;
+if (mismatch?) then (yes)
+  :Throw DeviceKeySlotVerificationFailedError;
+  stop
+endif
+:Verify private signing key matches device access material public key;
+if (mismatch?) then (yes)
+  :Throw DeviceKeySlotVerificationFailedError;
+  stop
+endif
+
+:Derive vault master key protection key from deviceSlotKey;
+:Unwrap vaultMasterKey;
+:Decrypt snapshot content into vault;
+:Build unlocked vault session object;
+:Generate lock task actionId;
+:Compute lockScheduledAt = now + lockAfterMs;
+:Save vault lock task metadata;
+
+if (schedule lock task succeeds?) then (yes)
+  :Continue;
+else (no)
+  :Best effort remove lock task metadata;
+  :Throw schedule failure;
+  stop
+endif
+
+if (commit unlocked session succeeds?) then (yes)
+  :Return decrypted vault;
+  stop
+else (no)
+  :Best effort cancel scheduled lock task;
+  :Best effort remove lock task metadata;
+  :Throw original session commit failure;
+  stop
+endif
+@enduml
