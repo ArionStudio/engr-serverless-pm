@@ -1,5 +1,11 @@
-import type { SerializedWrapped } from "../crypto/protected-artifact";
-import type { DevicePublicSignKey } from "../device-trust";
+import type {
+  DeviceEnrollmentAuthorizationPayload,
+  DevicePublicSignKey,
+} from "../device-trust";
+import type {
+  SerializedSignatureOf,
+  SerializedWrapped,
+} from "../crypto/protected-artifact";
 import type { VaultMasterKey } from "./brand-keys";
 
 export type DeviceKeySlot = {
@@ -13,5 +19,13 @@ export type RecoveryKeySlot = {
 };
 
 export type EnrollmentKeySlot = {
+  enrollmentId: string;
+  pendingDeviceId: string;
+  pendingDevicePublicSignKey: DevicePublicSignKey;
+  pendingDevicePublicSignKeyDigest: string;
+  expiresAt: number;
+  protectedVaultMasterKeyDigest: string;
   protectedVaultMasterKey: SerializedWrapped<VaultMasterKey>;
+  authorizedByDeviceId: string;
+  authorizerSignature: SerializedSignatureOf<DeviceEnrollmentAuthorizationPayload>;
 };

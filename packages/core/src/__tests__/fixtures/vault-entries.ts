@@ -5,6 +5,7 @@ import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import type { Tag } from "../../domain/entry/tag.type";
 import type { UnlockedVault } from "../../domain/session/unlocked-vault";
 import type { VersionVector } from "../../domain/versioning/version-vector.type";
+import { incrementVersionVector } from "../../domain/versioning/version-vector.utils";
 import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import type { CoreTestPorts } from "./ports";
 import type { CoreTestValues } from "./values";
@@ -111,7 +112,7 @@ export function saveUnlockedVaultWithEntries(
 export function createVaultSnapshotServiceMock(
   values: CoreTestValues,
 ): VaultSnapshotService {
-  const currentVaultSnapshot: VaultSnapshot = {
+  let savedVaultSnapshot: VaultSnapshot = {
     metadata: {
       id: values.vaultId,
       schemaVersion: 1,
@@ -141,11 +142,45 @@ export function createVaultSnapshotServiceMock(
 
   return {
     requireCurrentSnapshotForUnlockedVault: vi.fn(
-      async () => currentVaultSnapshot,
+      async () => savedVaultSnapshot,
     ),
-    persistUnlockedVault: vi.fn(async () => ({
-      snapshotVersionVector: { [values.deviceId]: 2 },
-      revisionTimestamp: values.timestamp + 1,
-    })),
+    requireLocalVaultSnapshot: vi.fn(async () => savedVaultSnapshot),
+    restoreLocalVaultSnapshot: vi.fn(async (vaultSnapshot) => {
+      savedVaultSnapshot = vaultSnapshot;
+    }),
+    persistUnlockedVault: vi.fn(
+      async (
+        _vaultId: string,
+        unlockedVault: UnlockedVault,
+        _sourceSnapshotVersionVector: VersionVector,
+        options: {
+          readonly baseSnapshotVersionVector?: VersionVector;
+          readonly keySlots?: VaultSnapshot["keySlots"];
+        } = {},
+      ) => {
+        savedVaultSnapshot = {
+          ...savedVaultSnapshot,
+          metadata: {
+            ...savedVaultSnapshot.metadata,
+            revisionTimestamp: values.timestamp + 1,
+            snapshotVersionVector: incrementVersionVector(
+              options.baseSnapshotVersionVector ??
+                savedVaultSnapshot.metadata.snapshotVersionVector,
+              unlockedVault.deviceId,
+            ),
+            createdByDeviceId: unlockedVault.deviceId,
+          },
+          keySlots: options.keySlots ?? savedVaultSnapshot.keySlots,
+          content: values.encryptedVault,
+          signature: values.snapshotSignature,
+        };
+
+        return {
+          snapshotVersionVector:
+            savedVaultSnapshot.metadata.snapshotVersionVector,
+          revisionTimestamp: savedVaultSnapshot.metadata.revisionTimestamp,
+        };
+      },
+    ),
   } as unknown as VaultSnapshotService;
 }

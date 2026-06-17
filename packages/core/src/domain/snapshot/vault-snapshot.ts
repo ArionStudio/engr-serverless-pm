@@ -2,6 +2,7 @@ import type {
   SerializedEncrypted,
   SerializedSignatureOf,
 } from "../crypto/protected-artifact";
+import type { CompletedDeviceEnrollmentProof } from "../device-trust";
 import type { Vault } from "../vault/vault";
 import type { VersionVector } from "../versioning/version-vector.type";
 import type {
@@ -28,6 +29,7 @@ export type UnsignedVaultSnapshot = {
     deviceSlots: DeviceKeySlot[];
     recoveryKeySlot: RecoveryKeySlot;
     enrollmentKeySlot?: EnrollmentKeySlot;
+    completedEnrollments?: CompletedDeviceEnrollmentProof[];
   };
   content: SerializedEncrypted<Vault>;
 };

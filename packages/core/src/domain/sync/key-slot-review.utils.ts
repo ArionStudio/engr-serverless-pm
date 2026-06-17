@@ -97,12 +97,7 @@ function findDeviceSlotChanges(
       continue;
     }
 
-    if (
-      !areJsonEqual(
-        localDeviceSlot.protectedVaultMasterKey,
-        remoteDeviceSlot.protectedVaultMasterKey,
-      )
-    ) {
+    if (!areDeviceSlotsEqual(localDeviceSlot, remoteDeviceSlot)) {
       changedDeviceIds.push(deviceId);
     }
   }
@@ -112,6 +107,42 @@ function findDeviceSlotChanges(
     removedDeviceIds,
     changedDeviceIds,
   };
+}
+
+function areDeviceSlotsEqual(
+  localDeviceSlot: DeviceKeySlot,
+  remoteDeviceSlot: DeviceKeySlot,
+): boolean {
+  return (
+    areJsonEqual(
+      localDeviceSlot.protectedVaultMasterKey,
+      remoteDeviceSlot.protectedVaultMasterKey,
+    ) &&
+    areArrayBuffersEqual(
+      localDeviceSlot.publicSignKey,
+      remoteDeviceSlot.publicSignKey,
+    )
+  );
+}
+
+function areArrayBuffersEqual(
+  localBuffer: ArrayBuffer,
+  remoteBuffer: ArrayBuffer,
+): boolean {
+  if (localBuffer.byteLength !== remoteBuffer.byteLength) {
+    return false;
+  }
+
+  const localBytes = new Uint8Array(localBuffer);
+  const remoteBytes = new Uint8Array(remoteBuffer);
+
+  for (let index = 0; index < localBytes.length; index += 1) {
+    if (localBytes[index] !== remoteBytes[index]) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function findChangedDeviceSlotsDetails(
@@ -186,7 +217,7 @@ function findEnrollmentKeySlotState(
   if (
     localEnrollmentKeySlot !== undefined &&
     remoteEnrollmentKeySlot !== undefined &&
-    areJsonEqual(localEnrollmentKeySlot, remoteEnrollmentKeySlot)
+    areEnrollmentKeySlotsEqual(localEnrollmentKeySlot, remoteEnrollmentKeySlot)
   ) {
     return "existing";
   }
@@ -200,4 +231,35 @@ function findEnrollmentKeySlotState(
   }
 
   return "changed";
+}
+
+function areEnrollmentKeySlotsEqual(
+  localEnrollmentKeySlot: EnrollmentKeySlot,
+  remoteEnrollmentKeySlot: EnrollmentKeySlot,
+): boolean {
+  return (
+    localEnrollmentKeySlot.enrollmentId ===
+      remoteEnrollmentKeySlot.enrollmentId &&
+    localEnrollmentKeySlot.pendingDeviceId ===
+      remoteEnrollmentKeySlot.pendingDeviceId &&
+    areArrayBuffersEqual(
+      localEnrollmentKeySlot.pendingDevicePublicSignKey,
+      remoteEnrollmentKeySlot.pendingDevicePublicSignKey,
+    ) &&
+    localEnrollmentKeySlot.pendingDevicePublicSignKeyDigest ===
+      remoteEnrollmentKeySlot.pendingDevicePublicSignKeyDigest &&
+    localEnrollmentKeySlot.expiresAt === remoteEnrollmentKeySlot.expiresAt &&
+    localEnrollmentKeySlot.protectedVaultMasterKeyDigest ===
+      remoteEnrollmentKeySlot.protectedVaultMasterKeyDigest &&
+    areJsonEqual(
+      localEnrollmentKeySlot.protectedVaultMasterKey,
+      remoteEnrollmentKeySlot.protectedVaultMasterKey,
+    ) &&
+    localEnrollmentKeySlot.authorizedByDeviceId ===
+      remoteEnrollmentKeySlot.authorizedByDeviceId &&
+    areJsonEqual(
+      localEnrollmentKeySlot.authorizerSignature,
+      remoteEnrollmentKeySlot.authorizerSignature,
+    )
+  );
 }

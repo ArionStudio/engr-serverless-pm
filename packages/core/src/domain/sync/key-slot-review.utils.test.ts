@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
-import { InvalidVaultSyncReviewError } from "../../errors";
+import {
+  ChangedDeviceKeySlotsError,
+  InvalidVaultSyncReviewError,
+} from "../../errors";
+import type { DevicePublicSignKey } from "../device-trust";
 import type {
   DeviceKeySlot,
   EnrollmentKeySlot,
@@ -30,7 +34,16 @@ function createEnrollmentSlot(): EnrollmentKeySlot {
   const values = createCoreTestValues();
 
   return {
+    enrollmentId: values.enrollmentId,
+    pendingDeviceId: values.pendingDeviceId,
+    pendingDevicePublicSignKey: values.pendingDevicePublicSignKey,
+    pendingDevicePublicSignKeyDigest: values.pendingDevicePublicSignKeyDigest,
+    expiresAt: values.enrollmentExpiresAt,
+    protectedVaultMasterKeyDigest:
+      values.protectedEnrollmentVaultMasterKeyDigest,
     protectedVaultMasterKey: values.protectedEnrollmentVaultMasterKey,
+    authorizedByDeviceId: values.deviceId,
+    authorizerSignature: values.deviceEnrollmentAuthorizationSignature,
   };
 }
 
@@ -184,11 +197,57 @@ describe("findChangesInKeySlots", () => {
           deviceSlots: [deviceSlot],
           recoveryKeySlot,
           enrollmentKeySlot: {
+            ...createEnrollmentSlot(),
             protectedVaultMasterKey: values.protectedDeviceVaultMasterKey,
           },
         },
       ),
     ).toThrow(InvalidVaultSyncReviewError);
+  });
+
+  it("rejects changed enrollment pending public keys as a broken vault state", () => {
+    const deviceSlot = createDeviceSlot();
+    const recoveryKeySlot = createRecoverySlot();
+
+    expect(() =>
+      findChangesInKeySlots(
+        {
+          deviceSlots: [deviceSlot],
+          recoveryKeySlot,
+          enrollmentKeySlot: createEnrollmentSlot(),
+        },
+        {
+          deviceSlots: [deviceSlot],
+          recoveryKeySlot,
+          enrollmentKeySlot: {
+            ...createEnrollmentSlot(),
+            pendingDevicePublicSignKey: new Uint8Array([1, 2])
+              .buffer as DevicePublicSignKey,
+          },
+        },
+      ),
+    ).toThrow(InvalidVaultSyncReviewError);
+  });
+
+  it("rejects changed device signing public keys as device key-slot changes", () => {
+    const deviceSlot = createDeviceSlot();
+    const remoteDeviceSlot: DeviceKeySlot = {
+      ...deviceSlot,
+      publicSignKey: new Uint8Array([1, 2]).buffer as DevicePublicSignKey,
+    };
+
+    expect(() =>
+      findChangesInKeySlots(
+        {
+          deviceSlots: [deviceSlot],
+          recoveryKeySlot: createRecoverySlot(),
+        },
+        {
+          deviceSlots: [remoteDeviceSlot],
+          recoveryKeySlot: createRecoverySlot(),
+        },
+      ),
+    ).toThrow(ChangedDeviceKeySlotsError);
   });
 
   it("marks device additions and recovery-slot updates as key-slot changes", () => {

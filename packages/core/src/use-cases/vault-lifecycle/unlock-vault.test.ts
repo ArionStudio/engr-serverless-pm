@@ -3,6 +3,7 @@ import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.err
 import {
   DeviceAccessMaterialNotFoundError,
   DeviceKeySlotNotFoundError,
+  DeviceKeySlotVerificationFailedError,
   VaultSnapshotNotFoundError,
   VaultSnapshotSignatureVerificationFailedError,
   VaultSnapshotSignerNotTrustedError,
@@ -48,6 +49,10 @@ describe("UnlockVaultUseCase", () => {
     expect(ctx.ports.crypto.unwrapLocalKeysPayload).toHaveBeenCalledWith(
       ctx.values.protectedLocalKeys,
       ctx.values.localKeysProtectionKey,
+    );
+    expect(ctx.ports.crypto.verifyDeviceSignKeyPair).toHaveBeenCalledWith(
+      ctx.values.devicePublicSignKey,
+      ctx.values.devicePrivateSignKey,
     );
     expect(
       ctx.ports.crypto.deriveDeviceSlotVaultMasterKeyProtectionKey,
@@ -203,9 +208,12 @@ describe("UnlockVaultUseCase", () => {
     const ctx = createUnlockVaultTestContext();
     ctx.saved.vaultSnapshot = {
       ...ctx.vaultSnapshot,
+      metadata: {
+        ...ctx.vaultSnapshot.metadata,
+        createdByDeviceId: "untrusted-device-id",
+      },
       keySlots: {
         ...ctx.vaultSnapshot.keySlots,
-        deviceSlots: [],
       },
     };
 
@@ -228,6 +236,7 @@ describe("UnlockVaultUseCase", () => {
 
   it("fails when current device key slot is missing", async () => {
     const ctx = createUnlockVaultTestContext();
+
     ctx.saved.vaultSnapshot = {
       ...ctx.vaultSnapshot,
       keySlots: {
@@ -244,6 +253,84 @@ describe("UnlockVaultUseCase", () => {
       }),
     ).rejects.toBeInstanceOf(DeviceKeySlotNotFoundError);
 
+    expect(ctx.ports.crypto.unwrapVaultMasterKey).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("fails when the current device slot public key does not match the local private key", async () => {
+    const ctx = createUnlockVaultTestContext();
+
+    ctx.saved.vaultSnapshot = {
+      ...ctx.vaultSnapshot,
+      keySlots: {
+        ...ctx.vaultSnapshot.keySlots,
+        deviceSlots: [
+          {
+            deviceId: ctx.values.deviceId,
+            protectedVaultMasterKey: ctx.values.protectedDeviceVaultMasterKey,
+            publicSignKey: ctx.values.pendingDevicePublicSignKey,
+          },
+        ],
+      },
+    };
+    vi.mocked(ctx.ports.crypto.verifyDeviceSignKeyPair)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValue(true);
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 600_000,
+      }),
+    ).rejects.toBeInstanceOf(DeviceKeySlotVerificationFailedError);
+
+    expect(ctx.ports.crypto.verifyDeviceSignKeyPair).toHaveBeenCalledWith(
+      ctx.values.pendingDevicePublicSignKey,
+      ctx.values.devicePrivateSignKey,
+    );
+    expect(
+      ctx.ports.crypto.deriveDeviceSlotVaultMasterKeyProtectionKey,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.unwrapVaultMasterKey).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("fails when device access material public key does not match the local private key", async () => {
+    const ctx = createUnlockVaultTestContext();
+
+    ctx.saved.deviceAccessMaterial = {
+      ...ctx.deviceAccessMaterial,
+      devicePublicSignKey: ctx.values.pendingDevicePublicSignKey,
+    };
+    vi.mocked(ctx.ports.crypto.verifyDeviceSignKeyPair)
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValue(true);
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 600_000,
+      }),
+    ).rejects.toBeInstanceOf(DeviceKeySlotVerificationFailedError);
+
+    expect(ctx.ports.crypto.verifyDeviceSignKeyPair).toHaveBeenCalledWith(
+      ctx.values.devicePublicSignKey,
+      ctx.values.devicePrivateSignKey,
+    );
+    expect(ctx.ports.crypto.verifyDeviceSignKeyPair).toHaveBeenCalledWith(
+      ctx.values.pendingDevicePublicSignKey,
+      ctx.values.devicePrivateSignKey,
+    );
+    expect(
+      ctx.ports.crypto.deriveDeviceSlotVaultMasterKeyProtectionKey,
+    ).not.toHaveBeenCalled();
     expect(ctx.ports.crypto.unwrapVaultMasterKey).not.toHaveBeenCalled();
     expect(
       ctx.ports.sessionServices.unlockedVaultSession.commit,

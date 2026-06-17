@@ -189,6 +189,12 @@ export function createCoreTestPorts(
       return values.protectedDeviceVaultMasterKey;
     }),
     unwrapVaultMasterKey: vi.fn(async () => values.vaultMasterKey),
+    digestProtectedVaultMasterKey: vi.fn(
+      async () => values.protectedEnrollmentVaultMasterKeyDigest,
+    ),
+    digestDevicePublicSignKey: vi.fn(
+      async () => values.pendingDevicePublicSignKeyDigest,
+    ),
     encryptVaultSnapshotContent: vi.fn(async () => values.encryptedVault),
     decryptVaultSnapshotContent: vi.fn(async () => values.decryptedVault),
     encryptUnlockedVaultSessionPayload: vi.fn(async (payload) => {
@@ -204,6 +210,11 @@ export function createCoreTestPorts(
     ),
     signVaultSnapshot: vi.fn(async () => values.snapshotSignature),
     verifyVaultSnapshotSignature: vi.fn(async () => true),
+    verifyDeviceSignKeyPair: vi.fn(async () => true),
+    signDeviceEnrollmentAuthorization: vi.fn(
+      async () => values.deviceEnrollmentAuthorizationSignature,
+    ),
+    verifyDeviceEnrollmentAuthorizationSignature: vi.fn(async () => true),
   };
 
   const bip39: Bip39Port = {
