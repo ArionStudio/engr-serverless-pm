@@ -2,11 +2,15 @@ import { describe, expect, it, vi } from "vitest";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import { CURRENT_ALGORITHM_SUITE } from "../../domain/crypto/algorithm-suite.const";
+import type { CompletedDeviceEnrollmentProof } from "../../domain/device-trust";
 import type { DeviceEnrollmentBundle } from "../../domain/device-trust/device-enrollment-bundle";
 import type { VaultSnapshotDescriptor } from "../../domain/snapshot/vault-snapshot-descriptor.type";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import type { Vault } from "../../domain/vault/vault";
 import {
+  DeviceEnrollmentAlreadyCompletedError,
+  DeviceEnrollmentExpiredError,
+  DeviceEnrollmentIntegrityError,
   DeviceEnrollmentKeySlotNotFoundError,
   DeviceEnrollmentRemoteSnapshotChangedError,
 } from "../../errors/device-enrollment.errors";
@@ -17,8 +21,6 @@ import {
 } from "../../errors/sync.errors";
 import { VaultSnapshotSignatureVerificationFailedError } from "../../errors/unlock-vault.errors";
 import { PerformDeviceEnrollmentUseCase } from "./perform-device-enrollment";
-
-const enrolledDeviceId = "enrolled-device-id";
 
 function createRemoteVault(values: ReturnType<typeof createCoreTestValues>) {
   return {
@@ -67,11 +69,40 @@ function createRemoteSnapshot(
         protectedVaultMasterKey: values.protectedRecoveryVaultMasterKey,
       },
       enrollmentKeySlot: {
+        enrollmentId: values.enrollmentId,
+        pendingDeviceId: values.pendingDeviceId,
+        pendingDevicePublicSignKey: values.pendingDevicePublicSignKey,
+        pendingDevicePublicSignKeyDigest:
+          values.pendingDevicePublicSignKeyDigest,
+        expiresAt: values.enrollmentExpiresAt,
+        protectedVaultMasterKeyDigest:
+          values.protectedEnrollmentVaultMasterKeyDigest,
         protectedVaultMasterKey: values.protectedEnrollmentVaultMasterKey,
+        authorizedByDeviceId: values.deviceId,
+        authorizerSignature: values.deviceEnrollmentAuthorizationSignature,
       },
     },
     content: values.encryptedVault,
     signature: values.snapshotSignature,
+  };
+}
+
+function createCompletedEnrollmentProof(
+  values: ReturnType<typeof createCoreTestValues>,
+  overrides: Partial<CompletedDeviceEnrollmentProof> = {},
+): CompletedDeviceEnrollmentProof {
+  return {
+    version: 1,
+    vaultId: values.vaultId,
+    enrollmentId: values.enrollmentId,
+    pendingDeviceId: values.pendingDeviceId,
+    pendingDevicePublicSignKeyDigest: values.pendingDevicePublicSignKeyDigest,
+    expiresAt: values.enrollmentExpiresAt,
+    protectedVaultMasterKeyDigest:
+      values.protectedEnrollmentVaultMasterKeyDigest,
+    authorizedByDeviceId: values.deviceId,
+    authorizerSignature: values.deviceEnrollmentAuthorizationSignature,
+    ...overrides,
   };
 }
 
@@ -93,12 +124,9 @@ function createContext() {
     revisionTimestamp: remoteSnapshotDescriptor.revisionTimestamp,
     snapshotSignerPublicKey: values.devicePublicSignKey,
     enrollmentSecret: values.deviceEnrollmentSecret,
+    pendingDevicePrivateSignKey: values.pendingDevicePrivateSignKey,
   };
 
-  vi.mocked(ports.ids.generateId).mockReset();
-  vi.mocked(ports.ids.generateId)
-    .mockResolvedValueOnce(enrolledDeviceId)
-    .mockResolvedValue(values.sessionId);
   vi.mocked(
     ports.syncProvider.getLatestVaultSnapshotDescriptor,
   ).mockResolvedValue(remoteSnapshotDescriptor);
@@ -119,7 +147,6 @@ function createContext() {
     useCase: new PerformDeviceEnrollmentUseCase(
       ports.clock,
       ports.crypto,
-      ports.ids,
       ports.syncProvider,
       ports.sessionServices.unlockedVaultSession,
       ports.vaultDisplayName,
@@ -142,16 +169,16 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       ...ctx.remoteVault,
       versionVector: {
         [ctx.values.deviceId]: 2,
-        [enrolledDeviceId]: 1,
+        [ctx.values.pendingDeviceId]: 1,
       },
       deviceProfiles: [
         ...ctx.remoteVault.deviceProfiles,
         {
-          id: enrolledDeviceId,
+          id: ctx.values.pendingDeviceId,
           name: "New laptop",
           createdAt: ctx.values.timestamp,
           versionVector: {
-            [enrolledDeviceId]: 1,
+            [ctx.values.pendingDeviceId]: 1,
           },
         },
       ],
@@ -161,10 +188,10 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       vault: registeredVault,
       snapshotVersionVector: {
         [ctx.values.deviceId]: 2,
-        [enrolledDeviceId]: 1,
+        [ctx.values.pendingDeviceId]: 1,
       },
       revisionTimestamp: ctx.values.timestamp,
-      deviceId: enrolledDeviceId,
+      deviceId: ctx.values.pendingDeviceId,
     });
     expect(
       ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
@@ -188,6 +215,37 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       ctx.values.encryptedVault,
       ctx.values.vaultMasterKey,
     );
+    expect(ctx.ports.crypto.digestDevicePublicSignKey).toHaveBeenCalledWith(
+      ctx.values.pendingDevicePublicSignKey,
+    );
+    expect(ctx.ports.crypto.digestProtectedVaultMasterKey).toHaveBeenCalledWith(
+      ctx.values.protectedEnrollmentVaultMasterKey,
+    );
+    expect(
+      ctx.ports.crypto.verifyDeviceEnrollmentAuthorizationSignature,
+    ).toHaveBeenCalledWith(
+      {
+        version: 1,
+        vaultId: ctx.values.vaultId,
+        enrollmentId: ctx.values.enrollmentId,
+        pendingDeviceId: ctx.values.pendingDeviceId,
+        pendingDevicePublicSignKeyDigest:
+          ctx.values.pendingDevicePublicSignKeyDigest,
+        expiresAt: ctx.values.enrollmentExpiresAt,
+        protectedVaultMasterKeyDigest:
+          ctx.values.protectedEnrollmentVaultMasterKeyDigest,
+      },
+      ctx.values.deviceEnrollmentAuthorizationSignature,
+      ctx.values.devicePublicSignKey,
+    );
+    expect(ctx.ports.crypto.generateDeviceSignKeyPair).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.wrapLocalKeysPayload).toHaveBeenCalledWith(
+      {
+        deviceSlotKey: ctx.values.deviceSlotKey,
+        devicePrivateSignKey: ctx.values.pendingDevicePrivateSignKey,
+      },
+      ctx.values.localKeysProtectionKey,
+    );
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).toHaveBeenCalledWith(
       registeredVault,
       ctx.values.vaultMasterKey,
@@ -199,11 +257,11 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     });
     expect(ctx.ports.saved.deviceAccessMaterial).toEqual({
       vaultId: ctx.values.vaultId,
-      deviceId: enrolledDeviceId,
+      deviceId: ctx.values.pendingDeviceId,
       algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
       masterPasswordSalt: ctx.values.masterPasswordSalt,
       localKeysProtectionSalt: ctx.values.localKeysProtectionSalt,
-      devicePublicSignKey: ctx.values.devicePublicSignKey,
+      devicePublicSignKey: ctx.values.pendingDevicePublicSignKey,
       protectedLocalKeys: ctx.values.protectedLocalKeys,
     });
     expect(ctx.ports.saved.vaultSnapshot).toEqual({
@@ -211,33 +269,61 @@ describe("PerformDeviceEnrollmentUseCase", () => {
         ...ctx.remoteSnapshot.metadata,
         snapshotVersionVector: {
           [ctx.values.deviceId]: 2,
-          [enrolledDeviceId]: 1,
+          [ctx.values.pendingDeviceId]: 1,
         },
         revisionTimestamp: ctx.values.timestamp,
-        createdByDeviceId: enrolledDeviceId,
+        createdByDeviceId: ctx.values.pendingDeviceId,
       },
       keySlots: {
         deviceSlots: [
           ...ctx.remoteSnapshot.keySlots.deviceSlots,
           {
-            deviceId: enrolledDeviceId,
+            deviceId: ctx.values.pendingDeviceId,
             protectedVaultMasterKey: ctx.values.protectedDeviceVaultMasterKey,
-            publicSignKey: ctx.values.devicePublicSignKey,
+            publicSignKey: ctx.values.pendingDevicePublicSignKey,
           },
         ],
         recoveryKeySlot: ctx.remoteSnapshot.keySlots.recoveryKeySlot,
+        completedEnrollments: [
+          {
+            version: 1,
+            vaultId: ctx.values.vaultId,
+            enrollmentId: ctx.values.enrollmentId,
+            pendingDeviceId: ctx.values.pendingDeviceId,
+            pendingDevicePublicSignKeyDigest:
+              ctx.values.pendingDevicePublicSignKeyDigest,
+            expiresAt: ctx.values.enrollmentExpiresAt,
+            protectedVaultMasterKeyDigest:
+              ctx.values.protectedEnrollmentVaultMasterKeyDigest,
+            authorizedByDeviceId: ctx.values.deviceId,
+            authorizerSignature:
+              ctx.values.deviceEnrollmentAuthorizationSignature,
+          },
+        ],
       },
       content: ctx.values.encryptedVault,
       signature: ctx.values.snapshotSignature,
     });
+    expect(ctx.ports.crypto.signVaultSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          createdByDeviceId: ctx.values.pendingDeviceId,
+        }),
+      }),
+      ctx.values.pendingDevicePrivateSignKey,
+    );
+    expect(ctx.ports.crypto.verifyVaultSnapshotSignature).toHaveBeenCalledWith(
+      ctx.ports.saved.vaultSnapshot,
+      ctx.values.pendingDevicePublicSignKey,
+    );
     expect(ctx.ports.saved.unlockedVaultSession).toMatchObject({
       sourceSnapshotVersionVector: {
         [ctx.values.deviceId]: 2,
-        [enrolledDeviceId]: 1,
+        [ctx.values.pendingDeviceId]: 1,
       },
       unlockedVault: {
         vaultId: ctx.values.vaultId,
-        deviceId: enrolledDeviceId,
+        deviceId: ctx.values.pendingDeviceId,
         vault: registeredVault,
       },
     });
@@ -246,6 +332,47 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       ctx.ports.saved.vaultSnapshot,
       ctx.remoteSnapshotDescriptor,
     );
+  });
+
+  it("preserves all existing completed enrollment proofs when appending this enrollment", async () => {
+    const ctx = createContext();
+    const existingCompletedEnrollments = Array.from(
+      { length: 11 },
+      (_, index) =>
+        createCompletedEnrollmentProof(ctx.values, {
+          enrollmentId: `previous-enrollment-${index}`,
+          pendingDeviceId: `previous-device-${index}`,
+          pendingDevicePublicSignKeyDigest: `previous-device-sign-key-digest-${index}`,
+          expiresAt:
+            index === 0
+              ? ctx.values.timestamp - 1
+              : ctx.values.enrollmentExpiresAt + index,
+          protectedVaultMasterKeyDigest: `previous-protected-master-key-digest-${index}`,
+        }),
+    );
+
+    vi.mocked(
+      ctx.ports.syncProvider.downloadVaultSnapshot,
+    ).mockResolvedValueOnce({
+      ...ctx.remoteSnapshot,
+      keySlots: {
+        ...ctx.remoteSnapshot.keySlots,
+        completedEnrollments: existingCompletedEnrollments,
+      },
+    });
+
+    await ctx.useCase.execute({
+      enrollmentBundle: ctx.enrollmentBundle,
+      masterPassword: ctx.values.masterPassword,
+      deviceName: "New laptop",
+    });
+
+    expect(
+      ctx.ports.saved.vaultSnapshot?.keySlots.completedEnrollments,
+    ).toEqual([
+      ...existingCompletedEnrollments,
+      createCompletedEnrollmentProof(ctx.values),
+    ]);
   });
 
   it("fails when the remote enrollment snapshot is missing", async () => {
@@ -298,6 +425,268 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
+  it("rejects an enrollment that was already completed", async () => {
+    const ctx = createContext();
+
+    vi.mocked(
+      ctx.ports.syncProvider.downloadVaultSnapshot,
+    ).mockResolvedValueOnce({
+      ...ctx.remoteSnapshot,
+      keySlots: {
+        ...ctx.remoteSnapshot.keySlots,
+        completedEnrollments: [
+          createCompletedEnrollmentProof(ctx.values, {
+            pendingDeviceId: "already-assigned-device-id",
+            pendingDevicePublicSignKeyDigest:
+              "already-assigned-device-sign-key-digest",
+          }),
+        ],
+      },
+    });
+
+    await expect(
+      ctx.useCase.execute({
+        enrollmentBundle: ctx.enrollmentBundle,
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "New laptop",
+      }),
+    ).rejects.toBeInstanceOf(DeviceEnrollmentAlreadyCompletedError);
+
+    expect(ctx.ports.crypto.unwrapVaultMasterKey).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.signVaultSnapshot).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.vaultSnapshot).toBeUndefined();
+  });
+
+  it("rejects a completed enrollment proof for the same pending device id", async () => {
+    const ctx = createContext();
+
+    vi.mocked(
+      ctx.ports.syncProvider.downloadVaultSnapshot,
+    ).mockResolvedValueOnce({
+      ...ctx.remoteSnapshot,
+      keySlots: {
+        ...ctx.remoteSnapshot.keySlots,
+        completedEnrollments: [
+          createCompletedEnrollmentProof(ctx.values, {
+            enrollmentId: "previous-enrollment-id",
+          }),
+        ],
+      },
+    });
+
+    await expect(
+      ctx.useCase.execute({
+        enrollmentBundle: ctx.enrollmentBundle,
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "New laptop",
+      }),
+    ).rejects.toBeInstanceOf(DeviceEnrollmentAlreadyCompletedError);
+
+    expect(ctx.ports.crypto.unwrapVaultMasterKey).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.signVaultSnapshot).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.vaultSnapshot).toBeUndefined();
+  });
+
+  it("rejects an enrollment whose pending device id already has a key slot", async () => {
+    const ctx = createContext();
+
+    vi.mocked(
+      ctx.ports.syncProvider.downloadVaultSnapshot,
+    ).mockResolvedValueOnce({
+      ...ctx.remoteSnapshot,
+      keySlots: {
+        ...ctx.remoteSnapshot.keySlots,
+        deviceSlots: [
+          ...ctx.remoteSnapshot.keySlots.deviceSlots,
+          {
+            deviceId: ctx.values.pendingDeviceId,
+            protectedVaultMasterKey: ctx.values.protectedDeviceVaultMasterKey,
+            publicSignKey: ctx.values.pendingDevicePublicSignKey,
+          },
+        ],
+      },
+    });
+
+    await expect(
+      ctx.useCase.execute({
+        enrollmentBundle: ctx.enrollmentBundle,
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "New laptop",
+      }),
+    ).rejects.toBeInstanceOf(DeviceEnrollmentAlreadyCompletedError);
+
+    expect(ctx.ports.crypto.unwrapVaultMasterKey).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.signVaultSnapshot).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.vaultSnapshot).toBeUndefined();
+  });
+
+  it("rejects an enrollment slot with a mismatched pending public key digest", async () => {
+    const ctx = createContext();
+
+    vi.mocked(
+      ctx.ports.syncProvider.downloadVaultSnapshot,
+    ).mockResolvedValueOnce({
+      ...ctx.remoteSnapshot,
+      keySlots: {
+        ...ctx.remoteSnapshot.keySlots,
+        enrollmentKeySlot: {
+          ...ctx.remoteSnapshot.keySlots.enrollmentKeySlot!,
+          pendingDevicePublicSignKeyDigest: "tampered-pending-key-digest",
+        },
+      },
+    });
+
+    await expect(
+      ctx.useCase.execute({
+        enrollmentBundle: ctx.enrollmentBundle,
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "New laptop",
+      }),
+    ).rejects.toBeInstanceOf(DeviceEnrollmentIntegrityError);
+
+    expect(ctx.ports.crypto.unwrapVaultMasterKey).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("rejects an enrollment slot with a mismatched protected master key digest", async () => {
+    const ctx = createContext();
+
+    vi.mocked(
+      ctx.ports.syncProvider.downloadVaultSnapshot,
+    ).mockResolvedValueOnce({
+      ...ctx.remoteSnapshot,
+      keySlots: {
+        ...ctx.remoteSnapshot.keySlots,
+        enrollmentKeySlot: {
+          ...ctx.remoteSnapshot.keySlots.enrollmentKeySlot!,
+          protectedVaultMasterKeyDigest: "tampered-master-key-digest",
+        },
+      },
+    });
+
+    await expect(
+      ctx.useCase.execute({
+        enrollmentBundle: ctx.enrollmentBundle,
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "New laptop",
+      }),
+    ).rejects.toBeInstanceOf(DeviceEnrollmentIntegrityError);
+
+    expect(ctx.ports.crypto.unwrapVaultMasterKey).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("rejects an enrollment slot whose authorizer signature is invalid", async () => {
+    const ctx = createContext();
+
+    vi.mocked(
+      ctx.ports.crypto.verifyDeviceEnrollmentAuthorizationSignature,
+    ).mockResolvedValueOnce(false);
+
+    await expect(
+      ctx.useCase.execute({
+        enrollmentBundle: ctx.enrollmentBundle,
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "New laptop",
+      }),
+    ).rejects.toBeInstanceOf(DeviceEnrollmentIntegrityError);
+
+    expect(ctx.ports.crypto.unwrapVaultMasterKey).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("rejects an enrollment slot whose authorizer device is not trusted", async () => {
+    const ctx = createContext();
+
+    vi.mocked(
+      ctx.ports.syncProvider.downloadVaultSnapshot,
+    ).mockResolvedValueOnce({
+      ...ctx.remoteSnapshot,
+      keySlots: {
+        ...ctx.remoteSnapshot.keySlots,
+        enrollmentKeySlot: {
+          ...ctx.remoteSnapshot.keySlots.enrollmentKeySlot!,
+          authorizedByDeviceId: "unknown-authorizer-device-id",
+        },
+      },
+    });
+
+    await expect(
+      ctx.useCase.execute({
+        enrollmentBundle: ctx.enrollmentBundle,
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "New laptop",
+      }),
+    ).rejects.toBeInstanceOf(DeviceEnrollmentIntegrityError);
+
+    expect(ctx.ports.crypto.unwrapVaultMasterKey).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("rejects a pending private key that cannot sign as the enrollment slot public key", async () => {
+    const ctx = createContext();
+
+    vi.mocked(ctx.ports.crypto.verifyVaultSnapshotSignature)
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+
+    await expect(
+      ctx.useCase.execute({
+        enrollmentBundle: ctx.enrollmentBundle,
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "New laptop",
+      }),
+    ).rejects.toBeInstanceOf(DeviceEnrollmentIntegrityError);
+
+    expect(ctx.ports.crypto.signVaultSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          createdByDeviceId: ctx.values.pendingDeviceId,
+        }),
+      }),
+      ctx.values.pendingDevicePrivateSignKey,
+    );
+    expect(ctx.ports.crypto.verifyVaultSnapshotSignature).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          createdByDeviceId: ctx.values.pendingDeviceId,
+        }),
+      }),
+      ctx.values.pendingDevicePublicSignKey,
+    );
+    expect(
+      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
   it("rejects a snapshot that is not signed by the package key", async () => {
     const ctx = createContext();
 
@@ -339,6 +728,36 @@ describe("PerformDeviceEnrollmentUseCase", () => {
         deviceName: "New laptop",
       }),
     ).rejects.toBeInstanceOf(DeviceEnrollmentKeySlotNotFoundError);
+
+    expect(ctx.ports.crypto.unwrapVaultMasterKey).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("rejects an expired enrollment slot before unwrapping the vault master key", async () => {
+    const ctx = createContext();
+
+    vi.mocked(
+      ctx.ports.syncProvider.downloadVaultSnapshot,
+    ).mockResolvedValueOnce({
+      ...ctx.remoteSnapshot,
+      keySlots: {
+        ...ctx.remoteSnapshot.keySlots,
+        enrollmentKeySlot: {
+          ...ctx.remoteSnapshot.keySlots.enrollmentKeySlot!,
+          expiresAt: ctx.values.timestamp - 1,
+        },
+      },
+    });
+
+    await expect(
+      ctx.useCase.execute({
+        enrollmentBundle: ctx.enrollmentBundle,
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "New laptop",
+      }),
+    ).rejects.toBeInstanceOf(DeviceEnrollmentExpiredError);
 
     expect(ctx.ports.crypto.unwrapVaultMasterKey).not.toHaveBeenCalled();
     expect(

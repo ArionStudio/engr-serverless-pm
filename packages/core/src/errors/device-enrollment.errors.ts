@@ -31,3 +31,28 @@ export class DeviceEnrollmentKeySlotNotFoundError extends Error {
     this.name = "DeviceEnrollmentKeySlotNotFoundError";
   }
 }
+
+export class DeviceEnrollmentExpiredError extends Error {
+  constructor(vaultId: string) {
+    super(`Vault "${vaultId}" device enrollment has expired.`);
+    this.name = "DeviceEnrollmentExpiredError";
+  }
+}
+
+export class DeviceEnrollmentAlreadyCompletedError extends Error {
+  constructor(vaultId: string, enrollmentId: string) {
+    super(
+      `Vault "${vaultId}" device enrollment "${enrollmentId}" is already completed.`,
+    );
+    this.name = "DeviceEnrollmentAlreadyCompletedError";
+  }
+}
+
+export class DeviceEnrollmentIntegrityError extends Error {
+  constructor(vaultId: string, reason: string) {
+    super(
+      `Vault "${vaultId}" device enrollment integrity check failed: ${reason}`,
+    );
+    this.name = "DeviceEnrollmentIntegrityError";
+  }
+}
