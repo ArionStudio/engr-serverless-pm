@@ -8,7 +8,8 @@ import type {
 } from "../../domain/snapshot/vault-snapshot";
 import type { UnlockedVault } from "../../domain/session/unlocked-vault";
 import type { Vault } from "../../domain/vault/vault";
-import { addRecoveredDeviceProfileToVault } from "../../domain/vault/vault-device.mutations";
+import { resetDeviceProfilesToRecoveredDevice } from "../../domain/vault/vault-device.mutations";
+import { removeVaultSyncConfig } from "../../domain/vault/vault-sync-config.mutations";
 import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
 import {
   VaultSnapshotNotFoundError,
@@ -21,6 +22,7 @@ import type { ClockPort } from "../../ports/system/clock.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { IdPort } from "../../ports/system/id.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
+import { incrementVersionVector } from "../../domain/versioning/version-vector.utils";
 
 export type RecoverVaultAccessCommandParams = {
   readonly vaultId: string;
@@ -87,8 +89,9 @@ export class RecoverVaultAccessUseCase {
       });
     }
 
-    const signerDevice = currentVaultSnapshot.trustedDevices.find(
-      (device) => device.id === currentVaultSnapshot.metadata.createdByDeviceId,
+    const signerDevice = currentVaultSnapshot.keySlots.deviceSlots.find(
+      (deviceSlot) =>
+        deviceSlot.deviceId === currentVaultSnapshot.metadata.createdByDeviceId,
     );
 
     if (signerDevice === undefined) {
@@ -100,20 +103,12 @@ export class RecoverVaultAccessUseCase {
 
     const isSnapshotAuthentic = await this.crypto.verifyVaultSnapshotSignature(
       currentVaultSnapshot,
-      signerDevice.publicKeys.signingKey,
+      signerDevice.publicSignKey,
     );
 
     if (!isSnapshotAuthentic) {
       throw new VaultSnapshotSignatureVerificationFailedError(params.vaultId);
     }
-
-    // Resolve the old local device identity, then recover the vault master key
-    // and decrypted vault content from the recovery mnemonic.
-    // Only replace a previous device identity when this browser has local
-    // access material that tells us which device identity it used before.
-    const existingDeviceAccessMaterial =
-      await this.vaultLocalRepository.getDeviceAccessMaterial(params.vaultId);
-    const replacedDeviceId = existingDeviceAccessMaterial?.deviceId ?? null;
 
     // The recovery mnemonic unlocks the vault master key through the snapshot's
     // recovery slot, then the vault content can be decrypted.
@@ -133,9 +128,7 @@ export class RecoverVaultAccessUseCase {
       vaultMasterKey,
     );
 
-    // Provision a replacement local device and protect its private material
-    // with the user's new local unlock password.
-    // Generate a fresh device identity for this recovered local installation.
+    // Provision a fresh local device identity for this recovered installation.
     const deviceId = await this.ids.generateId();
     const timestamp = this.clock.now();
     const deviceSlotKey = await this.crypto.generateDeviceSlotKey();
@@ -175,49 +168,40 @@ export class RecoverVaultAccessUseCase {
       deviceSlotVaultMasterKeyProtectionKey,
     );
 
-    // Rebuild vault state so the recovered device is trusted, the old local
-    // device is removed when known, and the snapshot is signed by the new device.
-    // Update the decrypted vault content: add the recovered device profile and,
-    // if known, tombstone the previous local device profile.
-    const recoveredVault = addRecoveredDeviceProfileToVault(
-      vault,
-      deviceId,
-      params.deviceName,
-      timestamp,
-      replacedDeviceId,
+    // Recovery intentionally creates a new local-only trust root.
+    const recoveredVault = removeVaultSyncConfig(
+      resetDeviceProfilesToRecoveredDevice(
+        vault,
+        deviceId,
+        params.deviceName,
+        timestamp,
+      ),
     );
 
-    // Update snapshot trust state and sign as the recovered device. Snapshot
+    // Update snapshot device access state and sign as the recovered device. Snapshot
     // trust/key-slot changes live outside encrypted vault content.
     const unsignedVaultSnapshot: UnsignedVaultSnapshot = {
       metadata: {
         ...currentVaultSnapshot.metadata,
-        revision: currentVaultSnapshot.metadata.revision + 1,
+        id: params.vaultId,
         revisionTimestamp: timestamp,
+        snapshotVersionVector: incrementVersionVector(
+          currentVaultSnapshot.metadata.snapshotVersionVector,
+          deviceId,
+        ),
         createdByDeviceId: deviceId,
       },
-      trustedDevices: [
-        ...currentVaultSnapshot.trustedDevices.filter(
-          (trustedDevice) => trustedDevice.id !== replacedDeviceId,
-        ),
-        {
-          id: deviceId,
-          publicKeys: {
-            signingKey: deviceSignKeyPair.publicKey,
-          },
-        },
-      ],
       keySlots: {
         deviceSlots: [
-          ...currentVaultSnapshot.keySlots.deviceSlots.filter(
-            (deviceSlot) => deviceSlot.deviceId !== replacedDeviceId,
-          ),
           {
             deviceId,
             protectedVaultMasterKey: protectedDeviceVaultMasterKey,
+            publicSignKey: deviceSignKeyPair.publicKey,
           },
         ],
         recoveryKeySlot: currentVaultSnapshot.keySlots.recoveryKeySlot,
+        completedEnrollments:
+          currentVaultSnapshot.keySlots.completedEnrollments,
       },
       content: await this.crypto.encryptVaultSnapshotContent(
         recoveredVault,
@@ -261,7 +245,7 @@ export class RecoverVaultAccessUseCase {
     );
     await this.unlockedVaultSession.commit(
       unlockedVault,
-      recoveredVaultSnapshot.metadata.revision,
+      recoveredVaultSnapshot.metadata.snapshotVersionVector,
     );
 
     return {

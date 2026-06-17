@@ -34,7 +34,7 @@ export class SyncUploadUseCase {
   }
 
   async execute(params: SyncUploadCommandParams): Promise<void> {
-    const { unlockedVault } =
+    const { sourceSnapshotVersionVector, unlockedVault } =
       await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
         "sync upload",
@@ -45,9 +45,12 @@ export class SyncUploadUseCase {
       throw new SyncNotConfiguredError(params.vaultId, "sync upload");
     }
 
-    const localSnapshot = await this.vaultSnapshot.requireLocalVaultSnapshot(
-      params.vaultId,
-    );
+    const localSnapshot =
+      await this.vaultSnapshot.requireCurrentSnapshotForUnlockedVault(
+        params.vaultId,
+        unlockedVault,
+        sourceSnapshotVersionVector,
+      );
     const remoteSnapshotDescriptor =
       await this.syncProvider.getLatestVaultSnapshotDescriptor(
         syncConfig,
@@ -56,8 +59,7 @@ export class SyncUploadUseCase {
 
     if (remoteSnapshotDescriptor !== null) {
       const localSnapshotDescriptor = toVaultSnapshotDescriptor(
-        localSnapshot.metadata.id,
-        unlockedVault.vault,
+        params.vaultId,
         localSnapshot,
       );
       const relation = compareVaultSnapshotDescriptors(
@@ -65,26 +67,25 @@ export class SyncUploadUseCase {
         remoteSnapshotDescriptor,
       );
 
-      if (
-        relation === "equal" &&
-        areVaultSnapshotDescriptorsEqual(
-          remoteSnapshotDescriptor,
-          localSnapshotDescriptor,
-        )
-      ) {
-        return;
-      }
-
       if (relation === "equal") {
-        throw new RemoteVaultSnapshotIntegrityError(params.vaultId);
+        if (
+          !areVaultSnapshotDescriptorsEqual(
+            remoteSnapshotDescriptor,
+            localSnapshotDescriptor,
+          )
+        ) {
+          throw new RemoteVaultSnapshotIntegrityError(params.vaultId);
+        }
+
+        return;
       }
 
       if (relation === "remote_ahead") {
         throw new RemoteVaultSnapshotAheadError(params.vaultId);
       }
 
-      if (relation === "diverged") {
-        throw new SyncConflictDetectedError(params.vaultId);
+      if (relation === "broken") {
+        throw new RemoteVaultSnapshotIntegrityError(params.vaultId);
       }
     }
 

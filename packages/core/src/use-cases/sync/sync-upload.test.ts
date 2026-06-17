@@ -15,6 +15,7 @@ import {
 import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import { VaultSnapshotNotFoundError } from "../../errors/unlock-vault.errors";
 import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
+import { VaultSnapshotVersionMismatchError } from "../../errors/vault-snapshot.errors";
 import { SyncUploadUseCase } from "./sync-upload";
 
 function createSnapshot(
@@ -27,24 +28,19 @@ function createSnapshot(
       schemaVersion: 1,
       vaultCreationTimestamp: values.timestamp - 1_000,
       revisionTimestamp: values.timestamp,
-      revision: 1,
+      snapshotVersionVector: {
+        [values.deviceId]: 1,
+      },
       algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
       createdByDeviceId: values.deviceId,
       ...overrides,
     },
-    trustedDevices: [
-      {
-        id: values.deviceId,
-        publicKeys: {
-          signingKey: values.devicePublicSignKey,
-        },
-      },
-    ],
     keySlots: {
       deviceSlots: [
         {
           deviceId: values.deviceId,
           protectedVaultMasterKey: values.protectedDeviceVaultMasterKey,
+          publicSignKey: values.devicePublicSignKey,
         },
       ],
       recoveryKeySlot: {
@@ -62,7 +58,7 @@ function createRemoteSnapshotDescriptor(
 ): VaultSnapshotDescriptor {
   return {
     vaultId: values.vaultId,
-    versionVector: {
+    snapshotVersionVector: {
       [values.deviceId]: 1,
     },
     revisionTimestamp: values.timestamp,
@@ -75,7 +71,9 @@ function createContext() {
   const ports = createCoreTestPorts(values);
   const unlockedVault = createUnlockedVaultWithEntries(values, []);
   const localSnapshot = createSnapshot(values, {
-    revision: 3,
+    snapshotVersionVector: {
+      [values.deviceId]: 3,
+    },
     revisionTimestamp: values.timestamp,
   });
 
@@ -90,7 +88,9 @@ function createContext() {
         },
       },
     },
-    sourceSnapshotRevision: 1,
+    sourceSnapshotVersionVector: {
+      [values.deviceId]: 3,
+    },
   };
   ports.saved.vaultSnapshot = localSnapshot;
   const vaultSnapshot = new VaultSnapshotService(
@@ -118,7 +118,7 @@ describe("SyncUploadUseCase", () => {
     const remoteSnapshotDescriptor = createRemoteSnapshotDescriptor(
       ctx.values,
       {
-        versionVector: {
+        snapshotVersionVector: {
           [ctx.values.deviceId]: 2,
         },
         revisionTimestamp: ctx.values.timestamp + 10_000,
@@ -155,12 +155,79 @@ describe("SyncUploadUseCase", () => {
     );
   });
 
+  it("skips upload when the remote descriptor already matches the vault", async () => {
+    const ctx = createContext();
+    const localSnapshot = createSnapshot(ctx.values, {
+      id: "snapshot-id",
+      snapshotVersionVector: {
+        [ctx.values.deviceId]: 3,
+      },
+      revisionTimestamp: ctx.values.timestamp,
+    });
+    vi.mocked(
+      ctx.ports.vaultLocalRepository.getVaultSnapshot,
+    ).mockResolvedValueOnce(localSnapshot);
+    const remoteSnapshotDescriptor = createRemoteSnapshotDescriptor(
+      ctx.values,
+      {
+        snapshotVersionVector: localSnapshot.metadata.snapshotVersionVector,
+      },
+    );
+
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValueOnce(remoteSnapshotDescriptor);
+
+    await ctx.useCase.execute({ vaultId: ctx.values.vaultId });
+
+    expect(ctx.ports.syncProvider.downloadVaultSnapshot).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("uploads when local is ahead through more than the current device", async () => {
+    const ctx = createContext();
+    ctx.saved.vaultSnapshot = createSnapshot(ctx.values, {
+      snapshotVersionVector: {
+        [ctx.values.deviceId]: 3,
+        "remote-device-id": 2,
+      },
+      revisionTimestamp: ctx.values.timestamp,
+    });
+    ctx.saved.unlockedVaultSession = {
+      ...ctx.saved.unlockedVaultSession!,
+      sourceSnapshotVersionVector:
+        ctx.saved.vaultSnapshot.metadata.snapshotVersionVector,
+    };
+    const remoteSnapshotDescriptor = createRemoteSnapshotDescriptor(
+      ctx.values,
+      {
+        snapshotVersionVector: {
+          [ctx.values.deviceId]: 2,
+          "remote-device-id": 1,
+        },
+      },
+    );
+
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValueOnce(remoteSnapshotDescriptor);
+
+    await ctx.useCase.execute({ vaultId: ctx.values.vaultId });
+
+    expect(ctx.ports.syncProvider.downloadVaultSnapshot).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).toHaveBeenCalledWith(
+      ctx.values.syncConfig,
+      ctx.saved.vaultSnapshot,
+      remoteSnapshotDescriptor,
+    );
+  });
+
   it("blocks upload when the remote vector has a component ahead of local", async () => {
     const ctx = createContext();
     const remoteSnapshotDescriptor = createRemoteSnapshotDescriptor(
       ctx.values,
       {
-        versionVector: {
+        snapshotVersionVector: {
           [ctx.values.deviceId]: 3,
           "remote-device-id": 1,
         },
@@ -186,7 +253,7 @@ describe("SyncUploadUseCase", () => {
     const remoteSnapshotDescriptor = createRemoteSnapshotDescriptor(
       ctx.values,
       {
-        versionVector: {
+        snapshotVersionVector: {
           [ctx.values.deviceId]: 3,
         },
         revisionTimestamp: ctx.values.timestamp + 1,
@@ -210,7 +277,7 @@ describe("SyncUploadUseCase", () => {
     const remoteSnapshotDescriptor = createRemoteSnapshotDescriptor(
       ctx.values,
       {
-        versionVector: {
+        snapshotVersionVector: {
           [ctx.values.deviceId]: 2,
         },
       },
@@ -234,25 +301,24 @@ describe("SyncUploadUseCase", () => {
     );
   });
 
-  it("fails when local and remote vectors diverged", async () => {
+  it("fails when the snapshot vector relation is broken", async () => {
     const ctx = createContext();
+    ctx.saved.vaultSnapshot = createSnapshot(ctx.values, {
+      snapshotVersionVector: {
+        A: 7,
+        B: 3,
+      },
+      revisionTimestamp: ctx.values.timestamp,
+    });
     ctx.saved.unlockedVaultSession = {
       ...ctx.saved.unlockedVaultSession!,
-      unlockedVault: {
-        ...ctx.saved.unlockedVaultSession!.unlockedVault,
-        vault: {
-          ...ctx.saved.unlockedVaultSession!.unlockedVault.vault,
-          versionVector: {
-            A: 7,
-            B: 3,
-          },
-        },
-      },
+      sourceSnapshotVersionVector:
+        ctx.saved.vaultSnapshot.metadata.snapshotVersionVector,
     };
     const remoteSnapshotDescriptor = createRemoteSnapshotDescriptor(
       ctx.values,
       {
-        versionVector: {
+        snapshotVersionVector: {
           A: 2,
           B: 4,
         },
@@ -265,7 +331,7 @@ describe("SyncUploadUseCase", () => {
 
     await expect(
       ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
-    ).rejects.toBeInstanceOf(SyncConflictDetectedError);
+    ).rejects.toBeInstanceOf(RemoteVaultSnapshotIntegrityError);
 
     expect(ctx.ports.syncProvider.downloadVaultSnapshot).not.toHaveBeenCalled();
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
@@ -288,7 +354,9 @@ describe("SyncUploadUseCase", () => {
     const ctx = createContext();
     ctx.saved.unlockedVaultSession = {
       unlockedVault: createUnlockedVaultWithEntries(ctx.values, []),
-      sourceSnapshotRevision: 1,
+      sourceSnapshotVersionVector: {
+        [ctx.values.deviceId]: 1,
+      },
     };
 
     await expect(
@@ -311,5 +379,24 @@ describe("SyncUploadUseCase", () => {
     expect(
       ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
     ).not.toHaveBeenCalled();
+  });
+
+  it("fails when the local snapshot changed outside the unlocked session", async () => {
+    const ctx = createContext();
+    ctx.saved.vaultSnapshot = createSnapshot(ctx.values, {
+      snapshotVersionVector: {
+        [ctx.values.deviceId]: 4,
+      },
+      revisionTimestamp: ctx.values.timestamp + 1,
+    });
+
+    await expect(
+      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toBeInstanceOf(VaultSnapshotVersionMismatchError);
+
+    expect(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });
 });

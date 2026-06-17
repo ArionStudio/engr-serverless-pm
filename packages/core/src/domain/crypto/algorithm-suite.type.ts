@@ -48,7 +48,7 @@ export interface AlgorithmSuite {
     readonly authenticatedData: [
       "sessionId",
       "vaultId",
-      "sourceSnapshotRevision",
+      "sourceSnapshotVersionVector",
     ];
   };
   readonly vaultSnapshotSigning: {

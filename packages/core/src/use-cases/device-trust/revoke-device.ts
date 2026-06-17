@@ -5,12 +5,10 @@ import type {
 import type { Vault } from "../../domain/vault/vault";
 import { revokeDeviceProfileFromVault } from "../../domain/vault/vault-device.mutations";
 import {
-  DeviceKeySlotNotFoundError,
   VaultSnapshotSignatureVerificationFailedError,
   VaultSnapshotSignerNotTrustedError,
 } from "../../errors/unlock-vault.errors";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
-import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import type { ClockPort } from "../../ports/system/clock.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
@@ -19,6 +17,9 @@ import {
   DeviceProfileNotFoundForRevocationError,
   DeviceToRevokeNotTrustedError,
 } from "./revoke-device.errors";
+import { incrementVersionVector } from "../../domain/versioning/version-vector.utils";
+import type { VersionVector } from "../../domain/versioning/version-vector.type";
+import type { VaultSyncGuardService } from "../../services/sync";
 
 export type RevokeDeviceCommandParams = {
   readonly vaultId: string;
@@ -27,30 +28,29 @@ export type RevokeDeviceCommandParams = {
 
 export type RevokeDeviceResult = {
   readonly vault: Vault;
-  readonly revision: number;
+  readonly snapshotVersionVector: VersionVector;
   readonly revisionTimestamp: number;
-  readonly deviceId: string;
 };
 
 export class RevokeDeviceUseCase {
   private readonly clock: ClockPort;
   private readonly crypto: CryptoPort;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
+  private readonly vaultSyncGuard: VaultSyncGuardService;
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
-  private readonly vaultSnapshot: VaultSnapshotService;
 
   constructor(
     clock: ClockPort,
     crypto: CryptoPort,
     unlockedVaultSession: UnlockedVaultSessionService,
+    vaultSyncGuard: VaultSyncGuardService,
     vaultLocalRepository: VaultLocalRepositoryPort,
-    vaultSnapshot: VaultSnapshotService,
   ) {
     this.clock = clock;
     this.crypto = crypto;
     this.unlockedVaultSession = unlockedVaultSession;
+    this.vaultSyncGuard = vaultSyncGuard;
     this.vaultLocalRepository = vaultLocalRepository;
-    this.vaultSnapshot = vaultSnapshot;
   }
 
   async execute(
@@ -58,7 +58,7 @@ export class RevokeDeviceUseCase {
   ): Promise<RevokeDeviceResult> {
     // Revoke can only be performed by the currently unlocked vault, and a
     // device cannot revoke the local identity it is actively using.
-    const { sourceSnapshotRevision, unlockedVault } =
+    const { sourceSnapshotVersionVector, unlockedVault } =
       await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
         "revoke device",
@@ -70,15 +70,16 @@ export class RevokeDeviceUseCase {
 
     // Start from the current local snapshot and verify its provenance before
     // using its trust and key-slot state as the basis for the new snapshot.
-    const currentVaultSnapshot =
-      await this.vaultSnapshot.requireCurrentSnapshotForUnlockedVault(
-        params.vaultId,
-        unlockedVault,
-        sourceSnapshotRevision,
-      );
+    const syncState = await this.vaultSyncGuard.prepareLocalMutation(
+      params.vaultId,
+      unlockedVault,
+      sourceSnapshotVersionVector,
+    );
+    const currentVaultSnapshot = syncState.localSnapshot;
 
-    const signerDevice = currentVaultSnapshot.trustedDevices.find(
-      (device) => device.id === currentVaultSnapshot.metadata.createdByDeviceId,
+    const signerDevice = currentVaultSnapshot.keySlots.deviceSlots.find(
+      (deviceSlot) =>
+        deviceSlot.deviceId === currentVaultSnapshot.metadata.createdByDeviceId,
     );
 
     if (signerDevice === undefined) {
@@ -90,29 +91,21 @@ export class RevokeDeviceUseCase {
 
     const isSnapshotAuthentic = await this.crypto.verifyVaultSnapshotSignature(
       currentVaultSnapshot,
-      signerDevice.publicKeys.signingKey,
+      signerDevice.publicSignKey,
     );
 
     if (!isSnapshotAuthentic) {
       throw new VaultSnapshotSignatureVerificationFailedError(params.vaultId);
     }
 
-    // The target must exist in every trust surface we are about to remove it
-    // from.
-    const isRevokedDeviceTrusted = currentVaultSnapshot.trustedDevices.some(
-      (device) => device.id === params.deviceId,
-    );
+    // The target must exist in the device access surface we are about to remove it from.
+    const isRevokedDeviceTrusted =
+      currentVaultSnapshot.keySlots.deviceSlots.some(
+        (deviceSlot) => deviceSlot.deviceId === params.deviceId,
+      );
 
     if (!isRevokedDeviceTrusted) {
       throw new DeviceToRevokeNotTrustedError(params.vaultId, params.deviceId);
-    }
-
-    const hasRevokedDeviceSlot = currentVaultSnapshot.keySlots.deviceSlots.some(
-      (deviceSlot) => deviceSlot.deviceId === params.deviceId,
-    );
-
-    if (!hasRevokedDeviceSlot) {
-      throw new DeviceKeySlotNotFoundError(params.vaultId, params.deviceId);
     }
 
     if (
@@ -137,23 +130,26 @@ export class RevokeDeviceUseCase {
       revisionTimestamp,
     );
 
-    // Rebuild the snapshot trust state without the revoked device and sign the
+    // Rebuild the snapshot device access state without the revoked device and sign the
     // result as the still-trusted local device.
     const unsignedVaultSnapshot: UnsignedVaultSnapshot = {
       metadata: {
         ...currentVaultSnapshot.metadata,
-        revision: currentVaultSnapshot.metadata.revision + 1,
+        id: params.vaultId,
         revisionTimestamp,
+        snapshotVersionVector: incrementVersionVector(
+          currentVaultSnapshot.metadata.snapshotVersionVector,
+          unlockedVault.deviceId,
+        ),
         createdByDeviceId: unlockedVault.deviceId,
       },
-      trustedDevices: currentVaultSnapshot.trustedDevices.filter(
-        (trustedDevice) => trustedDevice.id !== params.deviceId,
-      ),
       keySlots: {
         deviceSlots: currentVaultSnapshot.keySlots.deviceSlots.filter(
           (deviceSlot) => deviceSlot.deviceId !== params.deviceId,
         ),
         recoveryKeySlot: currentVaultSnapshot.keySlots.recoveryKeySlot,
+        completedEnrollments:
+          currentVaultSnapshot.keySlots.completedEnrollments,
       },
       content: await this.crypto.encryptVaultSnapshotContent(
         revokedVault,
@@ -170,7 +166,7 @@ export class RevokeDeviceUseCase {
     };
 
     // Persist the revoked snapshot before advancing the unlocked session to
-    // the matching revision.
+    // the matching snapshot version vector.
     await this.vaultLocalRepository.saveVaultSnapshot(revokedVaultSnapshot);
 
     const updatedUnlockedVault = {
@@ -178,16 +174,22 @@ export class RevokeDeviceUseCase {
       vault: revokedVault,
     };
 
+    await this.vaultSyncGuard.uploadPersistedLocalMutation(
+      params.vaultId,
+      syncState,
+      revokedVaultSnapshot,
+    );
+
     await this.unlockedVaultSession.commitPersistedSnapshot(
       updatedUnlockedVault,
-      revokedVaultSnapshot.metadata.revision,
+      revokedVaultSnapshot.metadata.snapshotVersionVector,
     );
 
     return {
       vault: revokedVault,
-      revision: revokedVaultSnapshot.metadata.revision,
+      snapshotVersionVector:
+        revokedVaultSnapshot.metadata.snapshotVersionVector,
       revisionTimestamp: revokedVaultSnapshot.metadata.revisionTimestamp,
-      deviceId: revokedVaultSnapshot.metadata.createdByDeviceId,
     };
   }
 }

@@ -7,11 +7,13 @@ import type {
   SerializedWrapped,
 } from "../../domain/crypto/protected-artifact";
 import type {
+  DeviceEnrollmentSecret,
   DevicePrivateSignKey,
   DevicePublicSignKey,
   DeviceSignKeyPair,
   DeviceSlotKey,
 } from "../../domain/device-trust/brand-keys";
+import type { DeviceEnrollmentAuthorizationPayload } from "../../domain/device-trust/device-enrollment-authorization";
 import type {
   LocalKeysPayload,
   LocalRootKey,
@@ -25,6 +27,7 @@ import type {
   VaultSnapshot,
 } from "../../domain/snapshot/vault-snapshot";
 import type { Vault } from "../../domain/vault/vault";
+import type { VersionVector } from "../../domain/versioning/version-vector.type";
 
 export interface CryptoPort {
   // Suite
@@ -41,6 +44,7 @@ export interface CryptoPort {
   generateDeviceSignKeyPair: () => Promise<DeviceSignKeyPair>;
   generateVaultMasterKey: () => Promise<VaultMasterKey>;
   generateDeviceSlotKey: () => Promise<DeviceSlotKey>;
+  generateDeviceEnrollmentSecret: () => Promise<DeviceEnrollmentSecret>;
   generateRecoveryKey: () => Promise<RecoverySecretKey>;
   generateUnlockedVaultSessionPayloadKey: () => Promise<UnlockedVaultSessionPayloadKey>;
 
@@ -65,6 +69,9 @@ export interface CryptoPort {
   deriveRecoveryVaultMasterKeyProtectionKey: (
     recoveryKey: RecoverySecretKey,
   ) => Promise<ProtectionKeyFor<VaultMasterKey>>;
+  deriveEnrollmentVaultMasterKeyProtectionKey: (
+    enrollmentSecret: DeviceEnrollmentSecret,
+  ) => Promise<ProtectionKeyFor<VaultMasterKey>>;
 
   // Key wrapping
   wrapLocalKeysPayload: (
@@ -83,6 +90,12 @@ export interface CryptoPort {
     protectedVaultMasterKey: SerializedWrapped<VaultMasterKey>,
     protectionKey: ProtectionKeyFor<VaultMasterKey>,
   ) => Promise<VaultMasterKey>;
+  digestProtectedVaultMasterKey: (
+    protectedVaultMasterKey: SerializedWrapped<VaultMasterKey>,
+  ) => Promise<string>;
+  digestDevicePublicSignKey: (
+    publicSignKey: DevicePublicSignKey,
+  ) => Promise<string>;
 
   // Vault snapshot content protection
   encryptVaultSnapshotContent: (
@@ -103,7 +116,7 @@ export interface CryptoPort {
     context: {
       readonly sessionId: string;
       readonly vaultId: string;
-      readonly sourceSnapshotRevision: number;
+      readonly sourceSnapshotVersionVector: VersionVector;
     },
   ) => Promise<
     SerializedEncrypted<{
@@ -118,7 +131,7 @@ export interface CryptoPort {
     context: {
       readonly sessionId: string;
       readonly vaultId: string;
-      readonly sourceSnapshotRevision: number;
+      readonly sourceSnapshotVersionVector: VersionVector;
     },
   ) => Promise<{
     readonly vault: Vault;
@@ -131,6 +144,21 @@ export interface CryptoPort {
   ) => Promise<SerializedSignatureOf<UnsignedVaultSnapshot>>;
   verifyVaultSnapshotSignature: (
     snapshot: VaultSnapshot,
+    publicKey: DevicePublicSignKey,
+  ) => Promise<boolean>;
+  verifyDeviceSignKeyPair: (
+    publicKey: DevicePublicSignKey,
+    privateKey: DevicePrivateSignKey,
+  ) => Promise<boolean>;
+
+  // Device enrollment authorization
+  signDeviceEnrollmentAuthorization: (
+    authorization: DeviceEnrollmentAuthorizationPayload,
+    privateKey: DevicePrivateSignKey,
+  ) => Promise<SerializedSignatureOf<DeviceEnrollmentAuthorizationPayload>>;
+  verifyDeviceEnrollmentAuthorizationSignature: (
+    authorization: DeviceEnrollmentAuthorizationPayload,
+    signature: SerializedSignatureOf<DeviceEnrollmentAuthorizationPayload>,
     publicKey: DevicePublicSignKey,
   ) => Promise<boolean>;
 }

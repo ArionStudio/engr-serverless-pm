@@ -4,6 +4,8 @@ import type { UnlockedVault } from "../../domain/session/unlocked-vault";
 import type { UnlockedVaultSessionPayloadKey } from "../../domain/session/unlocked-vault-session-payload-key";
 import type { VaultMasterKey } from "../../domain/snapshot/brand-keys";
 import type { Vault } from "../../domain/vault/vault";
+import type { VersionVector } from "../../domain/versioning/version-vector.type";
+import { compareVersionVectors } from "../../domain/versioning/version-vector.utils";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { IdPort } from "../../ports/system/id.port";
 import type { EncryptedUnlockedVaultSessionPayloadRepositoryPort } from "../../ports/session/encrypted-unlocked-vault-session-payload-repository.port";
@@ -46,7 +48,7 @@ export class UnlockedVaultSessionService {
 
   async get(): Promise<{
     readonly unlockedVault: UnlockedVault;
-    readonly sourceSnapshotRevision: number;
+    readonly sourceSnapshotVersionVector: VersionVector;
   } | null> {
     const material =
       await this.materialRepository.getUnlockedVaultSessionMaterial();
@@ -72,7 +74,7 @@ export class UnlockedVaultSessionService {
     operation: string,
   ): Promise<{
     readonly unlockedVault: UnlockedVault;
-    readonly sourceSnapshotRevision: number;
+    readonly sourceSnapshotVersionVector: VersionVector;
   }> {
     const unlockedVaultSession = await this.get();
 
@@ -85,26 +87,27 @@ export class UnlockedVaultSessionService {
 
     return {
       unlockedVault: unlockedVaultSession.unlockedVault,
-      sourceSnapshotRevision: unlockedVaultSession.sourceSnapshotRevision,
+      sourceSnapshotVersionVector:
+        unlockedVaultSession.sourceSnapshotVersionVector,
     };
   }
 
   async commit(
     unlockedVault: UnlockedVault,
-    sourceSnapshotRevision: number,
+    sourceSnapshotVersionVector: VersionVector,
   ): Promise<void> {
     await this.save({
       unlockedVault,
-      sourceSnapshotRevision,
+      sourceSnapshotVersionVector,
     });
   }
 
   async commitPersistedSnapshot(
     unlockedVault: UnlockedVault,
-    sourceSnapshotRevision: number,
+    sourceSnapshotVersionVector: VersionVector,
   ): Promise<void> {
     try {
-      await this.commit(unlockedVault, sourceSnapshotRevision);
+      await this.commit(unlockedVault, sourceSnapshotVersionVector);
     } catch (error) {
       if (!(error instanceof ActiveUnlockedVaultMismatchError)) {
         await this.removePreservingRootCause();
@@ -138,7 +141,7 @@ export class UnlockedVaultSessionService {
 
   private async save(session: {
     readonly unlockedVault: UnlockedVault;
-    readonly sourceSnapshotRevision: number;
+    readonly sourceSnapshotVersionVector: VersionVector;
   }): Promise<void> {
     const activeMaterial =
       await this.materialRepository.getUnlockedVaultSessionMaterial();
@@ -172,7 +175,7 @@ export class UnlockedVaultSessionService {
   private async protect(
     session: {
       readonly unlockedVault: UnlockedVault;
-      readonly sourceSnapshotRevision: number;
+      readonly sourceSnapshotVersionVector: VersionVector;
     },
     activeMaterial?: {
       readonly sessionId: string;
@@ -182,7 +185,7 @@ export class UnlockedVaultSessionService {
     readonly material: {
       readonly sessionId: string;
       readonly vaultId: string;
-      readonly sourceSnapshotRevision: number;
+      readonly sourceSnapshotVersionVector: VersionVector;
       readonly deviceId: string;
       readonly vaultMasterKey: VaultMasterKey;
       readonly devicePrivateSignKey: DevicePrivateSignKey;
@@ -191,7 +194,7 @@ export class UnlockedVaultSessionService {
     readonly encryptedPayload: {
       readonly sessionId: string;
       readonly vaultId: string;
-      readonly sourceSnapshotRevision: number;
+      readonly sourceSnapshotVersionVector: VersionVector;
       readonly content: SerializedEncrypted<{
         readonly vault: Vault;
       }>;
@@ -202,11 +205,11 @@ export class UnlockedVaultSessionService {
     const payloadKey =
       activeMaterial?.payloadKey ??
       (await this.crypto.generateUnlockedVaultSessionPayloadKey());
-    const { unlockedVault, sourceSnapshotRevision } = session;
+    const { unlockedVault, sourceSnapshotVersionVector } = session;
     const context = {
       sessionId,
       vaultId: unlockedVault.vaultId,
-      sourceSnapshotRevision,
+      sourceSnapshotVersionVector,
     };
     const content = await this.crypto.encryptUnlockedVaultSessionPayload(
       {
@@ -235,7 +238,7 @@ export class UnlockedVaultSessionService {
     material: {
       readonly sessionId: string;
       readonly vaultId: string;
-      readonly sourceSnapshotRevision: number;
+      readonly sourceSnapshotVersionVector: VersionVector;
       readonly deviceId: string;
       readonly vaultMasterKey: VaultMasterKey;
       readonly devicePrivateSignKey: DevicePrivateSignKey;
@@ -244,21 +247,21 @@ export class UnlockedVaultSessionService {
     encryptedPayload: {
       readonly sessionId: string;
       readonly vaultId: string;
-      readonly sourceSnapshotRevision: number;
+      readonly sourceSnapshotVersionVector: VersionVector;
       readonly content: SerializedEncrypted<{
         readonly vault: Vault;
       }>;
     },
   ): Promise<{
     readonly unlockedVault: UnlockedVault;
-    readonly sourceSnapshotRevision: number;
+    readonly sourceSnapshotVersionVector: VersionVector;
   }> {
     this.requireMatchingSessionRecords(material, encryptedPayload);
 
     const context = {
       sessionId: encryptedPayload.sessionId,
       vaultId: encryptedPayload.vaultId,
-      sourceSnapshotRevision: encryptedPayload.sourceSnapshotRevision,
+      sourceSnapshotVersionVector: encryptedPayload.sourceSnapshotVersionVector,
     };
 
     let payload: {
@@ -286,7 +289,7 @@ export class UnlockedVaultSessionService {
         vaultMasterKey: material.vaultMasterKey,
         devicePrivateSignKey: material.devicePrivateSignKey,
       },
-      sourceSnapshotRevision: encryptedPayload.sourceSnapshotRevision,
+      sourceSnapshotVersionVector: encryptedPayload.sourceSnapshotVersionVector,
     };
   }
 
@@ -302,12 +305,12 @@ export class UnlockedVaultSessionService {
     material: {
       readonly sessionId: string;
       readonly vaultId: string;
-      readonly sourceSnapshotRevision: number;
+      readonly sourceSnapshotVersionVector: VersionVector;
     },
     encryptedPayload: {
       readonly sessionId: string;
       readonly vaultId: string;
-      readonly sourceSnapshotRevision: number;
+      readonly sourceSnapshotVersionVector: VersionVector;
     },
   ): void {
     if (
@@ -319,9 +322,12 @@ export class UnlockedVaultSessionService {
       );
     }
 
-    if (
-      encryptedPayload.sourceSnapshotRevision < material.sourceSnapshotRevision
-    ) {
+    const relation = compareVersionVectors(
+      encryptedPayload.sourceSnapshotVersionVector,
+      material.sourceSnapshotVersionVector,
+    );
+
+    if (relation !== "equal" && relation !== "local_ahead") {
       throw new UnlockedVaultSessionInvalidError(
         "encrypted payload is older than session material",
       );

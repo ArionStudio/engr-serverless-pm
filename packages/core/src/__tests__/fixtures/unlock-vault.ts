@@ -27,23 +27,18 @@ export function createUnlockVaultTestContext() {
       schemaVersion: 1,
       vaultCreationTimestamp: values.timestamp,
       revisionTimestamp: values.timestamp,
-      revision: 1,
+      snapshotVersionVector: {
+        [values.deviceId]: 1,
+      },
       algorithmSuiteId: ports.crypto.algorithmSuite.id,
       createdByDeviceId: values.deviceId,
     },
-    trustedDevices: [
-      {
-        id: values.deviceId,
-        publicKeys: {
-          signingKey: values.devicePublicSignKey,
-        },
-      },
-    ],
     keySlots: {
       deviceSlots: [
         {
           deviceId: values.deviceId,
           protectedVaultMasterKey: values.protectedDeviceVaultMasterKey,
+          publicSignKey: values.devicePublicSignKey,
         },
       ],
       recoveryKeySlot: {

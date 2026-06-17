@@ -54,7 +54,13 @@ export class CopyEntryPasswordUseCase {
   async execute(
     params: CopyEntryPasswordCommandParams,
   ): Promise<CopyEntryPasswordResult> {
-    assertValidClipboardClearDelay(params.clearAfterMs);
+    const clearDelayResult = clipboardClearDelayMsSchema.safeParse(
+      params.clearAfterMs,
+    );
+
+    if (!clearDelayResult.success) {
+      throw new InvalidClipboardClearDelayError(clearDelayResult.error);
+    }
 
     const { unlockedVault } =
       await this.unlockedVaultSession.requireUnlockedVaultContext(
@@ -119,7 +125,12 @@ export class CopyEntryPasswordUseCase {
         runAt: clearScheduledAt,
       });
     } catch (error) {
-      await this.clipboardClearTasks.remove();
+      try {
+        await this.clipboardClearTasks.remove();
+      } catch {
+        // Preserve the schedule failure as the root cause.
+      }
+
       throw error;
     }
 
@@ -145,13 +156,5 @@ export class CopyEntryPasswordUseCase {
     return {
       copied: true,
     };
-  }
-}
-
-function assertValidClipboardClearDelay(clearAfterMs: number): void {
-  const clearDelayResult = clipboardClearDelayMsSchema.safeParse(clearAfterMs);
-
-  if (!clearDelayResult.success) {
-    throw new InvalidClipboardClearDelayError(clearDelayResult.error);
   }
 }

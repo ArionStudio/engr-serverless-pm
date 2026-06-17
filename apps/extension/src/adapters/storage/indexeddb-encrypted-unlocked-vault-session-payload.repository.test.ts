@@ -1,5 +1,6 @@
 import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it } from "vitest";
+import type { VersionVector } from "@lfspm/core";
 import type { Base64URLString } from "@lfspm/core/lib";
 import {
   ACTIVE_UNLOCKED_VAULT_SESSION_PAYLOAD_ID,
@@ -33,7 +34,7 @@ afterEach(async () => {
 describe("IndexedDbEncryptedUnlockedVaultSessionPayloadRepository", () => {
   it("saves one active encrypted payload record", async () => {
     const ctx = createContext();
-    const payload = createPayload(7);
+    const payload = createPayload({ "device-id": 7 });
 
     await ctx.repository.saveEncryptedUnlockedVaultSessionPayload(payload);
 
@@ -51,10 +52,10 @@ describe("IndexedDbEncryptedUnlockedVaultSessionPayloadRepository", () => {
     const ctx = createContext();
 
     await ctx.repository.saveEncryptedUnlockedVaultSessionPayload(
-      createPayload(7),
+      createPayload({ "device-id": 7 }),
     );
     await ctx.repository.saveEncryptedUnlockedVaultSessionPayload(
-      createPayload(8),
+      createPayload({ "device-id": 8 }),
     );
 
     await expect(
@@ -62,7 +63,7 @@ describe("IndexedDbEncryptedUnlockedVaultSessionPayloadRepository", () => {
     ).resolves.toBe(1);
     await expect(
       ctx.repository.getEncryptedUnlockedVaultSessionPayload(),
-    ).resolves.toEqual(createPayload(8));
+    ).resolves.toEqual(createPayload({ "device-id": 8 }));
   });
 
   it("returns null when there is no active encrypted payload", async () => {
@@ -77,7 +78,7 @@ describe("IndexedDbEncryptedUnlockedVaultSessionPayloadRepository", () => {
     const ctx = createContext();
 
     await ctx.repository.saveEncryptedUnlockedVaultSessionPayload(
-      createPayload(7),
+      createPayload({ "device-id": 7 }),
     );
     await ctx.repository.removeEncryptedUnlockedVaultSessionPayload();
 
@@ -87,14 +88,18 @@ describe("IndexedDbEncryptedUnlockedVaultSessionPayloadRepository", () => {
   });
 });
 
-function createPayload(sourceSnapshotRevision: number) {
+function createPayload(sourceSnapshotVersionVector: VersionVector) {
+  const versionLabel = Object.entries(sourceSnapshotVersionVector)
+    .map(([deviceId, version]) => `${deviceId}-${version}`)
+    .join("-");
+
   return {
     sessionId: "session-id",
     vaultId: "vault-id",
-    sourceSnapshotRevision,
+    sourceSnapshotVersionVector,
     content: {
-      ciphertext: b64(`ciphertext-${sourceSnapshotRevision}`),
-      encryptionNonce: b64(`nonce-${sourceSnapshotRevision}`),
+      ciphertext: b64(`ciphertext-${versionLabel}`),
+      encryptionNonce: b64(`nonce-${versionLabel}`),
     },
   };
 }

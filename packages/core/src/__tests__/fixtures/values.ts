@@ -7,6 +7,7 @@ import type {
   SerializedWrapped,
 } from "../../domain/crypto/protected-artifact";
 import type {
+  DeviceEnrollmentSecret,
   DevicePrivateSignKey,
   DevicePublicSignKey,
   DeviceSlotKey,
@@ -20,6 +21,7 @@ import type { RecoveryKeyMnemonic } from "../../domain/recovery/bip39-mnemonic";
 import type { RecoverySecretKey } from "../../domain/recovery/brand-keys";
 import type { VaultMasterKey } from "../../domain/snapshot/brand-keys";
 import type { SyncConfig } from "../../domain/sync/sync-config.type";
+import type { DeviceEnrollmentAuthorizationPayload } from "../../domain/device-trust/device-enrollment-authorization";
 import type { UnsignedVaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import type { UnlockedVaultSessionPayloadKey } from "../../domain/session/unlocked-vault-session-payload-key";
 import type { Vault } from "../../domain/vault/vault";
@@ -38,6 +40,8 @@ export function createCoreTestValues() {
     vaultLockActionId: "vault-lock-action-id",
     vaultDisplayName: "blue-river-4821",
     deviceId: "device-id",
+    enrollmentId: "enrollment-id",
+    pendingDeviceId: "pending-device-id",
     syncConfig: {
       provider: "aws-s3-v1",
       providerConfig: {
@@ -52,10 +56,15 @@ export function createCoreTestValues() {
       },
     } satisfies SyncConfig,
     timestamp: 1_700_000_000_000,
+    enrollmentExpiresAt: 1_700_000_300_000,
     vaultMasterKey: bytes<VaultMasterKey>(),
     deviceSlotKey: bytes<DeviceSlotKey>(),
+    deviceEnrollmentSecret: bytes<DeviceEnrollmentSecret>(),
     devicePublicSignKey: bytes<DevicePublicSignKey>(),
     devicePrivateSignKey: bytes<DevicePrivateSignKey>(),
+    pendingDevicePublicSignKey: bytes<DevicePublicSignKey>(),
+    pendingDevicePrivateSignKey: bytes<DevicePrivateSignKey>(),
+    pendingDevicePublicSignKeyDigest: "pending-device-public-sign-key-digest",
     recoverySecretKey: bytes<RecoverySecretKey>(),
     unlockedVaultSessionPayloadKey: bytes<UnlockedVaultSessionPayloadKey>(),
     recoveryMnemonicKey: {
@@ -69,6 +78,8 @@ export function createCoreTestValues() {
     deviceSlotVaultMasterKeyProtectionKey:
       bytes<ProtectionKeyFor<VaultMasterKey>>(),
     recoveryVaultMasterKeyProtectionKey:
+      bytes<ProtectionKeyFor<VaultMasterKey>>(),
+    enrollmentVaultMasterKeyProtectionKey:
       bytes<ProtectionKeyFor<VaultMasterKey>>(),
     protectedLocalKeys: {
       wrappedKey: b64("protected-local-keys"),
@@ -90,6 +101,12 @@ export function createCoreTestValues() {
       wrappedKey: b64("protected-recovery-vault-master-key"),
       wrappingNonce: b64("protected-recovery-vault-master-key-nonce"),
     } satisfies SerializedWrapped<VaultMasterKey>,
+    protectedEnrollmentVaultMasterKey: {
+      wrappedKey: b64("protected-enrollment-vault-master-key"),
+      wrappingNonce: b64("protected-enrollment-vault-master-key-nonce"),
+    } satisfies SerializedWrapped<VaultMasterKey>,
+    protectedEnrollmentVaultMasterKeyDigest:
+      "protected-enrollment-vault-master-key-digest",
     encryptedVault: {
       ciphertext: b64("encrypted-vault"),
       encryptionNonce: b64("encrypted-vault-nonce"),
@@ -114,5 +131,8 @@ export function createCoreTestValues() {
     snapshotSignature: {
       signature: b64("snapshot-signature"),
     } satisfies SerializedSignatureOf<UnsignedVaultSnapshot>,
+    deviceEnrollmentAuthorizationSignature: {
+      signature: b64("device-enrollment-authorization-signature"),
+    } satisfies SerializedSignatureOf<DeviceEnrollmentAuthorizationPayload>,
   };
 }

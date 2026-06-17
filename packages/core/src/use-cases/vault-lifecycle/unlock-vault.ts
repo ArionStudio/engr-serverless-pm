@@ -15,6 +15,7 @@ import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.err
 import {
   DeviceAccessMaterialNotFoundError,
   DeviceKeySlotNotFoundError,
+  DeviceKeySlotVerificationFailedError,
   VaultSnapshotNotFoundError,
   VaultSnapshotSignatureVerificationFailedError,
   VaultSnapshotSignerNotTrustedError,
@@ -60,7 +61,13 @@ export class UnlockVaultUseCase {
   }
 
   async execute(params: UnlockVaultCommandParams): Promise<UnlockVaultResult> {
-    assertValidVaultLockDelay(params.lockAfterMs);
+    const lockDelayResult = vaultLockDelayMsSchema.safeParse(
+      params.lockAfterMs,
+    );
+
+    if (!lockDelayResult.success) {
+      throw new InvalidVaultLockDelayError(lockDelayResult.error);
+    }
 
     await this.unlockedVaultSession.requireVaultCanBeActivated(params.vaultId);
 
@@ -101,20 +108,29 @@ export class UnlockVaultUseCase {
       });
     }
 
-    const signerDevice = vaultSnapshot.trustedDevices.find(
-      (device) => device.id === vaultSnapshot.metadata.createdByDeviceId,
-    );
-
-    if (signerDevice === undefined) {
+    if (
+      vaultSnapshot.metadata.createdByDeviceId !== deviceAccessMaterial.deviceId
+    ) {
       throw new VaultSnapshotSignerNotTrustedError(
         params.vaultId,
         vaultSnapshot.metadata.createdByDeviceId,
       );
     }
 
+    const deviceKeySlot = vaultSnapshot.keySlots.deviceSlots.find(
+      (slot: DeviceKeySlot) => slot.deviceId === deviceAccessMaterial.deviceId,
+    );
+
+    if (deviceKeySlot === undefined) {
+      throw new DeviceKeySlotNotFoundError(
+        params.vaultId,
+        deviceAccessMaterial.deviceId,
+      );
+    }
+
     const isSnapshotAuthentic = await this.crypto.verifyVaultSnapshotSignature(
       vaultSnapshot,
-      signerDevice.publicKeys.signingKey,
+      deviceKeySlot.publicSignKey,
     );
 
     if (!isSnapshotAuthentic) {
@@ -137,13 +153,27 @@ export class UnlockVaultUseCase {
         deviceAccessMaterial.protectedLocalKeys,
         localKeysProtectionKey,
       );
+    const doesDevicePrivateKeyMatchSlot =
+      await this.crypto.verifyDeviceSignKeyPair(
+        deviceKeySlot.publicSignKey,
+        localKeysPayload.devicePrivateSignKey,
+      );
 
-    const deviceKeySlot = vaultSnapshot.keySlots.deviceSlots.find(
-      (slot: DeviceKeySlot) => slot.deviceId === deviceAccessMaterial.deviceId,
-    );
+    if (!doesDevicePrivateKeyMatchSlot) {
+      throw new DeviceKeySlotVerificationFailedError(
+        params.vaultId,
+        deviceAccessMaterial.deviceId,
+      );
+    }
 
-    if (deviceKeySlot === undefined) {
-      throw new DeviceKeySlotNotFoundError(
+    const doesDevicePrivateKeyMatchMaterial =
+      await this.crypto.verifyDeviceSignKeyPair(
+        deviceAccessMaterial.devicePublicSignKey,
+        localKeysPayload.devicePrivateSignKey,
+      );
+
+    if (!doesDevicePrivateKeyMatchMaterial) {
+      throw new DeviceKeySlotVerificationFailedError(
         params.vaultId,
         deviceAccessMaterial.deviceId,
       );
@@ -203,7 +233,7 @@ export class UnlockVaultUseCase {
     try {
       await this.unlockedVaultSession.commit(
         unlockedVault,
-        vaultSnapshot.metadata.revision,
+        vaultSnapshot.metadata.snapshotVersionVector,
       );
     } catch (error) {
       try {
@@ -222,13 +252,5 @@ export class UnlockVaultUseCase {
     return {
       vault,
     };
-  }
-}
-
-function assertValidVaultLockDelay(lockAfterMs: number): void {
-  const lockDelayResult = vaultLockDelayMsSchema.safeParse(lockAfterMs);
-
-  if (!lockDelayResult.success) {
-    throw new InvalidVaultLockDelayError(lockDelayResult.error);
   }
 }

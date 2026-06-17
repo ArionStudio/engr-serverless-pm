@@ -7,6 +7,8 @@ import {
 } from "../../errors/vault-entry.errors";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
+import type { VersionVector } from "../../domain/versioning/version-vector.type";
+import type { VaultSyncGuardService } from "../../services/sync";
 
 export type UpdateEntryCommandParams = {
   vaultId: string;
@@ -21,25 +23,27 @@ export type UpdateEntryCommandParams = {
 
 export type UpdateEntryResult = {
   entryId: string;
-  revision: number;
+  snapshotVersionVector: VersionVector;
   revisionTimestamp: number;
-  deviceId: string;
 };
 
 export class UpdateEntryUseCase {
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
+  private readonly vaultSyncGuard: VaultSyncGuardService;
   private readonly vaultSnapshot: VaultSnapshotService;
 
   constructor(
     unlockedVaultSession: UnlockedVaultSessionService,
+    vaultSyncGuard: VaultSyncGuardService,
     vaultSnapshot: VaultSnapshotService,
   ) {
     this.unlockedVaultSession = unlockedVaultSession;
+    this.vaultSyncGuard = vaultSyncGuard;
     this.vaultSnapshot = vaultSnapshot;
   }
 
   async execute(params: UpdateEntryCommandParams): Promise<UpdateEntryResult> {
-    const { sourceSnapshotRevision, unlockedVault } =
+    const { sourceSnapshotVersionVector, unlockedVault } =
       await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
         "update entry",
@@ -72,6 +76,12 @@ export class UpdateEntryUseCase {
       throw new InvalidPasswordEntryError(entryPayloadResult.error);
     }
 
+    const syncState = await this.vaultSyncGuard.prepareLocalMutation(
+      params.vaultId,
+      unlockedVault,
+      sourceSnapshotVersionVector,
+    );
+
     const updatedUnlockedVault = {
       ...unlockedVault,
       vault: updatePasswordEntryInVault(
@@ -85,12 +95,20 @@ export class UpdateEntryUseCase {
     const persistedSnapshot = await this.vaultSnapshot.persistUnlockedVault(
       params.vaultId,
       updatedUnlockedVault,
-      sourceSnapshotRevision,
+      sourceSnapshotVersionVector,
     );
+
+    if (syncState.syncConfig !== undefined) {
+      await this.vaultSyncGuard.uploadPersistedLocalMutation(
+        params.vaultId,
+        syncState,
+        await this.vaultSnapshot.requireLocalVaultSnapshot(params.vaultId),
+      );
+    }
 
     await this.unlockedVaultSession.commitPersistedSnapshot(
       updatedUnlockedVault,
-      persistedSnapshot.revision,
+      persistedSnapshot.snapshotVersionVector,
     );
 
     return {

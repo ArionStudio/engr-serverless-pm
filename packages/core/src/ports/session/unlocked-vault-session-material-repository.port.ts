@@ -1,6 +1,7 @@
 import type { DevicePrivateSignKey } from "../../domain/device-trust/brand-keys";
 import type { VaultMasterKey } from "../../domain/snapshot/brand-keys";
 import type { UnlockedVaultSessionPayloadKey } from "../../domain/session/unlocked-vault-session-payload-key";
+import type { VersionVector } from "../../domain/versioning/version-vector.type";
 
 /**
  * Stores the active unlocked-vault session material.
@@ -13,7 +14,7 @@ export interface UnlockedVaultSessionMaterialRepositoryPort {
   saveUnlockedVaultSessionMaterial: (material: {
     readonly sessionId: string;
     readonly vaultId: string;
-    readonly sourceSnapshotRevision: number;
+    readonly sourceSnapshotVersionVector: VersionVector;
     readonly deviceId: string;
     readonly vaultMasterKey: VaultMasterKey;
     readonly devicePrivateSignKey: DevicePrivateSignKey;
@@ -22,7 +23,7 @@ export interface UnlockedVaultSessionMaterialRepositoryPort {
   getUnlockedVaultSessionMaterial: () => Promise<{
     readonly sessionId: string;
     readonly vaultId: string;
-    readonly sourceSnapshotRevision: number;
+    readonly sourceSnapshotVersionVector: VersionVector;
     readonly deviceId: string;
     readonly vaultMasterKey: VaultMasterKey;
     readonly devicePrivateSignKey: DevicePrivateSignKey;

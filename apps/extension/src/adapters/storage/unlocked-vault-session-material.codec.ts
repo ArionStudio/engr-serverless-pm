@@ -7,12 +7,13 @@ import type {
   DevicePrivateSignKey,
   UnlockedVaultSessionPayloadKey,
   VaultMasterKey,
+  VersionVector,
 } from "@lfspm/core";
 
 export type StoredUnlockedVaultSessionMaterial = {
   sessionId: string;
   vaultId: string;
-  sourceSnapshotRevision: number;
+  sourceSnapshotVersionVector: VersionVector;
   deviceId: string;
   vaultMasterKey: Base64URLString;
   devicePrivateSignKey: Base64URLString;
@@ -22,7 +23,7 @@ export type StoredUnlockedVaultSessionMaterial = {
 export function serializeUnlockedVaultSessionMaterial(material: {
   readonly sessionId: string;
   readonly vaultId: string;
-  readonly sourceSnapshotRevision: number;
+  readonly sourceSnapshotVersionVector: VersionVector;
   readonly deviceId: string;
   readonly vaultMasterKey: VaultMasterKey;
   readonly devicePrivateSignKey: DevicePrivateSignKey;
@@ -31,7 +32,7 @@ export function serializeUnlockedVaultSessionMaterial(material: {
   return {
     sessionId: material.sessionId,
     vaultId: material.vaultId,
-    sourceSnapshotRevision: material.sourceSnapshotRevision,
+    sourceSnapshotVersionVector: material.sourceSnapshotVersionVector,
     deviceId: material.deviceId,
     vaultMasterKey: arrayBufferToBase64Url(material.vaultMasterKey),
     devicePrivateSignKey: arrayBufferToBase64Url(material.devicePrivateSignKey),
@@ -42,7 +43,7 @@ export function serializeUnlockedVaultSessionMaterial(material: {
 export function deserializeUnlockedVaultSessionMaterial(material: unknown): {
   readonly sessionId: string;
   readonly vaultId: string;
-  readonly sourceSnapshotRevision: number;
+  readonly sourceSnapshotVersionVector: VersionVector;
   readonly deviceId: string;
   readonly vaultMasterKey: VaultMasterKey;
   readonly devicePrivateSignKey: DevicePrivateSignKey;
@@ -53,7 +54,7 @@ export function deserializeUnlockedVaultSessionMaterial(material: unknown): {
   return {
     sessionId: material.sessionId,
     vaultId: material.vaultId,
-    sourceSnapshotRevision: material.sourceSnapshotRevision,
+    sourceSnapshotVersionVector: material.sourceSnapshotVersionVector,
     deviceId: material.deviceId,
     vaultMasterKey: base64UrlToArrayBuffer(
       material.vaultMasterKey,
@@ -85,7 +86,7 @@ function assertStoredMaterial(
 
   assertStringField(material, "sessionId");
   assertStringField(material, "vaultId");
-  assertNumberField(material, "sourceSnapshotRevision");
+  assertVersionVectorField(material, "sourceSnapshotVersionVector");
   assertStringField(material, "deviceId");
   assertStringField(material, "vaultMasterKey");
   assertStringField(material, "devicePrivateSignKey");
@@ -103,14 +104,24 @@ function assertStringField(
   }
 }
 
-function assertNumberField(
+function assertVersionVectorField(
   record: Record<string, unknown>,
   fieldName: string,
 ): void {
-  if (typeof record[fieldName] !== "number") {
+  const value = record[fieldName];
+
+  if (!isRecord(value)) {
     throw new Error(
       `Unlocked vault session material field "${fieldName}" is malformed.`,
     );
+  }
+
+  for (const version of Object.values(value)) {
+    if (typeof version !== "number") {
+      throw new Error(
+        `Unlocked vault session material field "${fieldName}" is malformed.`,
+      );
+    }
   }
 }
 

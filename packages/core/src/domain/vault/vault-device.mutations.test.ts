@@ -3,6 +3,8 @@ import { DuplicateVaultDeviceProfileError } from "../../errors/vault-device.erro
 import type { Vault } from "./vault";
 import {
   addRecoveredDeviceProfileToVault,
+  removeOtherDeviceProfilesFromVault,
+  resetDeviceProfilesToRecoveredDevice,
   revokeDeviceProfileFromVault,
 } from "./vault-device.mutations";
 
@@ -26,7 +28,6 @@ describe("vault device mutation utils", () => {
         "recovered-device-id",
         "Recovered laptop",
         1,
-        null,
       ),
     ).toEqual({
       ...createVault(),
@@ -67,7 +68,6 @@ describe("vault device mutation utils", () => {
       "recovered-device-id",
       "Recovered laptop",
       2,
-      null,
     );
 
     expect(
@@ -83,8 +83,8 @@ describe("vault device mutation utils", () => {
     ]);
   });
 
-  it("tombstones a replaced local device profile when recovering access", () => {
-    const vault = addRecoveredDeviceProfileToVault(
+  it("resets active device profiles to a recovered device", () => {
+    const vault = resetDeviceProfilesToRecoveredDevice(
       {
         ...createVault(),
         deviceProfiles: [
@@ -94,12 +94,29 @@ describe("vault device mutation utils", () => {
             createdAt: 1,
             versionVector: { A: 7 },
           },
+          {
+            id: "other-device-id",
+            name: "Other laptop",
+            createdAt: 1,
+            versionVector: { B: 3 },
+          },
+        ],
+        deletedDeviceProfiles: [
+          {
+            id: "old-device-id",
+            versionVector: { A: 6 },
+            deletedAt: 1,
+          },
+          {
+            id: "previous-device-id",
+            versionVector: { C: 2 },
+            deletedAt: 1,
+          },
         ],
       },
       "recovered-device-id",
       "Recovered laptop",
       2,
-      "old-device-id",
     );
 
     expect(
@@ -108,14 +125,24 @@ describe("vault device mutation utils", () => {
     expect(vault.versionVector).toEqual({ A: 7, "recovered-device-id": 1 });
     expect(vault.deletedDeviceProfiles).toEqual([
       {
+        id: "previous-device-id",
+        versionVector: { C: 2 },
+        deletedAt: 1,
+      },
+      {
         id: "old-device-id",
         versionVector: { A: 7, "recovered-device-id": 1 },
+        deletedAt: 2,
+      },
+      {
+        id: "other-device-id",
+        versionVector: { B: 3, "recovered-device-id": 1 },
         deletedAt: 2,
       },
     ]);
   });
 
-  it("preserves device state when the replaced device profile is missing", () => {
+  it("preserves device state when appending a recovered profile", () => {
     const vault = addRecoveredDeviceProfileToVault(
       {
         ...createVault(),
@@ -131,7 +158,6 @@ describe("vault device mutation utils", () => {
       "recovered-device-id",
       "Recovered laptop",
       2,
-      "missing-device-id",
     );
 
     expect(
@@ -158,7 +184,6 @@ describe("vault device mutation utils", () => {
         "recovered-device-id",
         "Recovered laptop",
         2,
-        null,
       ),
     ).toThrow(DuplicateVaultDeviceProfileError);
   });
@@ -179,9 +204,109 @@ describe("vault device mutation utils", () => {
         "recovered-device-id",
         "Recovered laptop",
         2,
-        null,
       ),
     ).toThrow(DuplicateVaultDeviceProfileError);
+  });
+
+  it("rejects an active recovered device profile duplicate during reset", () => {
+    expect(() =>
+      resetDeviceProfilesToRecoveredDevice(
+        {
+          ...createVault(),
+          deviceProfiles: [
+            {
+              id: "recovered-device-id",
+              name: "Existing laptop",
+              createdAt: 1,
+              versionVector: { A: 7 },
+            },
+          ],
+        },
+        "recovered-device-id",
+        "Recovered laptop",
+        2,
+      ),
+    ).toThrow(DuplicateVaultDeviceProfileError);
+  });
+
+  it("removes other active device profiles and keeps the current profile", () => {
+    const vault = removeOtherDeviceProfilesFromVault(
+      {
+        ...createVault(),
+        versionVector: { A: 7, "current-device-id": 2 },
+        deviceProfiles: [
+          {
+            id: "current-device-id",
+            name: "Current laptop",
+            createdAt: 1,
+            versionVector: { "current-device-id": 2 },
+          },
+          {
+            id: "other-device-id",
+            name: "Other laptop",
+            createdAt: 1,
+            versionVector: { B: 3 },
+          },
+        ],
+        deletedDeviceProfiles: [
+          {
+            id: "other-device-id",
+            versionVector: { B: 2 },
+            deletedAt: 1,
+          },
+          {
+            id: "previous-device-id",
+            versionVector: { C: 2 },
+            deletedAt: 1,
+          },
+        ],
+      },
+      "current-device-id",
+      2,
+    );
+
+    expect(
+      vault.deviceProfiles.map((deviceProfile) => deviceProfile.id),
+    ).toEqual(["current-device-id"]);
+    expect(vault.versionVector).toEqual({ A: 7, "current-device-id": 3 });
+    expect(vault.deletedDeviceProfiles).toEqual([
+      {
+        id: "previous-device-id",
+        versionVector: { C: 2 },
+        deletedAt: 1,
+      },
+      {
+        id: "other-device-id",
+        versionVector: { B: 3, "current-device-id": 1 },
+        deletedAt: 2,
+      },
+    ]);
+  });
+
+  it("preserves vault state when there are no other active devices", () => {
+    const vault: Vault = {
+      ...createVault(),
+      deviceProfiles: [
+        {
+          id: "current-device-id",
+          name: "Current laptop",
+          createdAt: 1,
+          versionVector: { "current-device-id": 1 },
+        },
+      ],
+    };
+
+    expect(
+      removeOtherDeviceProfilesFromVault(vault, "current-device-id", 2),
+    ).toBe(vault);
+  });
+
+  it("preserves vault state when the current device profile is missing", () => {
+    const vault = createVault();
+
+    expect(
+      removeOtherDeviceProfilesFromVault(vault, "missing-device-id", 2),
+    ).toBe(vault);
   });
 
   it("tombstones a revoked device profile and increments the vault vector", () => {

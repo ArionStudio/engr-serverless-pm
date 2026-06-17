@@ -38,3 +38,12 @@ export class DeviceKeySlotNotFoundError extends Error {
     this.name = "DeviceKeySlotNotFoundError";
   }
 }
+
+export class DeviceKeySlotVerificationFailedError extends Error {
+  constructor(vaultId: string, deviceId: string) {
+    super(
+      `Device key slot verification failed for device "${deviceId}" in vault "${vaultId}".`,
+    );
+    this.name = "DeviceKeySlotVerificationFailedError";
+  }
+}
