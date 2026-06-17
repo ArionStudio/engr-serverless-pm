@@ -148,6 +148,30 @@ describe("CopyEntryPasswordUseCase", () => {
     expect(ctx.clipboard.writeText).not.toHaveBeenCalled();
   });
 
+  it("preserves scheduling failure when pending clipboard clear cleanup fails", async () => {
+    const ctx = createContext();
+    const scheduleError = new Error("schedule failed");
+    const cleanupError = new Error("cleanup failed");
+
+    vi.mocked(ctx.scheduledTasks.scheduleTask).mockRejectedValueOnce(
+      scheduleError,
+    );
+    vi.mocked(ctx.clipboardClearTasks.remove).mockRejectedValueOnce(
+      cleanupError,
+    );
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        entryId: singlePasswordEntry.id,
+        clearAfterMs: 60_000,
+      }),
+    ).rejects.toBe(scheduleError);
+
+    expect(ctx.clipboardClearTasks.remove).toHaveBeenCalledTimes(1);
+    expect(ctx.clipboard.writeText).not.toHaveBeenCalled();
+  });
+
   it("removes pending clipboard clear and cancels scheduled clear when clipboard write fails", async () => {
     const ctx = createContext();
     const error = new Error("clipboard failed");
