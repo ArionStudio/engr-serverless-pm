@@ -35,18 +35,11 @@ export function addRecoveredDeviceProfileToVault(
   deviceId: string,
   deviceName: string,
   createdAt: number,
-  replacedDeviceId: string | null,
 ): Vault {
   if (hasDeviceProfileState(vault, deviceId)) {
     throw new DuplicateVaultDeviceProfileError(deviceId);
   }
 
-  const replacedDeviceProfile =
-    replacedDeviceId === null
-      ? undefined
-      : vault.deviceProfiles.find(
-          (deviceProfile) => deviceProfile.id === replacedDeviceId,
-        );
   const versionVector = incrementVersionVector(vault.versionVector, deviceId);
   const deviceProfile: DeviceProfile = {
     id: deviceId,
@@ -56,34 +49,107 @@ export function addRecoveredDeviceProfileToVault(
       [deviceId]: versionVector[deviceId],
     },
   };
-  const deletedDeviceProfiles =
-    replacedDeviceProfile === undefined
-      ? vault.deletedDeviceProfiles
-      : [
-          ...vault.deletedDeviceProfiles.filter(
-            (deviceProfile) => deviceProfile.id !== replacedDeviceProfile.id,
-          ),
-          {
-            id: replacedDeviceProfile.id,
-            versionVector: incrementVersionVector(
-              replacedDeviceProfile.versionVector,
-              deviceId,
-            ),
-            deletedAt: createdAt,
-          },
-        ];
 
   return {
     ...vault,
     versionVector,
-    deviceProfiles: [
-      ...removeReplacedDeviceProfile(
-        vault.deviceProfiles,
-        replacedDeviceProfile,
+    deviceProfiles: [...vault.deviceProfiles, deviceProfile],
+  };
+}
+
+export function resetDeviceProfilesToRecoveredDevice(
+  vault: Vault,
+  deviceId: string,
+  deviceName: string,
+  createdAt: number,
+): Vault {
+  if (hasDeviceProfileState(vault, deviceId)) {
+    throw new DuplicateVaultDeviceProfileError(deviceId);
+  }
+
+  const versionVector = incrementVersionVector(vault.versionVector, deviceId);
+  const deviceProfile: DeviceProfile = {
+    id: deviceId,
+    name: deviceName,
+    createdAt,
+    versionVector: {
+      [deviceId]: versionVector[deviceId],
+    },
+  };
+  const removedDeviceIds = new Set(
+    vault.deviceProfiles.map((removedDeviceProfile) => removedDeviceProfile.id),
+  );
+
+  return {
+    ...vault,
+    versionVector,
+    deviceProfiles: [deviceProfile],
+    deletedDeviceProfiles: [
+      ...vault.deletedDeviceProfiles.filter(
+        (deletedDeviceProfile) =>
+          !removedDeviceIds.has(deletedDeviceProfile.id),
       ),
-      deviceProfile,
+      ...vault.deviceProfiles.map((removedDeviceProfile) => ({
+        id: removedDeviceProfile.id,
+        versionVector: incrementVersionVector(
+          removedDeviceProfile.versionVector,
+          deviceId,
+        ),
+        deletedAt: createdAt,
+      })),
     ],
-    deletedDeviceProfiles,
+  };
+}
+
+export function removeOtherDeviceProfilesFromVault(
+  vault: Vault,
+  currentDeviceId: string,
+  deletedAt: number,
+): Vault {
+  const currentDeviceProfile = vault.deviceProfiles.find(
+    (deviceProfile) => deviceProfile.id === currentDeviceId,
+  );
+
+  if (currentDeviceProfile === undefined) {
+    return vault;
+  }
+
+  const removedDeviceProfiles = vault.deviceProfiles.filter(
+    (deviceProfile) => deviceProfile.id !== currentDeviceId,
+  );
+
+  if (removedDeviceProfiles.length === 0) {
+    return vault;
+  }
+
+  const versionVector = incrementVersionVector(
+    vault.versionVector,
+    currentDeviceId,
+  );
+  const removedDeviceIds = new Set(
+    removedDeviceProfiles.map(
+      (removedDeviceProfile) => removedDeviceProfile.id,
+    ),
+  );
+
+  return {
+    ...vault,
+    versionVector,
+    deviceProfiles: [currentDeviceProfile],
+    deletedDeviceProfiles: [
+      ...vault.deletedDeviceProfiles.filter(
+        (deletedDeviceProfile) =>
+          !removedDeviceIds.has(deletedDeviceProfile.id),
+      ),
+      ...removedDeviceProfiles.map((removedDeviceProfile) => ({
+        id: removedDeviceProfile.id,
+        versionVector: incrementVersionVector(
+          removedDeviceProfile.versionVector,
+          currentDeviceId,
+        ),
+        deletedAt,
+      })),
+    ],
   };
 }
 
@@ -126,19 +192,6 @@ export function revokeDeviceProfileFromVault(
       },
     ],
   };
-}
-
-function removeReplacedDeviceProfile(
-  deviceProfiles: DeviceProfile[],
-  replacedDeviceProfile: DeviceProfile | undefined,
-): DeviceProfile[] {
-  if (replacedDeviceProfile === undefined) {
-    return deviceProfiles;
-  }
-
-  return deviceProfiles.filter(
-    (deviceProfile) => deviceProfile.id !== replacedDeviceProfile.id,
-  );
 }
 
 function hasDeviceProfileState(vault: Vault, deviceId: string): boolean {

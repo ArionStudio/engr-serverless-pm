@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { CURRENT_ALGORITHM_SUITE } from "../../domain/crypto/algorithm-suite.const";
-import type { DeviceAccessMaterial } from "../../domain/device-trust/device-access-material";
 import type { LocalKeysPayload } from "../../domain/device-trust/local-protection.type";
 import type { Vault } from "../../domain/vault/vault";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
@@ -189,7 +188,6 @@ describe("RecoverVaultAccessUseCase", () => {
       },
       keySlots: {
         deviceSlots: [
-          ...ctx.vaultSnapshot.keySlots.deviceSlots,
           {
             deviceId: recoveredDeviceId,
             protectedVaultMasterKey: ctx.values.protectedDeviceVaultMasterKey,
@@ -243,17 +241,8 @@ describe("RecoverVaultAccessUseCase", () => {
     );
   });
 
-  it("replaces the known local device identity when recovering access", async () => {
+  it("resets devices when recovering an unsynced vault", async () => {
     const ctx = createContext();
-    const deviceAccessMaterial: DeviceAccessMaterial = {
-      vaultId: ctx.values.vaultId,
-      deviceId: ctx.values.deviceId,
-      algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
-      masterPasswordSalt: ctx.values.masterPasswordSalt,
-      localKeysProtectionSalt: ctx.values.localKeysProtectionSalt,
-      devicePublicSignKey: ctx.values.devicePublicSignKey,
-      protectedLocalKeys: ctx.values.protectedLocalKeys,
-    };
     const vaultWithDeviceProfile: Vault = {
       ...ctx.values.decryptedVault,
       deviceProfiles: [
@@ -267,7 +256,6 @@ describe("RecoverVaultAccessUseCase", () => {
         },
       ],
     };
-    ctx.saved.deviceAccessMaterial = deviceAccessMaterial;
     vi.mocked(
       ctx.ports.crypto.decryptVaultSnapshotContent,
     ).mockResolvedValueOnce(vaultWithDeviceProfile);
@@ -303,6 +291,121 @@ describe("RecoverVaultAccessUseCase", () => {
         deletedAt: ctx.values.timestamp,
       },
     ]);
+    expect(
+      ctx.ports.vaultLocalRepository.getDeviceAccessMaterial,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("removes sync configuration and resets devices in the recovered vault", async () => {
+    const ctx = createContext();
+    const syncedVault: Vault = {
+      ...ctx.values.decryptedVault,
+      syncConfig: ctx.values.syncConfig,
+      deviceProfiles: [
+        {
+          id: ctx.values.deviceId,
+          name: "Old laptop",
+          createdAt: ctx.values.timestamp - 2,
+          versionVector: {
+            [ctx.values.deviceId]: 1,
+          },
+        },
+        {
+          id: "other-device-id",
+          name: "Other laptop",
+          createdAt: ctx.values.timestamp - 1,
+          versionVector: {
+            "other-device-id": 1,
+          },
+        },
+      ],
+      deletedDeviceProfiles: [
+        {
+          id: "previous-device-id",
+          versionVector: {
+            "previous-device-id": 1,
+          },
+          deletedAt: ctx.values.timestamp - 1,
+        },
+      ],
+    };
+    ctx.saved.vaultSnapshot = {
+      ...ctx.vaultSnapshot,
+      keySlots: {
+        ...ctx.vaultSnapshot.keySlots,
+        deviceSlots: [
+          ...ctx.vaultSnapshot.keySlots.deviceSlots,
+          {
+            deviceId: "other-device-id",
+            protectedVaultMasterKey: ctx.values.protectedDeviceVaultMasterKey,
+            publicSignKey: ctx.values.pendingDevicePublicSignKey,
+          },
+        ],
+      },
+    };
+    vi.mocked(
+      ctx.ports.crypto.decryptVaultSnapshotContent,
+    ).mockResolvedValueOnce(syncedVault);
+
+    const result = await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      recoveryMnemonicKey: ctx.values.recoveryMnemonicKey,
+      newMasterPassword: ctx.values.newMasterPassword,
+      deviceName: "Recovered laptop",
+    });
+
+    expect(result.vault).not.toHaveProperty("syncConfig");
+    expect(result.vault.deviceProfiles).toEqual([
+      {
+        id: recoveredDeviceId,
+        name: "Recovered laptop",
+        createdAt: ctx.values.timestamp,
+        versionVector: {
+          [recoveredDeviceId]: 1,
+        },
+      },
+    ]);
+    expect(result.vault.deletedDeviceProfiles).toEqual([
+      {
+        id: "previous-device-id",
+        versionVector: {
+          "previous-device-id": 1,
+        },
+        deletedAt: ctx.values.timestamp - 1,
+      },
+      {
+        id: ctx.values.deviceId,
+        versionVector: {
+          [ctx.values.deviceId]: 1,
+          [recoveredDeviceId]: 1,
+        },
+        deletedAt: ctx.values.timestamp,
+      },
+      {
+        id: "other-device-id",
+        versionVector: {
+          "other-device-id": 1,
+          [recoveredDeviceId]: 1,
+        },
+        deletedAt: ctx.values.timestamp,
+      },
+    ]);
+    expect(ctx.saved.vaultSnapshot?.keySlots.deviceSlots).toEqual([
+      {
+        deviceId: recoveredDeviceId,
+        protectedVaultMasterKey: ctx.values.protectedDeviceVaultMasterKey,
+        publicSignKey: ctx.values.devicePublicSignKey,
+      },
+    ]);
+    expect(
+      ctx.saved.unlockedVaultSession?.unlockedVault.vault,
+    ).not.toHaveProperty("syncConfig");
+    expect(ctx.ports.crypto.encryptVaultSnapshotContent).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        syncConfig: ctx.values.syncConfig,
+      }),
+      ctx.values.vaultMasterKey,
+    );
   });
 
   it("fails when vault snapshot is missing", async () => {

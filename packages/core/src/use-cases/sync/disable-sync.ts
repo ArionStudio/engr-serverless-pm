@@ -1,15 +1,18 @@
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import {
+  areVaultSnapshotDescriptorsEqual,
   compareVaultSnapshotDescriptors,
   toVaultSnapshotDescriptor,
 } from "../../domain/snapshot/vault-snapshot-descriptor.utils";
 import { removeVaultSyncConfig } from "../../domain/vault/vault-sync-config.mutations";
+import { removeOtherDeviceProfilesFromVault } from "../../domain/vault/vault-device.mutations";
 import {
   RemoteVaultSnapshotAheadError,
   RemoteVaultSnapshotIntegrityError,
   SyncNotConfiguredError,
 } from "../../errors/sync.errors";
+import type { ClockPort } from "../../ports/system/clock.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 
 export type DisableSyncCommandParams = {
@@ -17,15 +20,18 @@ export type DisableSyncCommandParams = {
 };
 
 export class DisableSyncUseCase {
+  private readonly clock: ClockPort;
   private readonly syncProvider: SyncProviderPort;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
   private readonly vaultSnapshot: VaultSnapshotService;
 
   constructor(
+    clock: ClockPort,
     syncProvider: SyncProviderPort,
     unlockedVaultSession: UnlockedVaultSessionService,
     vaultSnapshot: VaultSnapshotService,
   ) {
+    this.clock = clock;
     this.syncProvider = syncProvider;
     this.unlockedVaultSession = unlockedVaultSession;
     this.vaultSnapshot = vaultSnapshot;
@@ -43,9 +49,16 @@ export class DisableSyncUseCase {
       throw new SyncNotConfiguredError(params.vaultId, "disable sync");
     }
 
+    const revisionTimestamp = this.clock.now();
     const updatedUnlockedVault = {
       ...unlockedVault,
-      vault: removeVaultSyncConfig(unlockedVault.vault),
+      vault: removeVaultSyncConfig(
+        removeOtherDeviceProfilesFromVault(
+          unlockedVault.vault,
+          unlockedVault.deviceId,
+          revisionTimestamp,
+        ),
+      ),
     };
 
     const localSnapshot =
@@ -61,8 +74,12 @@ export class DisableSyncUseCase {
       );
 
     if (remoteSnapshotDescriptor !== null) {
+      const localSnapshotDescriptor = toVaultSnapshotDescriptor(
+        params.vaultId,
+        localSnapshot,
+      );
       const relation = compareVaultSnapshotDescriptors(
-        toVaultSnapshotDescriptor(params.vaultId, localSnapshot),
+        localSnapshotDescriptor,
         remoteSnapshotDescriptor,
       );
 
@@ -70,17 +87,34 @@ export class DisableSyncUseCase {
         throw new RemoteVaultSnapshotAheadError(params.vaultId);
       }
 
-      if (relation === "broken") {
+      if (
+        relation === "broken" ||
+        (relation === "equal" &&
+          !areVaultSnapshotDescriptorsEqual(
+            remoteSnapshotDescriptor,
+            localSnapshotDescriptor,
+          ))
+      ) {
         throw new RemoteVaultSnapshotIntegrityError(params.vaultId);
       }
     }
 
     await this.syncProvider.removeVaultSnapshots(syncConfig, params.vaultId);
 
+    const currentDeviceSlots = localSnapshot.keySlots.deviceSlots.filter(
+      (deviceSlot) => deviceSlot.deviceId === unlockedVault.deviceId,
+    );
     const persistedSnapshot = await this.vaultSnapshot.persistUnlockedVault(
       params.vaultId,
       updatedUnlockedVault,
       sourceSnapshotVersionVector,
+      {
+        keySlots: {
+          deviceSlots: currentDeviceSlots,
+          recoveryKeySlot: localSnapshot.keySlots.recoveryKeySlot,
+          completedEnrollments: localSnapshot.keySlots.completedEnrollments,
+        },
+      },
     );
 
     await this.unlockedVaultSession.commitPersistedSnapshot(

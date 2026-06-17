@@ -8,7 +8,8 @@ import type {
 } from "../../domain/snapshot/vault-snapshot";
 import type { UnlockedVault } from "../../domain/session/unlocked-vault";
 import type { Vault } from "../../domain/vault/vault";
-import { addRecoveredDeviceProfileToVault } from "../../domain/vault/vault-device.mutations";
+import { resetDeviceProfilesToRecoveredDevice } from "../../domain/vault/vault-device.mutations";
+import { removeVaultSyncConfig } from "../../domain/vault/vault-sync-config.mutations";
 import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
 import {
   VaultSnapshotNotFoundError,
@@ -109,14 +110,6 @@ export class RecoverVaultAccessUseCase {
       throw new VaultSnapshotSignatureVerificationFailedError(params.vaultId);
     }
 
-    // Resolve the old local device identity, then recover the vault master key
-    // and decrypted vault content from the recovery mnemonic.
-    // Only replace a previous device identity when this browser has local
-    // access material that tells us which device identity it used before.
-    const existingDeviceAccessMaterial =
-      await this.vaultLocalRepository.getDeviceAccessMaterial(params.vaultId);
-    const replacedDeviceId = existingDeviceAccessMaterial?.deviceId ?? null;
-
     // The recovery mnemonic unlocks the vault master key through the snapshot's
     // recovery slot, then the vault content can be decrypted.
     const recoverySecretKey = await this.bip39.mnemonicToRecoveryKey(
@@ -135,9 +128,7 @@ export class RecoverVaultAccessUseCase {
       vaultMasterKey,
     );
 
-    // Provision a replacement local device and protect its private material
-    // with the user's new local unlock password.
-    // Generate a fresh device identity for this recovered local installation.
+    // Provision a fresh local device identity for this recovered installation.
     const deviceId = await this.ids.generateId();
     const timestamp = this.clock.now();
     const deviceSlotKey = await this.crypto.generateDeviceSlotKey();
@@ -177,16 +168,14 @@ export class RecoverVaultAccessUseCase {
       deviceSlotVaultMasterKeyProtectionKey,
     );
 
-    // Rebuild vault state so the recovered device has access, the old local
-    // device slot is removed when known, and the snapshot is signed by the new device.
-    // Update the decrypted vault content: add the recovered device profile and,
-    // if known, tombstone the previous local device profile.
-    const recoveredVault = addRecoveredDeviceProfileToVault(
-      vault,
-      deviceId,
-      params.deviceName,
-      timestamp,
-      replacedDeviceId,
+    // Recovery intentionally creates a new local-only trust root.
+    const recoveredVault = removeVaultSyncConfig(
+      resetDeviceProfilesToRecoveredDevice(
+        vault,
+        deviceId,
+        params.deviceName,
+        timestamp,
+      ),
     );
 
     // Update snapshot device access state and sign as the recovered device. Snapshot
@@ -204,9 +193,6 @@ export class RecoverVaultAccessUseCase {
       },
       keySlots: {
         deviceSlots: [
-          ...currentVaultSnapshot.keySlots.deviceSlots.filter(
-            (deviceSlot) => deviceSlot.deviceId !== replacedDeviceId,
-          ),
           {
             deviceId,
             protectedVaultMasterKey: protectedDeviceVaultMasterKey,
@@ -214,6 +200,8 @@ export class RecoverVaultAccessUseCase {
           },
         ],
         recoveryKeySlot: currentVaultSnapshot.keySlots.recoveryKeySlot,
+        completedEnrollments:
+          currentVaultSnapshot.keySlots.completedEnrollments,
       },
       content: await this.crypto.encryptVaultSnapshotContent(
         recoveredVault,
