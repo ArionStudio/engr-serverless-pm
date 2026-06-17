@@ -155,6 +155,11 @@ export class VaultSnapshotService {
     trustSourceSnapshot: Pick<VaultSnapshot, "keySlots">,
   ): Promise<OpenTrustedVaultSnapshotResult> {
     this.requireSupportedSnapshotAlgorithm(vaultId, vaultSnapshot);
+
+    if (vaultSnapshot.metadata.id !== vaultId) {
+      throw new PersistedVaultMismatchError(vaultId, vaultSnapshot.metadata.id);
+    }
+
     const completedEnrollmentProof = await this.requireTrustedSnapshotSignature(
       vaultId,
       vaultSnapshot,
@@ -298,6 +303,13 @@ export class VaultSnapshotService {
       );
 
     if (!isEnrollmentAuthorized) {
+      throw new VaultSnapshotSignerNotTrustedError(vaultId, pendingDeviceId);
+    }
+
+    if (
+      completedEnrollmentProof.vaultId !== vaultId ||
+      this.clock.now() > completedEnrollmentProof.expiresAt
+    ) {
       throw new VaultSnapshotSignerNotTrustedError(vaultId, pendingDeviceId);
     }
 

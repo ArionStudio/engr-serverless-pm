@@ -129,6 +129,11 @@ export class RevokeDeviceUseCase {
       params.deviceId,
       revisionTimestamp,
     );
+    const enrollmentKeySlot = currentVaultSnapshot.keySlots.enrollmentKeySlot;
+    const retainedEnrollmentKeySlot =
+      enrollmentKeySlot?.authorizedByDeviceId === params.deviceId
+        ? undefined
+        : enrollmentKeySlot;
 
     // Rebuild the snapshot device access state without the revoked device and sign the
     // result as the still-trusted local device.
@@ -148,6 +153,9 @@ export class RevokeDeviceUseCase {
           (deviceSlot) => deviceSlot.deviceId !== params.deviceId,
         ),
         recoveryKeySlot: currentVaultSnapshot.keySlots.recoveryKeySlot,
+        ...(retainedEnrollmentKeySlot === undefined
+          ? {}
+          : { enrollmentKeySlot: retainedEnrollmentKeySlot }),
         completedEnrollments:
           currentVaultSnapshot.keySlots.completedEnrollments,
       },

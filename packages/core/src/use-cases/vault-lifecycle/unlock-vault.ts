@@ -108,9 +108,12 @@ export class UnlockVaultUseCase {
       });
     }
 
-    if (
-      vaultSnapshot.metadata.createdByDeviceId !== deviceAccessMaterial.deviceId
-    ) {
+    const signerDeviceKeySlot = vaultSnapshot.keySlots.deviceSlots.find(
+      (slot: DeviceKeySlot) =>
+        slot.deviceId === vaultSnapshot.metadata.createdByDeviceId,
+    );
+
+    if (signerDeviceKeySlot === undefined) {
       throw new VaultSnapshotSignerNotTrustedError(
         params.vaultId,
         vaultSnapshot.metadata.createdByDeviceId,
@@ -130,7 +133,7 @@ export class UnlockVaultUseCase {
 
     const isSnapshotAuthentic = await this.crypto.verifyVaultSnapshotSignature(
       vaultSnapshot,
-      deviceKeySlot.publicSignKey,
+      signerDeviceKeySlot.publicSignKey,
     );
 
     if (!isSnapshotAuthentic) {

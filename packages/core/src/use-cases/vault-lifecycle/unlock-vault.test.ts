@@ -92,6 +92,51 @@ describe("UnlockVaultUseCase", () => {
     });
   });
 
+  it("unlocks a vault snapshot signed by another trusted device", async () => {
+    const ctx = createUnlockVaultTestContext();
+
+    ctx.saved.vaultSnapshot = {
+      ...ctx.vaultSnapshot,
+      metadata: {
+        ...ctx.vaultSnapshot.metadata,
+        createdByDeviceId: "other-device-id",
+      },
+      keySlots: {
+        ...ctx.vaultSnapshot.keySlots,
+        deviceSlots: [
+          ...ctx.vaultSnapshot.keySlots.deviceSlots,
+          {
+            deviceId: "other-device-id",
+            protectedVaultMasterKey: ctx.values.protectedDeviceVaultMasterKey,
+            publicSignKey: ctx.values.pendingDevicePublicSignKey,
+          },
+        ],
+      },
+    };
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 600_000,
+      }),
+    ).resolves.toEqual({
+      vault: ctx.values.decryptedVault,
+    });
+
+    expect(ctx.ports.crypto.verifyVaultSnapshotSignature).toHaveBeenCalledWith(
+      ctx.saved.vaultSnapshot,
+      ctx.values.pendingDevicePublicSignKey,
+    );
+    expect(ctx.ports.crypto.unwrapVaultMasterKey).toHaveBeenCalledWith(
+      ctx.values.protectedDeviceVaultMasterKey,
+      ctx.values.deviceSlotVaultMasterKeyProtectionKey,
+    );
+    expect(ctx.saved.unlockedVaultSession?.unlockedVault.deviceId).toBe(
+      ctx.values.deviceId,
+    );
+  });
+
   it("fails when device access material is missing", async () => {
     const ctx = createUnlockVaultTestContext();
     ctx.saved.deviceAccessMaterial = undefined;
@@ -239,9 +284,19 @@ describe("UnlockVaultUseCase", () => {
 
     ctx.saved.vaultSnapshot = {
       ...ctx.vaultSnapshot,
+      metadata: {
+        ...ctx.vaultSnapshot.metadata,
+        createdByDeviceId: "other-device-id",
+      },
       keySlots: {
         ...ctx.vaultSnapshot.keySlots,
-        deviceSlots: [],
+        deviceSlots: [
+          {
+            deviceId: "other-device-id",
+            protectedVaultMasterKey: ctx.values.protectedDeviceVaultMasterKey,
+            publicSignKey: ctx.values.pendingDevicePublicSignKey,
+          },
+        ],
       },
     };
 
