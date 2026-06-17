@@ -14,6 +14,13 @@ export class SyncNotConfiguredError extends Error {
   }
 }
 
+export class SyncAlreadyConfiguredError extends Error {
+  constructor(vaultId: string) {
+    super(`Vault "${vaultId}" already has sync configured.`);
+    this.name = "SyncAlreadyConfiguredError";
+  }
+}
+
 export class RemoteVaultSnapshotNotFoundError extends Error {
   constructor(vaultId: string) {
     super(`Remote vault snapshot for vault "${vaultId}" was not found.`);

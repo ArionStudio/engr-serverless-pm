@@ -9,7 +9,6 @@ import {
   RemoteVaultSnapshotAheadError,
   RemoteVaultSnapshotChangedError,
   RemoteVaultSnapshotIntegrityError,
-  RemoteVaultSnapshotNotFoundError,
   SyncConflictDetectedError,
   SyncNotConfiguredError,
 } from "../../errors/sync.errors";
@@ -144,14 +143,16 @@ describe("SyncUploadUseCase", () => {
     expect(ctx.saved.vaultSnapshot).toBe(ctx.localSnapshot);
   });
 
-  it("fails when no remote descriptor exists", async () => {
+  it("uploads the local snapshot when no remote descriptor exists", async () => {
     const ctx = createContext();
 
-    await expect(
-      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
-    ).rejects.toBeInstanceOf(RemoteVaultSnapshotNotFoundError);
+    await ctx.useCase.execute({ vaultId: ctx.values.vaultId });
 
-    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).toHaveBeenCalledWith(
+      ctx.values.syncConfig,
+      ctx.localSnapshot,
+      null,
+    );
   });
 
   it("skips upload when the remote descriptor already matches the vault", async () => {

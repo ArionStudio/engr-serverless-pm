@@ -4,15 +4,25 @@ import {
   toVaultSnapshotDescriptor,
 } from "../../domain/snapshot/vault-snapshot-descriptor.utils";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
+import type { VaultSnapshotDescriptor } from "../../domain/snapshot/vault-snapshot-descriptor.type";
 import type { UnlockedVault } from "../../domain/session/unlocked-vault";
+import type { SyncConfig } from "../../domain/sync/sync-config.type";
 import type { VersionVector } from "../../domain/versioning/version-vector.type";
 import {
   RemoteVaultSnapshotAheadError,
+  RemoteVaultSnapshotChangedError,
   RemoteVaultSnapshotIntegrityError,
   RemoteVaultSnapshotNotFoundError,
+  SyncConflictDetectedError,
 } from "../../errors/sync.errors";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { VaultSnapshotService } from "../snapshot/vault-snapshot.service";
+
+export type LocalMutationSyncState = {
+  readonly localSnapshot: VaultSnapshot;
+  readonly syncConfig?: SyncConfig;
+  readonly remoteSnapshotDescriptor?: VaultSnapshotDescriptor | null;
+};
 
 export class VaultSyncGuardService {
   private readonly syncProvider: SyncProviderPort;
@@ -31,6 +41,20 @@ export class VaultSyncGuardService {
     unlockedVault: UnlockedVault,
     sourceSnapshotVersionVector: VersionVector,
   ): Promise<VaultSnapshot> {
+    return (
+      await this.prepareLocalMutation(
+        vaultId,
+        unlockedVault,
+        sourceSnapshotVersionVector,
+      )
+    ).localSnapshot;
+  }
+
+  async prepareLocalMutation(
+    vaultId: string,
+    unlockedVault: UnlockedVault,
+    sourceSnapshotVersionVector: VersionVector,
+  ): Promise<LocalMutationSyncState> {
     const localSnapshot =
       await this.vaultSnapshot.requireCurrentSnapshotForUnlockedVault(
         vaultId,
@@ -40,7 +64,9 @@ export class VaultSyncGuardService {
     const syncConfig = unlockedVault.vault.syncConfig;
 
     if (syncConfig === undefined) {
-      return localSnapshot;
+      return {
+        localSnapshot,
+      };
     }
 
     const remoteSnapshotDescriptor =
@@ -80,6 +106,45 @@ export class VaultSyncGuardService {
       throw new RemoteVaultSnapshotIntegrityError(vaultId);
     }
 
-    return localSnapshot;
+    return {
+      localSnapshot,
+      syncConfig,
+      remoteSnapshotDescriptor,
+    };
+  }
+
+  async uploadPersistedLocalMutation(
+    vaultId: string,
+    syncState: LocalMutationSyncState,
+    persistedSnapshot: VaultSnapshot,
+  ): Promise<void> {
+    if (
+      syncState.syncConfig === undefined ||
+      syncState.remoteSnapshotDescriptor === undefined
+    ) {
+      return;
+    }
+
+    try {
+      await this.syncProvider.uploadVaultSnapshot(
+        syncState.syncConfig,
+        persistedSnapshot,
+        syncState.remoteSnapshotDescriptor,
+      );
+    } catch (error) {
+      try {
+        await this.vaultSnapshot.restoreLocalVaultSnapshot(
+          syncState.localSnapshot,
+        );
+      } catch {
+        // Preserve the upload failure as the root cause.
+      }
+
+      if (error instanceof RemoteVaultSnapshotChangedError) {
+        throw new SyncConflictDetectedError(vaultId);
+      }
+
+      throw error;
+    }
   }
 }

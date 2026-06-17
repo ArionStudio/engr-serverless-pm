@@ -1,6 +1,10 @@
 import type { SyncConfig } from "../../domain/sync/sync-config.type";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
-import { InvalidSyncConfigError } from "../../errors/sync.errors";
+import {
+  InvalidSyncConfigError,
+  RemoteVaultSnapshotAheadError,
+  SyncAlreadyConfiguredError,
+} from "../../errors/sync.errors";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import type { VaultSyncGuardService } from "../../services/sync";
@@ -35,7 +39,11 @@ export class SetupSyncUseCase {
         "setup sync",
       );
 
-    await this.vaultSyncGuard.requireReadyForLocalMutation(
+    if (unlockedVault.vault.syncConfig !== undefined) {
+      throw new SyncAlreadyConfiguredError(params.vaultId);
+    }
+
+    const syncState = await this.vaultSyncGuard.prepareLocalMutation(
       params.vaultId,
       unlockedVault,
       sourceSnapshotVersionVector,
@@ -49,6 +57,22 @@ export class SetupSyncUseCase {
       throw new InvalidSyncConfigError(error);
     }
 
+    const remoteSnapshotDescriptor =
+      await this.syncProvider.getLatestVaultSnapshotDescriptor(
+        syncConfig,
+        params.vaultId,
+      );
+
+    if (remoteSnapshotDescriptor !== null) {
+      throw new RemoteVaultSnapshotAheadError(params.vaultId);
+    }
+
+    const uploadSyncState = {
+      localSnapshot: syncState.localSnapshot,
+      syncConfig,
+      remoteSnapshotDescriptor,
+    };
+
     const updatedUnlockedVault = {
       ...unlockedVault,
       vault: {
@@ -61,6 +85,12 @@ export class SetupSyncUseCase {
       params.vaultId,
       updatedUnlockedVault,
       sourceSnapshotVersionVector,
+    );
+
+    await this.vaultSyncGuard.uploadPersistedLocalMutation(
+      params.vaultId,
+      uploadSyncState,
+      await this.vaultSnapshot.requireLocalVaultSnapshot(params.vaultId),
     );
 
     await this.unlockedVaultSession.commitPersistedSnapshot(

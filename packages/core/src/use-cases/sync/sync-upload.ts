@@ -7,7 +7,6 @@ import {
   RemoteVaultSnapshotAheadError,
   RemoteVaultSnapshotChangedError,
   RemoteVaultSnapshotIntegrityError,
-  RemoteVaultSnapshotNotFoundError,
   SyncConflictDetectedError,
   SyncNotConfiguredError,
 } from "../../errors/sync.errors";
@@ -58,38 +57,36 @@ export class SyncUploadUseCase {
         params.vaultId,
       );
 
-    if (remoteSnapshotDescriptor === null) {
-      throw new RemoteVaultSnapshotNotFoundError(params.vaultId);
-    }
+    if (remoteSnapshotDescriptor !== null) {
+      const localSnapshotDescriptor = toVaultSnapshotDescriptor(
+        params.vaultId,
+        localSnapshot,
+      );
+      const relation = compareVaultSnapshotDescriptors(
+        localSnapshotDescriptor,
+        remoteSnapshotDescriptor,
+      );
 
-    const localSnapshotDescriptor = toVaultSnapshotDescriptor(
-      params.vaultId,
-      localSnapshot,
-    );
-    const relation = compareVaultSnapshotDescriptors(
-      localSnapshotDescriptor,
-      remoteSnapshotDescriptor,
-    );
+      if (relation === "equal") {
+        if (
+          !areVaultSnapshotDescriptorsEqual(
+            remoteSnapshotDescriptor,
+            localSnapshotDescriptor,
+          )
+        ) {
+          throw new RemoteVaultSnapshotIntegrityError(params.vaultId);
+        }
 
-    if (relation === "equal") {
-      if (
-        !areVaultSnapshotDescriptorsEqual(
-          remoteSnapshotDescriptor,
-          localSnapshotDescriptor,
-        )
-      ) {
-        throw new RemoteVaultSnapshotIntegrityError(params.vaultId);
+        return;
       }
 
-      return;
-    }
+      if (relation === "remote_ahead") {
+        throw new RemoteVaultSnapshotAheadError(params.vaultId);
+      }
 
-    if (relation === "remote_ahead") {
-      throw new RemoteVaultSnapshotAheadError(params.vaultId);
-    }
-
-    if (relation === "broken") {
-      throw new RemoteVaultSnapshotIntegrityError(params.vaultId);
+      if (relation === "broken") {
+        throw new RemoteVaultSnapshotIntegrityError(params.vaultId);
+      }
     }
 
     try {

@@ -70,12 +70,12 @@ export class RevokeDeviceUseCase {
 
     // Start from the current local snapshot and verify its provenance before
     // using its trust and key-slot state as the basis for the new snapshot.
-    const currentVaultSnapshot =
-      await this.vaultSyncGuard.requireReadyForLocalMutation(
-        params.vaultId,
-        unlockedVault,
-        sourceSnapshotVersionVector,
-      );
+    const syncState = await this.vaultSyncGuard.prepareLocalMutation(
+      params.vaultId,
+      unlockedVault,
+      sourceSnapshotVersionVector,
+    );
+    const currentVaultSnapshot = syncState.localSnapshot;
 
     const signerDevice = currentVaultSnapshot.keySlots.deviceSlots.find(
       (deviceSlot) =>
@@ -148,6 +148,8 @@ export class RevokeDeviceUseCase {
           (deviceSlot) => deviceSlot.deviceId !== params.deviceId,
         ),
         recoveryKeySlot: currentVaultSnapshot.keySlots.recoveryKeySlot,
+        completedEnrollments:
+          currentVaultSnapshot.keySlots.completedEnrollments,
       },
       content: await this.crypto.encryptVaultSnapshotContent(
         revokedVault,
@@ -171,6 +173,12 @@ export class RevokeDeviceUseCase {
       ...unlockedVault,
       vault: revokedVault,
     };
+
+    await this.vaultSyncGuard.uploadPersistedLocalMutation(
+      params.vaultId,
+      syncState,
+      revokedVaultSnapshot,
+    );
 
     await this.unlockedVaultSession.commitPersistedSnapshot(
       updatedUnlockedVault,

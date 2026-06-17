@@ -50,7 +50,7 @@ export class RemoveEntryUseCase {
       throw new PasswordEntryNotFoundError(params.vaultId, params.entryId);
     }
 
-    await this.vaultSyncGuard.requireReadyForLocalMutation(
+    const syncState = await this.vaultSyncGuard.prepareLocalMutation(
       params.vaultId,
       unlockedVault,
       sourceSnapshotVersionVector,
@@ -71,6 +71,14 @@ export class RemoveEntryUseCase {
       updatedUnlockedVault,
       sourceSnapshotVersionVector,
     );
+
+    if (syncState.syncConfig !== undefined) {
+      await this.vaultSyncGuard.uploadPersistedLocalMutation(
+        params.vaultId,
+        syncState,
+        await this.vaultSnapshot.requireLocalVaultSnapshot(params.vaultId),
+      );
+    }
 
     await this.unlockedVaultSession.commitPersistedSnapshot(
       updatedUnlockedVault,

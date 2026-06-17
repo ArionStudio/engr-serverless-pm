@@ -5,7 +5,11 @@ import {
   createVaultSnapshotServiceMock,
   saveUnlockedVaultWithEntries,
 } from "../../__tests__/fixtures/vault-entries";
-import { RemoteVaultSnapshotAheadError } from "../../errors/sync.errors";
+import {
+  RemoteVaultSnapshotAheadError,
+  RemoteVaultSnapshotChangedError,
+  SyncConflictDetectedError,
+} from "../../errors/sync.errors";
 import { InvalidPasswordEntryError } from "../../errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 import { VaultSyncGuardService } from "../../services/sync";
@@ -195,6 +199,122 @@ describe("AddEntryUseCase", () => {
     expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries).toEqual(
       [],
     );
+  });
+
+  it("uploads the persisted snapshot before committing a synced vault entry", async () => {
+    const ctx = createContext();
+    const remoteSnapshotDescriptor = {
+      vaultId: ctx.values.vaultId,
+      snapshotVersionVector: {
+        [ctx.values.deviceId]: 1,
+      },
+      revisionTimestamp: ctx.values.timestamp,
+    };
+    const session = ctx.saved.unlockedVaultSession!;
+
+    ctx.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          syncConfig: ctx.values.syncConfig,
+        },
+      },
+    };
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValueOnce(remoteSnapshotDescriptor);
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      entry: {
+        password: "secret-password",
+        login: "user@example.com",
+        tags: [],
+        url: "https://example.com/login",
+      },
+    });
+
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).toHaveBeenCalledWith(
+      ctx.values.syncConfig,
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          snapshotVersionVector: {
+            [ctx.values.deviceId]: 2,
+          },
+        }),
+      }),
+      remoteSnapshotDescriptor,
+    );
+    expect(
+      vi.mocked(ctx.vaultSnapshot.persistUnlockedVault).mock
+        .invocationCallOrder[0],
+    ).toBeLessThan(
+      vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mock
+        .invocationCallOrder[0],
+    );
+    expect(
+      vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mock
+        .invocationCallOrder[0],
+    ).toBeLessThan(
+      vi.mocked(ctx.ports.sessionServices.unlockedVaultSession.commit).mock
+        .invocationCallOrder[0],
+    );
+  });
+
+  it("restores the local snapshot and does not commit when synced upload races", async () => {
+    const ctx = createContext();
+    const remoteSnapshotDescriptor = {
+      vaultId: ctx.values.vaultId,
+      snapshotVersionVector: {
+        [ctx.values.deviceId]: 1,
+      },
+      revisionTimestamp: ctx.values.timestamp,
+    };
+    const session = ctx.saved.unlockedVaultSession!;
+
+    ctx.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          syncConfig: ctx.values.syncConfig,
+        },
+      },
+    };
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValueOnce(remoteSnapshotDescriptor);
+    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockRejectedValueOnce(
+      new RemoteVaultSnapshotChangedError(ctx.values.vaultId),
+    );
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        entry: {
+          password: "secret-password",
+          login: "user@example.com",
+          tags: [],
+          url: "https://example.com/login",
+        },
+      }),
+    ).rejects.toBeInstanceOf(SyncConflictDetectedError);
+
+    expect(ctx.vaultSnapshot.restoreLocalVaultSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          snapshotVersionVector: {
+            [ctx.values.deviceId]: 1,
+          },
+        }),
+      }),
+    );
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
+    ).not.toHaveBeenCalled();
   });
 
   it("does not save the session vault when snapshot persistence fails", async () => {

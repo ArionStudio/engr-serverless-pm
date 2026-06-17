@@ -243,6 +243,55 @@ describe("RevokeDeviceUseCase", () => {
     );
   });
 
+  it("uploads the revoked trust snapshot before committing a synced vault", async () => {
+    const ctx = createContext();
+    const remoteSnapshotDescriptor = {
+      vaultId: ctx.values.vaultId,
+      snapshotVersionVector: {
+        [ctx.values.deviceId]: 1,
+      },
+      revisionTimestamp: ctx.values.timestamp - 1,
+    };
+
+    ctx.saved.unlockedVaultSession = {
+      ...ctx.saved.unlockedVaultSession!,
+      unlockedVault: {
+        ...ctx.saved.unlockedVaultSession!.unlockedVault,
+        vault: {
+          ...ctx.saved.unlockedVaultSession!.unlockedVault.vault,
+          syncConfig: ctx.values.syncConfig,
+        },
+      },
+    };
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValueOnce(remoteSnapshotDescriptor);
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      deviceId: revokedDeviceId,
+    });
+
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).toHaveBeenCalledWith(
+      ctx.values.syncConfig,
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          snapshotVersionVector: {
+            [ctx.values.deviceId]: 2,
+          },
+        }),
+      }),
+      remoteSnapshotDescriptor,
+    );
+    expect(
+      vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mock
+        .invocationCallOrder[0],
+    ).toBeLessThan(
+      vi.mocked(ctx.ports.sessionServices.unlockedVaultSession.commit).mock
+        .invocationCallOrder[0],
+    );
+  });
+
   it("fails when the target vault is not unlocked", async () => {
     const ctx = createContext();
     ctx.saved.unlockedVaultSession = undefined;
