@@ -23,7 +23,6 @@ import type { VersionVector } from "../../domain/versioning/version-vector.type"
 import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
 import {
   DeviceEnrollmentAlreadyCompletedError,
-  DeviceEnrollmentExpiredError,
   DeviceEnrollmentIntegrityError,
   DeviceEnrollmentRemoteSnapshotChangedError,
   DeviceEnrollmentKeySlotNotFoundError,
@@ -157,10 +156,6 @@ export class PerformDeviceEnrollmentUseCase {
 
     const revisionTimestamp = this.clock.now();
 
-    if (revisionTimestamp > enrollmentKeySlot.expiresAt) {
-      throw new DeviceEnrollmentExpiredError(enrollmentBundle.vaultId);
-    }
-
     const completedEnrollments =
       remoteSnapshot.keySlots.completedEnrollments ?? [];
 
@@ -230,7 +225,6 @@ export class PerformDeviceEnrollmentUseCase {
       pendingDeviceId: enrollmentKeySlot.pendingDeviceId,
       pendingDevicePublicSignKeyDigest:
         enrollmentKeySlot.pendingDevicePublicSignKeyDigest,
-      expiresAt: enrollmentKeySlot.expiresAt,
       protectedVaultMasterKeyDigest:
         enrollmentKeySlot.protectedVaultMasterKeyDigest,
     };

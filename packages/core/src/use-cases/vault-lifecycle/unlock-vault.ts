@@ -21,6 +21,7 @@ import {
   VaultSnapshotSignerNotTrustedError,
 } from "../../errors/unlock-vault.errors";
 import { InvalidVaultLockDelayError } from "../../errors/vault-session.errors";
+import { PersistedVaultMismatchError } from "../../errors/vault-snapshot.errors";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 
 export type UnlockVaultCommandParams = {
@@ -108,9 +109,19 @@ export class UnlockVaultUseCase {
       });
     }
 
-    if (
-      vaultSnapshot.metadata.createdByDeviceId !== deviceAccessMaterial.deviceId
-    ) {
+    if (vaultSnapshot.metadata.id !== params.vaultId) {
+      throw new PersistedVaultMismatchError(
+        params.vaultId,
+        vaultSnapshot.metadata.id,
+      );
+    }
+
+    const signerDeviceKeySlot = vaultSnapshot.keySlots.deviceSlots.find(
+      (slot: DeviceKeySlot) =>
+        slot.deviceId === vaultSnapshot.metadata.createdByDeviceId,
+    );
+
+    if (signerDeviceKeySlot === undefined) {
       throw new VaultSnapshotSignerNotTrustedError(
         params.vaultId,
         vaultSnapshot.metadata.createdByDeviceId,
@@ -130,7 +141,7 @@ export class UnlockVaultUseCase {
 
     const isSnapshotAuthentic = await this.crypto.verifyVaultSnapshotSignature(
       vaultSnapshot,
-      deviceKeySlot.publicSignKey,
+      signerDeviceKeySlot.publicSignKey,
     );
 
     if (!isSnapshotAuthentic) {

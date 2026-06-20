@@ -21,7 +21,7 @@ import type { VaultSnapshotService } from "../snapshot/vault-snapshot.service";
 export type LocalMutationSyncState = {
   readonly localSnapshot: VaultSnapshot;
   readonly syncConfig?: SyncConfig;
-  readonly remoteSnapshotDescriptor?: VaultSnapshotDescriptor | null;
+  readonly remoteSnapshotDescriptor?: VaultSnapshotDescriptor;
 };
 
 export class VaultSyncGuardService {
@@ -136,6 +136,33 @@ export class VaultSyncGuardService {
         await this.vaultSnapshot.restoreLocalVaultSnapshot(
           syncState.localSnapshot,
         );
+      } catch {
+        // Preserve the upload failure as the root cause.
+      }
+
+      if (error instanceof RemoteVaultSnapshotChangedError) {
+        throw new SyncConflictDetectedError(vaultId);
+      }
+
+      throw error;
+    }
+  }
+
+  async uploadPersistedInitialSyncSnapshot(
+    vaultId: string,
+    syncConfig: SyncConfig,
+    localSnapshot: VaultSnapshot,
+    persistedSnapshot: VaultSnapshot,
+  ): Promise<void> {
+    try {
+      await this.syncProvider.uploadVaultSnapshot(
+        syncConfig,
+        persistedSnapshot,
+        null,
+      );
+    } catch (error) {
+      try {
+        await this.vaultSnapshot.restoreLocalVaultSnapshot(localSnapshot);
       } catch {
         // Preserve the upload failure as the root cause.
       }

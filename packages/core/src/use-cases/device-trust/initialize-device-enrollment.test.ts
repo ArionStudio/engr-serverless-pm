@@ -145,7 +145,6 @@ describe("InitializeDeviceEnrollmentUseCase", () => {
         pendingDeviceId: ctx.values.pendingDeviceId,
         pendingDevicePublicSignKeyDigest:
           ctx.values.pendingDevicePublicSignKeyDigest,
-        expiresAt: ctx.values.enrollmentExpiresAt,
         protectedVaultMasterKeyDigest:
           ctx.values.protectedEnrollmentVaultMasterKeyDigest,
       },
@@ -184,7 +183,6 @@ describe("InitializeDeviceEnrollmentUseCase", () => {
           pendingDevicePublicSignKey: ctx.values.pendingDevicePublicSignKey,
           pendingDevicePublicSignKeyDigest:
             ctx.values.pendingDevicePublicSignKeyDigest,
-          expiresAt: ctx.values.enrollmentExpiresAt,
           protectedVaultMasterKeyDigest:
             ctx.values.protectedEnrollmentVaultMasterKeyDigest,
           protectedVaultMasterKey: ctx.values.protectedEnrollmentVaultMasterKey,

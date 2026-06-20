@@ -38,7 +38,6 @@ function createEnrollmentSlot(): EnrollmentKeySlot {
     pendingDeviceId: values.pendingDeviceId,
     pendingDevicePublicSignKey: values.pendingDevicePublicSignKey,
     pendingDevicePublicSignKeyDigest: values.pendingDevicePublicSignKeyDigest,
-    expiresAt: values.enrollmentExpiresAt,
     protectedVaultMasterKeyDigest:
       values.protectedEnrollmentVaultMasterKeyDigest,
     protectedVaultMasterKey: values.protectedEnrollmentVaultMasterKey,

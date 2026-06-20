@@ -248,7 +248,6 @@ function areEnrollmentKeySlotsEqual(
     ) &&
     localEnrollmentKeySlot.pendingDevicePublicSignKeyDigest ===
       remoteEnrollmentKeySlot.pendingDevicePublicSignKeyDigest &&
-    localEnrollmentKeySlot.expiresAt === remoteEnrollmentKeySlot.expiresAt &&
     localEnrollmentKeySlot.protectedVaultMasterKeyDigest ===
       remoteEnrollmentKeySlot.protectedVaultMasterKeyDigest &&
     areJsonEqual(

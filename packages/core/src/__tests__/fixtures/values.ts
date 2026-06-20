@@ -56,7 +56,6 @@ export function createCoreTestValues() {
       },
     } satisfies SyncConfig,
     timestamp: 1_700_000_000_000,
-    enrollmentExpiresAt: 1_700_000_300_000,
     vaultMasterKey: bytes<VaultMasterKey>(),
     deviceSlotKey: bytes<DeviceSlotKey>(),
     deviceEnrollmentSecret: bytes<DeviceEnrollmentSecret>(),

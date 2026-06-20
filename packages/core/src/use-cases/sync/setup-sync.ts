@@ -67,12 +67,6 @@ export class SetupSyncUseCase {
       throw new RemoteVaultSnapshotAheadError(params.vaultId);
     }
 
-    const uploadSyncState = {
-      localSnapshot: syncState.localSnapshot,
-      syncConfig,
-      remoteSnapshotDescriptor,
-    };
-
     const updatedUnlockedVault = {
       ...unlockedVault,
       vault: {
@@ -87,9 +81,10 @@ export class SetupSyncUseCase {
       sourceSnapshotVersionVector,
     );
 
-    await this.vaultSyncGuard.uploadPersistedLocalMutation(
+    await this.vaultSyncGuard.uploadPersistedInitialSyncSnapshot(
       params.vaultId,
-      uploadSyncState,
+      syncConfig,
+      syncState.localSnapshot,
       await this.vaultSnapshot.requireLocalVaultSnapshot(params.vaultId),
     );
 

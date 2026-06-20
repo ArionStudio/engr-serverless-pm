@@ -59,6 +59,7 @@ Run project commands from repo root unless a task explicitly requires a subdirec
 - **Theme context**: Components using `useTheme()` need `ThemeProvider` wrapper.
 - **CVA + cn()**: Always merge CVA variants with `cn()` utility.
 - **No `delete` operator**: Do not use JavaScript `delete` anywhere in code.
+- **Device enrollment expiry**: Do not model enrollment expiry in core device-trust state; without a trusted time authority, local `expiresAt` checks are not security boundaries.
 
 ---
 

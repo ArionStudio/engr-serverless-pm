@@ -12,6 +12,7 @@ import {
   ActiveUnlockedVaultMismatchError,
   InvalidVaultLockDelayError,
 } from "../../errors/vault-session.errors";
+import { PersistedVaultMismatchError } from "../../errors/vault-snapshot.errors";
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
 
 describe("UnlockVaultUseCase", () => {
@@ -90,6 +91,51 @@ describe("UnlockVaultUseCase", () => {
       },
       runAt: ctx.values.timestamp + 600_000,
     });
+  });
+
+  it("unlocks a vault snapshot signed by another trusted device", async () => {
+    const ctx = createUnlockVaultTestContext();
+
+    ctx.saved.vaultSnapshot = {
+      ...ctx.vaultSnapshot,
+      metadata: {
+        ...ctx.vaultSnapshot.metadata,
+        createdByDeviceId: "other-device-id",
+      },
+      keySlots: {
+        ...ctx.vaultSnapshot.keySlots,
+        deviceSlots: [
+          ...ctx.vaultSnapshot.keySlots.deviceSlots,
+          {
+            deviceId: "other-device-id",
+            protectedVaultMasterKey: ctx.values.protectedDeviceVaultMasterKey,
+            publicSignKey: ctx.values.pendingDevicePublicSignKey,
+          },
+        ],
+      },
+    };
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 600_000,
+      }),
+    ).resolves.toEqual({
+      vault: ctx.values.decryptedVault,
+    });
+
+    expect(ctx.ports.crypto.verifyVaultSnapshotSignature).toHaveBeenCalledWith(
+      ctx.saved.vaultSnapshot,
+      ctx.values.pendingDevicePublicSignKey,
+    );
+    expect(ctx.ports.crypto.unwrapVaultMasterKey).toHaveBeenCalledWith(
+      ctx.values.protectedDeviceVaultMasterKey,
+      ctx.values.deviceSlotVaultMasterKeyProtectionKey,
+    );
+    expect(ctx.saved.unlockedVaultSession?.unlockedVault.deviceId).toBe(
+      ctx.values.deviceId,
+    );
   });
 
   it("fails when device access material is missing", async () => {
@@ -204,6 +250,37 @@ describe("UnlockVaultUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
+  it("fails before verifying when the vault snapshot belongs to another vault", async () => {
+    const ctx = createUnlockVaultTestContext();
+    const mismatchedSnapshot = {
+      ...ctx.vaultSnapshot,
+      metadata: {
+        ...ctx.vaultSnapshot.metadata,
+        id: "another-vault-id",
+      },
+    };
+    ctx.saved.vaultSnapshot = mismatchedSnapshot;
+    vi.mocked(
+      ctx.ports.vaultLocalRepository.getVaultSnapshot,
+    ).mockResolvedValueOnce(mismatchedSnapshot);
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 600_000,
+      }),
+    ).rejects.toBeInstanceOf(PersistedVaultMismatchError);
+
+    expect(
+      ctx.ports.crypto.verifyVaultSnapshotSignature,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
+    ).not.toHaveBeenCalled();
+  });
+
   it("fails when snapshot signer is not trusted", async () => {
     const ctx = createUnlockVaultTestContext();
     ctx.saved.vaultSnapshot = {
@@ -239,9 +316,19 @@ describe("UnlockVaultUseCase", () => {
 
     ctx.saved.vaultSnapshot = {
       ...ctx.vaultSnapshot,
+      metadata: {
+        ...ctx.vaultSnapshot.metadata,
+        createdByDeviceId: "other-device-id",
+      },
       keySlots: {
         ...ctx.vaultSnapshot.keySlots,
-        deviceSlots: [],
+        deviceSlots: [
+          {
+            deviceId: "other-device-id",
+            protectedVaultMasterKey: ctx.values.protectedDeviceVaultMasterKey,
+            publicSignKey: ctx.values.pendingDevicePublicSignKey,
+          },
+        ],
       },
     };
 

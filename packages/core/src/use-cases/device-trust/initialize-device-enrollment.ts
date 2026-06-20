@@ -30,12 +30,9 @@ import type { VersionVector } from "../../domain/versioning/version-vector.type"
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { DeviceEnrollmentAuthorizationPayload } from "../../domain/device-trust";
 
-const DEFAULT_DEVICE_ENROLLMENT_TTL_MS = 300_000;
-
 export type InitializeDeviceEnrollmentCommandParams = {
   readonly vaultId: string;
   readonly remoteSnapshotDescriptor: VaultSnapshotDescriptor;
-  readonly expiresAt?: number;
 };
 
 export type InitializeDeviceEnrollmentResult = {
@@ -141,8 +138,6 @@ export class InitializeDeviceEnrollmentUseCase {
     }
 
     const revisionTimestamp = this.clock.now();
-    const expiresAt =
-      params.expiresAt ?? revisionTimestamp + DEFAULT_DEVICE_ENROLLMENT_TTL_MS;
     const enrollmentSecret = await this.crypto.generateDeviceEnrollmentSecret();
     const enrollmentId = await this.ids.generateId();
     const pendingDeviceId = await this.ids.generateId();
@@ -171,7 +166,6 @@ export class InitializeDeviceEnrollmentUseCase {
       enrollmentId,
       pendingDeviceId,
       pendingDevicePublicSignKeyDigest,
-      expiresAt,
       protectedVaultMasterKeyDigest,
     };
     const authorizerSignature =
@@ -200,7 +194,6 @@ export class InitializeDeviceEnrollmentUseCase {
           pendingDeviceId,
           pendingDevicePublicSignKey: pendingDeviceSignKeyPair.publicKey,
           pendingDevicePublicSignKeyDigest,
-          expiresAt,
           protectedVaultMasterKeyDigest,
           protectedVaultMasterKey: protectedEnrollmentVaultMasterKey,
           authorizedByDeviceId: unlockedVault.deviceId,

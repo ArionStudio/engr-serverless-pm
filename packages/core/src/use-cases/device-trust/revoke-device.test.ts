@@ -292,6 +292,72 @@ describe("RevokeDeviceUseCase", () => {
     );
   });
 
+  it("preserves a pending enrollment slot authorized by another device", async () => {
+    const ctx = createContext();
+    const enrollmentKeySlot = {
+      enrollmentId: ctx.values.enrollmentId,
+      pendingDeviceId: ctx.values.pendingDeviceId,
+      pendingDevicePublicSignKey: ctx.values.pendingDevicePublicSignKey,
+      pendingDevicePublicSignKeyDigest:
+        ctx.values.pendingDevicePublicSignKeyDigest,
+      protectedVaultMasterKeyDigest:
+        ctx.values.protectedEnrollmentVaultMasterKeyDigest,
+      protectedVaultMasterKey: ctx.values.protectedEnrollmentVaultMasterKey,
+      authorizedByDeviceId: ctx.values.deviceId,
+      authorizerSignature: ctx.values.deviceEnrollmentAuthorizationSignature,
+    };
+
+    ctx.saved.vaultSnapshot = {
+      ...ctx.vaultSnapshot,
+      keySlots: {
+        ...ctx.vaultSnapshot.keySlots,
+        enrollmentKeySlot,
+      },
+    };
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      deviceId: revokedDeviceId,
+    });
+
+    expect(ctx.saved.vaultSnapshot?.keySlots.enrollmentKeySlot).toBe(
+      enrollmentKeySlot,
+    );
+  });
+
+  it("removes a pending enrollment slot authorized by the revoked device", async () => {
+    const ctx = createContext();
+    const enrollmentKeySlot = {
+      enrollmentId: ctx.values.enrollmentId,
+      pendingDeviceId: ctx.values.pendingDeviceId,
+      pendingDevicePublicSignKey: ctx.values.pendingDevicePublicSignKey,
+      pendingDevicePublicSignKeyDigest:
+        ctx.values.pendingDevicePublicSignKeyDigest,
+      protectedVaultMasterKeyDigest:
+        ctx.values.protectedEnrollmentVaultMasterKeyDigest,
+      protectedVaultMasterKey: ctx.values.protectedEnrollmentVaultMasterKey,
+      authorizedByDeviceId: revokedDeviceId,
+      authorizerSignature: ctx.values.deviceEnrollmentAuthorizationSignature,
+    };
+
+    ctx.saved.vaultSnapshot = {
+      ...ctx.vaultSnapshot,
+      keySlots: {
+        ...ctx.vaultSnapshot.keySlots,
+        enrollmentKeySlot,
+      },
+    };
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      deviceId: revokedDeviceId,
+    });
+
+    expect("enrollmentKeySlot" in ctx.saved.vaultSnapshot!.keySlots).toBe(
+      false,
+    );
+  });
+
   it("fails when the target vault is not unlocked", async () => {
     const ctx = createContext();
     ctx.saved.unlockedVaultSession = undefined;
