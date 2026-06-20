@@ -9,7 +9,6 @@ import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import type { Vault } from "../../domain/vault/vault";
 import {
   DeviceEnrollmentAlreadyCompletedError,
-  DeviceEnrollmentExpiredError,
   DeviceEnrollmentIntegrityError,
   DeviceEnrollmentKeySlotNotFoundError,
   DeviceEnrollmentRemoteSnapshotChangedError,
@@ -74,7 +73,6 @@ function createRemoteSnapshot(
         pendingDevicePublicSignKey: values.pendingDevicePublicSignKey,
         pendingDevicePublicSignKeyDigest:
           values.pendingDevicePublicSignKeyDigest,
-        expiresAt: values.enrollmentExpiresAt,
         protectedVaultMasterKeyDigest:
           values.protectedEnrollmentVaultMasterKeyDigest,
         protectedVaultMasterKey: values.protectedEnrollmentVaultMasterKey,
@@ -97,7 +95,6 @@ function createCompletedEnrollmentProof(
     enrollmentId: values.enrollmentId,
     pendingDeviceId: values.pendingDeviceId,
     pendingDevicePublicSignKeyDigest: values.pendingDevicePublicSignKeyDigest,
-    expiresAt: values.enrollmentExpiresAt,
     protectedVaultMasterKeyDigest:
       values.protectedEnrollmentVaultMasterKeyDigest,
     authorizedByDeviceId: values.deviceId,
@@ -231,7 +228,6 @@ describe("PerformDeviceEnrollmentUseCase", () => {
         pendingDeviceId: ctx.values.pendingDeviceId,
         pendingDevicePublicSignKeyDigest:
           ctx.values.pendingDevicePublicSignKeyDigest,
-        expiresAt: ctx.values.enrollmentExpiresAt,
         protectedVaultMasterKeyDigest:
           ctx.values.protectedEnrollmentVaultMasterKeyDigest,
       },
@@ -292,7 +288,6 @@ describe("PerformDeviceEnrollmentUseCase", () => {
             pendingDeviceId: ctx.values.pendingDeviceId,
             pendingDevicePublicSignKeyDigest:
               ctx.values.pendingDevicePublicSignKeyDigest,
-            expiresAt: ctx.values.enrollmentExpiresAt,
             protectedVaultMasterKeyDigest:
               ctx.values.protectedEnrollmentVaultMasterKeyDigest,
             authorizedByDeviceId: ctx.values.deviceId,
@@ -343,10 +338,6 @@ describe("PerformDeviceEnrollmentUseCase", () => {
           enrollmentId: `previous-enrollment-${index}`,
           pendingDeviceId: `previous-device-${index}`,
           pendingDevicePublicSignKeyDigest: `previous-device-sign-key-digest-${index}`,
-          expiresAt:
-            index === 0
-              ? ctx.values.timestamp - 1
-              : ctx.values.enrollmentExpiresAt + index,
           protectedVaultMasterKeyDigest: `previous-protected-master-key-digest-${index}`,
         }),
     );
@@ -728,36 +719,6 @@ describe("PerformDeviceEnrollmentUseCase", () => {
         deviceName: "New laptop",
       }),
     ).rejects.toBeInstanceOf(DeviceEnrollmentKeySlotNotFoundError);
-
-    expect(ctx.ports.crypto.unwrapVaultMasterKey).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("rejects an expired enrollment slot before unwrapping the vault master key", async () => {
-    const ctx = createContext();
-
-    vi.mocked(
-      ctx.ports.syncProvider.downloadVaultSnapshot,
-    ).mockResolvedValueOnce({
-      ...ctx.remoteSnapshot,
-      keySlots: {
-        ...ctx.remoteSnapshot.keySlots,
-        enrollmentKeySlot: {
-          ...ctx.remoteSnapshot.keySlots.enrollmentKeySlot!,
-          expiresAt: ctx.values.timestamp - 1,
-        },
-      },
-    });
-
-    await expect(
-      ctx.useCase.execute({
-        enrollmentBundle: ctx.enrollmentBundle,
-        masterPassword: ctx.values.masterPassword,
-        deviceName: "New laptop",
-      }),
-    ).rejects.toBeInstanceOf(DeviceEnrollmentExpiredError);
 
     expect(ctx.ports.crypto.unwrapVaultMasterKey).not.toHaveBeenCalled();
     expect(

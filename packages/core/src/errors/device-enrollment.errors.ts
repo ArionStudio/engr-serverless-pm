@@ -32,13 +32,6 @@ export class DeviceEnrollmentKeySlotNotFoundError extends Error {
   }
 }
 
-export class DeviceEnrollmentExpiredError extends Error {
-  constructor(vaultId: string) {
-    super(`Vault "${vaultId}" device enrollment has expired.`);
-    this.name = "DeviceEnrollmentExpiredError";
-  }
-}
-
 export class DeviceEnrollmentAlreadyCompletedError extends Error {
   constructor(vaultId: string, enrollmentId: string) {
     super(

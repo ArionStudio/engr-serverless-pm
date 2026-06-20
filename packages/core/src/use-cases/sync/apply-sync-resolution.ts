@@ -194,8 +194,6 @@ export class ApplySyncResolutionUseCase {
           completedEnrollmentProof.pendingDeviceId &&
         localEnrollmentKeySlot.pendingDevicePublicSignKeyDigest ===
           completedEnrollmentProof.pendingDevicePublicSignKeyDigest &&
-        localEnrollmentKeySlot.expiresAt ===
-          completedEnrollmentProof.expiresAt &&
         localEnrollmentKeySlot.protectedVaultMasterKeyDigest ===
           completedEnrollmentProof.protectedVaultMasterKeyDigest &&
         localEnrollmentKeySlot.authorizedByDeviceId ===

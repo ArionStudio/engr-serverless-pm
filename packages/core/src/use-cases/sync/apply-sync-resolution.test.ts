@@ -95,7 +95,6 @@ function createEnrollmentKeySlot(
     pendingDeviceId: values.pendingDeviceId,
     pendingDevicePublicSignKey: values.pendingDevicePublicSignKey,
     pendingDevicePublicSignKeyDigest: values.pendingDevicePublicSignKeyDigest,
-    expiresAt: values.enrollmentExpiresAt,
     protectedVaultMasterKeyDigest:
       values.protectedEnrollmentVaultMasterKeyDigest,
     protectedVaultMasterKey: values.protectedEnrollmentVaultMasterKey,
@@ -113,7 +112,6 @@ function createCompletedEnrollmentProof(
     enrollmentId: values.enrollmentId,
     pendingDeviceId: values.pendingDeviceId,
     pendingDevicePublicSignKeyDigest: values.pendingDevicePublicSignKeyDigest,
-    expiresAt: values.enrollmentExpiresAt,
     protectedVaultMasterKeyDigest:
       values.protectedEnrollmentVaultMasterKeyDigest,
     authorizedByDeviceId: values.deviceId,

@@ -278,7 +278,6 @@ describe("VaultSnapshotService", () => {
             pendingDeviceId: ctx.values.pendingDeviceId,
             pendingDevicePublicSignKeyDigest:
               ctx.values.pendingDevicePublicSignKeyDigest,
-            expiresAt: ctx.values.enrollmentExpiresAt,
             protectedVaultMasterKeyDigest:
               ctx.values.protectedEnrollmentVaultMasterKeyDigest,
             authorizedByDeviceId: ctx.values.deviceId,
@@ -312,7 +311,6 @@ describe("VaultSnapshotService", () => {
         pendingDeviceId: ctx.values.pendingDeviceId,
         pendingDevicePublicSignKeyDigest:
           ctx.values.pendingDevicePublicSignKeyDigest,
-        expiresAt: ctx.values.enrollmentExpiresAt,
         protectedVaultMasterKeyDigest:
           ctx.values.protectedEnrollmentVaultMasterKeyDigest,
       },
@@ -332,8 +330,21 @@ describe("VaultSnapshotService", () => {
     );
   });
 
-  it("rejects a completed enrollment snapshot after the enrollment expiry", async () => {
+  it("opens a completed enrollment snapshot without proof expiry", async () => {
     const ctx = createContext();
+    const enrolledVault = {
+      ...ctx.values.decryptedVault,
+      deviceProfiles: [
+        {
+          id: ctx.values.pendingDeviceId,
+          name: "New laptop",
+          createdAt: ctx.values.timestamp,
+          versionVector: {
+            [ctx.values.pendingDeviceId]: 1,
+          },
+        },
+      ],
+    };
     const enrollmentSnapshot: VaultSnapshot = {
       ...ctx.currentSnapshot,
       metadata: {
@@ -359,7 +370,6 @@ describe("VaultSnapshotService", () => {
             pendingDeviceId: ctx.values.pendingDeviceId,
             pendingDevicePublicSignKeyDigest:
               ctx.values.pendingDevicePublicSignKeyDigest,
-            expiresAt: ctx.values.timestamp - 1,
             protectedVaultMasterKeyDigest:
               ctx.values.protectedEnrollmentVaultMasterKeyDigest,
             authorizedByDeviceId: ctx.values.deviceId,
@@ -370,6 +380,10 @@ describe("VaultSnapshotService", () => {
       },
     };
 
+    vi.mocked(
+      ctx.ports.crypto.decryptVaultSnapshotContent,
+    ).mockResolvedValueOnce(enrolledVault);
+
     await expect(
       ctx.service.openTrustedVaultSnapshot(
         ctx.values.vaultId,
@@ -377,13 +391,22 @@ describe("VaultSnapshotService", () => {
         ctx.values.vaultMasterKey,
         ctx.currentSnapshot,
       ),
-    ).rejects.toThrow(VaultSnapshotSignerNotTrustedError);
+    ).resolves.toBe(enrolledVault);
 
-    expect(ctx.ports.crypto.digestDevicePublicSignKey).not.toHaveBeenCalled();
     expect(
-      ctx.ports.crypto.verifyVaultSnapshotSignature,
-    ).not.toHaveBeenCalled();
-    expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
+      ctx.ports.crypto.verifyDeviceEnrollmentAuthorizationSignature,
+    ).toHaveBeenCalled();
+    expect(ctx.ports.crypto.digestDevicePublicSignKey).toHaveBeenCalledWith(
+      ctx.values.pendingDevicePublicSignKey,
+    );
+    expect(ctx.ports.crypto.verifyVaultSnapshotSignature).toHaveBeenCalledWith(
+      enrollmentSnapshot,
+      ctx.values.pendingDevicePublicSignKey,
+    );
+    expect(ctx.ports.crypto.decryptVaultSnapshotContent).toHaveBeenCalledWith(
+      enrollmentSnapshot.content,
+      ctx.values.vaultMasterKey,
+    );
   });
 
   it("rejects a completed enrollment snapshot for another vault", async () => {
@@ -413,7 +436,6 @@ describe("VaultSnapshotService", () => {
             pendingDeviceId: ctx.values.pendingDeviceId,
             pendingDevicePublicSignKeyDigest:
               ctx.values.pendingDevicePublicSignKeyDigest,
-            expiresAt: ctx.values.enrollmentExpiresAt,
             protectedVaultMasterKeyDigest:
               ctx.values.protectedEnrollmentVaultMasterKeyDigest,
             authorizedByDeviceId: ctx.values.deviceId,
@@ -433,6 +455,9 @@ describe("VaultSnapshotService", () => {
       ),
     ).rejects.toThrow(VaultSnapshotSignerNotTrustedError);
 
+    expect(
+      ctx.ports.crypto.verifyDeviceEnrollmentAuthorizationSignature,
+    ).not.toHaveBeenCalled();
     expect(ctx.ports.crypto.digestDevicePublicSignKey).not.toHaveBeenCalled();
     expect(
       ctx.ports.crypto.verifyVaultSnapshotSignature,
@@ -449,7 +474,6 @@ describe("VaultSnapshotService", () => {
       pendingDeviceId: ctx.values.pendingDeviceId,
       pendingDevicePublicSignKeyDigest:
         ctx.values.pendingDevicePublicSignKeyDigest,
-      expiresAt: ctx.values.enrollmentExpiresAt,
       protectedVaultMasterKeyDigest:
         ctx.values.protectedEnrollmentVaultMasterKeyDigest,
       authorizedByDeviceId: ctx.values.deviceId,
@@ -529,7 +553,6 @@ describe("VaultSnapshotService", () => {
             pendingDeviceId: ctx.values.pendingDeviceId,
             pendingDevicePublicSignKeyDigest:
               ctx.values.pendingDevicePublicSignKeyDigest,
-            expiresAt: ctx.values.enrollmentExpiresAt,
             protectedVaultMasterKeyDigest:
               ctx.values.protectedEnrollmentVaultMasterKeyDigest,
             authorizedByDeviceId: ctx.values.deviceId,
@@ -588,7 +611,6 @@ describe("VaultSnapshotService", () => {
             pendingDeviceId: ctx.values.pendingDeviceId,
             pendingDevicePublicSignKeyDigest:
               ctx.values.pendingDevicePublicSignKeyDigest,
-            expiresAt: ctx.values.enrollmentExpiresAt,
             protectedVaultMasterKeyDigest:
               ctx.values.protectedEnrollmentVaultMasterKeyDigest,
             authorizedByDeviceId: ctx.values.deviceId,

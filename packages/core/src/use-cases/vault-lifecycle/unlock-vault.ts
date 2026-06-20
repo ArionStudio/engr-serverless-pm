@@ -21,6 +21,7 @@ import {
   VaultSnapshotSignerNotTrustedError,
 } from "../../errors/unlock-vault.errors";
 import { InvalidVaultLockDelayError } from "../../errors/vault-session.errors";
+import { PersistedVaultMismatchError } from "../../errors/vault-snapshot.errors";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 
 export type UnlockVaultCommandParams = {
@@ -106,6 +107,13 @@ export class UnlockVaultUseCase {
         expectedAlgorithmSuiteId: this.crypto.algorithmSuite.id,
         actualAlgorithmSuiteId: vaultSnapshot.metadata.algorithmSuiteId,
       });
+    }
+
+    if (vaultSnapshot.metadata.id !== params.vaultId) {
+      throw new PersistedVaultMismatchError(
+        params.vaultId,
+        vaultSnapshot.metadata.id,
+      );
     }
 
     const signerDeviceKeySlot = vaultSnapshot.keySlots.deviceSlots.find(

@@ -6,7 +6,6 @@ export type DeviceEnrollmentAuthorizationPayload = {
   readonly enrollmentId: string;
   readonly pendingDeviceId: string;
   readonly pendingDevicePublicSignKeyDigest: string;
-  readonly expiresAt: number;
   readonly protectedVaultMasterKeyDigest: string;
 };
 

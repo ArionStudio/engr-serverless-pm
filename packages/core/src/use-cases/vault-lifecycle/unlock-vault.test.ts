@@ -12,6 +12,7 @@ import {
   ActiveUnlockedVaultMismatchError,
   InvalidVaultLockDelayError,
 } from "../../errors/vault-session.errors";
+import { PersistedVaultMismatchError } from "../../errors/vault-snapshot.errors";
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
 
 describe("UnlockVaultUseCase", () => {
@@ -239,6 +240,37 @@ describe("UnlockVaultUseCase", () => {
         lockAfterMs: 600_000,
       }),
     ).rejects.toBeInstanceOf(UnsupportedAlgorithmSuiteError);
+
+    expect(
+      ctx.ports.crypto.verifyVaultSnapshotSignature,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("fails before verifying when the vault snapshot belongs to another vault", async () => {
+    const ctx = createUnlockVaultTestContext();
+    const mismatchedSnapshot = {
+      ...ctx.vaultSnapshot,
+      metadata: {
+        ...ctx.vaultSnapshot.metadata,
+        id: "another-vault-id",
+      },
+    };
+    ctx.saved.vaultSnapshot = mismatchedSnapshot;
+    vi.mocked(
+      ctx.ports.vaultLocalRepository.getVaultSnapshot,
+    ).mockResolvedValueOnce(mismatchedSnapshot);
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 600_000,
+      }),
+    ).rejects.toBeInstanceOf(PersistedVaultMismatchError);
 
     expect(
       ctx.ports.crypto.verifyVaultSnapshotSignature,

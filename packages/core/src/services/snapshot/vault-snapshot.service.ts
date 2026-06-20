@@ -276,6 +276,10 @@ export class VaultSnapshotService {
 
     const completedEnrollmentProof = completedEnrollmentProofs[0];
 
+    if (completedEnrollmentProof.vaultId !== vaultId) {
+      throw new VaultSnapshotSignerNotTrustedError(vaultId, pendingDeviceId);
+    }
+
     if (
       isCompletedEnrollmentProofKnown(
         trustSourceSnapshot.keySlots.completedEnrollments,
@@ -303,13 +307,6 @@ export class VaultSnapshotService {
       );
 
     if (!isEnrollmentAuthorized) {
-      throw new VaultSnapshotSignerNotTrustedError(vaultId, pendingDeviceId);
-    }
-
-    if (
-      completedEnrollmentProof.vaultId !== vaultId ||
-      this.clock.now() > completedEnrollmentProof.expiresAt
-    ) {
       throw new VaultSnapshotSignerNotTrustedError(vaultId, pendingDeviceId);
     }
 
@@ -401,7 +398,6 @@ function toAuthorizationPayload(
     pendingDeviceId: completedEnrollmentProof.pendingDeviceId,
     pendingDevicePublicSignKeyDigest:
       completedEnrollmentProof.pendingDevicePublicSignKeyDigest,
-    expiresAt: completedEnrollmentProof.expiresAt,
     protectedVaultMasterKeyDigest:
       completedEnrollmentProof.protectedVaultMasterKeyDigest,
   };

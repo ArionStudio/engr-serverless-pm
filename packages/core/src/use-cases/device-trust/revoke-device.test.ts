@@ -300,7 +300,6 @@ describe("RevokeDeviceUseCase", () => {
       pendingDevicePublicSignKey: ctx.values.pendingDevicePublicSignKey,
       pendingDevicePublicSignKeyDigest:
         ctx.values.pendingDevicePublicSignKeyDigest,
-      expiresAt: ctx.values.enrollmentExpiresAt,
       protectedVaultMasterKeyDigest:
         ctx.values.protectedEnrollmentVaultMasterKeyDigest,
       protectedVaultMasterKey: ctx.values.protectedEnrollmentVaultMasterKey,
@@ -334,7 +333,6 @@ describe("RevokeDeviceUseCase", () => {
       pendingDevicePublicSignKey: ctx.values.pendingDevicePublicSignKey,
       pendingDevicePublicSignKeyDigest:
         ctx.values.pendingDevicePublicSignKeyDigest,
-      expiresAt: ctx.values.enrollmentExpiresAt,
       protectedVaultMasterKeyDigest:
         ctx.values.protectedEnrollmentVaultMasterKeyDigest,
       protectedVaultMasterKey: ctx.values.protectedEnrollmentVaultMasterKey,
