@@ -9,6 +9,8 @@ skinparam state {
   BorderColor #1976D2
 }
 
+state "NoActiveSession" as NoActiveSession
+
 [*] --> NoActiveSession
 
 NoActiveSession --> Initializing : InitializeVaultUseCase
@@ -19,14 +21,19 @@ NoActiveSession --> Unlocking : UnlockVaultUseCase
 Unlocking --> Unlocked : verify snapshot + decrypt + schedule lock + commit
 Unlocking --> NoActiveSession : validation, crypto, schedule, or commit failure
 
-Unlocked --> Locked : LockVaultUseCase removes session
+Unlocked --> NoActiveSession : LockVaultUseCase removes unlocked session
 Unlocked --> Unlocked : stale lock actionId ignored
 Unlocked --> NoLocalVault : DeleteLocalVaultUseCase removes session and local vault
 Unlocked --> Unlocked : ChangeMasterPasswordUseCase rewraps local keys
 Unlocked --> Unlocked : Entry, sync, and trust mutations commit persisted snapshot
 
-Locked --> Unlocking : UnlockVaultUseCase
 NoLocalVault --> [*]
+
+note right of NoActiveSession
+No hot unlocked session material exists.
+For an already persisted local vault, this is the locked state.
+Before initialization, no local vault exists yet.
+end note
 
 note right of Unlocked
 Hot secrets live in unlocked session material/payload.

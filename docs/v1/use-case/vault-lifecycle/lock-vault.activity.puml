@@ -17,24 +17,23 @@ start
 
 if (actionId provided and stored task actionId differs?) then (yes)
   :Mark shouldRemoveSession = false;
-  :Return without locking session;
-  stop
-endif
+  :Skip cleanup body and continue to finally logic;
+else (no)
+  :Load pending clipboard clear task;
+  :Try clipboardClear.clearTask(requireExpired = false);
+  if (clipboard task existed?) then (yes)
+    :Try cancel scheduled clearClipboard task;
+  endif
+  :Remember clipboard cleanup error if any;
 
-:Load pending clipboard clear task;
-:Try clipboardClear.clearTask(requireExpired = false);
-if (clipboard task existed?) then (yes)
-  :Try cancel scheduled clearClipboard task;
-endif
-:Remember clipboard cleanup error if any;
+  if (vault lock task exists?) then (yes)
+    :Cancel scheduled lockVault task;
+    :Remove vault lock task metadata in finally;
+  endif
 
-if (vault lock task exists?) then (yes)
-  :Cancel scheduled lockVault task;
-  :Remove vault lock task metadata in finally;
-endif
-
-if (clipboard cleanup failed?) then (yes)
-  :Set executionError;
+  if (clipboard cleanup failed?) then (yes)
+    :Set executionError;
+  endif
 endif
 
 if (shouldRemoveSession?) then (yes)

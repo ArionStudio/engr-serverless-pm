@@ -22,7 +22,7 @@ Equal --> Configured : SyncUploadUseCase returns without upload
 LocalAhead --> Configured : SyncUploadUseCase uploads local snapshot
 RemoteAhead --> ReviewPrepared : PrepareSyncReviewUseCase downloads trusted remote and returns review
 Broken --> [*] : integrity error
-RemoteMissing --> Configured : setup can proceed only when configuring new sync
+RemoteMissing --> Configured : SyncUploadUseCase uploads local snapshot with expected remote = null
 
 ReviewPrepared --> Configured : ApplySyncResolutionUseCase persists resolved snapshot and uploads
 ReviewPrepared --> Broken : trust change requires device-trust flow or invalid resolution
