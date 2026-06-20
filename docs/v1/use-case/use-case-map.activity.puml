@@ -43,7 +43,7 @@ partition "Sync" {
 partition "Device trust" {
   :initialize-device-enrollment\ncreate pending enrollment slot and bundle;
   :perform-device-enrollment\nnew device verifies enrollment, creates local access, uploads completed trust state;
-  :recover-vault-access\nrecover from local snapshot using mnemonic, reset local trust root;
+  :recover-device-access\nuse local recovery backup to rewrap device trust material,\nrotate recovery words, no snapshot mutation;
   :revoke-device\nremove target device slot and tombstone device profile;
 }
 

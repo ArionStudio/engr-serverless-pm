@@ -6,7 +6,6 @@ export type KeySlotEnrollmentSlotState =
   | "added"
   | "removed"
   | "changed";
-export type KeySlotRecoverySlotState = "same" | "changed";
 
 export type KeySlotDeviceSlotsChanges = {
   readonly addedDeviceIds: readonly string[];
@@ -22,7 +21,6 @@ export type ChangedDeviceKeySlot = {
 
 export type KeySlotReviewItem = {
   readonly deviceSlots: KeySlotDeviceSlotsChanges;
-  readonly recoveryKeySlot: KeySlotRecoverySlotState;
   readonly enrollmentKeySlot: KeySlotEnrollmentSlotState;
   readonly hasChanges: boolean;
 };

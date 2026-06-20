@@ -65,24 +65,40 @@ export function createCoreTestValues() {
     pendingDevicePrivateSignKey: bytes<DevicePrivateSignKey>(),
     pendingDevicePublicSignKeyDigest: "pending-device-public-sign-key-digest",
     recoverySecretKey: bytes<RecoverySecretKey>(),
+    rotatedRecoverySecretKey: bytes<RecoverySecretKey>(),
     unlockedVaultSessionPayloadKey: bytes<UnlockedVaultSessionPayloadKey>(),
     recoveryMnemonicKey: {
       format: "BIP39",
       words: ["abandon", "ability", "able"],
     } satisfies RecoveryKeyMnemonic,
+    rotatedRecoveryMnemonicKey: {
+      format: "BIP39",
+      words: ["about", "above", "absent"],
+    } satisfies RecoveryKeyMnemonic,
     masterPasswordSalt: bytes<RandomBytes>(),
     localRootKey: bytes<LocalRootKey>(),
     localKeysProtectionSalt: bytes<RandomBytes>(),
     localKeysProtectionKey: bytes<ProtectionKeyFor<LocalKeysPayload>>(),
+    recoveryLocalKeysProtectionSalt: bytes<RandomBytes>(),
+    recoveryLocalKeysProtectionKey: bytes<ProtectionKeyFor<LocalKeysPayload>>(),
+    rotatedRecoveryLocalKeysProtectionSalt: bytes<RandomBytes>(),
+    rotatedRecoveryLocalKeysProtectionKey:
+      bytes<ProtectionKeyFor<LocalKeysPayload>>(),
     deviceSlotVaultMasterKeyProtectionKey:
-      bytes<ProtectionKeyFor<VaultMasterKey>>(),
-    recoveryVaultMasterKeyProtectionKey:
       bytes<ProtectionKeyFor<VaultMasterKey>>(),
     enrollmentVaultMasterKeyProtectionKey:
       bytes<ProtectionKeyFor<VaultMasterKey>>(),
     protectedLocalKeys: {
       wrappedKey: b64("protected-local-keys"),
       wrappingNonce: b64("protected-local-keys-nonce"),
+    } satisfies SerializedWrapped<LocalKeysPayload>,
+    recoveryProtectedLocalKeys: {
+      wrappedKey: b64("recovery-protected-local-keys"),
+      wrappingNonce: b64("recovery-protected-local-keys-nonce"),
+    } satisfies SerializedWrapped<LocalKeysPayload>,
+    rotatedRecoveryProtectedLocalKeys: {
+      wrappedKey: b64("rotated-recovery-protected-local-keys"),
+      wrappingNonce: b64("rotated-recovery-protected-local-keys-nonce"),
     } satisfies SerializedWrapped<LocalKeysPayload>,
     newMasterPasswordSalt: bytes<RandomBytes>(),
     newLocalRootKey: bytes<LocalRootKey>(),
@@ -95,10 +111,6 @@ export function createCoreTestValues() {
     protectedDeviceVaultMasterKey: {
       wrappedKey: b64("protected-device-vault-master-key"),
       wrappingNonce: b64("protected-device-vault-master-key-nonce"),
-    } satisfies SerializedWrapped<VaultMasterKey>,
-    protectedRecoveryVaultMasterKey: {
-      wrappedKey: b64("protected-recovery-vault-master-key"),
-      wrappingNonce: b64("protected-recovery-vault-master-key-nonce"),
     } satisfies SerializedWrapped<VaultMasterKey>,
     protectedEnrollmentVaultMasterKey: {
       wrappedKey: b64("protected-enrollment-vault-master-key"),

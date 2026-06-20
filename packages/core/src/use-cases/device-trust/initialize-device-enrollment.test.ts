@@ -174,9 +174,6 @@ describe("InitializeDeviceEnrollmentUseCase", () => {
             publicSignKey: ctx.values.devicePublicSignKey,
           },
         ],
-        recoveryKeySlot: {
-          protectedVaultMasterKey: ctx.values.protectedRecoveryVaultMasterKey,
-        },
         enrollmentKeySlot: {
           enrollmentId: ctx.values.enrollmentId,
           pendingDeviceId: ctx.values.pendingDeviceId,

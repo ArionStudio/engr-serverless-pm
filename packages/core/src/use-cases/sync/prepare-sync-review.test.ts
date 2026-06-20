@@ -45,9 +45,6 @@ function createSnapshot(
           publicSignKey: values.devicePublicSignKey,
         },
       ],
-      recoveryKeySlot: {
-        protectedVaultMasterKey: values.protectedRecoveryVaultMasterKey,
-      },
     },
     content: values.encryptedVault,
     signature: values.snapshotSignature,
@@ -198,7 +195,6 @@ describe("PrepareSyncReviewUseCase", () => {
               removedDeviceIds: [],
               changedDeviceIds: [],
             },
-            recoveryKeySlot: "same",
             enrollmentKeySlot: "missing",
             hasChanges: false,
           },

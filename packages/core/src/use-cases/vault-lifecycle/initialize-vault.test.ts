@@ -46,20 +46,21 @@ describe("InitializeVaultUseCase", () => {
       ctx.values.localKeysProtectionKey,
     );
     expect(
+      ctx.ports.crypto.deriveRecoveryLocalKeysProtectionKey,
+    ).toHaveBeenCalledWith(
+      ctx.values.recoverySecretKey,
+      ctx.values.recoveryLocalKeysProtectionSalt,
+    );
+    expect(ctx.ports.crypto.wrapLocalKeysPayload).toHaveBeenCalledWith(
+      expectedLocalKeysPayload,
+      ctx.values.recoveryLocalKeysProtectionKey,
+    );
+    expect(
       ctx.ports.crypto.deriveDeviceSlotVaultMasterKeyProtectionKey,
     ).toHaveBeenCalledWith(ctx.values.deviceSlotKey);
-    expect(
-      ctx.ports.crypto.deriveRecoveryVaultMasterKeyProtectionKey,
-    ).toHaveBeenCalledWith(ctx.values.recoverySecretKey);
-    expect(ctx.ports.crypto.wrapVaultMasterKey).toHaveBeenNthCalledWith(
-      1,
+    expect(ctx.ports.crypto.wrapVaultMasterKey).toHaveBeenCalledWith(
       ctx.values.vaultMasterKey,
       ctx.values.deviceSlotVaultMasterKeyProtectionKey,
-    );
-    expect(ctx.ports.crypto.wrapVaultMasterKey).toHaveBeenNthCalledWith(
-      2,
-      ctx.values.vaultMasterKey,
-      ctx.values.recoveryVaultMasterKeyProtectionKey,
     );
 
     const expectedVault: Vault = {
@@ -103,6 +104,15 @@ describe("InitializeVaultUseCase", () => {
       devicePublicSignKey: ctx.values.devicePublicSignKey,
       protectedLocalKeys: ctx.values.protectedLocalKeys,
     });
+    expect(ctx.saved.deviceAccessRecoveryBackup).toEqual({
+      vaultId: ctx.values.vaultId,
+      deviceId: ctx.values.deviceId,
+      algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
+      recoveryLocalKeysProtectionSalt:
+        ctx.values.recoveryLocalKeysProtectionSalt,
+      devicePublicSignKey: ctx.values.devicePublicSignKey,
+      protectedLocalKeys: ctx.values.recoveryProtectedLocalKeys,
+    });
 
     expect(ctx.saved.vaultSnapshot).toEqual({
       metadata: {
@@ -124,9 +134,6 @@ describe("InitializeVaultUseCase", () => {
             publicSignKey: ctx.values.devicePublicSignKey,
           },
         ],
-        recoveryKeySlot: {
-          protectedVaultMasterKey: ctx.values.protectedRecoveryVaultMasterKey,
-        },
       },
       content: ctx.values.encryptedVault,
       signature: ctx.values.snapshotSignature,
@@ -210,6 +217,7 @@ describe("InitializeVaultUseCase", () => {
     ).toHaveBeenCalledWith(ctx.values.vaultId);
     expect(ctx.saved.localVaultDescriptor).toBeUndefined();
     expect(ctx.saved.deviceAccessMaterial).toBeUndefined();
+    expect(ctx.saved.deviceAccessRecoveryBackup).toBeUndefined();
     expect(ctx.saved.vaultSnapshot).toBeUndefined();
   });
 

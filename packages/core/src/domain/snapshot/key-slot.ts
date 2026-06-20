@@ -14,10 +14,6 @@ export type DeviceKeySlot = {
   publicSignKey: DevicePublicSignKey;
 };
 
-export type RecoveryKeySlot = {
-  protectedVaultMasterKey: SerializedWrapped<VaultMasterKey>;
-};
-
 /**
  * Pending device enrollment material persisted inside a signed vault snapshot.
  *

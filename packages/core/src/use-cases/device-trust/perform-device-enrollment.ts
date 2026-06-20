@@ -3,9 +3,11 @@ import type {
   DeviceEnrollmentAuthorizationPayload,
 } from "../../domain/device-trust";
 import type { DeviceAccessMaterial } from "../../domain/device-trust/device-access-material";
+import type { DeviceAccessRecoveryBackup } from "../../domain/device-trust/device-access-recovery-backup";
 import type { DeviceEnrollmentBundle } from "../../domain/device-trust/device-enrollment-bundle";
 import type { LocalKeysPayload } from "../../domain/device-trust/local-protection.type";
 import type { RawMasterPassword } from "../../domain/master-password";
+import type { RecoveryKeyMnemonic } from "../../domain/recovery/bip39-mnemonic";
 import {
   areVaultSnapshotDescriptorsEqual,
   toVaultSnapshotDescriptor,
@@ -34,6 +36,7 @@ import {
   SyncConflictDetectedError,
 } from "../../errors/sync.errors";
 import { VaultSnapshotSignatureVerificationFailedError } from "../../errors/unlock-vault.errors";
+import type { Bip39Port } from "../../ports/crypto/bip39.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { ClockPort } from "../../ports/system/clock.port";
@@ -52,9 +55,11 @@ export type PerformDeviceEnrollmentResult = {
   readonly snapshotVersionVector: VersionVector;
   readonly revisionTimestamp: number;
   readonly deviceId: string;
+  readonly recoveryMnemonicKey: RecoveryKeyMnemonic;
 };
 
 export class PerformDeviceEnrollmentUseCase {
+  private readonly bip39: Bip39Port;
   private readonly clock: ClockPort;
   private readonly crypto: CryptoPort;
   private readonly syncProvider: SyncProviderPort;
@@ -65,11 +70,13 @@ export class PerformDeviceEnrollmentUseCase {
   constructor(
     clock: ClockPort,
     crypto: CryptoPort,
+    bip39: Bip39Port,
     syncProvider: SyncProviderPort,
     unlockedVaultSession: UnlockedVaultSessionService,
     vaultDisplayName: VaultDisplayNamePort,
     vaultLocalRepository: VaultLocalRepositoryPort,
   ) {
+    this.bip39 = bip39;
     this.clock = clock;
     this.crypto = crypto;
     this.syncProvider = syncProvider;
@@ -294,6 +301,20 @@ export class PerformDeviceEnrollmentUseCase {
       localKeysPayload,
       localKeysProtectionKey,
     );
+    const recoverySecretKey = await this.crypto.generateRecoveryKey();
+    const recoveryMnemonicKey =
+      await this.bip39.recoveryKeyToMnemonic(recoverySecretKey);
+    const recoveryLocalKeysProtectionSalt =
+      await this.crypto.generateRecoveryLocalKeysProtectionSalt();
+    const recoveryLocalKeysProtectionKey =
+      await this.crypto.deriveRecoveryLocalKeysProtectionKey(
+        recoverySecretKey,
+        recoveryLocalKeysProtectionSalt,
+      );
+    const recoveryProtectedLocalKeys = await this.crypto.wrapLocalKeysPayload(
+      localKeysPayload,
+      recoveryLocalKeysProtectionKey,
+    );
     const deviceSlotVaultMasterKeyProtectionKey =
       await this.crypto.deriveDeviceSlotVaultMasterKeyProtectionKey(
         deviceSlotKey,
@@ -333,7 +354,6 @@ export class PerformDeviceEnrollmentUseCase {
             publicSignKey: devicePublicSignKey,
           },
         ],
-        recoveryKeySlot: remoteSnapshot.keySlots.recoveryKeySlot,
         completedEnrollments: [
           ...completedEnrollments,
           completedEnrollmentProof,
@@ -373,6 +393,14 @@ export class PerformDeviceEnrollmentUseCase {
       devicePublicSignKey,
       protectedLocalKeys,
     };
+    const deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup = {
+      vaultId: enrollmentBundle.vaultId,
+      deviceId,
+      algorithmSuiteId: this.crypto.algorithmSuite.id,
+      recoveryLocalKeysProtectionSalt,
+      devicePublicSignKey,
+      protectedLocalKeys: recoveryProtectedLocalKeys,
+    };
     const localVaultDescriptor: LocalVaultDescriptor = {
       vaultId: enrollmentBundle.vaultId,
       displayName: vaultDisplayName,
@@ -389,6 +417,7 @@ export class PerformDeviceEnrollmentUseCase {
     await this.vaultLocalRepository.saveInitializedLocalVault(
       localVaultDescriptor,
       deviceAccessMaterial,
+      deviceAccessRecoveryBackup,
       registeredVaultSnapshot,
     );
 
@@ -444,6 +473,7 @@ export class PerformDeviceEnrollmentUseCase {
         registeredVaultSnapshot.metadata.snapshotVersionVector,
       revisionTimestamp: registeredVaultSnapshot.metadata.revisionTimestamp,
       deviceId: registeredVaultSnapshot.metadata.createdByDeviceId,
+      recoveryMnemonicKey,
     };
   }
 }

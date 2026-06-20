@@ -2,9 +2,8 @@ import { describe, expect, it } from "vitest";
 import { DuplicateVaultDeviceProfileError } from "../../errors/vault-device.errors";
 import type { Vault } from "./vault";
 import {
-  addRecoveredDeviceProfileToVault,
+  addDeviceProfileToVault,
   removeOtherDeviceProfilesFromVault,
-  resetDeviceProfilesToRecoveredDevice,
   revokeDeviceProfileFromVault,
 } from "./vault-device.mutations";
 
@@ -21,129 +20,27 @@ function createVault(): Vault {
 }
 
 describe("vault device mutation utils", () => {
-  it("adds a recovered device profile and increments the vault vector", () => {
+  it("adds a device profile and increments the vault vector", () => {
     expect(
-      addRecoveredDeviceProfileToVault(
-        createVault(),
-        "recovered-device-id",
-        "Recovered laptop",
-        1,
-      ),
+      addDeviceProfileToVault(createVault(), "device-id", "Laptop", 1),
     ).toEqual({
       ...createVault(),
-      versionVector: { A: 7, "recovered-device-id": 1 },
+      versionVector: { A: 7, "device-id": 1 },
       deviceProfiles: [
         {
-          id: "recovered-device-id",
-          name: "Recovered laptop",
+          id: "device-id",
+          name: "Laptop",
           createdAt: 1,
           versionVector: {
-            "recovered-device-id": 1,
+            "device-id": 1,
           },
         },
       ],
     });
   });
 
-  it("preserves device state when no replaced device identity is known", () => {
-    const vault = addRecoveredDeviceProfileToVault(
-      {
-        ...createVault(),
-        deviceProfiles: [
-          {
-            id: "source-device-id",
-            name: "Source laptop",
-            createdAt: 1,
-            versionVector: { A: 7 },
-          },
-        ],
-        deletedDeviceProfiles: [
-          {
-            id: "old-device-id",
-            versionVector: { B: 2 },
-            deletedAt: 1,
-          },
-        ],
-      },
-      "recovered-device-id",
-      "Recovered laptop",
-      2,
-    );
-
-    expect(
-      vault.deviceProfiles.map((deviceProfile) => deviceProfile.id),
-    ).toEqual(["source-device-id", "recovered-device-id"]);
-    expect(vault.versionVector).toEqual({ A: 7, "recovered-device-id": 1 });
-    expect(vault.deletedDeviceProfiles).toEqual([
-      {
-        id: "old-device-id",
-        versionVector: { B: 2 },
-        deletedAt: 1,
-      },
-    ]);
-  });
-
-  it("resets active device profiles to a recovered device", () => {
-    const vault = resetDeviceProfilesToRecoveredDevice(
-      {
-        ...createVault(),
-        deviceProfiles: [
-          {
-            id: "old-device-id",
-            name: "Old laptop",
-            createdAt: 1,
-            versionVector: { A: 7 },
-          },
-          {
-            id: "other-device-id",
-            name: "Other laptop",
-            createdAt: 1,
-            versionVector: { B: 3 },
-          },
-        ],
-        deletedDeviceProfiles: [
-          {
-            id: "old-device-id",
-            versionVector: { A: 6 },
-            deletedAt: 1,
-          },
-          {
-            id: "previous-device-id",
-            versionVector: { C: 2 },
-            deletedAt: 1,
-          },
-        ],
-      },
-      "recovered-device-id",
-      "Recovered laptop",
-      2,
-    );
-
-    expect(
-      vault.deviceProfiles.map((deviceProfile) => deviceProfile.id),
-    ).toEqual(["recovered-device-id"]);
-    expect(vault.versionVector).toEqual({ A: 7, "recovered-device-id": 1 });
-    expect(vault.deletedDeviceProfiles).toEqual([
-      {
-        id: "previous-device-id",
-        versionVector: { C: 2 },
-        deletedAt: 1,
-      },
-      {
-        id: "old-device-id",
-        versionVector: { A: 7, "recovered-device-id": 1 },
-        deletedAt: 2,
-      },
-      {
-        id: "other-device-id",
-        versionVector: { B: 3, "recovered-device-id": 1 },
-        deletedAt: 2,
-      },
-    ]);
-  });
-
-  it("preserves device state when appending a recovered profile", () => {
-    const vault = addRecoveredDeviceProfileToVault(
+  it("preserves device state when appending a device profile", () => {
+    const vault = addDeviceProfileToVault(
       {
         ...createVault(),
         deviceProfiles: [
@@ -155,75 +52,54 @@ describe("vault device mutation utils", () => {
           },
         ],
       },
-      "recovered-device-id",
-      "Recovered laptop",
+      "device-id",
+      "Laptop",
       2,
     );
 
     expect(
       vault.deviceProfiles.map((deviceProfile) => deviceProfile.id),
-    ).toEqual(["source-device-id", "recovered-device-id"]);
-    expect(vault.versionVector).toEqual({ A: 7, "recovered-device-id": 1 });
+    ).toEqual(["source-device-id", "device-id"]);
+    expect(vault.versionVector).toEqual({ A: 7, "device-id": 1 });
     expect(vault.deletedDeviceProfiles).toEqual([]);
   });
 
-  it("rejects an active recovered device profile duplicate", () => {
+  it("rejects an active device profile duplicate", () => {
     expect(() =>
-      addRecoveredDeviceProfileToVault(
+      addDeviceProfileToVault(
         {
           ...createVault(),
           deviceProfiles: [
             {
-              id: "recovered-device-id",
+              id: "device-id",
               name: "Existing laptop",
               createdAt: 1,
               versionVector: { A: 7 },
             },
           ],
         },
-        "recovered-device-id",
-        "Recovered laptop",
+        "device-id",
+        "Laptop",
         2,
       ),
     ).toThrow(DuplicateVaultDeviceProfileError);
   });
 
-  it("rejects a deleted recovered device profile duplicate", () => {
+  it("rejects a deleted device profile duplicate", () => {
     expect(() =>
-      addRecoveredDeviceProfileToVault(
+      addDeviceProfileToVault(
         {
           ...createVault(),
           deletedDeviceProfiles: [
             {
-              id: "recovered-device-id",
+              id: "device-id",
               versionVector: { A: 7 },
               deletedAt: 1,
             },
           ],
         },
-        "recovered-device-id",
-        "Recovered laptop",
-        2,
-      ),
-    ).toThrow(DuplicateVaultDeviceProfileError);
-  });
-
-  it("rejects an active recovered device profile duplicate during reset", () => {
-    expect(() =>
-      resetDeviceProfilesToRecoveredDevice(
-        {
-          ...createVault(),
-          deviceProfiles: [
-            {
-              id: "recovered-device-id",
-              name: "Existing laptop",
-              createdAt: 1,
-              versionVector: { A: 7 },
-            },
-          ],
-        },
-        "recovered-device-id",
-        "Recovered laptop",
+        "device-id",
+        "Laptop",
         2,
       ),
     ).toThrow(DuplicateVaultDeviceProfileError);

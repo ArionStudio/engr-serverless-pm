@@ -1,5 +1,6 @@
 export type AlgorithmSuiteArtifact =
   | "device access material"
+  | "device access recovery backup"
   | "vault snapshot";
 
 export class UnsupportedAlgorithmSuiteError extends Error {

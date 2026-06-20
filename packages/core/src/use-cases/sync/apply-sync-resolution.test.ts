@@ -49,9 +49,6 @@ function createSnapshot(
           publicSignKey: values.devicePublicSignKey,
         },
       ],
-      recoveryKeySlot: {
-        protectedVaultMasterKey: values.protectedRecoveryVaultMasterKey,
-      },
     },
     content: values.encryptedVault,
     signature: values.snapshotSignature,
@@ -368,7 +365,6 @@ describe("ApplySyncResolutionUseCase", () => {
             publicSignKey: ctx.values.pendingDevicePublicSignKey,
           },
         ],
-        recoveryKeySlot: ctx.localSnapshot.keySlots.recoveryKeySlot,
         completedEnrollments: [createCompletedEnrollmentProof(ctx.values)],
       },
     });
@@ -502,7 +498,6 @@ describe("ApplySyncResolutionUseCase", () => {
             publicSignKey: ctx.values.pendingDevicePublicSignKey,
           },
         ],
-        recoveryKeySlot: ctx.localSnapshot.keySlots.recoveryKeySlot,
         completedEnrollments: [createCompletedEnrollmentProof(ctx.values)],
       },
     });

@@ -19,11 +19,12 @@ NewDeviceTrustedRemotely --> SyncedTrustedDevice : ApplySyncResolutionUseCase\na
 SyncedTrustedDevice --> DeviceRevoked : RevokeDeviceUseCase\nremoves target slot and tombstones profile
 DeviceRevoked --> SyncedTrustedDevice : upload and session commit complete
 
-SyncedTrustedDevice --> LocalOnlyRecovered : RecoverVaultAccessUseCase\nresets trust root to recovered device
-LocalOnlyRecovered --> SyncedTrustedDevice : SetupSyncUseCase may configure sync again
-
 SyncedTrustedDevice --> LocalOnlyCurrentDevice : DisableSyncUseCase\nremoves syncConfig, remote snapshots,\nother device profiles, and other device slots
 LocalOnlyCurrentDevice --> SyncedTrustedDevice : SetupSyncUseCase may configure sync again
+
+SingleTrustedDevice --> SingleTrustedDevice : RecoverDeviceAccessUseCase\nrewraps local device material and rotates recovery words
+SyncedTrustedDevice --> SyncedTrustedDevice : RecoverDeviceAccessUseCase\nlocal-only recovery, no snapshot mutation or sync upload
+LocalOnlyCurrentDevice --> LocalOnlyCurrentDevice : RecoverDeviceAccessUseCase\nrewraps current device material and rotates recovery words
 
 EnrollmentPending --> SyncedTrustedDevice : initialization upload fails\nrollback to previous snapshot/session
 EnrollmentPending --> SyncedTrustedDevice : enrollment is superseded\nfuture mutation must resolve state
@@ -32,6 +33,12 @@ note right of EnrollmentPending
 Pending enrollment data lives in snapshot keySlots.enrollmentKeySlot.
 The enrollment bundle carries syncConfig, descriptor data,
 enrollment secret, and pending private signing key.
+end note
+
+note right of SingleTrustedDevice
+Each local device has its own DeviceAccessRecoveryBackup.
+Recovery proves the existing device slot still unlocks the local snapshot,
+then replaces local device access material and recovery backup atomically.
 end note
 
 @enduml

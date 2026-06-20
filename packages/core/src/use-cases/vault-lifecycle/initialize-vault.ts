@@ -1,4 +1,5 @@
 import type { DeviceAccessMaterial } from "../../domain/device-trust/device-access-material";
+import type { DeviceAccessRecoveryBackup } from "../../domain/device-trust/device-access-recovery-backup";
 import type { DeviceProfile } from "../../domain/device-profile/device-profile";
 import type { LocalKeysPayload } from "../../domain/device-trust/local-protection.type";
 import type { RawMasterPassword } from "../../domain/master-password";
@@ -29,8 +30,8 @@ export type InitializeVaultResult = {
 };
 
 export class InitializeVaultUseCase {
-  private readonly crypto: CryptoPort;
   private readonly bip39: Bip39Port;
+  private readonly crypto: CryptoPort;
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
   private readonly ids: IdPort;
@@ -97,25 +98,27 @@ export class InitializeVaultUseCase {
       localKeysPayload,
       localKeysProtectionKey,
     );
+    const recoveryLocalKeysProtectionSalt =
+      await this.crypto.generateRecoveryLocalKeysProtectionSalt();
+    const recoveryLocalKeysProtectionKey =
+      await this.crypto.deriveRecoveryLocalKeysProtectionKey(
+        recoverySecretKey,
+        recoveryLocalKeysProtectionSalt,
+      );
+    const recoveryProtectedLocalKeys = await this.crypto.wrapLocalKeysPayload(
+      localKeysPayload,
+      recoveryLocalKeysProtectionKey,
+    );
 
     const deviceSlotVaultMasterKeyProtectionKey =
       await this.crypto.deriveDeviceSlotVaultMasterKeyProtectionKey(
         deviceSlotKey,
-      );
-    const recoveryVaultMasterKeyProtectionKey =
-      await this.crypto.deriveRecoveryVaultMasterKeyProtectionKey(
-        recoverySecretKey,
       );
 
     const protectedDeviceVaultMasterKey = await this.crypto.wrapVaultMasterKey(
       vaultMasterKey,
       deviceSlotVaultMasterKeyProtectionKey,
     );
-    const protectedRecoveryVaultMasterKey =
-      await this.crypto.wrapVaultMasterKey(
-        vaultMasterKey,
-        recoveryVaultMasterKeyProtectionKey,
-      );
 
     const deviceProfile: DeviceProfile = {
       id: deviceId,
@@ -158,9 +161,6 @@ export class InitializeVaultUseCase {
             publicSignKey: deviceSignKeyPair.publicKey,
           },
         ],
-        recoveryKeySlot: {
-          protectedVaultMasterKey: protectedRecoveryVaultMasterKey,
-        },
       },
       content: await this.crypto.encryptVaultSnapshotContent(
         vault,
@@ -185,6 +185,14 @@ export class InitializeVaultUseCase {
       devicePublicSignKey: deviceSignKeyPair.publicKey,
       protectedLocalKeys,
     };
+    const deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup = {
+      vaultId,
+      deviceId,
+      algorithmSuiteId: this.crypto.algorithmSuite.id,
+      recoveryLocalKeysProtectionSalt,
+      devicePublicSignKey: deviceSignKeyPair.publicKey,
+      protectedLocalKeys: recoveryProtectedLocalKeys,
+    };
 
     const localVaultDescriptor: LocalVaultDescriptor = {
       vaultId,
@@ -203,6 +211,7 @@ export class InitializeVaultUseCase {
     await this.vaultLocalRepository.saveInitializedLocalVault(
       localVaultDescriptor,
       deviceAccessMaterial,
+      deviceAccessRecoveryBackup,
       vaultSnapshot,
     );
     try {

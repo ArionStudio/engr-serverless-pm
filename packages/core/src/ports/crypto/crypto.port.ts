@@ -51,6 +51,7 @@ export interface CryptoPort {
   // Salt generation
   generateMasterPasswordSalt: () => Promise<RandomBytes>;
   generateLocalKeysProtectionSalt: () => Promise<RandomBytes>;
+  generateRecoveryLocalKeysProtectionSalt: () => Promise<RandomBytes>;
 
   // Password-based local protection
   deriveLocalRootKey: (
@@ -61,13 +62,14 @@ export interface CryptoPort {
     localRootKey: LocalRootKey,
     salt: RandomBytes,
   ) => Promise<ProtectionKeyFor<LocalKeysPayload>>;
+  deriveRecoveryLocalKeysProtectionKey: (
+    recoveryKey: RecoverySecretKey,
+    salt: RandomBytes,
+  ) => Promise<ProtectionKeyFor<LocalKeysPayload>>;
 
   // Vault master key slot protection
   deriveDeviceSlotVaultMasterKeyProtectionKey: (
     deviceSlotKey: DeviceSlotKey,
-  ) => Promise<ProtectionKeyFor<VaultMasterKey>>;
-  deriveRecoveryVaultMasterKeyProtectionKey: (
-    recoveryKey: RecoverySecretKey,
   ) => Promise<ProtectionKeyFor<VaultMasterKey>>;
   deriveEnrollmentVaultMasterKeyProtectionKey: (
     enrollmentSecret: DeviceEnrollmentSecret,

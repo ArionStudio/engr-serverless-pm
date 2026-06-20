@@ -179,7 +179,6 @@ export class ApplySyncResolutionUseCase {
     if (
       completedEnrollmentProof !== null &&
       completedEnrollmentProof.vaultId === params.vaultId &&
-      keySlotsChanges.recoveryKeySlot === "same" &&
       keySlotsChanges.deviceSlots.addedDeviceIds.length === 1 &&
       keySlotsChanges.deviceSlots.removedDeviceIds.length === 0 &&
       keySlotsChanges.deviceSlots.changedDeviceIds.length === 0

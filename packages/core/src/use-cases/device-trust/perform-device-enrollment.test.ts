@@ -64,9 +64,6 @@ function createRemoteSnapshot(
           publicSignKey: values.devicePublicSignKey,
         },
       ],
-      recoveryKeySlot: {
-        protectedVaultMasterKey: values.protectedRecoveryVaultMasterKey,
-      },
       enrollmentKeySlot: {
         enrollmentId: values.enrollmentId,
         pendingDeviceId: values.pendingDeviceId,
@@ -144,6 +141,7 @@ function createContext() {
     useCase: new PerformDeviceEnrollmentUseCase(
       ports.clock,
       ports.crypto,
+      ports.bip39,
       ports.syncProvider,
       ports.sessionServices.unlockedVaultSession,
       ports.vaultDisplayName,
@@ -189,6 +187,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       },
       revisionTimestamp: ctx.values.timestamp,
       deviceId: ctx.values.pendingDeviceId,
+      recoveryMnemonicKey: ctx.values.recoveryMnemonicKey,
     });
     expect(
       ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
@@ -242,6 +241,22 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       },
       ctx.values.localKeysProtectionKey,
     );
+    expect(ctx.ports.bip39.recoveryKeyToMnemonic).toHaveBeenCalledWith(
+      ctx.values.recoverySecretKey,
+    );
+    expect(
+      ctx.ports.crypto.deriveRecoveryLocalKeysProtectionKey,
+    ).toHaveBeenCalledWith(
+      ctx.values.recoverySecretKey,
+      ctx.values.recoveryLocalKeysProtectionSalt,
+    );
+    expect(ctx.ports.crypto.wrapLocalKeysPayload).toHaveBeenCalledWith(
+      {
+        deviceSlotKey: ctx.values.deviceSlotKey,
+        devicePrivateSignKey: ctx.values.pendingDevicePrivateSignKey,
+      },
+      ctx.values.recoveryLocalKeysProtectionKey,
+    );
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).toHaveBeenCalledWith(
       registeredVault,
       ctx.values.vaultMasterKey,
@@ -259,6 +274,15 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       localKeysProtectionSalt: ctx.values.localKeysProtectionSalt,
       devicePublicSignKey: ctx.values.pendingDevicePublicSignKey,
       protectedLocalKeys: ctx.values.protectedLocalKeys,
+    });
+    expect(ctx.ports.saved.deviceAccessRecoveryBackup).toEqual({
+      vaultId: ctx.values.vaultId,
+      deviceId: ctx.values.pendingDeviceId,
+      algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
+      recoveryLocalKeysProtectionSalt:
+        ctx.values.recoveryLocalKeysProtectionSalt,
+      devicePublicSignKey: ctx.values.pendingDevicePublicSignKey,
+      protectedLocalKeys: ctx.values.recoveryProtectedLocalKeys,
     });
     expect(ctx.ports.saved.vaultSnapshot).toEqual({
       metadata: {
@@ -279,7 +303,6 @@ describe("PerformDeviceEnrollmentUseCase", () => {
             publicSignKey: ctx.values.pendingDevicePublicSignKey,
           },
         ],
-        recoveryKeySlot: ctx.remoteSnapshot.keySlots.recoveryKeySlot,
         completedEnrollments: [
           {
             version: 1,
@@ -708,7 +731,6 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       ...ctx.remoteSnapshot,
       keySlots: {
         deviceSlots: ctx.remoteSnapshot.keySlots.deviceSlots,
-        recoveryKeySlot: ctx.remoteSnapshot.keySlots.recoveryKeySlot,
       },
     });
 
@@ -750,6 +772,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     ).toHaveBeenCalledWith(ctx.values.vaultId);
     expect(ctx.ports.saved.localVaultDescriptor).toBeUndefined();
     expect(ctx.ports.saved.deviceAccessMaterial).toBeUndefined();
+    expect(ctx.ports.saved.deviceAccessRecoveryBackup).toBeUndefined();
     expect(ctx.ports.saved.vaultSnapshot).toBeUndefined();
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });
@@ -779,6 +802,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
     expect(ctx.ports.saved.localVaultDescriptor).toBeUndefined();
     expect(ctx.ports.saved.deviceAccessMaterial).toBeUndefined();
+    expect(ctx.ports.saved.deviceAccessRecoveryBackup).toBeUndefined();
     expect(ctx.ports.saved.vaultSnapshot).toBeUndefined();
   });
 });
