@@ -21,10 +21,14 @@ endif
 
 :Generate deviceId, timestamp, vaultDisplayName;
 :Generate vaultMasterKey, deviceSlotKey,\ndevice signing key pair;
+:Generate recovery key and recovery mnemonic;
 :Generate master-password salt and local-keys protection salt;
 :Derive localRootKey from masterPassword;
 :Derive localKeysProtectionKey;
 :Wrap local keys payload\n(deviceSlotKey + devicePrivateSignKey);
+:Generate recovery local-keys protection salt;
+:Derive recovery local-keys protection key;
+:Wrap local keys payload for recovery backup;
 :Derive device-slot protection key;
 :Wrap vaultMasterKey for device slot;
 :Build initial device profile with vector {deviceId: 1};
@@ -33,12 +37,13 @@ endif
 :Build unsigned snapshot with one device slot;
 :Sign snapshot with device private signing key;
 :Build device access material;
+:Build device access recovery backup;
 :Build local vault descriptor;
 :Build unlocked vault session object;
-:saveInitializedLocalVault(descriptor, access material, snapshot);
+:saveInitializedLocalVault(descriptor,\naccess material, recovery backup, snapshot);
 
 if (commit unlocked session succeeds?) then (yes)
-  :Return vaultDisplayName;
+  :Return vaultDisplayName and recoveryMnemonicKey;
   stop
 else (no)
   :Best effort removePersistedLocalVault(vaultId);

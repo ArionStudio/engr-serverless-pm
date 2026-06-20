@@ -51,6 +51,7 @@ export interface CryptoPort {
   // Salt generation
   generateMasterPasswordSalt: () => Promise<RandomBytes>;
   generateLocalKeysProtectionSalt: () => Promise<RandomBytes>;
+  generateRecoveryLocalKeysProtectionSalt: () => Promise<RandomBytes>;
 
   // Password-based local protection
   deriveLocalRootKey: (
@@ -59,6 +60,10 @@ export interface CryptoPort {
   ) => Promise<LocalRootKey>;
   deriveLocalKeysProtectionKey: (
     localRootKey: LocalRootKey,
+    salt: RandomBytes,
+  ) => Promise<ProtectionKeyFor<LocalKeysPayload>>;
+  deriveRecoveryLocalKeysProtectionKey: (
+    recoveryKey: RecoverySecretKey,
     salt: RandomBytes,
   ) => Promise<ProtectionKeyFor<LocalKeysPayload>>;
 

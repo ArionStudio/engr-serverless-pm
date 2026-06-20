@@ -33,12 +33,13 @@ UC -> Crypto : unwrapVaultMasterKey(enrollmentSlot.protectedVaultMasterKey, key)
 UC -> Crypto : decryptVaultSnapshotContent(remoteSnapshot.content, vaultMasterKey)
 UC -> Names : generateVaultDisplayName()
 UC -> Crypto : generate local salts, deviceSlotKey, wrap local keys
+UC -> Crypto : generate recovery key, derive recovery protection, wrap local keys
 UC -> Crypto : wrapVaultMasterKey(vaultMasterKey, deviceSlotProtectionKey)
 UC -> Domain : addDeviceProfileToVault(vault, pendingDeviceId, deviceName, now)
 UC -> Crypto : encryptVaultSnapshotContent(registeredVault, vaultMasterKey)
 UC -> Crypto : signVaultSnapshot(unsignedSnapshot, pendingPrivateSignKey)
 UC -> Crypto : verifyVaultSnapshotSignature(registeredSnapshot, pendingPublicSignKey)
-UC -> LocalRepo : saveInitializedLocalVault(descriptor, accessMaterial, registeredSnapshot)
+UC -> LocalRepo : saveInitializedLocalVault(descriptor, accessMaterial, recoveryBackup, registeredSnapshot)
 UC -> Session : commit(unlockedVault, registeredSnapshot.vector)
 alt commit fails
   UC -> LocalRepo : removePersistedLocalVault(vaultId)
@@ -50,7 +51,7 @@ else committed
     UC -> LocalRepo : removePersistedLocalVault(vaultId)
     UC --> Caller : throw conflict or upload failure
   else uploaded
-    UC --> Caller : vault, vector, timestamp, deviceId
+    UC --> Caller : vault, vector, timestamp, deviceId, recoveryMnemonicKey
   end
 end
 

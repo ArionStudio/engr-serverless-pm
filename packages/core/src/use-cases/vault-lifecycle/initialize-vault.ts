@@ -1,7 +1,9 @@
 import type { DeviceAccessMaterial } from "../../domain/device-trust/device-access-material";
+import type { DeviceAccessRecoveryBackup } from "../../domain/device-trust/device-access-recovery-backup";
 import type { DeviceProfile } from "../../domain/device-profile/device-profile";
 import type { LocalKeysPayload } from "../../domain/device-trust/local-protection.type";
 import type { RawMasterPassword } from "../../domain/master-password";
+import type { RecoveryKeyMnemonic } from "../../domain/recovery/bip39-mnemonic";
 import type {
   UnsignedVaultSnapshot,
   VaultSnapshot,
@@ -9,6 +11,7 @@ import type {
 import type { LocalVaultDescriptor } from "../../domain/vault/local-vault-descriptor";
 import type { UnlockedVault } from "../../domain/session/unlocked-vault";
 import type { Vault } from "../../domain/vault/vault";
+import type { Bip39Port } from "../../ports/crypto/bip39.port";
 import type { ClockPort } from "../../ports/system/clock.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { IdPort } from "../../ports/system/id.port";
@@ -22,10 +25,12 @@ export type InitializeVaultCommandParams = {
 };
 
 export type InitializeVaultResult = {
+  recoveryMnemonicKey: RecoveryKeyMnemonic;
   vaultDisplayName: string;
 };
 
 export class InitializeVaultUseCase {
+  private readonly bip39: Bip39Port;
   private readonly crypto: CryptoPort;
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
@@ -35,6 +40,7 @@ export class InitializeVaultUseCase {
 
   constructor(
     crypto: CryptoPort,
+    bip39: Bip39Port,
     vaultLocalRepository: VaultLocalRepositoryPort,
     unlockedVaultSession: UnlockedVaultSessionService,
     ids: IdPort,
@@ -42,6 +48,7 @@ export class InitializeVaultUseCase {
     vaultDisplayName: VaultDisplayNamePort,
   ) {
     this.crypto = crypto;
+    this.bip39 = bip39;
     this.vaultLocalRepository = vaultLocalRepository;
     this.unlockedVaultSession = unlockedVaultSession;
     this.ids = ids;
@@ -63,6 +70,9 @@ export class InitializeVaultUseCase {
     const vaultMasterKey = await this.crypto.generateVaultMasterKey();
     const deviceSlotKey = await this.crypto.generateDeviceSlotKey();
     const deviceSignKeyPair = await this.crypto.generateDeviceSignKeyPair();
+    const recoverySecretKey = await this.crypto.generateRecoveryKey();
+    const recoveryMnemonicKey =
+      await this.bip39.recoveryKeyToMnemonic(recoverySecretKey);
 
     const masterPasswordSalt = await this.crypto.generateMasterPasswordSalt();
     const localRootKey = await this.crypto.deriveLocalRootKey(
@@ -87,6 +97,17 @@ export class InitializeVaultUseCase {
     const protectedLocalKeys = await this.crypto.wrapLocalKeysPayload(
       localKeysPayload,
       localKeysProtectionKey,
+    );
+    const recoveryLocalKeysProtectionSalt =
+      await this.crypto.generateRecoveryLocalKeysProtectionSalt();
+    const recoveryLocalKeysProtectionKey =
+      await this.crypto.deriveRecoveryLocalKeysProtectionKey(
+        recoverySecretKey,
+        recoveryLocalKeysProtectionSalt,
+      );
+    const recoveryProtectedLocalKeys = await this.crypto.wrapLocalKeysPayload(
+      localKeysPayload,
+      recoveryLocalKeysProtectionKey,
     );
 
     const deviceSlotVaultMasterKeyProtectionKey =
@@ -164,6 +185,14 @@ export class InitializeVaultUseCase {
       devicePublicSignKey: deviceSignKeyPair.publicKey,
       protectedLocalKeys,
     };
+    const deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup = {
+      vaultId,
+      deviceId,
+      algorithmSuiteId: this.crypto.algorithmSuite.id,
+      recoveryLocalKeysProtectionSalt,
+      devicePublicSignKey: deviceSignKeyPair.publicKey,
+      protectedLocalKeys: recoveryProtectedLocalKeys,
+    };
 
     const localVaultDescriptor: LocalVaultDescriptor = {
       vaultId,
@@ -182,6 +211,7 @@ export class InitializeVaultUseCase {
     await this.vaultLocalRepository.saveInitializedLocalVault(
       localVaultDescriptor,
       deviceAccessMaterial,
+      deviceAccessRecoveryBackup,
       vaultSnapshot,
     );
     try {
@@ -200,6 +230,7 @@ export class InitializeVaultUseCase {
     }
 
     return {
+      recoveryMnemonicKey,
       vaultDisplayName,
     };
   }

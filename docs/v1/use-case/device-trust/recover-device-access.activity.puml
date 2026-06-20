@@ -1,0 +1,99 @@
+@startuml recover-device-access-activity
+title RecoverDeviceAccessUseCase - Activity
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #E3F2FD
+  BorderColor #1976D2
+}
+
+start
+:Input:\nvaultId, recoveryMnemonicKey, newMasterPassword;
+:Source:\npackages/core/src/use-cases/device-trust/recover-device-access.ts;
+:Require vault can be activated locally;
+if (another vault is active?) then (yes)
+  :Throw activation error from session service;
+  stop
+endif
+
+:Read local device access recovery backup;
+if (backup missing?) then (yes)
+  :Throw DeviceAccessRecoveryBackupNotFoundError;
+  stop
+endif
+if (backup vault id differs?) then (yes)
+  :Throw DeviceAccessRecoveryBackupMismatchError;
+  stop
+endif
+if (backup algorithm unsupported?) then (yes)
+  :Throw UnsupportedAlgorithmSuiteError;
+  stop
+endif
+
+:Read local vault snapshot;
+if (snapshot missing?) then (yes)
+  :Throw VaultSnapshotNotFoundError;
+  stop
+endif
+if (snapshot vault id differs?) then (yes)
+  :Throw PersistedVaultMismatchError;
+  stop
+endif
+if (snapshot algorithm unsupported?) then (yes)
+  :Throw UnsupportedAlgorithmSuiteError;
+  stop
+endif
+
+:Find snapshot signer device slot;
+if (signer not trusted?) then (yes)
+  :Throw VaultSnapshotSignerNotTrustedError;
+  stop
+endif
+:Find recovered device slot from backup deviceId;
+if (recovered device not trusted?) then (yes)
+  :Throw DeviceKeySlotNotFoundError;
+  stop
+endif
+:Verify snapshot signature before using recovery words;
+if (signature invalid?) then (yes)
+  :Throw VaultSnapshotSignatureVerificationFailedError;
+  stop
+endif
+
+:Convert recovery mnemonic into recoverySecretKey;
+:Derive recovery local-keys protection key;
+:Unwrap backed-up local keys payload\n(deviceSlotKey + devicePrivateSignKey);
+:Verify recovered private signing key matches device slot public key;
+if (private key does not match slot?) then (yes)
+  :Throw DeviceKeySlotVerificationFailedError;
+  stop
+endif
+:Verify recovered private signing key matches backup public key;
+if (private key does not match backup?) then (yes)
+  :Throw DeviceKeySlotVerificationFailedError;
+  stop
+endif
+
+:Derive device-slot vault-master-key protection key;
+:Unwrap vaultMasterKey from current device slot;
+:Decrypt snapshot content to prove recovered keys still unlock this vault;
+
+:Generate new master-password salt and local-keys protection salt;
+:Derive localRootKey from newMasterPassword;
+:Derive localKeysProtectionKey;
+:Wrap local keys payload for new master password;
+
+:Generate fresh recoverySecretKey;
+:Convert fresh recovery key to new mnemonic;
+:Generate fresh recovery local-keys protection salt;
+:Derive fresh recovery local-keys protection key;
+:Wrap same local keys payload for new recovery backup;
+
+:Build DeviceAccessMaterial;
+:Build replacement DeviceAccessRecoveryBackup;
+:Atomically save recovered device access material and recovery backup;
+:Return deviceId and fresh recoveryMnemonicKey;
+stop
+@enduml

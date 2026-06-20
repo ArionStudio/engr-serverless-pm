@@ -85,6 +85,10 @@ endif
 :Derive localRootKey from new masterPassword;
 :Derive localKeysProtectionKey;
 :Wrap local keys payload for this device;
+:Generate recovery key and recovery mnemonic for this device;
+:Generate recovery local-keys protection salt;
+:Derive recovery local-keys protection key;
+:Wrap local keys payload for this device recovery backup;
 :Wrap vaultMasterKey for this device slot;
 :Add device profile to decrypted vault;
 :Build completed enrollment proof;
@@ -98,7 +102,8 @@ if (signature verification fails?) then (yes)
 endif
 
 :Build device access material and local vault descriptor;
-:Save initialized local vault for new device;
+:Build device access recovery backup;
+:Save initialized local vault for new device\nincluding recovery backup;
 if (commit unlocked session succeeds?) then (yes)
   :Continue;
 else (no)
@@ -108,7 +113,7 @@ else (no)
 endif
 
 if (upload registered snapshot succeeds?) then (yes)
-  :Return vault, snapshotVersionVector,\nrevisionTimestamp, deviceId;
+  :Return vault, snapshotVersionVector,\nrevisionTimestamp, deviceId,\nrecoveryMnemonicKey;
   stop
 else (no)
   :Best effort remove unlocked session;

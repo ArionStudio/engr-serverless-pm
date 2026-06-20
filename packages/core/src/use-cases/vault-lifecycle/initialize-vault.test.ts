@@ -15,6 +15,7 @@ describe("InitializeVaultUseCase", () => {
     });
 
     expect(result).toEqual({
+      recoveryMnemonicKey: ctx.values.recoveryMnemonicKey,
       vaultDisplayName: ctx.values.vaultDisplayName,
     });
 
@@ -23,6 +24,9 @@ describe("InitializeVaultUseCase", () => {
     expect(
       ctx.ports.vaultDisplayName.generateVaultDisplayName,
     ).toHaveBeenCalledTimes(1);
+    expect(ctx.ports.bip39.recoveryKeyToMnemonic).toHaveBeenCalledWith(
+      ctx.values.recoverySecretKey,
+    );
     expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenCalledWith(
       ctx.values.masterPassword,
       ctx.values.masterPasswordSalt,
@@ -40,6 +44,16 @@ describe("InitializeVaultUseCase", () => {
     expect(ctx.ports.crypto.wrapLocalKeysPayload).toHaveBeenCalledWith(
       expectedLocalKeysPayload,
       ctx.values.localKeysProtectionKey,
+    );
+    expect(
+      ctx.ports.crypto.deriveRecoveryLocalKeysProtectionKey,
+    ).toHaveBeenCalledWith(
+      ctx.values.recoverySecretKey,
+      ctx.values.recoveryLocalKeysProtectionSalt,
+    );
+    expect(ctx.ports.crypto.wrapLocalKeysPayload).toHaveBeenCalledWith(
+      expectedLocalKeysPayload,
+      ctx.values.recoveryLocalKeysProtectionKey,
     );
     expect(
       ctx.ports.crypto.deriveDeviceSlotVaultMasterKeyProtectionKey,
@@ -89,6 +103,15 @@ describe("InitializeVaultUseCase", () => {
       localKeysProtectionSalt: ctx.values.localKeysProtectionSalt,
       devicePublicSignKey: ctx.values.devicePublicSignKey,
       protectedLocalKeys: ctx.values.protectedLocalKeys,
+    });
+    expect(ctx.saved.deviceAccessRecoveryBackup).toEqual({
+      vaultId: ctx.values.vaultId,
+      deviceId: ctx.values.deviceId,
+      algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
+      recoveryLocalKeysProtectionSalt:
+        ctx.values.recoveryLocalKeysProtectionSalt,
+      devicePublicSignKey: ctx.values.devicePublicSignKey,
+      protectedLocalKeys: ctx.values.recoveryProtectedLocalKeys,
     });
 
     expect(ctx.saved.vaultSnapshot).toEqual({
@@ -194,6 +217,7 @@ describe("InitializeVaultUseCase", () => {
     ).toHaveBeenCalledWith(ctx.values.vaultId);
     expect(ctx.saved.localVaultDescriptor).toBeUndefined();
     expect(ctx.saved.deviceAccessMaterial).toBeUndefined();
+    expect(ctx.saved.deviceAccessRecoveryBackup).toBeUndefined();
     expect(ctx.saved.vaultSnapshot).toBeUndefined();
   });
 

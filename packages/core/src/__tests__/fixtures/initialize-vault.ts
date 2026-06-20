@@ -7,6 +7,7 @@ export function createInitializeVaultTestContext() {
   const ports = createCoreTestPorts(values);
   const useCase = new InitializeVaultUseCase(
     ports.crypto,
+    ports.bip39,
     ports.vaultLocalRepository,
     ports.sessionServices.unlockedVaultSession,
     ports.ids,
