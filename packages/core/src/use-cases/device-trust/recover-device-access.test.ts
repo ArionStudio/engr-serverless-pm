@@ -433,6 +433,26 @@ describe("RecoverDeviceAccessUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
+  it("fails when the recovered private signing key does not match the recovery backup public key", async () => {
+    const ctx = createContext();
+    vi.mocked(ctx.ports.crypto.verifyDeviceSignKeyPair)
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        recoveryMnemonicKey: ctx.values.recoveryMnemonicKey,
+        newMasterPassword: ctx.values.newMasterPassword,
+      }),
+    ).rejects.toBeInstanceOf(DeviceKeySlotVerificationFailedError);
+
+    expect(ctx.ports.crypto.unwrapVaultMasterKey).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveRecoveredDeviceAccess,
+    ).not.toHaveBeenCalled();
+  });
+
   it("bubbles recovered device access save failures after proving the recovery keys", async () => {
     const ctx = createContext();
     const error = new Error("save failed");

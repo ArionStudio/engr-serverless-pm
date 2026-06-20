@@ -184,6 +184,7 @@ export class RecoverDeviceAccessUseCase {
       vaultMasterKeyProtectionKey,
     );
 
+    // Prove the recovered device slot can decrypt this snapshot before replacing local credentials.
     await this.crypto.decryptVaultSnapshotContent(
       vaultSnapshot.content,
       vaultMasterKey,

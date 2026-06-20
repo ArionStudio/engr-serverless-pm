@@ -43,7 +43,7 @@ endif
 :saveInitializedLocalVault(descriptor,\naccess material, recovery backup, snapshot);
 
 if (commit unlocked session succeeds?) then (yes)
-  :Return vaultDisplayName and recoveryMnemonicKey;
+  :Return recoveryMnemonicKey and vaultDisplayName;
   stop
 else (no)
   :Best effort removePersistedLocalVault(vaultId);
