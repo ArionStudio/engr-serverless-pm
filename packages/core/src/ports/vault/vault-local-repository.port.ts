@@ -12,16 +12,6 @@ export interface VaultLocalRepositoryPort {
     deviceAccessMaterial: DeviceAccessMaterial,
     snapshot: VaultSnapshot,
   ) => Promise<void>;
-  /**
-   * Atomically replaces the local access material and snapshot for an existing
-   * vault, keyed by deviceAccessMaterial.vaultId. Implementations must preserve
-   * the local vault descriptor and must not leave the material/snapshot pair
-   * partially updated when this rejects.
-   */
-  saveRecoveredLocalVault: (
-    deviceAccessMaterial: DeviceAccessMaterial,
-    snapshot: VaultSnapshot,
-  ) => Promise<void>;
   removePersistedLocalVault: (vaultId: string) => Promise<void>;
 
   saveLocalVaultDescriptor: (descriptor: LocalVaultDescriptor) => Promise<void>;

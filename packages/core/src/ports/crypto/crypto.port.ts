@@ -66,9 +66,6 @@ export interface CryptoPort {
   deriveDeviceSlotVaultMasterKeyProtectionKey: (
     deviceSlotKey: DeviceSlotKey,
   ) => Promise<ProtectionKeyFor<VaultMasterKey>>;
-  deriveRecoveryVaultMasterKeyProtectionKey: (
-    recoveryKey: RecoverySecretKey,
-  ) => Promise<ProtectionKeyFor<VaultMasterKey>>;
   deriveEnrollmentVaultMasterKeyProtectionKey: (
     enrollmentSecret: DeviceEnrollmentSecret,
   ) => Promise<ProtectionKeyFor<VaultMasterKey>>;

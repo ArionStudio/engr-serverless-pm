@@ -132,9 +132,6 @@ export function createVaultSnapshotServiceMock(
           publicSignKey: values.devicePublicSignKey,
         },
       ],
-      recoveryKeySlot: {
-        protectedVaultMasterKey: values.protectedRecoveryVaultMasterKey,
-      },
     },
     content: values.encryptedVault,
     signature: values.snapshotSignature,

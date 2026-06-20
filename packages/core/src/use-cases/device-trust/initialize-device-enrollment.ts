@@ -186,7 +186,6 @@ export class InitializeDeviceEnrollmentUseCase {
       },
       keySlots: {
         deviceSlots: currentVaultSnapshot.keySlots.deviceSlots,
-        recoveryKeySlot: currentVaultSnapshot.keySlots.recoveryKeySlot,
         completedEnrollments:
           currentVaultSnapshot.keySlots.completedEnrollments,
         enrollmentKeySlot: {

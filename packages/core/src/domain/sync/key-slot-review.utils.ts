@@ -3,22 +3,16 @@ import {
   InvalidVaultSyncReviewError,
 } from "../../errors";
 import { areJsonEqual } from "../common";
-import type {
-  DeviceKeySlot,
-  EnrollmentKeySlot,
-  RecoveryKeySlot,
-} from "../snapshot";
+import type { DeviceKeySlot, EnrollmentKeySlot } from "../snapshot";
 import type {
   ChangedDeviceKeySlot,
   KeySlotDeviceSlotsChanges,
   KeySlotEnrollmentSlotState,
-  KeySlotRecoverySlotState,
   KeySlotReviewItem,
 } from "./key-slot-review.type";
 
 type ReviewableKeySlots = {
   readonly deviceSlots: readonly DeviceKeySlot[];
-  readonly recoveryKeySlot: RecoveryKeySlot;
   readonly enrollmentKeySlot?: EnrollmentKeySlot;
 };
 
@@ -29,10 +23,6 @@ export function findChangesInKeySlots(
   const deviceSlots = findDeviceSlotChanges(
     localKeySlots.deviceSlots,
     remoteKeySlots.deviceSlots,
-  );
-  const recoveryKeySlot = findRecoveryKeySlotState(
-    localKeySlots.recoveryKeySlot,
-    remoteKeySlots.recoveryKeySlot,
   );
   const enrollmentKeySlot = findEnrollmentKeySlotState(
     localKeySlots.enrollmentKeySlot,
@@ -57,12 +47,10 @@ export function findChangesInKeySlots(
 
   return {
     deviceSlots,
-    recoveryKeySlot,
     enrollmentKeySlot,
     hasChanges:
       deviceSlots.addedDeviceIds.length > 0 ||
       deviceSlots.removedDeviceIds.length > 0 ||
-      recoveryKeySlot === "changed" ||
       enrollmentKeySlot === "added" ||
       enrollmentKeySlot === "removed",
   };
@@ -190,17 +178,6 @@ function createDeviceSlotMap(
   }
 
   return deviceSlotById;
-}
-
-function findRecoveryKeySlotState(
-  localRecoveryKeySlot: RecoveryKeySlot,
-  remoteRecoveryKeySlot: RecoveryKeySlot,
-): KeySlotRecoverySlotState {
-  if (areJsonEqual(localRecoveryKeySlot, remoteRecoveryKeySlot)) {
-    return "same";
-  }
-
-  return "changed";
 }
 
 function findEnrollmentKeySlotState(

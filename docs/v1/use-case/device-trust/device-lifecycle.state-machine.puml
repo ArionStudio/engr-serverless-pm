@@ -19,9 +19,6 @@ NewDeviceTrustedRemotely --> SyncedTrustedDevice : ApplySyncResolutionUseCase\na
 SyncedTrustedDevice --> DeviceRevoked : RevokeDeviceUseCase\nremoves target slot and tombstones profile
 DeviceRevoked --> SyncedTrustedDevice : upload and session commit complete
 
-SyncedTrustedDevice --> LocalOnlyRecovered : RecoverVaultAccessUseCase\nresets trust root to recovered device
-LocalOnlyRecovered --> SyncedTrustedDevice : SetupSyncUseCase may configure sync again
-
 SyncedTrustedDevice --> LocalOnlyCurrentDevice : DisableSyncUseCase\nremoves syncConfig, remote snapshots,\nother device profiles, and other device slots
 LocalOnlyCurrentDevice --> SyncedTrustedDevice : SetupSyncUseCase may configure sync again
 

@@ -5,11 +5,7 @@ import type {
 import type { CompletedDeviceEnrollmentProof } from "../device-trust";
 import type { Vault } from "../vault/vault";
 import type { VersionVector } from "../versioning/version-vector.type";
-import type {
-  DeviceKeySlot,
-  EnrollmentKeySlot,
-  RecoveryKeySlot,
-} from "./key-slot";
+import type { DeviceKeySlot, EnrollmentKeySlot } from "./key-slot";
 
 export type VaultSnapshotSchemaVersion = 1;
 
@@ -27,7 +23,6 @@ export type UnsignedVaultSnapshot = {
   metadata: VaultSnapshotMetadata;
   keySlots: {
     deviceSlots: DeviceKeySlot[];
-    recoveryKeySlot: RecoveryKeySlot;
     enrollmentKeySlot?: EnrollmentKeySlot;
     completedEnrollments?: CompletedDeviceEnrollmentProof[];
   };

@@ -162,9 +162,6 @@ export function createCoreTestPorts(
     deriveDeviceSlotVaultMasterKeyProtectionKey: vi.fn(
       async () => values.deviceSlotVaultMasterKeyProtectionKey,
     ),
-    deriveRecoveryVaultMasterKeyProtectionKey: vi.fn(
-      async () => values.recoveryVaultMasterKeyProtectionKey,
-    ),
     deriveEnrollmentVaultMasterKeyProtectionKey: vi.fn(
       async () => values.enrollmentVaultMasterKeyProtectionKey,
     ),
@@ -178,10 +175,6 @@ export function createCoreTestPorts(
       devicePrivateSignKey: values.devicePrivateSignKey,
     })),
     wrapVaultMasterKey: vi.fn(async (_vaultMasterKey, protectionKey) => {
-      if (protectionKey === values.recoveryVaultMasterKeyProtectionKey) {
-        return values.protectedRecoveryVaultMasterKey;
-      }
-
       if (protectionKey === values.enrollmentVaultMasterKeyProtectionKey) {
         return values.protectedEnrollmentVaultMasterKey;
       }
@@ -230,10 +223,6 @@ export function createCoreTestPorts(
         saved.vaultSnapshot = snapshot;
       },
     ),
-    saveRecoveredLocalVault: vi.fn(async (deviceAccessMaterial, snapshot) => {
-      saved.deviceAccessMaterial = deviceAccessMaterial;
-      saved.vaultSnapshot = snapshot;
-    }),
     removePersistedLocalVault: vi.fn(async () => {
       saved.localVaultDescriptor = undefined;
       saved.deviceAccessMaterial = undefined;

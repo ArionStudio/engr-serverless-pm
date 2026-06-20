@@ -23,7 +23,7 @@ find docs/v1/use-case -name '*.puml' -print0 | xargs -0 plantuml -checkonly
 - `use-case-map.activity.puml`: cross-domain use-case map.
 - `overview.component.puml`: high-level component relationships.
 - `clipboard/`: clipboard copy and clear task behavior.
-- `device-trust/`: device lifecycle, enrollment, recovery, and revocation.
+- `device-trust/`: device lifecycle, enrollment, and revocation.
 - `password-tools/`: generated password and username flows.
 - `session/`: vault session status reporting.
 - `sync/`: sync setup, upload, review, resolution, and disable flows.

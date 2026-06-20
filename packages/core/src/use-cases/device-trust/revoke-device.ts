@@ -152,7 +152,6 @@ export class RevokeDeviceUseCase {
         deviceSlots: currentVaultSnapshot.keySlots.deviceSlots.filter(
           (deviceSlot) => deviceSlot.deviceId !== params.deviceId,
         ),
-        recoveryKeySlot: currentVaultSnapshot.keySlots.recoveryKeySlot,
         ...(retainedEnrollmentKeySlot === undefined
           ? {}
           : { enrollmentKeySlot: retainedEnrollmentKeySlot }),

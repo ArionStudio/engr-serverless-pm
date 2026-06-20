@@ -76,8 +76,6 @@ export function createCoreTestValues() {
     localKeysProtectionKey: bytes<ProtectionKeyFor<LocalKeysPayload>>(),
     deviceSlotVaultMasterKeyProtectionKey:
       bytes<ProtectionKeyFor<VaultMasterKey>>(),
-    recoveryVaultMasterKeyProtectionKey:
-      bytes<ProtectionKeyFor<VaultMasterKey>>(),
     enrollmentVaultMasterKeyProtectionKey:
       bytes<ProtectionKeyFor<VaultMasterKey>>(),
     protectedLocalKeys: {
@@ -95,10 +93,6 @@ export function createCoreTestValues() {
     protectedDeviceVaultMasterKey: {
       wrappedKey: b64("protected-device-vault-master-key"),
       wrappingNonce: b64("protected-device-vault-master-key-nonce"),
-    } satisfies SerializedWrapped<VaultMasterKey>,
-    protectedRecoveryVaultMasterKey: {
-      wrappedKey: b64("protected-recovery-vault-master-key"),
-      wrappingNonce: b64("protected-recovery-vault-master-key-nonce"),
     } satisfies SerializedWrapped<VaultMasterKey>,
     protectedEnrollmentVaultMasterKey: {
       wrappedKey: b64("protected-enrollment-vault-master-key"),

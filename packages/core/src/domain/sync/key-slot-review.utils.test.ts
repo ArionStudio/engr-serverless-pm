@@ -5,11 +5,7 @@ import {
   InvalidVaultSyncReviewError,
 } from "../../errors";
 import type { DevicePublicSignKey } from "../device-trust";
-import type {
-  DeviceKeySlot,
-  EnrollmentKeySlot,
-  RecoveryKeySlot,
-} from "../snapshot";
+import type { DeviceKeySlot, EnrollmentKeySlot } from "../snapshot";
 import { findChangesInKeySlots } from "./key-slot-review.utils";
 
 function createDeviceSlot(): DeviceKeySlot {
@@ -19,14 +15,6 @@ function createDeviceSlot(): DeviceKeySlot {
     deviceId: values.deviceId,
     protectedVaultMasterKey: values.protectedDeviceVaultMasterKey,
     publicSignKey: values.devicePublicSignKey,
-  };
-}
-
-function createRecoverySlot(): RecoveryKeySlot {
-  const values = createCoreTestValues();
-
-  return {
-    protectedVaultMasterKey: values.protectedRecoveryVaultMasterKey,
   };
 }
 
@@ -49,19 +37,16 @@ function createEnrollmentSlot(): EnrollmentKeySlot {
 describe("findChangesInKeySlots", () => {
   it("does not mark a shared enrollment slot as a key-slot change", () => {
     const deviceSlot = createDeviceSlot();
-    const recoveryKeySlot = createRecoverySlot();
     const enrollmentKeySlot = createEnrollmentSlot();
 
     expect(
       findChangesInKeySlots(
         {
           deviceSlots: [deviceSlot],
-          recoveryKeySlot,
           enrollmentKeySlot,
         },
         {
           deviceSlots: [deviceSlot],
-          recoveryKeySlot,
           enrollmentKeySlot,
         },
       ),
@@ -71,7 +56,6 @@ describe("findChangesInKeySlots", () => {
         removedDeviceIds: [],
         changedDeviceIds: [],
       },
-      recoveryKeySlot: "same",
       enrollmentKeySlot: "existing",
       hasChanges: false,
     });
@@ -79,64 +63,29 @@ describe("findChangesInKeySlots", () => {
 
   it("marks missing enrollment slots as unchanged", () => {
     const deviceSlot = createDeviceSlot();
-    const recoveryKeySlot = createRecoverySlot();
 
     expect(
       findChangesInKeySlots(
         {
           deviceSlots: [deviceSlot],
-          recoveryKeySlot,
         },
         {
           deviceSlots: [deviceSlot],
-          recoveryKeySlot,
         },
       ).hasChanges,
     ).toBe(false);
   });
 
-  it("marks changed recovery slot content as key-slot changes", () => {
-    const values = createCoreTestValues();
-    const deviceSlot = createDeviceSlot();
-
-    expect(
-      findChangesInKeySlots(
-        {
-          deviceSlots: [deviceSlot],
-          recoveryKeySlot: createRecoverySlot(),
-        },
-        {
-          deviceSlots: [deviceSlot],
-          recoveryKeySlot: {
-            protectedVaultMasterKey: values.protectedEnrollmentVaultMasterKey,
-          },
-        },
-      ),
-    ).toEqual({
-      deviceSlots: {
-        addedDeviceIds: [],
-        removedDeviceIds: [],
-        changedDeviceIds: [],
-      },
-      recoveryKeySlot: "changed",
-      enrollmentKeySlot: "missing",
-      hasChanges: true,
-    });
-  });
-
   it("marks added enrollment slots as key-slot changes", () => {
     const deviceSlot = createDeviceSlot();
-    const recoveryKeySlot = createRecoverySlot();
 
     expect(
       findChangesInKeySlots(
         {
           deviceSlots: [deviceSlot],
-          recoveryKeySlot,
         },
         {
           deviceSlots: [deviceSlot],
-          recoveryKeySlot,
           enrollmentKeySlot: createEnrollmentSlot(),
         },
       ),
@@ -146,7 +95,6 @@ describe("findChangesInKeySlots", () => {
         removedDeviceIds: [],
         changedDeviceIds: [],
       },
-      recoveryKeySlot: "same",
       enrollmentKeySlot: "added",
       hasChanges: true,
     });
@@ -154,18 +102,15 @@ describe("findChangesInKeySlots", () => {
 
   it("marks removed enrollment slots as key-slot changes", () => {
     const deviceSlot = createDeviceSlot();
-    const recoveryKeySlot = createRecoverySlot();
 
     expect(
       findChangesInKeySlots(
         {
           deviceSlots: [deviceSlot],
-          recoveryKeySlot,
           enrollmentKeySlot: createEnrollmentSlot(),
         },
         {
           deviceSlots: [deviceSlot],
-          recoveryKeySlot,
         },
       ),
     ).toEqual({
@@ -174,7 +119,6 @@ describe("findChangesInKeySlots", () => {
         removedDeviceIds: [],
         changedDeviceIds: [],
       },
-      recoveryKeySlot: "same",
       enrollmentKeySlot: "removed",
       hasChanges: true,
     });
@@ -183,18 +127,15 @@ describe("findChangesInKeySlots", () => {
   it("rejects changed enrollment slot content as a broken vault state", () => {
     const values = createCoreTestValues();
     const deviceSlot = createDeviceSlot();
-    const recoveryKeySlot = createRecoverySlot();
 
     expect(() =>
       findChangesInKeySlots(
         {
           deviceSlots: [deviceSlot],
-          recoveryKeySlot,
           enrollmentKeySlot: createEnrollmentSlot(),
         },
         {
           deviceSlots: [deviceSlot],
-          recoveryKeySlot,
           enrollmentKeySlot: {
             ...createEnrollmentSlot(),
             protectedVaultMasterKey: values.protectedDeviceVaultMasterKey,
@@ -206,18 +147,15 @@ describe("findChangesInKeySlots", () => {
 
   it("rejects changed enrollment pending public keys as a broken vault state", () => {
     const deviceSlot = createDeviceSlot();
-    const recoveryKeySlot = createRecoverySlot();
 
     expect(() =>
       findChangesInKeySlots(
         {
           deviceSlots: [deviceSlot],
-          recoveryKeySlot,
           enrollmentKeySlot: createEnrollmentSlot(),
         },
         {
           deviceSlots: [deviceSlot],
-          recoveryKeySlot,
           enrollmentKeySlot: {
             ...createEnrollmentSlot(),
             pendingDevicePublicSignKey: new Uint8Array([1, 2])
@@ -239,17 +177,15 @@ describe("findChangesInKeySlots", () => {
       findChangesInKeySlots(
         {
           deviceSlots: [deviceSlot],
-          recoveryKeySlot: createRecoverySlot(),
         },
         {
           deviceSlots: [remoteDeviceSlot],
-          recoveryKeySlot: createRecoverySlot(),
         },
       ),
     ).toThrow(ChangedDeviceKeySlotsError);
   });
 
-  it("marks device additions and recovery-slot updates as key-slot changes", () => {
+  it("marks device additions as key-slot changes", () => {
     const values = createCoreTestValues();
     const deviceSlot = createDeviceSlot();
     const addedDeviceSlot: DeviceKeySlot = {
@@ -261,13 +197,9 @@ describe("findChangesInKeySlots", () => {
     const result = findChangesInKeySlots(
       {
         deviceSlots: [deviceSlot],
-        recoveryKeySlot: createRecoverySlot(),
       },
       {
         deviceSlots: [deviceSlot, addedDeviceSlot],
-        recoveryKeySlot: {
-          protectedVaultMasterKey: values.protectedEnrollmentVaultMasterKey,
-        },
       },
     );
 
@@ -277,7 +209,6 @@ describe("findChangesInKeySlots", () => {
         removedDeviceIds: [],
         changedDeviceIds: [],
       },
-      recoveryKeySlot: "changed",
       enrollmentKeySlot: "missing",
       hasChanges: true,
     });

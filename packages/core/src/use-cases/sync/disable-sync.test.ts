@@ -85,9 +85,6 @@ describe("DisableSyncUseCase", () => {
       },
       keySlots: {
         deviceSlots: [currentDeviceSlot, otherDeviceSlot],
-        recoveryKeySlot: {
-          protectedVaultMasterKey: ctx.values.protectedRecoveryVaultMasterKey,
-        },
         enrollmentKeySlot: {
           enrollmentId: ctx.values.enrollmentId,
           pendingDeviceId: ctx.values.pendingDeviceId,
@@ -194,7 +191,6 @@ describe("DisableSyncUseCase", () => {
     ).toEqual({
       keySlots: {
         deviceSlots: [currentDeviceSlot],
-        recoveryKeySlot: localSnapshot.keySlots.recoveryKeySlot,
         completedEnrollments: undefined,
       },
     });

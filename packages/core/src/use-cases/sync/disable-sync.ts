@@ -111,7 +111,6 @@ export class DisableSyncUseCase {
       {
         keySlots: {
           deviceSlots: currentDeviceSlots,
-          recoveryKeySlot: localSnapshot.keySlots.recoveryKeySlot,
           completedEnrollments: localSnapshot.keySlots.completedEnrollments,
         },
       },

@@ -64,9 +64,6 @@ function createRemoteSnapshot(
           publicSignKey: values.devicePublicSignKey,
         },
       ],
-      recoveryKeySlot: {
-        protectedVaultMasterKey: values.protectedRecoveryVaultMasterKey,
-      },
       enrollmentKeySlot: {
         enrollmentId: values.enrollmentId,
         pendingDeviceId: values.pendingDeviceId,
@@ -279,7 +276,6 @@ describe("PerformDeviceEnrollmentUseCase", () => {
             publicSignKey: ctx.values.pendingDevicePublicSignKey,
           },
         ],
-        recoveryKeySlot: ctx.remoteSnapshot.keySlots.recoveryKeySlot,
         completedEnrollments: [
           {
             version: 1,
@@ -708,7 +704,6 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       ...ctx.remoteSnapshot,
       keySlots: {
         deviceSlots: ctx.remoteSnapshot.keySlots.deviceSlots,
-        recoveryKeySlot: ctx.remoteSnapshot.keySlots.recoveryKeySlot,
       },
     });
 

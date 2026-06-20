@@ -87,9 +87,6 @@ function createVaultSnapshot(values: CoreTestValues): VaultSnapshot {
           publicSignKey: revokedDevicePublicSignKey,
         },
       ],
-      recoveryKeySlot: {
-        protectedVaultMasterKey: values.protectedRecoveryVaultMasterKey,
-      },
     },
     content: values.encryptedVault,
     signature: values.snapshotSignature,
@@ -209,7 +206,6 @@ describe("RevokeDeviceUseCase", () => {
             publicSignKey: ctx.values.devicePublicSignKey,
           },
         ],
-        recoveryKeySlot: ctx.vaultSnapshot.keySlots.recoveryKeySlot,
       },
       content: ctx.values.encryptedVault,
       signature: ctx.values.snapshotSignature,

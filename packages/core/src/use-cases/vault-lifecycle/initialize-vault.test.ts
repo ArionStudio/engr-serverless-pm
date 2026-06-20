@@ -15,7 +15,6 @@ describe("InitializeVaultUseCase", () => {
     });
 
     expect(result).toEqual({
-      recoveryMnemonicKey: ctx.values.recoveryMnemonicKey,
       vaultDisplayName: ctx.values.vaultDisplayName,
     });
 
@@ -24,9 +23,6 @@ describe("InitializeVaultUseCase", () => {
     expect(
       ctx.ports.vaultDisplayName.generateVaultDisplayName,
     ).toHaveBeenCalledTimes(1);
-    expect(ctx.ports.bip39.recoveryKeyToMnemonic).toHaveBeenCalledWith(
-      ctx.values.recoverySecretKey,
-    );
     expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenCalledWith(
       ctx.values.masterPassword,
       ctx.values.masterPasswordSalt,
@@ -48,18 +44,9 @@ describe("InitializeVaultUseCase", () => {
     expect(
       ctx.ports.crypto.deriveDeviceSlotVaultMasterKeyProtectionKey,
     ).toHaveBeenCalledWith(ctx.values.deviceSlotKey);
-    expect(
-      ctx.ports.crypto.deriveRecoveryVaultMasterKeyProtectionKey,
-    ).toHaveBeenCalledWith(ctx.values.recoverySecretKey);
-    expect(ctx.ports.crypto.wrapVaultMasterKey).toHaveBeenNthCalledWith(
-      1,
+    expect(ctx.ports.crypto.wrapVaultMasterKey).toHaveBeenCalledWith(
       ctx.values.vaultMasterKey,
       ctx.values.deviceSlotVaultMasterKeyProtectionKey,
-    );
-    expect(ctx.ports.crypto.wrapVaultMasterKey).toHaveBeenNthCalledWith(
-      2,
-      ctx.values.vaultMasterKey,
-      ctx.values.recoveryVaultMasterKeyProtectionKey,
     );
 
     const expectedVault: Vault = {
@@ -124,9 +111,6 @@ describe("InitializeVaultUseCase", () => {
             publicSignKey: ctx.values.devicePublicSignKey,
           },
         ],
-        recoveryKeySlot: {
-          protectedVaultMasterKey: ctx.values.protectedRecoveryVaultMasterKey,
-        },
       },
       content: ctx.values.encryptedVault,
       signature: ctx.values.snapshotSignature,

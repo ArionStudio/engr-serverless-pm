@@ -20,18 +20,17 @@ if (another vault is active?) then (yes)
 endif
 
 :Generate deviceId, timestamp, vaultDisplayName;
-:Generate vaultMasterKey, deviceSlotKey,\ndevice signing key pair, recovery key;
-:Convert recovery key to BIP39 mnemonic;
+:Generate vaultMasterKey, deviceSlotKey,\ndevice signing key pair;
 :Generate master-password salt and local-keys protection salt;
 :Derive localRootKey from masterPassword;
 :Derive localKeysProtectionKey;
 :Wrap local keys payload\n(deviceSlotKey + devicePrivateSignKey);
-:Derive device-slot and recovery protection keys;
-:Wrap vaultMasterKey for device slot and recovery slot;
+:Derive device-slot protection key;
+:Wrap vaultMasterKey for device slot;
 :Build initial device profile with vector {deviceId: 1};
 :Build empty vault with vector {deviceId: 1};
 :Encrypt vault content with vaultMasterKey;
-:Build unsigned snapshot with one device slot and recovery slot;
+:Build unsigned snapshot with one device slot;
 :Sign snapshot with device private signing key;
 :Build device access material;
 :Build local vault descriptor;
@@ -39,7 +38,7 @@ endif
 :saveInitializedLocalVault(descriptor, access material, snapshot);
 
 if (commit unlocked session succeeds?) then (yes)
-  :Return recoveryMnemonicKey and vaultDisplayName;
+  :Return vaultDisplayName;
   stop
 else (no)
   :Best effort removePersistedLocalVault(vaultId);

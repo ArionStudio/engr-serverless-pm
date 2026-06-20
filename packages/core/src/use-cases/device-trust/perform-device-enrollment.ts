@@ -333,7 +333,6 @@ export class PerformDeviceEnrollmentUseCase {
             publicSignKey: devicePublicSignKey,
           },
         ],
-        recoveryKeySlot: remoteSnapshot.keySlots.recoveryKeySlot,
         completedEnrollments: [
           ...completedEnrollments,
           completedEnrollmentProof,
