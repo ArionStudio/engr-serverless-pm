@@ -37,9 +37,14 @@ if (remote descriptor exists?) then (yes)
 endif
 
 :Remove remote vault snapshots through SyncProviderPort;
-:Keep only current device slot in keySlots;
-:Persist updated local-only vault as signed snapshot\nwith current device slot and recovery slot;
-:Commit persisted snapshot vector to unlocked session;
-:Return void;
-stop
+if (remote snapshot removal succeeds?) then (yes)
+  :Keep only current device slot in keySlots;
+  :Persist updated local-only vault as signed snapshot\nwith current device slot and recovery slot;
+  :Commit persisted snapshot vector to unlocked session;
+  :Return void;
+  stop
+else (no)
+  :Throw original provider failure;
+  stop
+endif
 @enduml

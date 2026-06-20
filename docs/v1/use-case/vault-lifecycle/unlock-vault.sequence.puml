@@ -24,8 +24,8 @@ UC -> UC : validate lockAfterMs
 UC -> Session : requireVaultCanBeActivated(vaultId)
 UC -> LocalRepo : getDeviceAccessMaterial(vaultId)
 UC -> LocalRepo : getVaultSnapshot(vaultId)
-UC -> UC : check algorithm suites, signer, device slot
-UC -> Crypto : verifyVaultSnapshotSignature(snapshot, slot.publicSignKey)
+UC -> UC : check algorithm suites, vault id, signer, device slot
+UC -> Crypto : verifyVaultSnapshotSignature(snapshot, signerSlot.publicSignKey)
 UC -> Crypto : deriveLocalRootKey(masterPassword, salt)
 UC -> Crypto : deriveLocalKeysProtectionKey(localRootKey, salt)
 UC -> Crypto : unwrapLocalKeysPayload(protectedLocalKeys, key)

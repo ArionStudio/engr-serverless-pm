@@ -26,7 +26,7 @@ SyncedTrustedDevice --> LocalOnlyCurrentDevice : DisableSyncUseCase\nremoves syn
 LocalOnlyCurrentDevice --> SyncedTrustedDevice : SetupSyncUseCase may configure sync again
 
 EnrollmentPending --> SyncedTrustedDevice : initialization upload fails\nrollback to previous snapshot/session
-EnrollmentPending --> SyncedTrustedDevice : enrollment expires or is superseded\nfuture mutation must resolve state
+EnrollmentPending --> SyncedTrustedDevice : enrollment is superseded\nfuture mutation must resolve state
 
 note right of EnrollmentPending
 Pending enrollment data lives in snapshot keySlots.enrollmentKeySlot.

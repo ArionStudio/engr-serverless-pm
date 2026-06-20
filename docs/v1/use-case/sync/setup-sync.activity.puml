@@ -34,7 +34,7 @@ endif
 :Build updated vault with provider-returned syncConfig;
 :Persist updated vault as signed local snapshot;
 :Require saved local snapshot;
-:Upload persisted local mutation with expected remote = null;
+:Upload persisted initial sync snapshot with expected remote = null;
 :Commit persisted snapshot vector to unlocked session;
 :Return void;
 stop

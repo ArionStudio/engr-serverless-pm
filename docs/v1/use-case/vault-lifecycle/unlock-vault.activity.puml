@@ -39,7 +39,12 @@ if (snapshot algorithm unsupported?) then (yes)
   :Throw UnsupportedAlgorithmSuiteError;
   stop
 endif
-if (snapshot signer is not current device?) then (yes)
+if (snapshot metadata id differs from requested vault?) then (yes)
+  :Throw PersistedVaultMismatchError;
+  stop
+endif
+:Find snapshot signing device in device slots;
+if (snapshot signer is not trusted?) then (yes)
   :Throw VaultSnapshotSignerNotTrustedError;
   stop
 endif
@@ -50,7 +55,7 @@ if (device key slot missing?) then (yes)
   stop
 endif
 
-:Verify snapshot signature with slot public signing key;
+:Verify snapshot signature with signer public signing key;
 if (signature invalid?) then (yes)
   :Throw VaultSnapshotSignatureVerificationFailedError;
   stop

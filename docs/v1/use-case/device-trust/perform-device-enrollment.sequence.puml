@@ -26,7 +26,7 @@ UC -> Sync : getLatestVaultSnapshotDescriptor(bundle.syncConfig, vaultId)
 UC -> UC : compare remote descriptor with bundle descriptor
 UC -> Sync : downloadVaultSnapshot(bundle.syncConfig, descriptor)
 UC -> Crypto : verifyVaultSnapshotSignature(remoteSnapshot, bundle.signerPublicKey)
-UC -> UC : validate enrollment slot, expiry, completion, digests, authorizer
+UC -> UC : validate enrollment slot, completion, digests, authorizer
 UC -> Crypto : verifyDeviceEnrollmentAuthorizationSignature(...)
 UC -> Crypto : deriveEnrollmentVaultMasterKeyProtectionKey(bundle.secret)
 UC -> Crypto : unwrapVaultMasterKey(enrollmentSlot.protectedVaultMasterKey, key)

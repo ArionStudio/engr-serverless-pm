@@ -44,10 +44,6 @@ if (enrollment slot missing?) then (yes)
   :Throw DeviceEnrollmentKeySlotNotFoundError;
   stop
 endif
-if (current time is after enrollment expiry?) then (yes)
-  :Throw DeviceEnrollmentExpiredError;
-  stop
-endif
 if (enrollment already completed or pending device already trusted?) then (yes)
   :Throw DeviceEnrollmentAlreadyCompletedError;
   stop

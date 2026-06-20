@@ -43,7 +43,8 @@ endif
 
 :Get revisionTimestamp from ClockPort;
 :Tombstone revoked device profile inside encrypted vault content;
-:Build snapshot keySlots without revoked device slot;
+:Remove revoked device slot from snapshot keySlots;
+:Drop pending enrollmentKeySlot if it was authorized by revoked device;
 :Encrypt revoked vault content;
 :Sign revoked snapshot with current device private signing key;
 :Save revoked snapshot locally;

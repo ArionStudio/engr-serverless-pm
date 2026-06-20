@@ -57,7 +57,16 @@ end note
 :Build device access material;
 :Build unlocked vault session object;
 :saveRecoveredLocalVault(access material, recovered snapshot);
-:Commit unlocked session with recovered snapshot vector;
-:Return recovered vault;
-stop
+if (commit unlocked session succeeds?) then (yes)
+  :Return recovered vault;
+  stop
+else (no)
+  :Throw original session commit failure;
+  note right
+  The recovered local vault records have already been persisted.
+  RecoverVaultAccessUseCase does not remove them on commit failure;
+  a later normal unlock can use the recovered access material.
+  end note
+  stop
+endif
 @enduml

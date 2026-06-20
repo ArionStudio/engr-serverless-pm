@@ -10,7 +10,7 @@ skinparam activity {
 }
 
 start
-:Input:\nvaultId, remoteSnapshotDescriptor, optional expiresAt;
+:Input:\nvaultId, remoteSnapshotDescriptor;
 :Source:\npackages/core/src/use-cases/device-trust/initialize-device-enrollment.ts;
 :Require unlocked vault context for "initialize device enrollment";
 if (syncConfig missing?) then (yes)
@@ -41,7 +41,7 @@ if (current device not trusted?) then (yes)
   stop
 endif
 
-:Compute revisionTimestamp and enrollment expiry;
+:Get revisionTimestamp from ClockPort;
 :Generate enrollmentSecret, enrollmentId, pendingDeviceId;
 :Generate pending device signing key pair;
 :Digest pending public signing key;

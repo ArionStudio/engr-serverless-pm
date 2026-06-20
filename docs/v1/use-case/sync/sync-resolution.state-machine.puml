@@ -27,6 +27,7 @@ RemoteMissing --> Configured : setup can proceed only when configuring new sync
 ReviewPrepared --> Configured : ApplySyncResolutionUseCase persists resolved snapshot and uploads
 ReviewPrepared --> Broken : trust change requires device-trust flow or invalid resolution
 Configured --> LocalOnly : DisableSyncUseCase removes remote snapshots, syncConfig, and other device trust
+LocalOnly --> Configured : SetupSyncUseCase persists syncConfig and uploads initial snapshot
 
 note right of ReviewPrepared
 Review includes actionable entries, tags, device profiles,
