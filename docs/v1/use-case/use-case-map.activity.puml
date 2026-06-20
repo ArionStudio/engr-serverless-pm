@@ -1,0 +1,56 @@
+@startuml core-use-case-map
+title Core Use Case Map
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #E3F2FD
+  BorderColor #1976D2
+}
+
+start
+:Source of truth:\npackages/core/src/use-cases;
+
+partition "Vault lifecycle" {
+  :initialize-vault\ncreate local vault, keys, initial snapshot, session;
+  :unlock-vault\nverify local material and snapshot, decrypt, schedule lock, commit session;
+  :lock-vault\nclear clipboard, cancel lock task, remove session;
+  :change-master-password\nrewrap local keys with new password-derived protection;
+  :delete-local-vault\nrequire unlocked vault, remove session and persisted local vault;
+  :list-local-vaults\nreturn local vault descriptors only;
+}
+
+partition "Vault entries" {
+  :add-entry / update-entry / remove-entry\nrequire unlocked vault, validate or check existence,\nmutate vault, persist signed snapshot, optional sync upload, commit session;
+  :read-entry / search-entries\nreturn visible fields only;
+  :get-entry-password\nreturn plaintext password explicitly;
+}
+
+partition "Clipboard" {
+  :copy-entry-password\nvalidate delay, hash metadata, schedule clear, write plaintext to clipboard;
+  :clear-clipboard-task\ndelegate safe clear policy to ClipboardClearService;
+}
+
+partition "Sync" {
+  :setup-sync\nvalidate provider config, require empty remote, persist sync config, upload;
+  :sync-upload\ncompare remote descriptor, upload local snapshot if allowed;
+  :prepare-sync-review\ndownload trusted remote snapshot and produce review items;
+  :apply-sync-resolution\nvalidate descriptor, apply selected resolution, upload, commit;
+  :disable-sync\nremove sync config, prune other device trust, remove remote snapshots;
+}
+
+partition "Device trust" {
+  :initialize-device-enrollment\ncreate pending enrollment slot and bundle;
+  :perform-device-enrollment\nnew device verifies enrollment, creates local access, uploads completed trust state;
+  :recover-vault-access\nrecover from local snapshot using mnemonic, reset local trust root;
+  :revoke-device\nremove target device slot and tombstone device profile;
+}
+
+partition "Tools and session" {
+  :generate-password / generate-username\nvalidate settings and use RandomSamplerService;
+  :get-vault-session-status\nread session material only and report locked or unlocked;
+}
+
+stop
+@enduml

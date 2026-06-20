@@ -1,0 +1,65 @@
+@startuml core-use-case-overview
+title Core Use Cases - Architecture Boundary
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam component {
+  BackgroundColor #E3F2FD
+  BorderColor #1976D2
+}
+
+actor "Caller\n(UI, extension, task runner)" as caller
+
+package "packages/core/src/use-cases" as uc {
+  component "Vault lifecycle" as lifecycle
+  component "Vault entries" as entries
+  component "Clipboard" as clipboard
+  component "Sync" as sync
+  component "Device trust" as trust
+  component "Password tools" as tools
+  component "Session status" as session
+}
+
+package "Core internals used by use cases" as internals {
+  component "Services\nsession, snapshot, sync guard,\nclipboard clear, randomness" as services
+  component "Domain\nschemas, mutations, review utilities,\nversion vectors" as domain
+  interface "Ports\ncrypto, repositories, sync provider,\nclipboard, clock, ids, scheduled tasks" as ports
+}
+
+database "Adapter-owned storage / cloud / browser APIs" as adapters
+
+caller --> lifecycle
+caller --> entries
+caller --> clipboard
+caller --> sync
+caller --> trust
+caller --> tools
+caller --> session
+
+lifecycle --> services
+entries --> services
+clipboard --> services
+sync --> services
+trust --> services
+tools --> services
+session --> ports
+
+services --> domain
+services --> ports
+lifecycle --> domain
+entries --> domain
+clipboard --> domain
+sync --> domain
+trust --> domain
+tools --> domain
+
+ports --> adapters
+
+note bottom of uc
+Source of truth for these diagrams:
+packages/core/src/use-cases.
+Old architecture diagrams are not used as behavior authority.
+end note
+
+@enduml

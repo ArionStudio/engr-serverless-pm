@@ -1,0 +1,37 @@
+@startuml device-lifecycle-state-machine
+title Device Trust Lifecycle - State Machine From Use Cases
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam state {
+  BackgroundColor #E3F2FD
+  BorderColor #1976D2
+}
+
+[*] --> SingleTrustedDevice : InitializeVaultUseCase
+
+SingleTrustedDevice --> SyncedTrustedDevice : SetupSyncUseCase
+SyncedTrustedDevice --> EnrollmentPending : InitializeDeviceEnrollmentUseCase\nadds enrollmentKeySlot and uploads it
+EnrollmentPending --> NewDeviceTrustedRemotely : PerformDeviceEnrollmentUseCase\nadds device slot and completed proof remotely
+NewDeviceTrustedRemotely --> SyncedTrustedDevice : ApplySyncResolutionUseCase\naccepts exact completed enrollment trust change
+
+SyncedTrustedDevice --> DeviceRevoked : RevokeDeviceUseCase\nremoves target slot and tombstones profile
+DeviceRevoked --> SyncedTrustedDevice : upload and session commit complete
+
+SyncedTrustedDevice --> LocalOnlyRecovered : RecoverVaultAccessUseCase\nresets trust root to recovered device
+LocalOnlyRecovered --> SyncedTrustedDevice : SetupSyncUseCase may configure sync again
+
+SyncedTrustedDevice --> LocalOnlyCurrentDevice : DisableSyncUseCase\nremoves syncConfig, remote snapshots,\nother device profiles, and other device slots
+LocalOnlyCurrentDevice --> SyncedTrustedDevice : SetupSyncUseCase may configure sync again
+
+EnrollmentPending --> SyncedTrustedDevice : initialization upload fails\nrollback to previous snapshot/session
+EnrollmentPending --> SyncedTrustedDevice : enrollment is superseded\nfuture mutation must resolve state
+
+note right of EnrollmentPending
+Pending enrollment data lives in snapshot keySlots.enrollmentKeySlot.
+The enrollment bundle carries syncConfig, descriptor data,
+enrollment secret, and pending private signing key.
+end note
+
+@enduml

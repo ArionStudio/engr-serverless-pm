@@ -1,0 +1,56 @@
+@startuml lock-vault-activity
+title LockVaultUseCase - Activity
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #E3F2FD
+  BorderColor #1976D2
+}
+
+start
+:Input:\noptional actionId;
+:Source:\npackages/core/src/use-cases/vault-lifecycle/lock-vault.ts;
+:Initialize executionError, sessionRemovalError,\nshouldRemoveSession = true;
+:Load pending vault lock task metadata;
+
+if (actionId provided and stored task actionId differs?) then (yes)
+  :Mark shouldRemoveSession = false;
+  :Skip cleanup body and continue to finally logic;
+else (no)
+  :Load pending clipboard clear task;
+  :Try clipboardClear.clearTask(requireExpired = false);
+  if (clipboard task existed?) then (yes)
+    :Try cancel scheduled clearClipboard task;
+  endif
+  :Remember clipboard cleanup error if any;
+
+  if (vault lock task exists?) then (yes)
+    :Cancel scheduled lockVault task;
+    :Remove vault lock task metadata in finally;
+  endif
+
+  if (clipboard cleanup failed?) then (yes)
+    :Set executionError;
+  endif
+endif
+
+if (shouldRemoveSession?) then (yes)
+  :Remove unlocked vault session;
+  if (session removal failed and no executionError?) then (yes)
+    :Set sessionRemovalError;
+  endif
+endif
+
+if (executionError exists?) then (yes)
+  :Throw executionError;
+  stop
+endif
+if (sessionRemovalError exists?) then (yes)
+  :Throw sessionRemovalError;
+  stop
+endif
+:Return void;
+stop
+@enduml

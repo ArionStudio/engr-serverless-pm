@@ -1,0 +1,50 @@
+@startuml disable-sync-activity
+title DisableSyncUseCase - Activity
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #E3F2FD
+  BorderColor #1976D2
+}
+
+start
+:Input:\nvaultId;
+:Source:\npackages/core/src/use-cases/sync/disable-sync.ts;
+:Require unlocked vault context for "disable sync";
+if (syncConfig missing?) then (yes)
+  :Throw SyncNotConfiguredError;
+  stop
+endif
+
+:Get revisionTimestamp from ClockPort;
+:Remove other device profiles from vault;
+:Remove syncConfig from vault;
+:Require current local snapshot using updated unlocked vault and source vector;
+:Read latest remote snapshot descriptor;
+if (remote descriptor exists?) then (yes)
+  :Build local snapshot descriptor;
+  :Compare local descriptor vs remote descriptor;
+  if (relation is remote_ahead?) then (yes)
+    :Throw RemoteVaultSnapshotAheadError;
+    stop
+  endif
+  if (relation is broken or equal-but-fields-differ?) then (yes)
+    :Throw RemoteVaultSnapshotIntegrityError;
+    stop
+  endif
+endif
+
+:Remove remote vault snapshots through SyncProviderPort;
+if (remote snapshot removal succeeds?) then (yes)
+  :Keep only current device slot in keySlots;
+  :Persist updated local-only vault as signed snapshot\nwith current device slot and recovery slot;
+  :Commit persisted snapshot vector to unlocked session;
+  :Return void;
+  stop
+else (no)
+  :Throw original provider failure;
+  stop
+endif
+@enduml

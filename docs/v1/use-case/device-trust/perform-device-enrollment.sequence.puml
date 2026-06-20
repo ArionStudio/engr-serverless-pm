@@ -1,0 +1,57 @@
+@startuml perform-device-enrollment-sequence
+title PerformDeviceEnrollmentUseCase - Collaboration
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam sequence {
+  ArrowColor #1976D2
+  LifeLineBorderColor #1976D2
+  ParticipantBackgroundColor #E3F2FD
+  ParticipantBorderColor #1976D2
+}
+
+actor "New device caller" as Caller
+participant "PerformDeviceEnrollmentUseCase" as UC
+participant "UnlockedVaultSessionService" as Session
+participant "SyncProviderPort" as Sync
+participant "CryptoPort" as Crypto
+participant "VaultDisplayNamePort" as Names
+database "VaultLocalRepositoryPort" as LocalRepo
+participant "Domain device mutation" as Domain
+
+Caller -> UC : execute(enrollmentBundle, masterPassword, deviceName)
+UC -> Session : requireVaultCanBeActivated(bundle.vaultId)
+UC -> Sync : getLatestVaultSnapshotDescriptor(bundle.syncConfig, vaultId)
+UC -> UC : compare remote descriptor with bundle descriptor
+UC -> Sync : downloadVaultSnapshot(bundle.syncConfig, descriptor)
+UC -> Crypto : verifyVaultSnapshotSignature(remoteSnapshot, bundle.signerPublicKey)
+UC -> UC : validate enrollment slot, completion, digests, authorizer
+UC -> Crypto : verifyDeviceEnrollmentAuthorizationSignature(...)
+UC -> Crypto : deriveEnrollmentVaultMasterKeyProtectionKey(bundle.secret)
+UC -> Crypto : unwrapVaultMasterKey(enrollmentSlot.protectedVaultMasterKey, key)
+UC -> Crypto : decryptVaultSnapshotContent(remoteSnapshot.content, vaultMasterKey)
+UC -> Names : generateVaultDisplayName()
+UC -> Crypto : generate local salts, deviceSlotKey, wrap local keys
+UC -> Crypto : wrapVaultMasterKey(vaultMasterKey, deviceSlotProtectionKey)
+UC -> Domain : addDeviceProfileToVault(vault, pendingDeviceId, deviceName, now)
+UC -> Crypto : encryptVaultSnapshotContent(registeredVault, vaultMasterKey)
+UC -> Crypto : signVaultSnapshot(unsignedSnapshot, pendingPrivateSignKey)
+UC -> Crypto : verifyVaultSnapshotSignature(registeredSnapshot, pendingPublicSignKey)
+UC -> LocalRepo : saveInitializedLocalVault(descriptor, accessMaterial, registeredSnapshot)
+UC -> Session : commit(unlockedVault, registeredSnapshot.vector)
+alt commit fails
+  UC -> LocalRepo : removePersistedLocalVault(vaultId)
+  UC --> Caller : throw commit failure
+else committed
+  UC -> Sync : uploadVaultSnapshot(syncConfig, registeredSnapshot, remoteDescriptor)
+  alt upload fails
+    UC -> Session : remove()
+    UC -> LocalRepo : removePersistedLocalVault(vaultId)
+    UC --> Caller : throw conflict or upload failure
+  else uploaded
+    UC --> Caller : vault, vector, timestamp, deviceId
+  end
+end
+
+@enduml

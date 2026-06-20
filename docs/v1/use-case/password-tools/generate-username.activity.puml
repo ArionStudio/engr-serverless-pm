@@ -1,0 +1,23 @@
+@startuml generate-username-activity
+title GenerateUsernameUseCase - Activity
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #E3F2FD
+  BorderColor #1976D2
+}
+
+start
+:Input:\npartial GeneratedUsernameSettings or defaults;
+:Source:\npackages/core/src/use-cases/password-tools/generate-username.ts;
+:Validate settings with generatedUsernameSettingsSchema;
+if (settings invalid?) then (yes)
+  :Throw InvalidGeneratedUsernameSettingsError;
+  stop
+endif
+:Generate username value using RandomSamplerService.pickIndex;
+:Return { username };
+stop
+@enduml

@@ -1,0 +1,41 @@
+@startuml setup-sync-activity
+title SetupSyncUseCase - Activity
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #E3F2FD
+  BorderColor #1976D2
+}
+
+start
+:Input:\nvaultId, syncConfig;
+:Source:\npackages/core/src/use-cases/sync/setup-sync.ts;
+:Require unlocked vault context for "setup sync";
+if (vault already has syncConfig?) then (yes)
+  :Throw SyncAlreadyConfiguredError;
+  stop
+endif
+
+:Prepare local mutation with VaultSyncGuardService;
+:Call SyncProviderPort.setup(syncConfig);
+if (provider setup fails?) then (yes)
+  :Throw InvalidSyncConfigError with cause;
+  stop
+endif
+
+:Read latest remote snapshot descriptor;
+if (remote descriptor exists?) then (yes)
+  :Throw RemoteVaultSnapshotAheadError;
+  stop
+endif
+
+:Build updated vault with provider-returned syncConfig;
+:Persist updated vault as signed local snapshot;
+:Require saved local snapshot;
+:Upload persisted initial sync snapshot with expected remote = null;
+:Commit persisted snapshot vector to unlocked session;
+:Return void;
+stop
+@enduml

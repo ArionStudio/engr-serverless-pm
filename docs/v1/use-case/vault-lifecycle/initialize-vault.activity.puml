@@ -1,0 +1,49 @@
+@startuml initialize-vault-activity
+title InitializeVaultUseCase - Activity
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #E3F2FD
+  BorderColor #1976D2
+}
+
+start
+:Input:\nmasterPassword, deviceName;
+:Source:\npackages/core/src/use-cases/vault-lifecycle/initialize-vault.ts;
+:Generate vaultId;
+:Require vault can be activated;
+if (another vault is active?) then (yes)
+  :Throw activation error from session service;
+  stop
+endif
+
+:Generate deviceId, timestamp, vaultDisplayName;
+:Generate vaultMasterKey, deviceSlotKey,\ndevice signing key pair, recovery key;
+:Convert recovery key to BIP39 mnemonic;
+:Generate master-password salt and local-keys protection salt;
+:Derive localRootKey from masterPassword;
+:Derive localKeysProtectionKey;
+:Wrap local keys payload\n(deviceSlotKey + devicePrivateSignKey);
+:Derive device-slot and recovery protection keys;
+:Wrap vaultMasterKey for device slot and recovery slot;
+:Build initial device profile with vector {deviceId: 1};
+:Build empty vault with vector {deviceId: 1};
+:Encrypt vault content with vaultMasterKey;
+:Build unsigned snapshot with one device slot and recovery slot;
+:Sign snapshot with device private signing key;
+:Build device access material;
+:Build local vault descriptor;
+:Build unlocked vault session object;
+:saveInitializedLocalVault(descriptor, access material, snapshot);
+
+if (commit unlocked session succeeds?) then (yes)
+  :Return recoveryMnemonicKey and vaultDisplayName;
+  stop
+else (no)
+  :Best effort removePersistedLocalVault(vaultId);
+  :Throw original session commit error;
+  stop
+endif
+@enduml

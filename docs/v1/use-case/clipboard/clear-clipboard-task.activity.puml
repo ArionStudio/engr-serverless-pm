@@ -1,0 +1,25 @@
+@startuml clear-clipboard-task-activity
+title ClearClipboardTaskUseCase - Activity
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #E3F2FD
+  BorderColor #1976D2
+}
+
+start
+:Input:\noptional actionId, requireExpired, optional task;
+:Source:\npackages/core/src/use-cases/clipboard/clear-clipboard-task.ts;
+:Delegate to ClipboardClearService.clearTask(params);
+note right
+The service decides:
+cleared true,
+or cleared false with reason:
+noClipboardClearTask, staleAction,
+notExpired, clipboardChanged.
+end note
+:Return service result;
+stop
+@enduml

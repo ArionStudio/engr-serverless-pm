@@ -1,0 +1,124 @@
+@startuml perform-device-enrollment-activity
+title PerformDeviceEnrollmentUseCase - Activity
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #E3F2FD
+  BorderColor #1976D2
+}
+
+start
+:Input:\nenrollmentBundle, masterPassword, deviceName;
+:Source:\npackages/core/src/use-cases/device-trust/perform-device-enrollment.ts;
+:Require bundle vault can be activated locally;
+:Read latest remote snapshot descriptor with bundle syncConfig;
+if (remote descriptor missing?) then (yes)
+  :Throw RemoteVaultSnapshotNotFoundError;
+  stop
+endif
+:Build expected descriptor from bundle vector and timestamp;
+if (remote descriptor differs from bundle descriptor?) then (yes)
+  :Throw DeviceEnrollmentRemoteSnapshotChangedError;
+  stop
+endif
+
+:Download remote enrollment snapshot;
+if (snapshot vault id differs?) then (yes)
+  :Throw DeviceEnrollmentSnapshotMismatchError;
+  stop
+endif
+if (snapshot algorithm unsupported?) then (yes)
+  :Throw UnsupportedAlgorithmSuiteError;
+  stop
+endif
+:Verify snapshot signature with bundle snapshotSignerPublicKey;
+if (signature invalid?) then (yes)
+  :Throw VaultSnapshotSignatureVerificationFailedError;
+  stop
+endif
+
+:Read enrollmentKeySlot from remote snapshot;
+if (enrollment slot missing?) then (yes)
+  :Throw DeviceEnrollmentKeySlotNotFoundError;
+  stop
+endif
+if (enrollment already completed or pending device already trusted?) then (yes)
+  :Throw DeviceEnrollmentAlreadyCompletedError;
+  stop
+endif
+
+:Verify pending public key digest;
+if (digest mismatch?) then (yes)
+  :Throw DeviceEnrollmentIntegrityError;
+  stop
+endif
+:Verify protected vault master key digest;
+if (digest mismatch?) then (yes)
+  :Throw DeviceEnrollmentIntegrityError;
+  stop
+endif
+:Find authorizer device slot;
+if (authorizer is not trusted?) then (yes)
+  :Throw DeviceEnrollmentIntegrityError;
+  stop
+endif
+:Verify enrollment authorization signature;
+if (authorization invalid?) then (yes)
+  :Throw DeviceEnrollmentIntegrityError;
+  stop
+endif
+
+:Derive enrollment protection key from bundle enrollmentSecret;
+:Unwrap vaultMasterKey from enrollment slot;
+:Decrypt remote snapshot content into vault;
+:Verify downloaded descriptor still equals remote descriptor;
+if (descriptor changed?) then (yes)
+  :Throw RemoteVaultSnapshotChangedError;
+  stop
+endif
+
+:Use pendingDeviceId and pending public/private signing keys;
+:Generate local vault display name;
+:Generate deviceSlotKey and local protection salts;
+:Derive localRootKey from new masterPassword;
+:Derive localKeysProtectionKey;
+:Wrap local keys payload for this device;
+:Wrap vaultMasterKey for this device slot;
+:Add device profile to decrypted vault;
+:Build completed enrollment proof;
+:Build registered snapshot with new device slot and completed proof;
+:Encrypt registered vault content;
+:Sign registered snapshot with pending device private key;
+:Verify registered snapshot signature with pending public key;
+if (signature verification fails?) then (yes)
+  :Throw DeviceEnrollmentIntegrityError;
+  stop
+endif
+
+:Build device access material and local vault descriptor;
+:Save initialized local vault for new device;
+if (commit unlocked session succeeds?) then (yes)
+  :Continue;
+else (no)
+  :Best effort remove persisted local vault;
+  :Throw original session activation failure;
+  stop
+endif
+
+if (upload registered snapshot succeeds?) then (yes)
+  :Return vault, snapshotVersionVector,\nrevisionTimestamp, deviceId;
+  stop
+else (no)
+  :Best effort remove unlocked session;
+  :Best effort remove persisted local vault;
+  if (failure is RemoteVaultSnapshotChangedError?) then (yes)
+    :Throw SyncConflictDetectedError;
+    stop
+  else (no)
+    :Throw original upload error;
+    stop
+  endif
+endif
+@enduml

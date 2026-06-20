@@ -1,0 +1,37 @@
+@startuml sync-resolution-state-machine
+title Sync Descriptor Resolution - State Machine From Use Cases
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam state {
+  BackgroundColor #E3F2FD
+  BorderColor #1976D2
+}
+
+[*] --> SyncNotConfigured
+SyncNotConfigured --> Configured : SetupSyncUseCase persists syncConfig and uploads initial snapshot
+
+Configured --> Equal : local descriptor equals remote descriptor
+Configured --> LocalAhead : local snapshot vector ahead
+Configured --> RemoteAhead : remote snapshot vector ahead
+Configured --> Broken : crossed vectors or descriptor integrity mismatch
+Configured --> RemoteMissing : remote descriptor is null
+
+Equal --> Configured : SyncUploadUseCase returns without upload
+LocalAhead --> Configured : SyncUploadUseCase uploads local snapshot
+RemoteAhead --> ReviewPrepared : PrepareSyncReviewUseCase downloads trusted remote and returns review
+Broken --> [*] : integrity error
+RemoteMissing --> Configured : SyncUploadUseCase uploads local snapshot with expected remote = null
+
+ReviewPrepared --> Configured : ApplySyncResolutionUseCase persists resolved snapshot and uploads
+ReviewPrepared --> Broken : trust change requires device-trust flow or invalid resolution
+Configured --> LocalOnly : DisableSyncUseCase removes remote snapshots, syncConfig, and other device trust
+LocalOnly --> Configured : SetupSyncUseCase persists syncConfig and uploads initial snapshot
+
+note right of ReviewPrepared
+Review includes actionable entries, tags, device profiles,
+and read-only key slot changes.
+end note
+
+@enduml

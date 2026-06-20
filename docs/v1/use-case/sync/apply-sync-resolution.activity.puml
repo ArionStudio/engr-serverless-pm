@@ -1,0 +1,109 @@
+@startuml apply-sync-resolution-activity
+title ApplySyncResolutionUseCase - Activity
+
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #E3F2FD
+  BorderColor #1976D2
+}
+
+start
+:Input:\nvaultId, remoteSnapshotDescriptor, resolution;
+:Source:\npackages/core/src/use-cases/sync/apply-sync-resolution.ts;
+:Require unlocked vault context for "apply sync resolution";
+if (syncConfig missing?) then (yes)
+  :Throw SyncNotConfiguredError;
+  stop
+endif
+if (descriptor vaultId differs?) then (yes)
+  :Throw InvalidSyncResolutionError;
+  stop
+endif
+
+:Require current local snapshot for unlocked vault and source vector;
+:Read current remote snapshot descriptor;
+if (current remote descriptor missing or changed?) then (yes)
+  :Throw RemoteVaultSnapshotChangedError;
+  stop
+endif
+
+:Compare local descriptor vs provided remote descriptor;
+if (relation is broken?) then (yes)
+  :Throw RemoteVaultSnapshotIntegrityError;
+  stop
+endif
+if (relation is local_ahead?) then (yes)
+  :Throw LocalVaultSnapshotAheadError;
+  stop
+endif
+if (relation is equal?) then (yes)
+  if (descriptor fields exactly equal?) then (yes)
+    :Throw SyncAlreadyResolvedError;
+    stop
+  else (no)
+    :Throw RemoteVaultSnapshotIntegrityError;
+    stop
+  endif
+endif
+
+:Download remote snapshot;
+:Open trusted remote snapshot with trust result;
+:Verify downloaded descriptor still matches provided descriptor;
+if (descriptor changed?) then (yes)
+  :Throw RemoteVaultSnapshotChangedError;
+  stop
+endif
+
+:Find key slot changes;
+if (key slots changed?) then (yes)
+  if (change is exactly one accepted completed enrollment?) then (yes)
+    :Accept remote keySlots for completed enrollment;
+  else (no)
+    :Throw SyncTrustChangeRequiresDeviceTrustFlowError;
+    stop
+  endif
+endif
+
+:Find entry, tag, and device-profile review items;
+if (no actionable changes and no accepted enrollment?) then (yes)
+  :Throw SyncAlreadyResolvedError;
+  stop
+endif
+if (resolution item counts do not match review item counts?) then (yes)
+  :Throw SyncResolutionIncompleteError;
+  stop
+endif
+
+if (actionable changes exist?) then (yes)
+  :Apply VaultSyncResolution to local and remote vaults;
+  if (resolution invalid?) then (yes)
+    :Throw InvalidSyncResolutionError;
+    stop
+  endif
+endif
+
+if (accepted completed enrollment and enrolled profile was removed?) then (yes)
+  :Throw InvalidSyncResolutionError;
+  stop
+endif
+
+:Merge local and remote snapshot version vectors;
+:Persist resolved vault as signed local snapshot\nwith merged base vector and optional accepted keySlots;
+:Require resolved local snapshot;
+if (upload resolved snapshot succeeds?) then (yes)
+  :Commit persisted snapshot vector to unlocked session;
+  :Return snapshotVersionVector and revisionTimestamp;
+  stop
+else (no)
+  :Best effort restore previous local snapshot;
+  if (failure is RemoteVaultSnapshotChangedError?) then (yes)
+    :Throw SyncConflictDetectedError;
+    stop
+  else (no)
+    :Throw original upload error;
+    stop
+  endif
+endif
+@enduml
