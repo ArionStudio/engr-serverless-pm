@@ -2,6 +2,7 @@ import type { DeviceAccessMaterial } from "../../domain/device-trust/device-acce
 import type { DeviceAccessRecoveryBackup } from "../../domain/device-trust/device-access-recovery-backup";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import type { LocalVaultDescriptor } from "../../domain/vault/local-vault-descriptor";
+import type { LocalVaultTrustCheckpoint } from "../../domain/device-trust";
 
 export interface VaultLocalRepositoryPort {
   /**
@@ -9,12 +10,13 @@ export interface VaultLocalRepositoryPort {
    * avoid leaving a partial descriptor/material/recovery-backup/snapshot set
    * when this rejects.
    */
-  saveInitializedLocalVault: (
-    descriptor: LocalVaultDescriptor,
-    deviceAccessMaterial: DeviceAccessMaterial,
-    deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup,
-    snapshot: VaultSnapshot,
-  ) => Promise<void>;
+  saveInitializedLocalVault: (params: {
+    readonly descriptor: LocalVaultDescriptor;
+    readonly deviceAccessMaterial: DeviceAccessMaterial;
+    readonly deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup;
+    readonly snapshot: VaultSnapshot;
+    readonly checkpoint: LocalVaultTrustCheckpoint;
+  }) => Promise<void>;
   removePersistedLocalVault: (vaultId: string) => Promise<void>;
 
   saveLocalVaultDescriptor: (descriptor: LocalVaultDescriptor) => Promise<void>;
@@ -48,7 +50,23 @@ export interface VaultLocalRepositoryPort {
   ) => Promise<DeviceAccessRecoveryBackup | null>;
   removeDeviceAccessRecoveryBackup: (vaultId: string) => Promise<void>;
 
-  saveVaultSnapshot: (vaultSnapshot: VaultSnapshot) => Promise<void>;
   getVaultSnapshot: (vaultId: string) => Promise<VaultSnapshot | null>;
   removeVaultSnapshot: (vaultId: string) => Promise<void>;
+
+  /**
+   * Atomically replaces the snapshot and signed rollback checkpoint only when
+   * the persisted snapshot still matches `expectedSnapshotDigest`.
+   */
+  saveVaultSnapshotWithCheckpoint: (params: {
+    readonly expectedSnapshotDigest: string;
+    readonly snapshot: VaultSnapshot;
+    readonly checkpoint: LocalVaultTrustCheckpoint;
+  }) => Promise<void>;
+  saveLocalVaultTrustCheckpoint: (
+    checkpoint: LocalVaultTrustCheckpoint,
+  ) => Promise<void>;
+  getLocalVaultTrustCheckpoint: (
+    vaultId: string,
+  ) => Promise<LocalVaultTrustCheckpoint | null>;
+  removeLocalVaultTrustCheckpoint: (vaultId: string) => Promise<void>;
 }

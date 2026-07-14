@@ -74,6 +74,11 @@ describe("UnlockVaultUseCase", () => {
         vault: ctx.values.decryptedVault,
         vaultMasterKey: ctx.values.vaultMasterKey,
         devicePrivateSignKey: ctx.values.devicePrivateSignKey,
+        trustedSnapshotContext: {
+          snapshotDigest: ctx.values.vaultSnapshotDigest,
+          trust: ctx.values.verifiedVaultTrustState,
+        },
+        vaultTrustAnchor: ctx.values.vaultTrustAnchor,
       },
       sourceSnapshotVersionVector: {
         [ctx.values.deviceId]: 1,
@@ -101,6 +106,24 @@ describe("UnlockVaultUseCase", () => {
       metadata: {
         ...ctx.vaultSnapshot.metadata,
         createdByDeviceId: "other-device-id",
+      },
+      trustChain: {
+        ...ctx.values.vaultTrustChain,
+        certificates: [
+          {
+            ...ctx.values.vaultTrustCertificate,
+            payload: {
+              ...ctx.values.vaultTrustCertificate.payload,
+              trustedDevices: [
+                ...ctx.values.vaultTrustCertificate.payload.trustedDevices,
+                {
+                  deviceId: "other-device-id",
+                  publicSignKey: ctx.values.pendingDevicePublicSignKey,
+                },
+              ],
+            },
+          },
+        ],
       },
       keySlots: {
         ...ctx.vaultSnapshot.keySlots,
@@ -193,7 +216,9 @@ describe("UnlockVaultUseCase", () => {
       }),
     ).rejects.toBeInstanceOf(VaultSnapshotSignatureVerificationFailedError);
 
-    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenCalled();
+    expect(ctx.ports.crypto.unwrapVaultMasterKey).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
     expect(
       ctx.ports.sessionServices.unlockedVaultSession.commit,
     ).not.toHaveBeenCalled();
@@ -305,7 +330,7 @@ describe("UnlockVaultUseCase", () => {
     expect(
       ctx.ports.crypto.verifyVaultSnapshotSignature,
     ).not.toHaveBeenCalled();
-    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenCalled();
     expect(
       ctx.ports.sessionServices.unlockedVaultSession.commit,
     ).not.toHaveBeenCalled();
@@ -507,6 +532,11 @@ describe("UnlockVaultUseCase", () => {
       vaultMasterKey: ctx.values.vaultMasterKey,
       devicePrivateSignKey: ctx.values.devicePrivateSignKey,
       payloadKey: ctx.values.unlockedVaultSessionPayloadKey,
+      trustedSnapshotContext: {
+        snapshotDigest: ctx.values.vaultSnapshotDigest,
+        trust: ctx.values.verifiedVaultTrustState,
+      },
+      vaultTrustAnchor: ctx.values.vaultTrustAnchor,
     };
 
     await expect(

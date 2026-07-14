@@ -26,7 +26,7 @@ function createContext() {
   const vaultSnapshot: VaultSnapshot = {
     metadata: {
       id: values.vaultId,
-      schemaVersion: 1,
+      schemaVersion: 2,
       vaultCreationTimestamp: values.timestamp - 1_000,
       revisionTimestamp: values.timestamp,
       snapshotVersionVector: {
@@ -35,6 +35,7 @@ function createContext() {
       algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
       createdByDeviceId: values.deviceId,
     },
+    trustChain: values.vaultTrustChain,
     keySlots: {
       deviceSlots: [
         {
@@ -57,6 +58,7 @@ function createContext() {
   };
 
   ports.saved.vaultSnapshot = vaultSnapshot;
+  ports.saved.localVaultTrustCheckpoint = values.localVaultTrustCheckpoint;
   ports.saved.deviceAccessRecoveryBackup = deviceAccessRecoveryBackup;
   vi.mocked(ports.crypto.generateMasterPasswordSalt)
     .mockReset()
@@ -144,6 +146,7 @@ describe("RecoverDeviceAccessUseCase", () => {
       {
         deviceSlotKey: ctx.values.deviceSlotKey,
         devicePrivateSignKey: ctx.values.devicePrivateSignKey,
+        vaultTrustAnchor: ctx.values.vaultTrustAnchor,
       },
       ctx.values.newLocalKeysProtectionKey,
     );
@@ -162,6 +165,7 @@ describe("RecoverDeviceAccessUseCase", () => {
       {
         deviceSlotKey: ctx.values.deviceSlotKey,
         devicePrivateSignKey: ctx.values.devicePrivateSignKey,
+        vaultTrustAnchor: ctx.values.vaultTrustAnchor,
       },
       ctx.values.rotatedRecoveryLocalKeysProtectionKey,
     );
@@ -212,7 +216,7 @@ describe("RecoverDeviceAccessUseCase", () => {
       ctx.ports.vaultLocalRepository.saveDeviceAccessRecoveryBackup,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
     expect(
       ctx.ports.sessionServices.unlockedVaultSession.commit,
@@ -235,6 +239,7 @@ describe("RecoverDeviceAccessUseCase", () => {
       ctx.ports.vaultLocalRepository.getVaultSnapshot,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.bip39.mnemonicToRecoveryKey).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.unwrapVaultMasterKey).not.toHaveBeenCalled();
     expect(
       ctx.ports.vaultLocalRepository.saveRecoveredDeviceAccess,
     ).not.toHaveBeenCalled();
@@ -249,6 +254,11 @@ describe("RecoverDeviceAccessUseCase", () => {
         vault: ctx.values.decryptedVault,
         vaultMasterKey: ctx.values.vaultMasterKey,
         devicePrivateSignKey: ctx.values.devicePrivateSignKey,
+        trustedSnapshotContext: {
+          snapshotDigest: ctx.values.vaultSnapshotDigest,
+          trust: ctx.values.verifiedVaultTrustState,
+        },
+        vaultTrustAnchor: ctx.values.vaultTrustAnchor,
       },
       sourceSnapshotVersionVector: {
         [ctx.values.deviceId]: 1,
@@ -323,6 +333,7 @@ describe("RecoverDeviceAccessUseCase", () => {
     ).rejects.toBeInstanceOf(VaultSnapshotNotFoundError);
 
     expect(ctx.ports.bip39.mnemonicToRecoveryKey).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.unwrapVaultMasterKey).not.toHaveBeenCalled();
     expect(
       ctx.ports.vaultLocalRepository.saveRecoveredDeviceAccess,
     ).not.toHaveBeenCalled();
@@ -372,7 +383,7 @@ describe("RecoverDeviceAccessUseCase", () => {
       }),
     ).rejects.toBeInstanceOf(VaultSnapshotSignerNotTrustedError);
 
-    expect(ctx.ports.bip39.mnemonicToRecoveryKey).not.toHaveBeenCalled();
+    expect(ctx.ports.bip39.mnemonicToRecoveryKey).toHaveBeenCalled();
   });
 
   it("fails when the snapshot signature is invalid", async () => {
@@ -389,7 +400,7 @@ describe("RecoverDeviceAccessUseCase", () => {
       }),
     ).rejects.toBeInstanceOf(VaultSnapshotSignatureVerificationFailedError);
 
-    expect(ctx.ports.bip39.mnemonicToRecoveryKey).not.toHaveBeenCalled();
+    expect(ctx.ports.bip39.mnemonicToRecoveryKey).toHaveBeenCalled();
     expect(
       ctx.ports.vaultLocalRepository.saveRecoveredDeviceAccess,
     ).not.toHaveBeenCalled();

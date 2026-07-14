@@ -35,7 +35,6 @@ import {
   RemoteVaultSnapshotNotFoundError,
   SyncConflictDetectedError,
 } from "../../errors/sync.errors";
-import { VaultSnapshotSignatureVerificationFailedError } from "../../errors/unlock-vault.errors";
 import type { Bip39Port } from "../../ports/crypto/bip39.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
@@ -43,6 +42,8 @@ import type { ClockPort } from "../../ports/system/clock.port";
 import type { VaultDisplayNamePort } from "../../ports/vault/vault-display-name.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
+import { VaultTrustService } from "../../services/trust/vault-trust.service";
+import { VaultTrustStateInvalidError } from "../../errors/vault-trust.errors";
 
 export type PerformDeviceEnrollmentCommandParams = {
   readonly enrollmentBundle: DeviceEnrollmentBundle;
@@ -66,6 +67,7 @@ export class PerformDeviceEnrollmentUseCase {
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
   private readonly vaultDisplayName: VaultDisplayNamePort;
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
+  private readonly vaultTrust: VaultTrustService;
 
   constructor(
     clock: ClockPort,
@@ -83,6 +85,7 @@ export class PerformDeviceEnrollmentUseCase {
     this.unlockedVaultSession = unlockedVaultSession;
     this.vaultDisplayName = vaultDisplayName;
     this.vaultLocalRepository = vaultLocalRepository;
+    this.vaultTrust = new VaultTrustService(crypto);
   }
 
   async execute(
@@ -144,16 +147,23 @@ export class PerformDeviceEnrollmentUseCase {
       });
     }
 
-    const isSnapshotAuthentic = await this.crypto.verifyVaultSnapshotSignature(
-      remoteSnapshot,
-      enrollmentBundle.snapshotSignerPublicKey,
-    );
-
-    if (!isSnapshotAuthentic) {
-      throw new VaultSnapshotSignatureVerificationFailedError(
+    if (remoteSnapshot.trustChain === undefined) {
+      throw new VaultTrustStateInvalidError(
         enrollmentBundle.vaultId,
+        "trust chain is missing",
       );
     }
+
+    const verifiedTrust = await this.vaultTrust.verifyTrustChain(
+      enrollmentBundle.vaultId,
+      enrollmentBundle.vaultTrustAnchor,
+      remoteSnapshot.trustChain,
+    );
+    await this.vaultTrust.verifySnapshot(
+      enrollmentBundle.vaultId,
+      remoteSnapshot,
+      verifiedTrust,
+    );
 
     const enrollmentKeySlot = remoteSnapshot.keySlots.enrollmentKeySlot;
 
@@ -213,9 +223,8 @@ export class PerformDeviceEnrollmentUseCase {
       );
     }
 
-    const authorizerDevice = remoteSnapshot.keySlots.deviceSlots.find(
-      (deviceSlot) =>
-        deviceSlot.deviceId === enrollmentKeySlot.authorizedByDeviceId,
+    const authorizerDevice = verifiedTrust.trustedDevices.find(
+      (device) => device.deviceId === enrollmentKeySlot.authorizedByDeviceId,
     );
 
     if (authorizerDevice === undefined) {
@@ -296,6 +305,7 @@ export class PerformDeviceEnrollmentUseCase {
     const localKeysPayload: LocalKeysPayload = {
       deviceSlotKey,
       devicePrivateSignKey,
+      vaultTrustAnchor: enrollmentBundle.vaultTrustAnchor,
     };
     const protectedLocalKeys = await this.crypto.wrapLocalKeysPayload(
       localKeysPayload,
@@ -345,6 +355,7 @@ export class PerformDeviceEnrollmentUseCase {
         ),
         createdByDeviceId: deviceId,
       },
+      trustChain: remoteSnapshot.trustChain,
       keySlots: {
         deviceSlots: [
           ...remoteSnapshot.keySlots.deviceSlots,
@@ -371,16 +382,17 @@ export class PerformDeviceEnrollmentUseCase {
         devicePrivateSignKey,
       ),
     };
-    const isRegisteredSnapshotAuthentic =
-      await this.crypto.verifyVaultSnapshotSignature(
+    try {
+      await this.vaultTrust.verifySnapshot(
+        enrollmentBundle.vaultId,
         registeredVaultSnapshot,
-        devicePublicSignKey,
+        verifiedTrust,
       );
-
-    if (!isRegisteredSnapshotAuthentic) {
+    } catch (error) {
       throw new DeviceEnrollmentIntegrityError(
         enrollmentBundle.vaultId,
-        "pending device private key does not match the enrolled public key",
+        "pending device cannot authenticate the completed snapshot",
+        { cause: error },
       );
     }
 
@@ -412,14 +424,28 @@ export class PerformDeviceEnrollmentUseCase {
       vault: registeredVault,
       vaultMasterKey,
       devicePrivateSignKey,
+      trustedSnapshotContext: {
+        snapshotDigest: await this.crypto.digestVaultSnapshot(
+          registeredVaultSnapshot,
+        ),
+        trust: verifiedTrust,
+      },
+      vaultTrustAnchor: enrollmentBundle.vaultTrustAnchor,
     };
+    const checkpoint = await this.vaultTrust.createCheckpoint(
+      registeredVaultSnapshot,
+      verifiedTrust,
+      deviceId,
+      devicePrivateSignKey,
+    );
 
-    await this.vaultLocalRepository.saveInitializedLocalVault(
-      localVaultDescriptor,
+    await this.vaultLocalRepository.saveInitializedLocalVault({
+      descriptor: localVaultDescriptor,
       deviceAccessMaterial,
       deviceAccessRecoveryBackup,
-      registeredVaultSnapshot,
-    );
+      snapshot: registeredVaultSnapshot,
+      checkpoint,
+    });
 
     try {
       await this.unlockedVaultSession.commit(

@@ -10,7 +10,10 @@ import {
   UnlockedVaultSessionInvalidError,
   VaultMustBeUnlockedError,
 } from "../../errors/vault-session.errors";
-import type { VersionVector } from "../../domain/versioning/version-vector.type";
+import type {
+  EncryptedUnlockedVaultSessionPayload,
+  UnlockedVaultSessionMaterial,
+} from "../../domain/session/unlocked-vault-session.type";
 import { UnlockedVaultSessionService } from "./unlocked-vault-session.service";
 
 function createContext() {
@@ -47,15 +50,7 @@ function createContext() {
 
 function createMaterial(
   ctx: ReturnType<typeof createContext>,
-  overrides: Partial<{
-    readonly sessionId: string;
-    readonly vaultId: string;
-    readonly sourceSnapshotVersionVector: VersionVector;
-    readonly deviceId: string;
-    readonly vaultMasterKey: typeof ctx.values.vaultMasterKey;
-    readonly devicePrivateSignKey: typeof ctx.values.devicePrivateSignKey;
-    readonly payloadKey: typeof ctx.values.unlockedVaultSessionPayloadKey;
-  }> = {},
+  overrides: Partial<UnlockedVaultSessionMaterial> = {},
 ) {
   return {
     sessionId: ctx.values.sessionId,
@@ -65,18 +60,15 @@ function createMaterial(
     vaultMasterKey: ctx.values.vaultMasterKey,
     devicePrivateSignKey: ctx.values.devicePrivateSignKey,
     payloadKey: ctx.values.unlockedVaultSessionPayloadKey,
+    trustedSnapshotContext: ctx.session.unlockedVault.trustedSnapshotContext,
+    vaultTrustAnchor: ctx.session.unlockedVault.vaultTrustAnchor,
     ...overrides,
   };
 }
 
 function createEncryptedPayload(
   ctx: ReturnType<typeof createContext>,
-  overrides: Partial<{
-    readonly sessionId: string;
-    readonly vaultId: string;
-    readonly sourceSnapshotVersionVector: VersionVector;
-    readonly content: typeof ctx.values.encryptedUnlockedVaultSessionPayload;
-  }> = {},
+  overrides: Partial<EncryptedUnlockedVaultSessionPayload> = {},
 ) {
   return {
     sessionId: ctx.values.sessionId,
@@ -149,6 +141,9 @@ describe("UnlockedVaultSessionService", () => {
         vault: ctx.values.decryptedVault,
         vaultMasterKey: ctx.values.vaultMasterKey,
         devicePrivateSignKey: ctx.values.devicePrivateSignKey,
+        trustedSnapshotContext:
+          ctx.session.unlockedVault.trustedSnapshotContext,
+        vaultTrustAnchor: ctx.session.unlockedVault.vaultTrustAnchor,
       },
       sourceSnapshotVersionVector: ctx.sourceSnapshotVersionVector,
     });
@@ -183,6 +178,9 @@ describe("UnlockedVaultSessionService", () => {
         vault: ctx.values.decryptedVault,
         vaultMasterKey: ctx.values.vaultMasterKey,
         devicePrivateSignKey: ctx.values.devicePrivateSignKey,
+        trustedSnapshotContext:
+          ctx.session.unlockedVault.trustedSnapshotContext,
+        vaultTrustAnchor: ctx.session.unlockedVault.vaultTrustAnchor,
       },
       sourceSnapshotVersionVector: ctx.sourceSnapshotVersionVector,
     });
@@ -345,6 +343,8 @@ describe("UnlockedVaultSessionService", () => {
       vaultMasterKey: ctx.values.vaultMasterKey,
       devicePrivateSignKey: ctx.values.devicePrivateSignKey,
       payloadKey: ctx.values.unlockedVaultSessionPayloadKey,
+      trustedSnapshotContext: ctx.session.unlockedVault.trustedSnapshotContext,
+      vaultTrustAnchor: ctx.session.unlockedVault.vaultTrustAnchor,
     });
     expect(
       vi.mocked(
@@ -386,6 +386,8 @@ describe("UnlockedVaultSessionService", () => {
       vaultMasterKey: ctx.values.vaultMasterKey,
       devicePrivateSignKey: ctx.values.devicePrivateSignKey,
       payloadKey: ctx.values.unlockedVaultSessionPayloadKey,
+      trustedSnapshotContext: ctx.session.unlockedVault.trustedSnapshotContext,
+      vaultTrustAnchor: ctx.session.unlockedVault.vaultTrustAnchor,
     });
   });
 

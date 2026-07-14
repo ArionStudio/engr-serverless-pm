@@ -117,7 +117,10 @@ export class DisableSyncUseCase {
     );
 
     await this.unlockedVaultSession.commitPersistedSnapshot(
-      updatedUnlockedVault,
+      {
+        ...updatedUnlockedVault,
+        trustedSnapshotContext: persistedSnapshot.trustedSnapshotContext,
+      },
       persistedSnapshot.snapshotVersionVector,
     );
   }

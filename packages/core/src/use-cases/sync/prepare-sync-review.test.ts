@@ -27,7 +27,7 @@ function createSnapshot(
   return {
     metadata: {
       id: values.vaultId,
-      schemaVersion: 1,
+      schemaVersion: 2,
       vaultCreationTimestamp: values.timestamp - 1_000,
       revisionTimestamp: values.timestamp,
       snapshotVersionVector: {
@@ -37,6 +37,7 @@ function createSnapshot(
       createdByDeviceId: values.deviceId,
       ...overrides,
     },
+    trustChain: values.vaultTrustChain,
     keySlots: {
       deviceSlots: [
         {
@@ -203,7 +204,7 @@ describe("PrepareSyncReviewUseCase", () => {
     });
 
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
     expect(ctx.saved.vaultSnapshot).toBe(ctx.localSnapshot);
@@ -248,7 +249,7 @@ describe("PrepareSyncReviewUseCase", () => {
     ).rejects.toBeInstanceOf(RemoteVaultSnapshotChangedError);
 
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
     expect(ctx.saved.vaultSnapshot).toBe(ctx.localSnapshot);
@@ -345,7 +346,7 @@ describe("PrepareSyncReviewUseCase", () => {
 
     expect(ctx.ports.syncProvider.downloadVaultSnapshot).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });
@@ -414,7 +415,7 @@ describe("PrepareSyncReviewUseCase", () => {
     ).rejects.toBeInstanceOf(InvalidVaultSyncReviewError);
 
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });

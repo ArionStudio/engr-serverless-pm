@@ -62,6 +62,7 @@ describe("ChangeMasterPasswordUseCase", () => {
       {
         deviceSlotKey: ctx.values.deviceSlotKey,
         devicePrivateSignKey: ctx.values.devicePrivateSignKey,
+        vaultTrustAnchor: ctx.values.vaultTrustAnchor,
       },
       ctx.values.newLocalKeysProtectionKey,
     );

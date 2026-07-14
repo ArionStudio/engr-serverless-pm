@@ -74,7 +74,7 @@ describe("DisableSyncUseCase", () => {
     const localSnapshot = {
       metadata: {
         id: ctx.values.vaultId,
-        schemaVersion: 1 as const,
+        schemaVersion: 2 as const,
         vaultCreationTimestamp: ctx.values.timestamp - 1_000,
         revisionTimestamp: ctx.values.timestamp,
         snapshotVersionVector: {
@@ -83,6 +83,7 @@ describe("DisableSyncUseCase", () => {
         algorithmSuiteId: ctx.ports.crypto.algorithmSuite.id,
         createdByDeviceId: ctx.values.deviceId,
       },
+      trustChain: ctx.values.vaultTrustChain,
       keySlots: {
         deviceSlots: [currentDeviceSlot, otherDeviceSlot],
         enrollmentKeySlot: {

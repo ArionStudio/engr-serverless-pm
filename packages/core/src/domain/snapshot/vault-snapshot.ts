@@ -6,8 +6,9 @@ import type { CompletedDeviceEnrollmentProof } from "../device-trust";
 import type { Vault } from "../vault/vault";
 import type { VersionVector } from "../versioning/version-vector.type";
 import type { DeviceKeySlot, EnrollmentKeySlot } from "./key-slot";
+import type { VaultTrustChain } from "../device-trust/vault-trust";
 
-export type VaultSnapshotSchemaVersion = 1;
+export type VaultSnapshotSchemaVersion = 2;
 
 export type VaultSnapshotMetadata = {
   id: string; // random identifier
@@ -21,6 +22,7 @@ export type VaultSnapshotMetadata = {
 
 export type UnsignedVaultSnapshot = {
   metadata: VaultSnapshotMetadata;
+  trustChain: VaultTrustChain;
   keySlots: {
     deviceSlots: DeviceKeySlot[];
     enrollmentKeySlot?: EnrollmentKeySlot;

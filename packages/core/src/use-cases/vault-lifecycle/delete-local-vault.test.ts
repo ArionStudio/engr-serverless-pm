@@ -19,6 +19,11 @@ function createContext() {
       vault: values.decryptedVault,
       vaultMasterKey: values.vaultMasterKey,
       devicePrivateSignKey: values.devicePrivateSignKey,
+      trustedSnapshotContext: {
+        snapshotDigest: values.vaultSnapshotDigest,
+        trust: values.verifiedVaultTrustState,
+      },
+      vaultTrustAnchor: values.vaultTrustAnchor,
     },
     sourceSnapshotVersionVector: {
       [values.deviceId]: 1,

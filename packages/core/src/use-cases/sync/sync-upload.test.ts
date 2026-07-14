@@ -25,7 +25,7 @@ function createSnapshot(
   return {
     metadata: {
       id: values.vaultId,
-      schemaVersion: 1,
+      schemaVersion: 2,
       vaultCreationTimestamp: values.timestamp - 1_000,
       revisionTimestamp: values.timestamp,
       snapshotVersionVector: {
@@ -35,6 +35,7 @@ function createSnapshot(
       createdByDeviceId: values.deviceId,
       ...overrides,
     },
+    trustChain: values.vaultTrustChain,
     keySlots: {
       deviceSlots: [
         {

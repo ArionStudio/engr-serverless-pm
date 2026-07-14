@@ -47,7 +47,7 @@ function createRemoteSnapshot(
   return {
     metadata: {
       id: values.vaultId,
-      schemaVersion: 1,
+      schemaVersion: 2,
       vaultCreationTimestamp: values.timestamp - 1_000,
       revisionTimestamp: values.timestamp - 1,
       snapshotVersionVector: {
@@ -55,6 +55,24 @@ function createRemoteSnapshot(
       },
       algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
       createdByDeviceId: values.deviceId,
+    },
+    trustChain: {
+      ...values.vaultTrustChain,
+      certificates: [
+        {
+          ...values.vaultTrustCertificate,
+          payload: {
+            ...values.vaultTrustCertificate.payload,
+            trustedDevices: [
+              ...values.vaultTrustCertificate.payload.trustedDevices,
+              {
+                deviceId: values.pendingDeviceId,
+                publicSignKey: values.pendingDevicePublicSignKey,
+              },
+            ],
+          },
+        },
+      ],
     },
     keySlots: {
       deviceSlots: [
@@ -116,9 +134,9 @@ function createContext() {
     syncConfig: values.syncConfig,
     snapshotVersionVector: remoteSnapshotDescriptor.snapshotVersionVector,
     revisionTimestamp: remoteSnapshotDescriptor.revisionTimestamp,
-    snapshotSignerPublicKey: values.devicePublicSignKey,
     enrollmentSecret: values.deviceEnrollmentSecret,
     pendingDevicePrivateSignKey: values.pendingDevicePrivateSignKey,
+    vaultTrustAnchor: values.vaultTrustAnchor,
   };
 
   vi.mocked(
@@ -238,6 +256,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       {
         deviceSlotKey: ctx.values.deviceSlotKey,
         devicePrivateSignKey: ctx.values.pendingDevicePrivateSignKey,
+        vaultTrustAnchor: ctx.values.vaultTrustAnchor,
       },
       ctx.values.localKeysProtectionKey,
     );
@@ -254,6 +273,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       {
         deviceSlotKey: ctx.values.deviceSlotKey,
         devicePrivateSignKey: ctx.values.pendingDevicePrivateSignKey,
+        vaultTrustAnchor: ctx.values.vaultTrustAnchor,
       },
       ctx.values.recoveryLocalKeysProtectionKey,
     );
@@ -284,7 +304,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       devicePublicSignKey: ctx.values.pendingDevicePublicSignKey,
       protectedLocalKeys: ctx.values.recoveryProtectedLocalKeys,
     });
-    expect(ctx.ports.saved.vaultSnapshot).toEqual({
+    expect(ctx.ports.saved.vaultSnapshot).toMatchObject({
       metadata: {
         ...ctx.remoteSnapshot.metadata,
         snapshotVersionVector: {
@@ -322,6 +342,9 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       content: ctx.values.encryptedVault,
       signature: ctx.values.snapshotSignature,
     });
+    expect(ctx.ports.saved.vaultSnapshot?.trustChain).toEqual(
+      ctx.remoteSnapshot.trustChain,
+    );
     expect(ctx.ports.crypto.signVaultSnapshot).toHaveBeenCalledWith(
       expect.objectContaining({
         metadata: expect.objectContaining({

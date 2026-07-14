@@ -96,18 +96,23 @@ export class AddEntryUseCase {
       await this.vaultSyncGuard.uploadPersistedLocalMutation(
         params.vaultId,
         syncState,
-        await this.vaultSnapshot.requireLocalVaultSnapshot(params.vaultId),
+        persistedSnapshot.snapshot,
+        updatedUnlockedVault,
       );
     }
 
     await this.unlockedVaultSession.commitPersistedSnapshot(
-      updatedUnlockedVault,
+      {
+        ...updatedUnlockedVault,
+        trustedSnapshotContext: persistedSnapshot.trustedSnapshotContext,
+      },
       persistedSnapshot.snapshotVersionVector,
     );
 
     return {
       entryId,
-      ...persistedSnapshot,
+      snapshotVersionVector: persistedSnapshot.snapshotVersionVector,
+      revisionTimestamp: persistedSnapshot.revisionTimestamp,
     };
   }
 }

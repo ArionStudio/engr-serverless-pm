@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type {
   DevicePrivateSignKey,
+  DevicePublicSignKey,
   UnlockedVaultSessionPayloadKey,
   VaultMasterKey,
 } from "@lfspm/core";
@@ -57,6 +58,26 @@ function createMaterial() {
     vaultMasterKey: arrayBuffer(1, 2, 3) as VaultMasterKey,
     devicePrivateSignKey: arrayBuffer(4, 5, 6) as DevicePrivateSignKey,
     payloadKey: arrayBuffer(7, 8, 9) as UnlockedVaultSessionPayloadKey,
+    trustedSnapshotContext: {
+      snapshotDigest: "snapshot-digest",
+      trust: {
+        generation: 2,
+        certificateDigest: "certificate-digest",
+        trustedDevices: [
+          {
+            deviceId: "device-id",
+            publicSignKey: arrayBuffer(10, 11, 12) as DevicePublicSignKey,
+          },
+        ],
+      },
+    },
+    vaultTrustAnchor: {
+      version: 1 as const,
+      vaultId: "vault-id",
+      genesisDeviceId: "device-id",
+      genesisPublicSignKey: arrayBuffer(13, 14, 15) as DevicePublicSignKey,
+      genesisCertificateDigest: "genesis-certificate-digest",
+    },
   };
 }
 
@@ -79,6 +100,26 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
       vaultMasterKey: "AQID",
       devicePrivateSignKey: "BAUG",
       payloadKey: "BwgJ",
+      trustedSnapshotContext: {
+        snapshotDigest: "snapshot-digest",
+        trust: {
+          generation: 2,
+          certificateDigest: "certificate-digest",
+          trustedDevices: [
+            {
+              deviceId: "device-id",
+              publicSignKey: "CgsM",
+            },
+          ],
+        },
+      },
+      vaultTrustAnchor: {
+        version: 1,
+        vaultId: "vault-id",
+        genesisDeviceId: "device-id",
+        genesisPublicSignKey: "DQ4P",
+        genesisCertificateDigest: "genesis-certificate-digest",
+      },
     });
   });
 
@@ -94,6 +135,26 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
         vaultMasterKey: "AQID",
         devicePrivateSignKey: "BAUG",
         payloadKey: "BwgJ",
+        trustedSnapshotContext: {
+          snapshotDigest: "snapshot-digest",
+          trust: {
+            generation: 2,
+            certificateDigest: "certificate-digest",
+            trustedDevices: [
+              {
+                deviceId: "device-id",
+                publicSignKey: "CgsM",
+              },
+            ],
+          },
+        },
+        vaultTrustAnchor: {
+          version: 1,
+          vaultId: "vault-id",
+          genesisDeviceId: "device-id",
+          genesisPublicSignKey: "DQ4P",
+          genesisCertificateDigest: "genesis-certificate-digest",
+        },
       },
     });
     const repository = new ChromeUnlockedVaultSessionMaterialRepository(

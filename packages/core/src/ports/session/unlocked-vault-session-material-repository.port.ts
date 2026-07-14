@@ -1,7 +1,4 @@
-import type { DevicePrivateSignKey } from "../../domain/device-trust/brand-keys";
-import type { VaultMasterKey } from "../../domain/snapshot/brand-keys";
-import type { UnlockedVaultSessionPayloadKey } from "../../domain/session/unlocked-vault-session-payload-key";
-import type { VersionVector } from "../../domain/versioning/version-vector.type";
+import type { UnlockedVaultSessionMaterial } from "../../domain/session/unlocked-vault-session.type";
 
 /**
  * Stores the active unlocked-vault session material.
@@ -11,23 +8,9 @@ import type { VersionVector } from "../../domain/versioning/version-vector.type"
  * volatile, session-scoped storage and expose only the active record.
  */
 export interface UnlockedVaultSessionMaterialRepositoryPort {
-  saveUnlockedVaultSessionMaterial: (material: {
-    readonly sessionId: string;
-    readonly vaultId: string;
-    readonly sourceSnapshotVersionVector: VersionVector;
-    readonly deviceId: string;
-    readonly vaultMasterKey: VaultMasterKey;
-    readonly devicePrivateSignKey: DevicePrivateSignKey;
-    readonly payloadKey: UnlockedVaultSessionPayloadKey;
-  }) => Promise<void>;
-  getUnlockedVaultSessionMaterial: () => Promise<{
-    readonly sessionId: string;
-    readonly vaultId: string;
-    readonly sourceSnapshotVersionVector: VersionVector;
-    readonly deviceId: string;
-    readonly vaultMasterKey: VaultMasterKey;
-    readonly devicePrivateSignKey: DevicePrivateSignKey;
-    readonly payloadKey: UnlockedVaultSessionPayloadKey;
-  } | null>;
+  saveUnlockedVaultSessionMaterial: (
+    material: UnlockedVaultSessionMaterial,
+  ) => Promise<void>;
+  getUnlockedVaultSessionMaterial: () => Promise<UnlockedVaultSessionMaterial | null>;
   removeUnlockedVaultSessionMaterial: () => Promise<void>;
 }

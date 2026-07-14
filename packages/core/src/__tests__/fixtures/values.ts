@@ -22,6 +22,15 @@ import type { RecoverySecretKey } from "../../domain/recovery/brand-keys";
 import type { VaultMasterKey } from "../../domain/snapshot/brand-keys";
 import type { SyncConfig } from "../../domain/sync/sync-config.type";
 import type { DeviceEnrollmentAuthorizationPayload } from "../../domain/device-trust/device-enrollment-authorization";
+import type {
+  LocalVaultTrustCheckpoint,
+  LocalVaultTrustCheckpointPayload,
+  LocalVaultTrustAnchor,
+  VaultTrustCertificate,
+  VaultTrustCertificatePayload,
+  VaultTrustChain,
+  VerifiedVaultTrustState,
+} from "../../domain/device-trust";
 import type { UnsignedVaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import type { UnlockedVaultSessionPayloadKey } from "../../domain/session/unlocked-vault-session-payload-key";
 import type { Vault } from "../../domain/vault/vault";
@@ -32,6 +41,60 @@ export const b64 = (value: string) => value as Base64URLString;
 export type CoreTestValues = ReturnType<typeof createCoreTestValues>;
 
 export function createCoreTestValues() {
+  const devicePublicSignKey = bytes<DevicePublicSignKey>();
+  const devicePrivateSignKey = bytes<DevicePrivateSignKey>();
+  const vaultTrustCertificatePayload = {
+    version: 1,
+    vaultId: "vault-id",
+    generation: 0,
+    previousCertificateDigest: null,
+    authorizedByDeviceId: "device-id",
+    trustedDevices: [
+      {
+        deviceId: "device-id",
+        publicSignKey: devicePublicSignKey,
+      },
+    ],
+  } as const satisfies VaultTrustCertificatePayload;
+  const vaultTrustCertificateSignature = {
+    signature: b64("vault-trust-certificate-signature"),
+  } satisfies SerializedSignatureOf<VaultTrustCertificatePayload>;
+  const vaultTrustCertificate = {
+    payload: vaultTrustCertificatePayload,
+    signature: vaultTrustCertificateSignature,
+  } satisfies VaultTrustCertificate;
+  const vaultTrustCertificateDigest = "vault-trust-certificate-digest";
+  const vaultTrustChain = {
+    certificates: [vaultTrustCertificate],
+  } satisfies VaultTrustChain;
+  const vaultTrustAnchor = {
+    version: 1,
+    vaultId: "vault-id",
+    genesisDeviceId: "device-id",
+    genesisPublicSignKey: devicePublicSignKey,
+    genesisCertificateDigest: vaultTrustCertificateDigest,
+  } satisfies LocalVaultTrustAnchor;
+  const verifiedVaultTrustState = {
+    generation: 0,
+    certificateDigest: vaultTrustCertificateDigest,
+    trustedDevices: vaultTrustCertificatePayload.trustedDevices,
+  } satisfies VerifiedVaultTrustState;
+  const localVaultTrustCheckpointPayload = {
+    version: 1,
+    vaultId: "vault-id",
+    deviceId: "device-id",
+    trustGeneration: 0,
+    trustCertificateDigest: vaultTrustCertificateDigest,
+    snapshotVersionVector: { "device-id": 1 },
+    snapshotDigest: "vault-snapshot-digest",
+  } as const satisfies LocalVaultTrustCheckpointPayload;
+  const localVaultTrustCheckpoint = {
+    payload: localVaultTrustCheckpointPayload,
+    signature: {
+      signature: b64("local-vault-trust-checkpoint-signature"),
+    },
+  } satisfies LocalVaultTrustCheckpoint;
+
   return {
     masterPassword: "master-password" as RawMasterPassword,
     newMasterPassword: "new-master-password" as RawMasterPassword,
@@ -59,11 +122,22 @@ export function createCoreTestValues() {
     vaultMasterKey: bytes<VaultMasterKey>(),
     deviceSlotKey: bytes<DeviceSlotKey>(),
     deviceEnrollmentSecret: bytes<DeviceEnrollmentSecret>(),
-    devicePublicSignKey: bytes<DevicePublicSignKey>(),
-    devicePrivateSignKey: bytes<DevicePrivateSignKey>(),
+    devicePublicSignKey,
+    devicePrivateSignKey,
     pendingDevicePublicSignKey: bytes<DevicePublicSignKey>(),
     pendingDevicePrivateSignKey: bytes<DevicePrivateSignKey>(),
     pendingDevicePublicSignKeyDigest: "pending-device-public-sign-key-digest",
+    devicePublicSignKeyDigest: "device-public-sign-key-digest",
+    vaultTrustCertificatePayload,
+    vaultTrustCertificateSignature,
+    vaultTrustCertificate,
+    vaultTrustCertificateDigest,
+    vaultTrustChain,
+    vaultTrustAnchor,
+    verifiedVaultTrustState,
+    localVaultTrustCheckpointPayload,
+    localVaultTrustCheckpoint,
+    vaultSnapshotDigest: "vault-snapshot-digest",
     recoverySecretKey: bytes<RecoverySecretKey>(),
     rotatedRecoverySecretKey: bytes<RecoverySecretKey>(),
     unlockedVaultSessionPayloadKey: bytes<UnlockedVaultSessionPayloadKey>(),

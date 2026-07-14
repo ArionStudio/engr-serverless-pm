@@ -85,11 +85,15 @@ export class SetupSyncUseCase {
       params.vaultId,
       syncConfig,
       syncState.localSnapshot,
-      await this.vaultSnapshot.requireLocalVaultSnapshot(params.vaultId),
+      persistedSnapshot.snapshot,
+      unlockedVault,
     );
 
     await this.unlockedVaultSession.commitPersistedSnapshot(
-      updatedUnlockedVault,
+      {
+        ...updatedUnlockedVault,
+        trustedSnapshotContext: persistedSnapshot.trustedSnapshotContext,
+      },
       persistedSnapshot.snapshotVersionVector,
     );
   }

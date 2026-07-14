@@ -9,8 +9,6 @@ import {
   DeviceKeySlotNotFoundError,
   DeviceKeySlotVerificationFailedError,
   VaultSnapshotNotFoundError,
-  VaultSnapshotSignatureVerificationFailedError,
-  VaultSnapshotSignerNotTrustedError,
 } from "../../errors/unlock-vault.errors";
 import { PersistedVaultMismatchError } from "../../errors/vault-snapshot.errors";
 import type { Bip39Port } from "../../ports/crypto/bip39.port";
@@ -21,6 +19,11 @@ import {
   DeviceAccessRecoveryBackupMismatchError,
   DeviceAccessRecoveryBackupNotFoundError,
 } from "./recover-device-access.errors";
+import { VaultTrustService } from "../../services/trust/vault-trust.service";
+import {
+  LocalVaultTrustCheckpointNotFoundError,
+  VaultTrustStateInvalidError,
+} from "../../errors/vault-trust.errors";
 
 export type RecoverDeviceAccessCommandParams = {
   readonly vaultId: string;
@@ -38,6 +41,7 @@ export class RecoverDeviceAccessUseCase {
   private readonly crypto: CryptoPort;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
+  private readonly vaultTrust: VaultTrustService;
 
   constructor(
     bip39: Bip39Port,
@@ -49,6 +53,7 @@ export class RecoverDeviceAccessUseCase {
     this.crypto = crypto;
     this.unlockedVaultSession = unlockedVaultSession;
     this.vaultLocalRepository = vaultLocalRepository;
+    this.vaultTrust = new VaultTrustService(crypto);
   }
 
   async execute(
@@ -104,18 +109,6 @@ export class RecoverDeviceAccessUseCase {
       });
     }
 
-    const signerDeviceKeySlot = vaultSnapshot.keySlots.deviceSlots.find(
-      (slot: DeviceKeySlot) =>
-        slot.deviceId === vaultSnapshot.metadata.createdByDeviceId,
-    );
-
-    if (signerDeviceKeySlot === undefined) {
-      throw new VaultSnapshotSignerNotTrustedError(
-        params.vaultId,
-        vaultSnapshot.metadata.createdByDeviceId,
-      );
-    }
-
     const deviceKeySlot = vaultSnapshot.keySlots.deviceSlots.find(
       (slot: DeviceKeySlot) => slot.deviceId === recoveryBackup.deviceId,
     );
@@ -125,15 +118,6 @@ export class RecoverDeviceAccessUseCase {
         params.vaultId,
         recoveryBackup.deviceId,
       );
-    }
-
-    const isSnapshotAuthentic = await this.crypto.verifyVaultSnapshotSignature(
-      vaultSnapshot,
-      signerDeviceKeySlot.publicSignKey,
-    );
-
-    if (!isSnapshotAuthentic) {
-      throw new VaultSnapshotSignatureVerificationFailedError(params.vaultId);
     }
 
     const recoverySecretKey = await this.bip39.mnemonicToRecoveryKey(
@@ -175,6 +159,49 @@ export class RecoverDeviceAccessUseCase {
       );
     }
 
+    if (vaultSnapshot.trustChain === undefined) {
+      throw new VaultTrustStateInvalidError(
+        params.vaultId,
+        "trust chain is missing",
+      );
+    }
+
+    const checkpoint =
+      await this.vaultLocalRepository.getLocalVaultTrustCheckpoint(
+        params.vaultId,
+      );
+
+    if (checkpoint === null) {
+      throw new LocalVaultTrustCheckpointNotFoundError(params.vaultId);
+    }
+
+    const localDeviceIdentity = {
+      deviceId: recoveryBackup.deviceId,
+      publicSignKey: recoveryBackup.devicePublicSignKey,
+    };
+    await this.vaultTrust.verifyCheckpoint(
+      params.vaultId,
+      checkpoint,
+      localDeviceIdentity,
+    );
+    const verifiedTrust = await this.vaultTrust.verifyTrustChain(
+      params.vaultId,
+      localKeysPayload.vaultTrustAnchor,
+      vaultSnapshot.trustChain,
+    );
+    await this.vaultTrust.verifySnapshot(
+      params.vaultId,
+      vaultSnapshot,
+      verifiedTrust,
+    );
+    const checkpointRelation =
+      await this.vaultTrust.requireSnapshotNotRolledBack(
+        params.vaultId,
+        vaultSnapshot,
+        verifiedTrust,
+        checkpoint,
+      );
+
     const vaultMasterKeyProtectionKey =
       await this.crypto.deriveDeviceSlotVaultMasterKeyProtectionKey(
         localKeysPayload.deviceSlotKey,
@@ -189,6 +216,17 @@ export class RecoverDeviceAccessUseCase {
       vaultSnapshot.content,
       vaultMasterKey,
     );
+
+    if (checkpointRelation === "newer") {
+      await this.vaultLocalRepository.saveLocalVaultTrustCheckpoint(
+        await this.vaultTrust.createCheckpoint(
+          vaultSnapshot,
+          verifiedTrust,
+          recoveryBackup.deviceId,
+          localKeysPayload.devicePrivateSignKey,
+        ),
+      );
+    }
 
     const masterPasswordSalt = await this.crypto.generateMasterPasswordSalt();
     const localRootKey = await this.crypto.deriveLocalRootKey(

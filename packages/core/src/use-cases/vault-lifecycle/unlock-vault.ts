@@ -17,12 +17,14 @@ import {
   DeviceKeySlotNotFoundError,
   DeviceKeySlotVerificationFailedError,
   VaultSnapshotNotFoundError,
-  VaultSnapshotSignatureVerificationFailedError,
-  VaultSnapshotSignerNotTrustedError,
 } from "../../errors/unlock-vault.errors";
 import { InvalidVaultLockDelayError } from "../../errors/vault-session.errors";
 import { PersistedVaultMismatchError } from "../../errors/vault-snapshot.errors";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
+import { VaultTrustService } from "../../services/trust/vault-trust.service";
+import { LocalVaultTrustCheckpointNotFoundError } from "../../errors/vault-trust.errors";
+import { VaultTrustStateInvalidError } from "../../errors/vault-trust.errors";
+import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 
 export type UnlockVaultCommandParams = {
   vaultId: string;
@@ -42,6 +44,7 @@ export class UnlockVaultUseCase {
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
   private readonly vaultLockTasks: VaultLockTaskRepositoryPort;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
+  private readonly vaultTrust: VaultTrustService;
 
   constructor(
     clock: ClockPort,
@@ -59,6 +62,7 @@ export class UnlockVaultUseCase {
     this.vaultLocalRepository = vaultLocalRepository;
     this.vaultLockTasks = vaultLockTasks;
     this.unlockedVaultSession = unlockedVaultSession;
+    this.vaultTrust = new VaultTrustService(crypto);
   }
 
   async execute(params: UnlockVaultCommandParams): Promise<UnlockVaultResult> {
@@ -116,18 +120,6 @@ export class UnlockVaultUseCase {
       );
     }
 
-    const signerDeviceKeySlot = vaultSnapshot.keySlots.deviceSlots.find(
-      (slot: DeviceKeySlot) =>
-        slot.deviceId === vaultSnapshot.metadata.createdByDeviceId,
-    );
-
-    if (signerDeviceKeySlot === undefined) {
-      throw new VaultSnapshotSignerNotTrustedError(
-        params.vaultId,
-        vaultSnapshot.metadata.createdByDeviceId,
-      );
-    }
-
     const deviceKeySlot = vaultSnapshot.keySlots.deviceSlots.find(
       (slot: DeviceKeySlot) => slot.deviceId === deviceAccessMaterial.deviceId,
     );
@@ -137,15 +129,6 @@ export class UnlockVaultUseCase {
         params.vaultId,
         deviceAccessMaterial.deviceId,
       );
-    }
-
-    const isSnapshotAuthentic = await this.crypto.verifyVaultSnapshotSignature(
-      vaultSnapshot,
-      signerDeviceKeySlot.publicSignKey,
-    );
-
-    if (!isSnapshotAuthentic) {
-      throw new VaultSnapshotSignatureVerificationFailedError(params.vaultId);
     }
 
     const localRootKey = await this.crypto.deriveLocalRootKey(
@@ -190,6 +173,42 @@ export class UnlockVaultUseCase {
       );
     }
 
+    const localDeviceIdentity = {
+      deviceId: deviceAccessMaterial.deviceId,
+      publicSignKey: deviceAccessMaterial.devicePublicSignKey,
+    };
+    const checkpoint =
+      await this.vaultLocalRepository.getLocalVaultTrustCheckpoint(
+        params.vaultId,
+      );
+
+    if (checkpoint === null) {
+      throw new LocalVaultTrustCheckpointNotFoundError(params.vaultId);
+    }
+
+    await this.vaultTrust.verifyCheckpoint(
+      params.vaultId,
+      checkpoint,
+      localDeviceIdentity,
+    );
+    const verifiedTrust = await this.vaultTrust.verifyTrustChain(
+      params.vaultId,
+      localKeysPayload.vaultTrustAnchor,
+      this.requireTrustChain(params.vaultId, vaultSnapshot),
+    );
+    await this.vaultTrust.verifySnapshot(
+      params.vaultId,
+      vaultSnapshot,
+      verifiedTrust,
+    );
+    const checkpointRelation =
+      await this.vaultTrust.requireSnapshotNotRolledBack(
+        params.vaultId,
+        vaultSnapshot,
+        verifiedTrust,
+        checkpoint,
+      );
+
     const vaultMasterKeyProtectionKey =
       await this.crypto.deriveDeviceSlotVaultMasterKeyProtectionKey(
         localKeysPayload.deviceSlotKey,
@@ -205,12 +224,30 @@ export class UnlockVaultUseCase {
       vaultMasterKey,
     );
 
+    const snapshotDigest = await this.crypto.digestVaultSnapshot(vaultSnapshot);
+
+    if (checkpointRelation === "newer") {
+      await this.vaultLocalRepository.saveLocalVaultTrustCheckpoint(
+        await this.vaultTrust.createCheckpoint(
+          vaultSnapshot,
+          verifiedTrust,
+          deviceAccessMaterial.deviceId,
+          localKeysPayload.devicePrivateSignKey,
+        ),
+      );
+    }
+
     const unlockedVault: UnlockedVault = {
       vaultId: params.vaultId,
       deviceId: deviceAccessMaterial.deviceId,
       vault,
       vaultMasterKey,
       devicePrivateSignKey: localKeysPayload.devicePrivateSignKey,
+      trustedSnapshotContext: {
+        snapshotDigest,
+        trust: verifiedTrust,
+      },
+      vaultTrustAnchor: localKeysPayload.vaultTrustAnchor,
     };
 
     const lockVaultActionId = await this.ids.generateId();
@@ -263,5 +300,16 @@ export class UnlockVaultUseCase {
     return {
       vault,
     };
+  }
+
+  private requireTrustChain(
+    vaultId: string,
+    snapshot: VaultSnapshot,
+  ): NonNullable<VaultSnapshot["trustChain"]> {
+    if (snapshot.trustChain === undefined) {
+      throw new VaultTrustStateInvalidError(vaultId, "trust chain is missing");
+    }
+
+    return snapshot.trustChain;
   }
 }

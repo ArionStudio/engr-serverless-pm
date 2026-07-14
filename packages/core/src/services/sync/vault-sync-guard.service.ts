@@ -18,12 +18,6 @@ import {
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { VaultSnapshotService } from "../snapshot/vault-snapshot.service";
 
-export type LocalMutationSyncState = {
-  readonly localSnapshot: VaultSnapshot;
-  readonly syncConfig?: SyncConfig;
-  readonly remoteSnapshotDescriptor?: VaultSnapshotDescriptor;
-};
-
 export class VaultSyncGuardService {
   private readonly syncProvider: SyncProviderPort;
   private readonly vaultSnapshot: VaultSnapshotService;
@@ -54,7 +48,11 @@ export class VaultSyncGuardService {
     vaultId: string,
     unlockedVault: UnlockedVault,
     sourceSnapshotVersionVector: VersionVector,
-  ): Promise<LocalMutationSyncState> {
+  ): Promise<{
+    readonly localSnapshot: VaultSnapshot;
+    readonly syncConfig?: SyncConfig;
+    readonly remoteSnapshotDescriptor?: VaultSnapshotDescriptor;
+  }> {
     const localSnapshot =
       await this.vaultSnapshot.requireCurrentSnapshotForUnlockedVault(
         vaultId,
@@ -115,8 +113,13 @@ export class VaultSyncGuardService {
 
   async uploadPersistedLocalMutation(
     vaultId: string,
-    syncState: LocalMutationSyncState,
+    syncState: {
+      readonly localSnapshot: VaultSnapshot;
+      readonly syncConfig?: SyncConfig;
+      readonly remoteSnapshotDescriptor?: VaultSnapshotDescriptor;
+    },
     persistedSnapshot: VaultSnapshot,
+    unlockedVault: UnlockedVault,
   ): Promise<void> {
     if (
       syncState.syncConfig === undefined ||
@@ -135,6 +138,8 @@ export class VaultSyncGuardService {
       try {
         await this.vaultSnapshot.restoreLocalVaultSnapshot(
           syncState.localSnapshot,
+          persistedSnapshot,
+          unlockedVault,
         );
       } catch {
         // Preserve the upload failure as the root cause.
@@ -153,6 +158,7 @@ export class VaultSyncGuardService {
     syncConfig: SyncConfig,
     localSnapshot: VaultSnapshot,
     persistedSnapshot: VaultSnapshot,
+    unlockedVault: UnlockedVault,
   ): Promise<void> {
     try {
       await this.syncProvider.uploadVaultSnapshot(
@@ -162,7 +168,11 @@ export class VaultSyncGuardService {
       );
     } catch (error) {
       try {
-        await this.vaultSnapshot.restoreLocalVaultSnapshot(localSnapshot);
+        await this.vaultSnapshot.restoreLocalVaultSnapshot(
+          localSnapshot,
+          persistedSnapshot,
+          unlockedVault,
+        );
       } catch {
         // Preserve the upload failure as the root cause.
       }

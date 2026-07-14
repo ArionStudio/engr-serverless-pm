@@ -18,6 +18,7 @@ import type { IdPort } from "../../ports/system/id.port";
 import type { VaultDisplayNamePort } from "../../ports/vault/vault-display-name.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
+import { VaultTrustService } from "../../services/trust/vault-trust.service";
 
 export type InitializeVaultCommandParams = {
   masterPassword: RawMasterPassword;
@@ -37,6 +38,7 @@ export class InitializeVaultUseCase {
   private readonly ids: IdPort;
   private readonly clock: ClockPort;
   private readonly vaultDisplayName: VaultDisplayNamePort;
+  private readonly vaultTrust: VaultTrustService;
 
   constructor(
     crypto: CryptoPort,
@@ -54,6 +56,7 @@ export class InitializeVaultUseCase {
     this.ids = ids;
     this.clock = clock;
     this.vaultDisplayName = vaultDisplayName;
+    this.vaultTrust = new VaultTrustService(crypto);
   }
 
   async execute(
@@ -70,6 +73,14 @@ export class InitializeVaultUseCase {
     const vaultMasterKey = await this.crypto.generateVaultMasterKey();
     const deviceSlotKey = await this.crypto.generateDeviceSlotKey();
     const deviceSignKeyPair = await this.crypto.generateDeviceSignKeyPair();
+    const genesisTrust = await this.vaultTrust.createGenesis(
+      vaultId,
+      {
+        deviceId,
+        publicSignKey: deviceSignKeyPair.publicKey,
+      },
+      deviceSignKeyPair.privateKey,
+    );
     const recoverySecretKey = await this.crypto.generateRecoveryKey();
     const recoveryMnemonicKey =
       await this.bip39.recoveryKeyToMnemonic(recoverySecretKey);
@@ -92,6 +103,7 @@ export class InitializeVaultUseCase {
     const localKeysPayload: LocalKeysPayload = {
       deviceSlotKey: deviceSlotKey,
       devicePrivateSignKey: deviceSignKeyPair.privateKey,
+      vaultTrustAnchor: genesisTrust.anchor,
     };
 
     const protectedLocalKeys = await this.crypto.wrapLocalKeysPayload(
@@ -144,7 +156,7 @@ export class InitializeVaultUseCase {
     const unsignedVaultSnapshot: UnsignedVaultSnapshot = {
       metadata: {
         id: vaultId,
-        schemaVersion: 1,
+        schemaVersion: 2,
         vaultCreationTimestamp: timestamp,
         revisionTimestamp: timestamp,
         snapshotVersionVector: {
@@ -153,6 +165,7 @@ export class InitializeVaultUseCase {
         algorithmSuiteId: this.crypto.algorithmSuite.id,
         createdByDeviceId: deviceId,
       },
+      trustChain: genesisTrust.chain,
       keySlots: {
         deviceSlots: [
           {
@@ -206,14 +219,26 @@ export class InitializeVaultUseCase {
       vault,
       vaultMasterKey,
       devicePrivateSignKey: deviceSignKeyPair.privateKey,
+      trustedSnapshotContext: {
+        snapshotDigest: await this.crypto.digestVaultSnapshot(vaultSnapshot),
+        trust: genesisTrust.trust,
+      },
+      vaultTrustAnchor: genesisTrust.anchor,
     };
+    const checkpoint = await this.vaultTrust.createCheckpoint(
+      vaultSnapshot,
+      genesisTrust.trust,
+      deviceId,
+      deviceSignKeyPair.privateKey,
+    );
 
-    await this.vaultLocalRepository.saveInitializedLocalVault(
-      localVaultDescriptor,
+    await this.vaultLocalRepository.saveInitializedLocalVault({
+      descriptor: localVaultDescriptor,
       deviceAccessMaterial,
       deviceAccessRecoveryBackup,
-      vaultSnapshot,
-    );
+      snapshot: vaultSnapshot,
+      checkpoint,
+    });
     try {
       await this.unlockedVaultSession.commit(
         unlockedVault,

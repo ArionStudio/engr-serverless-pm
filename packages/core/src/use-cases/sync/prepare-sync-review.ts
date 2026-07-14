@@ -129,6 +129,11 @@ export class PrepareSyncReviewUseCase {
       syncConfig,
       remoteSnapshotDescriptor,
     );
+    await this.vaultSnapshot.verifyCandidateSnapshotTrust(
+      params.vaultId,
+      remoteSnapshot,
+      unlockedVault,
+    );
     const remoteVault = await this.vaultSnapshot.openTrustedVaultSnapshot(
       params.vaultId,
       remoteSnapshot,

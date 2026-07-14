@@ -311,6 +311,14 @@ describe("AddEntryUseCase", () => {
           },
         }),
       }),
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          snapshotVersionVector: {
+            [ctx.values.deviceId]: 2,
+          },
+        }),
+      }),
+      expect.objectContaining({ vaultId: ctx.values.vaultId }),
     );
     expect(
       ctx.ports.sessionServices.unlockedVaultSession.commit,

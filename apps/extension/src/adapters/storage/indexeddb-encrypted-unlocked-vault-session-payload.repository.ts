@@ -1,8 +1,6 @@
 import type {
+  EncryptedUnlockedVaultSessionPayload,
   EncryptedUnlockedVaultSessionPayloadRepositoryPort,
-  SerializedEncrypted,
-  VersionVector,
-  Vault,
 } from "@lfspm/core";
 import {
   ACTIVE_UNLOCKED_VAULT_SESSION_PAYLOAD_ID,
@@ -17,28 +15,16 @@ export class IndexedDbEncryptedUnlockedVaultSessionPayloadRepository implements 
     this.database = database;
   }
 
-  async saveEncryptedUnlockedVaultSessionPayload(encryptedPayload: {
-    readonly sessionId: string;
-    readonly vaultId: string;
-    readonly sourceSnapshotVersionVector: VersionVector;
-    readonly content: SerializedEncrypted<{
-      readonly vault: Vault;
-    }>;
-  }): Promise<void> {
+  async saveEncryptedUnlockedVaultSessionPayload(
+    encryptedPayload: EncryptedUnlockedVaultSessionPayload,
+  ): Promise<void> {
     await this.database.encryptedUnlockedVaultSessionPayloads.put({
       id: ACTIVE_UNLOCKED_VAULT_SESSION_PAYLOAD_ID,
       ...encryptedPayload,
     });
   }
 
-  async getEncryptedUnlockedVaultSessionPayload(): Promise<{
-    readonly sessionId: string;
-    readonly vaultId: string;
-    readonly sourceSnapshotVersionVector: VersionVector;
-    readonly content: SerializedEncrypted<{
-      readonly vault: Vault;
-    }>;
-  } | null> {
+  async getEncryptedUnlockedVaultSessionPayload(): Promise<EncryptedUnlockedVaultSessionPayload | null> {
     const record =
       await this.database.encryptedUnlockedVaultSessionPayloads.get(
         ACTIVE_UNLOCKED_VAULT_SESSION_PAYLOAD_ID,

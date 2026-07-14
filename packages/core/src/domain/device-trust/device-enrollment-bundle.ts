@@ -3,8 +3,8 @@ import type { VersionVector } from "../versioning/version-vector.type";
 import type {
   DeviceEnrollmentSecret,
   DevicePrivateSignKey,
-  DevicePublicSignKey,
 } from "./brand-keys";
+import type { LocalVaultTrustAnchor } from "./vault-trust";
 
 export type DeviceEnrollmentBundle = {
   readonly version: 1;
@@ -12,7 +12,7 @@ export type DeviceEnrollmentBundle = {
   readonly syncConfig: SyncConfig;
   readonly snapshotVersionVector: VersionVector;
   readonly revisionTimestamp: number;
-  readonly snapshotSignerPublicKey: DevicePublicSignKey;
   readonly enrollmentSecret: DeviceEnrollmentSecret;
   readonly pendingDevicePrivateSignKey: DevicePrivateSignKey;
+  readonly vaultTrustAnchor: LocalVaultTrustAnchor;
 };
