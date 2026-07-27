@@ -407,6 +407,30 @@ describe("RecoverDeviceAccessUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
+  it("rejects an unsupported snapshot schema before trust-chain verification", async () => {
+    const ctx = createContext();
+    ctx.ports.saved.vaultSnapshot = {
+      ...ctx.vaultSnapshot,
+      metadata: {
+        ...ctx.vaultSnapshot.metadata,
+        schemaVersion: 3,
+      },
+    } as unknown as VaultSnapshot;
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        recoveryMnemonicKey: ctx.values.recoveryMnemonicKey,
+        newMasterPassword: ctx.values.newMasterPassword,
+      }),
+    ).rejects.toBeInstanceOf(VaultTrustStateInvalidError);
+
+    expect(
+      ctx.ports.crypto.verifyVaultTrustCertificateSignature,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
+  });
+
   it("rejects a recovered device revoked by the verified trust chain", async () => {
     const ctx = createContext();
     const remainingDeviceId = "remaining-device-id";

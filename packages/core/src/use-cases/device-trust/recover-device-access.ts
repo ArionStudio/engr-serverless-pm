@@ -159,6 +159,13 @@ export class RecoverDeviceAccessUseCase {
       );
     }
 
+    if (vaultSnapshot.metadata.schemaVersion !== 2) {
+      throw new VaultTrustStateInvalidError(
+        params.vaultId,
+        "unsupported snapshot schema version",
+      );
+    }
+
     if (vaultSnapshot.trustChain === undefined) {
       throw new VaultTrustStateInvalidError(
         params.vaultId,

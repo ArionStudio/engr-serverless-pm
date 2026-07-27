@@ -128,8 +128,6 @@ export class DisableSyncUseCase {
       unlockedVault.devicePrivateSignKey,
     );
 
-    await this.syncProvider.removeVaultSnapshots(syncConfig, params.vaultId);
-
     const persistedSnapshot = await this.vaultSnapshot.persistUnlockedVault(
       params.vaultId,
       updatedUnlockedVault,
@@ -145,6 +143,8 @@ export class DisableSyncUseCase {
         },
       },
     );
+
+    await this.syncProvider.removeVaultSnapshots(syncConfig, params.vaultId);
 
     await this.unlockedVaultSession.commitPersistedSnapshot(
       {

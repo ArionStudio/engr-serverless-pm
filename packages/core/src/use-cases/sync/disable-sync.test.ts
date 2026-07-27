@@ -227,19 +227,36 @@ describe("DisableSyncUseCase", () => {
         .invocationCallOrder[0],
     );
     expect(
-      vi.mocked(ctx.ports.syncProvider.removeVaultSnapshots).mock
+      vi.mocked(ctx.vaultSnapshot.persistUnlockedVault).mock
         .invocationCallOrder[0],
     ).toBeLessThan(
-      vi.mocked(ctx.vaultSnapshot.persistUnlockedVault).mock
+      vi.mocked(ctx.ports.syncProvider.removeVaultSnapshots).mock
         .invocationCallOrder[0],
     );
     expect(
-      vi.mocked(ctx.vaultSnapshot.persistUnlockedVault).mock
+      vi.mocked(ctx.ports.syncProvider.removeVaultSnapshots).mock
         .invocationCallOrder[0],
     ).toBeLessThan(
       vi.mocked(ctx.ports.sessionServices.unlockedVaultSession.commit).mock
         .invocationCallOrder[0],
     );
+  });
+
+  it("keeps remote snapshots when local persistence fails", async () => {
+    const ctx = createContext();
+    const error = new Error("local persistence failed");
+    vi.mocked(ctx.vaultSnapshot.persistUnlockedVault).mockRejectedValueOnce(
+      error,
+    );
+
+    await expect(
+      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toThrow(error);
+
+    expect(ctx.ports.syncProvider.removeVaultSnapshots).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
+    ).not.toHaveBeenCalled();
   });
 
   it("fails when the target vault is not unlocked", async () => {
@@ -386,7 +403,7 @@ describe("DisableSyncUseCase", () => {
     );
   });
 
-  it("does not remove local sync config when remote removal fails", async () => {
+  it("does not update the session when remote removal fails", async () => {
     const ctx = createContext();
     vi.mocked(
       ctx.ports.syncProvider.removeVaultSnapshots,
@@ -398,7 +415,10 @@ describe("DisableSyncUseCase", () => {
       }),
     ).rejects.toThrow("remove failed");
 
-    expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
+    expect(ctx.vaultSnapshot.persistUnlockedVault).toHaveBeenCalled();
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
+    ).not.toHaveBeenCalled();
     expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncConfig).toBe(
       ctx.values.syncConfig,
     );
@@ -416,7 +436,7 @@ describe("DisableSyncUseCase", () => {
       }),
     ).rejects.toThrow("persist failed");
 
-    expect(ctx.ports.syncProvider.removeVaultSnapshots).toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.removeVaultSnapshots).not.toHaveBeenCalled();
     expect(
       ctx.ports.sessionServices.unlockedVaultSession.commit,
     ).not.toHaveBeenCalled();
