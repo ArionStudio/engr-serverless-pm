@@ -96,6 +96,48 @@ describe("VaultTrustService", () => {
     ).not.toHaveBeenCalled();
   });
 
+  it("rejects a snapshot that belongs to another vault", async () => {
+    const ctx = createContext();
+
+    await expect(
+      ctx.service.verifySnapshot(
+        ctx.values.vaultId,
+        {
+          ...ctx.snapshot,
+          metadata: {
+            ...ctx.snapshot.metadata,
+            id: "another-vault-id",
+          },
+        },
+        ctx.values.verifiedVaultTrustState,
+      ),
+    ).rejects.toBeInstanceOf(VaultTrustStateInvalidError);
+
+    expect(
+      ctx.ports.crypto.verifyVaultSnapshotSignature,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("rejects a trust transition signed by a key other than its authorizer", async () => {
+    const ctx = createContext();
+    vi.mocked(ctx.ports.crypto.verifyDeviceSignKeyPair).mockResolvedValueOnce(
+      false,
+    );
+
+    await expect(
+      ctx.service.appendTrustTransition(
+        ctx.values.vaultId,
+        ctx.values.vaultTrustChain,
+        ctx.values.verifiedVaultTrustState,
+        ctx.values.verifiedVaultTrustState.trustedDevices,
+        ctx.values.deviceId,
+        ctx.values.devicePrivateSignKey,
+      ),
+    ).rejects.toBeInstanceOf(VaultTrustStateInvalidError);
+
+    expect(ctx.ports.crypto.signVaultTrustCertificate).not.toHaveBeenCalled();
+  });
+
   it("rejects a disconnected trust transition", async () => {
     const ctx = createContext();
     const disconnectedCertificate = {

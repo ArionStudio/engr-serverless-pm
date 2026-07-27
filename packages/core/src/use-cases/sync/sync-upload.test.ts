@@ -156,7 +156,6 @@ describe("SyncUploadUseCase", () => {
   it("skips upload when the remote descriptor already matches the vault", async () => {
     const ctx = createContext();
     const localSnapshot = createSnapshot(ctx.values, {
-      id: "snapshot-id",
       snapshotVersionVector: {
         [ctx.values.deviceId]: 3,
       },

@@ -189,6 +189,23 @@ export class RecoverDeviceAccessUseCase {
       localKeysPayload.vaultTrustAnchor,
       vaultSnapshot.trustChain,
     );
+    const trustedRecoveredDevice = verifiedTrust.trustedDevices.find(
+      (device) => device.deviceId === recoveryBackup.deviceId,
+    );
+
+    if (
+      trustedRecoveredDevice === undefined ||
+      !(await this.crypto.verifyDeviceSignKeyPair(
+        trustedRecoveredDevice.publicSignKey,
+        localKeysPayload.devicePrivateSignKey,
+      ))
+    ) {
+      throw new VaultTrustStateInvalidError(
+        params.vaultId,
+        "recovered device is not trusted",
+      );
+    }
+
     await this.vaultTrust.verifySnapshot(
       params.vaultId,
       vaultSnapshot,
@@ -218,14 +235,17 @@ export class RecoverDeviceAccessUseCase {
     );
 
     if (checkpointRelation === "newer") {
-      await this.vaultLocalRepository.saveLocalVaultTrustCheckpoint(
-        await this.vaultTrust.createCheckpoint(
+      await this.vaultLocalRepository.saveVaultSnapshotWithCheckpoint({
+        expectedSnapshotDigest:
+          await this.crypto.digestVaultSnapshot(vaultSnapshot),
+        snapshot: vaultSnapshot,
+        checkpoint: await this.vaultTrust.createCheckpoint(
           vaultSnapshot,
           verifiedTrust,
           recoveryBackup.deviceId,
           localKeysPayload.devicePrivateSignKey,
         ),
-      );
+      });
     }
 
     const masterPasswordSalt = await this.crypto.generateMasterPasswordSalt();

@@ -62,9 +62,6 @@ export interface VaultLocalRepositoryPort {
     readonly snapshot: VaultSnapshot;
     readonly checkpoint: LocalVaultTrustCheckpoint;
   }) => Promise<void>;
-  saveLocalVaultTrustCheckpoint: (
-    checkpoint: LocalVaultTrustCheckpoint,
-  ) => Promise<void>;
   getLocalVaultTrustCheckpoint: (
     vaultId: string,
   ) => Promise<LocalVaultTrustCheckpoint | null>;

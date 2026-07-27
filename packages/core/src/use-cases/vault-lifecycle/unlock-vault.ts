@@ -196,6 +196,23 @@ export class UnlockVaultUseCase {
       localKeysPayload.vaultTrustAnchor,
       this.requireTrustChain(params.vaultId, vaultSnapshot),
     );
+    const trustedLocalDevice = verifiedTrust.trustedDevices.find(
+      (device) => device.deviceId === deviceAccessMaterial.deviceId,
+    );
+
+    if (
+      trustedLocalDevice === undefined ||
+      !(await this.crypto.verifyDeviceSignKeyPair(
+        trustedLocalDevice.publicSignKey,
+        localKeysPayload.devicePrivateSignKey,
+      ))
+    ) {
+      throw new VaultTrustStateInvalidError(
+        params.vaultId,
+        "local device is not trusted",
+      );
+    }
+
     await this.vaultTrust.verifySnapshot(
       params.vaultId,
       vaultSnapshot,
@@ -227,14 +244,16 @@ export class UnlockVaultUseCase {
     const snapshotDigest = await this.crypto.digestVaultSnapshot(vaultSnapshot);
 
     if (checkpointRelation === "newer") {
-      await this.vaultLocalRepository.saveLocalVaultTrustCheckpoint(
-        await this.vaultTrust.createCheckpoint(
+      await this.vaultLocalRepository.saveVaultSnapshotWithCheckpoint({
+        expectedSnapshotDigest: snapshotDigest,
+        snapshot: vaultSnapshot,
+        checkpoint: await this.vaultTrust.createCheckpoint(
           vaultSnapshot,
           verifiedTrust,
           deviceAccessMaterial.deviceId,
           localKeysPayload.devicePrivateSignKey,
         ),
-      );
+      });
     }
 
     const unlockedVault: UnlockedVault = {
@@ -306,6 +325,13 @@ export class UnlockVaultUseCase {
     vaultId: string,
     snapshot: VaultSnapshot,
   ): NonNullable<VaultSnapshot["trustChain"]> {
+    if (snapshot.metadata.schemaVersion !== 2) {
+      throw new VaultTrustStateInvalidError(
+        vaultId,
+        "unsupported snapshot schema version",
+      );
+    }
+
     if (snapshot.trustChain === undefined) {
       throw new VaultTrustStateInvalidError(vaultId, "trust chain is missing");
     }

@@ -1,5 +1,6 @@
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
+import { VaultTrustService } from "../../services/trust/vault-trust.service";
 import {
   areVaultSnapshotDescriptorsEqual,
   compareVaultSnapshotDescriptors,
@@ -12,7 +13,9 @@ import {
   RemoteVaultSnapshotIntegrityError,
   SyncNotConfiguredError,
 } from "../../errors/sync.errors";
+import { VaultTrustStateInvalidError } from "../../errors/vault-trust.errors";
 import type { ClockPort } from "../../ports/system/clock.port";
+import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 
 export type DisableSyncCommandParams = {
@@ -24,9 +27,11 @@ export class DisableSyncUseCase {
   private readonly syncProvider: SyncProviderPort;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
   private readonly vaultSnapshot: VaultSnapshotService;
+  private readonly vaultTrust: VaultTrustService;
 
   constructor(
     clock: ClockPort,
+    crypto: CryptoPort,
     syncProvider: SyncProviderPort,
     unlockedVaultSession: UnlockedVaultSessionService,
     vaultSnapshot: VaultSnapshotService,
@@ -35,6 +40,7 @@ export class DisableSyncUseCase {
     this.syncProvider = syncProvider;
     this.unlockedVaultSession = unlockedVaultSession;
     this.vaultSnapshot = vaultSnapshot;
+    this.vaultTrust = new VaultTrustService(crypto);
   }
 
   async execute(params: DisableSyncCommandParams): Promise<void> {
@@ -99,11 +105,31 @@ export class DisableSyncUseCase {
       }
     }
 
-    await this.syncProvider.removeVaultSnapshots(syncConfig, params.vaultId);
-
     const currentDeviceSlots = localSnapshot.keySlots.deviceSlots.filter(
       (deviceSlot) => deviceSlot.deviceId === unlockedVault.deviceId,
     );
+    const trustChain = localSnapshot.trustChain;
+
+    if (trustChain === undefined) {
+      throw new VaultTrustStateInvalidError(
+        params.vaultId,
+        "trust chain is missing",
+      );
+    }
+
+    const nextTrust = await this.vaultTrust.appendTrustTransition(
+      params.vaultId,
+      trustChain,
+      unlockedVault.trustedSnapshotContext.trust,
+      unlockedVault.trustedSnapshotContext.trust.trustedDevices.filter(
+        (device) => device.deviceId === unlockedVault.deviceId,
+      ),
+      unlockedVault.deviceId,
+      unlockedVault.devicePrivateSignKey,
+    );
+
+    await this.syncProvider.removeVaultSnapshots(syncConfig, params.vaultId);
+
     const persistedSnapshot = await this.vaultSnapshot.persistUnlockedVault(
       params.vaultId,
       updatedUnlockedVault,
@@ -112,6 +138,10 @@ export class DisableSyncUseCase {
         keySlots: {
           deviceSlots: currentDeviceSlots,
           completedEnrollments: localSnapshot.keySlots.completedEnrollments,
+        },
+        nextTrust: {
+          chain: nextTrust.chain,
+          state: nextTrust.trust,
         },
       },
     );

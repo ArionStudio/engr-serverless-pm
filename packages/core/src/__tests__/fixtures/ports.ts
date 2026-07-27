@@ -317,9 +317,6 @@ export function createCoreTestPorts(
       saved.vaultSnapshot = snapshot;
       saved.localVaultTrustCheckpoint = checkpoint;
     }),
-    saveLocalVaultTrustCheckpoint: vi.fn(async (checkpoint) => {
-      saved.localVaultTrustCheckpoint = checkpoint;
-    }),
     getLocalVaultTrustCheckpoint: vi.fn(async (vaultId) => {
       const checkpoint = saved.localVaultTrustCheckpoint;
 

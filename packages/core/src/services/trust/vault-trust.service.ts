@@ -204,6 +204,18 @@ export class VaultTrustService {
       );
     }
 
+    if (
+      !(await this.crypto.verifyDeviceSignKeyPair(
+        authorizer.publicSignKey,
+        privateKey,
+      ))
+    ) {
+      throw new VaultTrustStateInvalidError(
+        vaultId,
+        "authorizer private key mismatch",
+      );
+    }
+
     const latestCertificate = chain.certificates.at(-1);
 
     if (
@@ -254,6 +266,10 @@ export class VaultTrustService {
     snapshot: VaultSnapshot,
     trust: VerifiedVaultTrustState,
   ): Promise<void> {
+    if (snapshot.metadata.id !== vaultId) {
+      throw new VaultTrustStateInvalidError(vaultId, "snapshot vault mismatch");
+    }
+
     if (snapshot.metadata.schemaVersion !== 2) {
       throw new VaultTrustStateInvalidError(
         vaultId,

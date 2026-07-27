@@ -14,6 +14,7 @@ import {
 } from "../../errors/unlock-vault.errors";
 import { ActiveUnlockedVaultMismatchError } from "../../errors/vault-session.errors";
 import { PersistedVaultMismatchError } from "../../errors/vault-snapshot.errors";
+import { VaultTrustStateInvalidError } from "../../errors/vault-trust.errors";
 import {
   DeviceAccessRecoveryBackupMismatchError,
   DeviceAccessRecoveryBackupNotFoundError,
@@ -404,6 +405,77 @@ describe("RecoverDeviceAccessUseCase", () => {
     expect(
       ctx.ports.vaultLocalRepository.saveRecoveredDeviceAccess,
     ).not.toHaveBeenCalled();
+  });
+
+  it("rejects a recovered device revoked by the verified trust chain", async () => {
+    const ctx = createContext();
+    const remainingDeviceId = "remaining-device-id";
+    ctx.ports.saved.vaultSnapshot = {
+      ...ctx.vaultSnapshot,
+      trustChain: {
+        certificates: [
+          ctx.values.vaultTrustCertificate,
+          {
+            ...ctx.values.vaultTrustCertificate,
+            payload: {
+              ...ctx.values.vaultTrustCertificate.payload,
+              generation: 1,
+              previousCertificateDigest: ctx.values.vaultTrustCertificateDigest,
+              trustedDevices: [
+                {
+                  deviceId: remainingDeviceId,
+                  publicSignKey: ctx.values.pendingDevicePublicSignKey,
+                },
+              ],
+            },
+          },
+        ],
+      },
+    };
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        recoveryMnemonicKey: ctx.values.recoveryMnemonicKey,
+        newMasterPassword: ctx.values.newMasterPassword,
+      }),
+    ).rejects.toBeInstanceOf(VaultTrustStateInvalidError);
+
+    expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveRecoveredDeviceAccess,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("updates a newer checkpoint with the snapshot-and-checkpoint compare-and-set", async () => {
+    const ctx = createContext();
+    ctx.ports.saved.vaultSnapshot = {
+      ...ctx.vaultSnapshot,
+      metadata: {
+        ...ctx.vaultSnapshot.metadata,
+        snapshotVersionVector: {
+          [ctx.values.deviceId]: 2,
+        },
+      },
+    };
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      recoveryMnemonicKey: ctx.values.recoveryMnemonicKey,
+      newMasterPassword: ctx.values.newMasterPassword,
+    });
+
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).toHaveBeenCalledWith({
+      expectedSnapshotDigest: ctx.values.vaultSnapshotDigest,
+      snapshot: ctx.ports.saved.vaultSnapshot,
+      checkpoint: expect.objectContaining({
+        payload: expect.objectContaining({
+          snapshotVersionVector: { [ctx.values.deviceId]: 2 },
+        }),
+      }),
+    });
   });
 
   it("fails when the recovered device is no longer trusted by the snapshot", async () => {

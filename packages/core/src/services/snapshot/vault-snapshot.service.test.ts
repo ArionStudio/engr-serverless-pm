@@ -887,6 +887,36 @@ describe("VaultSnapshotService", () => {
     ).not.toHaveBeenCalled();
   });
 
+  it("fails when the current device is absent from the effective trust state", async () => {
+    const ctx = createContext();
+    const unlockedVault = {
+      ...ctx.unlockedVault,
+      trustedSnapshotContext: {
+        ...ctx.unlockedVault.trustedSnapshotContext,
+        trust: {
+          ...ctx.unlockedVault.trustedSnapshotContext.trust,
+          trustedDevices:
+            ctx.unlockedVault.trustedSnapshotContext.trust.trustedDevices.filter(
+              (device) => device.deviceId !== ctx.values.deviceId,
+            ),
+        },
+      },
+    };
+
+    await expect(
+      ctx.service.persistUnlockedVault(
+        ctx.values.vaultId,
+        unlockedVault,
+        ctx.currentSnapshot.metadata.snapshotVersionVector,
+      ),
+    ).rejects.toThrow(SnapshotSigningDeviceNotTrustedError);
+
+    expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+  });
+
   it("does not save a snapshot when content encryption fails", async () => {
     const ctx = createContext();
     const error = new Error("encryption failed");

@@ -84,10 +84,24 @@ export class VaultSnapshotService {
       throw new VaultTrustStateInvalidError(vaultId, "trust chain is missing");
     }
 
+    const trustedSigningDevice = trustState.trustedDevices.find(
+      (device) => device.deviceId === unlockedVault.deviceId,
+    );
+    const signingDeviceSlot = keySlots.deviceSlots.find(
+      (deviceSlot) => deviceSlot.deviceId === unlockedVault.deviceId,
+    );
+
     if (
-      !keySlots.deviceSlots.some(
-        (deviceSlot) => deviceSlot.deviceId === unlockedVault.deviceId,
-      )
+      trustedSigningDevice === undefined ||
+      signingDeviceSlot === undefined ||
+      !(await this.crypto.verifyDeviceSignKeyPair(
+        trustedSigningDevice.publicSignKey,
+        unlockedVault.devicePrivateSignKey,
+      )) ||
+      !(await this.crypto.verifyDeviceSignKeyPair(
+        signingDeviceSlot.publicSignKey,
+        unlockedVault.devicePrivateSignKey,
+      ))
     ) {
       throw new SnapshotSigningDeviceNotTrustedError(
         vaultId,

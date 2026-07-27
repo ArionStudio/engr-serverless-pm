@@ -49,6 +49,7 @@ function createContext(syncConfigured = true) {
     vaultSnapshot,
     useCase: new DisableSyncUseCase(
       ports.clock,
+      ports.crypto,
       ports.syncProvider,
       ports.sessionServices.unlockedVaultSession,
       vaultSnapshot,
@@ -189,12 +190,35 @@ describe("DisableSyncUseCase", () => {
     );
     expect(
       vi.mocked(ctx.vaultSnapshot.persistUnlockedVault).mock.calls[0]?.[3],
-    ).toEqual({
+    ).toMatchObject({
       keySlots: {
         deviceSlots: [currentDeviceSlot],
-        completedEnrollments: undefined,
+      },
+      nextTrust: {
+        state: {
+          generation: 1,
+          trustedDevices: [
+            {
+              deviceId: ctx.values.deviceId,
+              publicSignKey: ctx.values.devicePublicSignKey,
+            },
+          ],
+        },
       },
     });
+    expect(ctx.ports.crypto.signVaultTrustCertificate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        generation: 1,
+        authorizedByDeviceId: ctx.values.deviceId,
+        trustedDevices: [
+          {
+            deviceId: ctx.values.deviceId,
+            publicSignKey: ctx.values.devicePublicSignKey,
+          },
+        ],
+      }),
+      ctx.values.devicePrivateSignKey,
+    );
     expect(
       vi.mocked(ctx.vaultSnapshot.requireCurrentSnapshotForUnlockedVault).mock
         .invocationCallOrder[0],
