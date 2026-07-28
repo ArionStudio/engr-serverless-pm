@@ -50,3 +50,19 @@ Users remain responsible for protecting local browser-profile data and any trans
 ### 1.6 Implementation status
 
 Implemented in core through the vault-trust domain contracts, `VaultTrustService`, vault lifecycle and device-trust workflows, and focused regression tests. The guarantee depends on a storage adapter correctly implementing the atomic snapshot-and-checkpoint repository contract.
+
+## 2. Remote Sync Cleanup Is Retryable
+
+### 2.1 Problem
+
+Removing local sync configuration and deleting remote snapshots cannot be one atomic operation. A remote delete can fail after local state is saved, or succeed remotely while final local cleanup fails. Discarding the encrypted sync configuration too early would make a later retry impossible.
+
+### 2.2 Implemented decision
+
+Disabling sync first stores an encrypted `syncRemovalPending` marker beside the existing sync configuration. Normal sync, sync review, sync resolution, and new enrollment are blocked on the device performing cleanup while this marker exists. Remote cleanup can be retried using the retained encrypted configuration. Only after remote deletion succeeds does the core persist the final state that removes both the configuration and the marker.
+
+This is intentionally local to the active device. The project assumes a single user operates one device at a time; it does not distribute a temporary cleanup marker to other registered devices.
+
+### 2.3 Residual limitation
+
+Remote deletion has an inherently ambiguous failure mode: a request can succeed remotely but fail to return a response. Retrying is therefore safe only when the sync provider treats deletion of already-missing remote objects as success. This is an explicit `SyncProviderPort` contract that every future adapter must implement.

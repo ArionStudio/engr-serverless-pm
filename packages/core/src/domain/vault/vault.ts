@@ -17,6 +17,7 @@ export interface Vault {
   deviceProfiles: DeviceProfile[];
   deletedDeviceProfiles: DeletedDeviceProfile[];
   syncConfig?: SyncConfig;
+  syncRemovalPending?: true;
   tags: Tag[];
   deletedTags: DeletedTag[];
 }

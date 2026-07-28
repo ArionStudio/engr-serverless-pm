@@ -20,6 +20,7 @@ function createContext() {
   const vaultSyncGuard = new VaultSyncGuardService(
     ports.syncProvider,
     vaultSnapshot,
+    ports.sessionServices.unlockedVaultSession,
   );
   saveUnlockedVaultWithEntries(ports, values, standardPasswordEntries);
 

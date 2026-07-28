@@ -11,6 +11,7 @@ import {
   RemoteVaultSnapshotIntegrityError,
   SyncConflictDetectedError,
   SyncNotConfiguredError,
+  SyncRemovalPendingError,
 } from "../../errors/sync.errors";
 import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import { VaultSnapshotNotFoundError } from "../../errors/unlock-vault.errors";
@@ -363,6 +364,30 @@ describe("SyncUploadUseCase", () => {
     expect(
       ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
     ).not.toHaveBeenCalled();
+  });
+
+  it("does not read or upload while remote cleanup is pending", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession!;
+    ctx.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          syncRemovalPending: true,
+        },
+      },
+    };
+
+    await expect(
+      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toBeInstanceOf(SyncRemovalPendingError);
+
+    expect(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });
 
   it("fails when the local snapshot is missing", async () => {

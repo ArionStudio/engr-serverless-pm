@@ -19,6 +19,7 @@ import {
   SyncAlreadyResolvedError,
   SyncConflictDetectedError,
   SyncResolutionIncompleteError,
+  SyncRemovalPendingError,
   SyncTrustChangeRequiresDeviceTrustFlowError,
 } from "../../errors/sync.errors";
 import { VaultSnapshotSignerNotTrustedError } from "../../errors/unlock-vault.errors";
@@ -206,6 +207,37 @@ function createContext() {
 }
 
 describe("ApplySyncResolutionUseCase", () => {
+  it("does not read remote state while remote cleanup is pending", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession!;
+    ctx.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          syncRemovalPending: true,
+        },
+      },
+    };
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        remoteSnapshotDescriptor: createRemoteSnapshotDescriptor(ctx.values),
+        resolution: {
+          entryResolutions: [],
+          tagResolutions: [],
+          deviceProfileResolutions: [],
+        },
+      }),
+    ).rejects.toBeInstanceOf(SyncRemovalPendingError);
+
+    expect(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).not.toHaveBeenCalled();
+  });
+
   it("applies explicit resolutions, persists locally, commits session, and uploads", async () => {
     const ctx = createContext();
     const remoteEntry = createEntry("remote-entry", {
@@ -579,7 +611,7 @@ describe("ApplySyncResolutionUseCase", () => {
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });
 
-  it("restores the local snapshot and does not commit when resolved upload races", async () => {
+  it("invalidates the session when resolved upload restoration fails", async () => {
     const ctx = createContext();
     const remoteEntry = createEntry("remote-entry", {
       "remote-device-id": 1,
@@ -629,6 +661,9 @@ describe("ApplySyncResolutionUseCase", () => {
     vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockRejectedValueOnce(
       new RemoteVaultSnapshotChangedError(ctx.values.vaultId),
     );
+    ctx.restoreLocalVaultSnapshot.mockRejectedValueOnce(
+      new Error("restore failed"),
+    );
 
     await expect(
       ctx.useCase.execute({
@@ -659,7 +694,10 @@ describe("ApplySyncResolutionUseCase", () => {
       }),
       expect.objectContaining({ vaultId: ctx.values.vaultId }),
     );
-    expect(ctx.saved.vaultSnapshot).toBe(ctx.localSnapshot);
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.remove,
+    ).toHaveBeenCalled();
+    expect(ctx.saved.unlockedVaultSession).toBeUndefined();
     expect(
       ctx.ports.sessionServices.unlockedVaultSession.commit,
     ).not.toHaveBeenCalled();

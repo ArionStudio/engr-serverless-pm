@@ -6,7 +6,10 @@ import {
   compareVaultSnapshotDescriptors,
   toVaultSnapshotDescriptor,
 } from "../../domain/snapshot/vault-snapshot-descriptor.utils";
-import { removeVaultSyncConfig } from "../../domain/vault/vault-sync-config.mutations";
+import {
+  markVaultSyncRemovalPending,
+  removeVaultSyncConfig,
+} from "../../domain/vault/vault-sync-config.mutations";
 import { removeOtherDeviceProfilesFromVault } from "../../domain/vault/vault-device.mutations";
 import {
   RemoteVaultSnapshotAheadError,
@@ -55,60 +58,88 @@ export class DisableSyncUseCase {
       throw new SyncNotConfiguredError(params.vaultId, "disable sync");
     }
 
+    let currentUnlockedVault = unlockedVault;
+    let currentSnapshotVersionVector = sourceSnapshotVersionVector;
+    let currentSnapshot =
+      await this.vaultSnapshot.requireCurrentSnapshotForUnlockedVault(
+        params.vaultId,
+        currentUnlockedVault,
+        currentSnapshotVersionVector,
+      );
+
+    if (currentUnlockedVault.vault.syncRemovalPending !== true) {
+      const remoteSnapshotDescriptor =
+        await this.syncProvider.getLatestVaultSnapshotDescriptor(
+          syncConfig,
+          params.vaultId,
+        );
+
+      if (remoteSnapshotDescriptor !== null) {
+        const localSnapshotDescriptor = toVaultSnapshotDescriptor(
+          params.vaultId,
+          currentSnapshot,
+        );
+        const relation = compareVaultSnapshotDescriptors(
+          localSnapshotDescriptor,
+          remoteSnapshotDescriptor,
+        );
+
+        if (relation === "remote_ahead") {
+          throw new RemoteVaultSnapshotAheadError(params.vaultId);
+        }
+
+        if (
+          relation === "broken" ||
+          (relation === "equal" &&
+            !areVaultSnapshotDescriptorsEqual(
+              remoteSnapshotDescriptor,
+              localSnapshotDescriptor,
+            ))
+        ) {
+          throw new RemoteVaultSnapshotIntegrityError(params.vaultId);
+        }
+      }
+
+      const pendingUnlockedVault = {
+        ...unlockedVault,
+        vault: markVaultSyncRemovalPending(unlockedVault.vault),
+      };
+      const pendingSnapshot = await this.vaultSnapshot.persistUnlockedVault(
+        params.vaultId,
+        pendingUnlockedVault,
+        sourceSnapshotVersionVector,
+      );
+
+      currentUnlockedVault = {
+        ...pendingUnlockedVault,
+        trustedSnapshotContext: pendingSnapshot.trustedSnapshotContext,
+      };
+      currentSnapshotVersionVector = pendingSnapshot.snapshotVersionVector;
+      currentSnapshot = pendingSnapshot.snapshot;
+
+      await this.unlockedVaultSession.commitPersistedSnapshot(
+        currentUnlockedVault,
+        currentSnapshotVersionVector,
+      );
+    }
+
+    await this.syncProvider.removeVaultSnapshots(syncConfig, params.vaultId);
+
     const revisionTimestamp = this.clock.now();
     const updatedUnlockedVault = {
-      ...unlockedVault,
+      ...currentUnlockedVault,
       vault: removeVaultSyncConfig(
         removeOtherDeviceProfilesFromVault(
-          unlockedVault.vault,
-          unlockedVault.deviceId,
+          currentUnlockedVault.vault,
+          currentUnlockedVault.deviceId,
           revisionTimestamp,
         ),
       ),
     };
-
-    const localSnapshot =
-      await this.vaultSnapshot.requireCurrentSnapshotForUnlockedVault(
-        params.vaultId,
-        updatedUnlockedVault,
-        sourceSnapshotVersionVector,
-      );
-    const remoteSnapshotDescriptor =
-      await this.syncProvider.getLatestVaultSnapshotDescriptor(
-        syncConfig,
-        params.vaultId,
-      );
-
-    if (remoteSnapshotDescriptor !== null) {
-      const localSnapshotDescriptor = toVaultSnapshotDescriptor(
-        params.vaultId,
-        localSnapshot,
-      );
-      const relation = compareVaultSnapshotDescriptors(
-        localSnapshotDescriptor,
-        remoteSnapshotDescriptor,
-      );
-
-      if (relation === "remote_ahead") {
-        throw new RemoteVaultSnapshotAheadError(params.vaultId);
-      }
-
-      if (
-        relation === "broken" ||
-        (relation === "equal" &&
-          !areVaultSnapshotDescriptorsEqual(
-            remoteSnapshotDescriptor,
-            localSnapshotDescriptor,
-          ))
-      ) {
-        throw new RemoteVaultSnapshotIntegrityError(params.vaultId);
-      }
-    }
-
-    const currentDeviceSlots = localSnapshot.keySlots.deviceSlots.filter(
-      (deviceSlot) => deviceSlot.deviceId === unlockedVault.deviceId,
+    const currentDeviceSlots = currentSnapshot.keySlots.deviceSlots.filter(
+      (deviceSlot) => deviceSlot.deviceId === currentUnlockedVault.deviceId,
     );
-    const trustChain = localSnapshot.trustChain;
+    const trustChain = currentSnapshot.trustChain;
 
     if (trustChain === undefined) {
       throw new VaultTrustStateInvalidError(
@@ -120,22 +151,22 @@ export class DisableSyncUseCase {
     const nextTrust = await this.vaultTrust.appendTrustTransition(
       params.vaultId,
       trustChain,
-      unlockedVault.trustedSnapshotContext.trust,
-      unlockedVault.trustedSnapshotContext.trust.trustedDevices.filter(
-        (device) => device.deviceId === unlockedVault.deviceId,
+      currentUnlockedVault.trustedSnapshotContext.trust,
+      currentUnlockedVault.trustedSnapshotContext.trust.trustedDevices.filter(
+        (device) => device.deviceId === currentUnlockedVault.deviceId,
       ),
-      unlockedVault.deviceId,
-      unlockedVault.devicePrivateSignKey,
+      currentUnlockedVault.deviceId,
+      currentUnlockedVault.devicePrivateSignKey,
     );
 
     const persistedSnapshot = await this.vaultSnapshot.persistUnlockedVault(
       params.vaultId,
       updatedUnlockedVault,
-      sourceSnapshotVersionVector,
+      currentSnapshotVersionVector,
       {
         keySlots: {
           deviceSlots: currentDeviceSlots,
-          completedEnrollments: localSnapshot.keySlots.completedEnrollments,
+          completedEnrollments: currentSnapshot.keySlots.completedEnrollments,
         },
         nextTrust: {
           chain: nextTrust.chain,
@@ -143,8 +174,6 @@ export class DisableSyncUseCase {
         },
       },
     );
-
-    await this.syncProvider.removeVaultSnapshots(syncConfig, params.vaultId);
 
     await this.unlockedVaultSession.commitPersistedSnapshot(
       {

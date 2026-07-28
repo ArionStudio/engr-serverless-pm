@@ -9,6 +9,7 @@ import {
   RemoteVaultSnapshotChangedError,
   SyncConflictDetectedError,
   SyncNotConfiguredError,
+  SyncRemovalPendingError,
 } from "../../errors/sync.errors";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { IdPort } from "../../ports/system/id.port";
@@ -70,6 +71,13 @@ export class InitializeDeviceEnrollmentUseCase {
 
     if (syncConfig === undefined) {
       throw new SyncNotConfiguredError(
+        params.vaultId,
+        "initialize device enrollment",
+      );
+    }
+
+    if (unlockedVault.vault.syncRemovalPending === true) {
+      throw new SyncRemovalPendingError(
         params.vaultId,
         "initialize device enrollment",
       );
@@ -218,6 +226,7 @@ export class InitializeDeviceEnrollmentUseCase {
         error instanceof RemoteVaultSnapshotChangedError
           ? new SyncConflictDetectedError(params.vaultId)
           : error;
+      let restored = false;
 
       try {
         await this.vaultSnapshot.restoreLocalVaultSnapshot(
@@ -225,17 +234,24 @@ export class InitializeDeviceEnrollmentUseCase {
           persistedSnapshot.snapshot,
           unlockedVault,
         );
+        restored = true;
       } catch {
-        // Preserve the upload failure as the root cause.
+        try {
+          await this.unlockedVaultSession.remove();
+        } catch {
+          // Preserve the upload failure as the root cause.
+        }
       }
 
-      try {
-        await this.unlockedVaultSession.commitPersistedSnapshot(
-          unlockedVault,
-          sourceSnapshotVersionVector,
-        );
-      } catch {
-        // Preserve the upload failure as the root cause.
+      if (restored) {
+        try {
+          await this.unlockedVaultSession.commitPersistedSnapshot(
+            unlockedVault,
+            sourceSnapshotVersionVector,
+          );
+        } catch {
+          // Preserve the upload failure as the root cause.
+        }
       }
 
       throw mappedError;

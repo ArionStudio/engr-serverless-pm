@@ -16,18 +16,22 @@ import {
   SyncConflictDetectedError,
 } from "../../errors/sync.errors";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
+import type { UnlockedVaultSessionService } from "../session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../snapshot/vault-snapshot.service";
 
 export class VaultSyncGuardService {
   private readonly syncProvider: SyncProviderPort;
   private readonly vaultSnapshot: VaultSnapshotService;
+  private readonly unlockedVaultSession: UnlockedVaultSessionService;
 
   constructor(
     syncProvider: SyncProviderPort,
     vaultSnapshot: VaultSnapshotService,
+    unlockedVaultSession: UnlockedVaultSessionService,
   ) {
     this.syncProvider = syncProvider;
     this.vaultSnapshot = vaultSnapshot;
+    this.unlockedVaultSession = unlockedVaultSession;
   }
 
   async requireReadyForLocalMutation(
@@ -61,7 +65,10 @@ export class VaultSyncGuardService {
       );
     const syncConfig = unlockedVault.vault.syncConfig;
 
-    if (syncConfig === undefined) {
+    if (
+      syncConfig === undefined ||
+      unlockedVault.vault.syncRemovalPending === true
+    ) {
       return {
         localSnapshot,
       };
@@ -142,7 +149,11 @@ export class VaultSyncGuardService {
           unlockedVault,
         );
       } catch {
-        // Preserve the upload failure as the root cause.
+        try {
+          await this.unlockedVaultSession.remove();
+        } catch {
+          // Preserve the upload failure as the root cause.
+        }
       }
 
       if (error instanceof RemoteVaultSnapshotChangedError) {
@@ -174,7 +185,11 @@ export class VaultSyncGuardService {
           unlockedVault,
         );
       } catch {
-        // Preserve the upload failure as the root cause.
+        try {
+          await this.unlockedVaultSession.remove();
+        } catch {
+          // Preserve the upload failure as the root cause.
+        }
       }
 
       if (error instanceof RemoteVaultSnapshotChangedError) {

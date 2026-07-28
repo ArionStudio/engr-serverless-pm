@@ -102,6 +102,7 @@ function createContext() {
   const vaultSyncGuard = new VaultSyncGuardService(
     ports.syncProvider,
     snapshotService,
+    ports.sessionServices.unlockedVaultSession,
   );
   const vault = createVault(values);
   const vaultSnapshot = createVaultSnapshot(values);

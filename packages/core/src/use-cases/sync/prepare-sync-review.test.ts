@@ -9,6 +9,7 @@ import {
   RemoteVaultSnapshotIntegrityError,
   RemoteVaultSnapshotNotFoundError,
   SyncNotConfiguredError,
+  SyncRemovalPendingError,
 } from "../../errors/sync.errors";
 import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
@@ -500,6 +501,29 @@ describe("PrepareSyncReviewUseCase", () => {
     await expect(
       ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
     ).rejects.toBeInstanceOf(SyncNotConfiguredError);
+
+    expect(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("does not read remote state while remote cleanup is pending", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession!;
+    ctx.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          syncRemovalPending: true,
+        },
+      },
+    };
+
+    await expect(
+      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toBeInstanceOf(SyncRemovalPendingError);
 
     expect(
       ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,

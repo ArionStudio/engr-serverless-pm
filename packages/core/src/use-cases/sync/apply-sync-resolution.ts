@@ -16,6 +16,7 @@ import {
   SyncConflictDetectedError,
   SyncAlreadyResolvedError,
   SyncNotConfiguredError,
+  SyncRemovalPendingError,
   SyncResolutionIncompleteError,
   SyncTrustChangeRequiresDeviceTrustFlowError,
 } from "../../errors/sync.errors";
@@ -80,6 +81,13 @@ export class ApplySyncResolutionUseCase {
 
     if (syncConfig === undefined) {
       throw new SyncNotConfiguredError(params.vaultId, "apply sync resolution");
+    }
+
+    if (unlockedVault.vault.syncRemovalPending === true) {
+      throw new SyncRemovalPendingError(
+        params.vaultId,
+        "apply sync resolution",
+      );
     }
 
     if (params.remoteSnapshotDescriptor.vaultId !== params.vaultId) {
@@ -346,7 +354,11 @@ export class ApplySyncResolutionUseCase {
           unlockedVault,
         );
       } catch {
-        // Preserve the upload failure as the root cause.
+        try {
+          await this.unlockedVaultSession.remove();
+        } catch {
+          // Preserve the upload failure as the root cause.
+        }
       }
 
       if (error instanceof RemoteVaultSnapshotChangedError) {

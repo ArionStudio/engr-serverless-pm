@@ -22,6 +22,7 @@ function createContext() {
   const vaultSyncGuard = new VaultSyncGuardService(
     ports.syncProvider,
     vaultSnapshot,
+    ports.sessionServices.unlockedVaultSession,
   );
   vi.mocked(ports.ids.generateId).mockReset().mockResolvedValue("entry-id");
 
@@ -152,6 +153,40 @@ describe("AddEntryUseCase", () => {
       ctx.ports.sessionServices.unlockedVaultSession.commit,
     ).not.toHaveBeenCalled();
     expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
+  });
+
+  it("persists local changes without reading remote state while cleanup is pending", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession!;
+    ctx.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          syncConfig: ctx.values.syncConfig,
+          syncRemovalPending: true,
+        },
+      },
+    };
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      entry: {
+        password: "secret-password",
+        login: "user@example.com",
+        tags: [],
+        url: "https://example.com/login",
+      },
+    });
+
+    expect(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+    expect(
+      ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncRemovalPending,
+    ).toBe(true);
   });
 
   it("does not add an entry when synced remote changes must be downloaded first", async () => {
@@ -323,6 +358,55 @@ describe("AddEntryUseCase", () => {
     expect(
       ctx.ports.sessionServices.unlockedVaultSession.commit,
     ).not.toHaveBeenCalled();
+  });
+
+  it("invalidates the session when synced upload restoration fails", async () => {
+    const ctx = createContext();
+    const remoteSnapshotDescriptor = {
+      vaultId: ctx.values.vaultId,
+      snapshotVersionVector: {
+        [ctx.values.deviceId]: 1,
+      },
+      revisionTimestamp: ctx.values.timestamp,
+    };
+    const session = ctx.saved.unlockedVaultSession!;
+
+    ctx.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          syncConfig: ctx.values.syncConfig,
+        },
+      },
+    };
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValueOnce(remoteSnapshotDescriptor);
+    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockRejectedValueOnce(
+      new RemoteVaultSnapshotChangedError(ctx.values.vaultId),
+    );
+    vi.mocked(
+      ctx.vaultSnapshot.restoreLocalVaultSnapshot,
+    ).mockRejectedValueOnce(new Error("restore failed"));
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        entry: {
+          password: "secret-password",
+          login: "user@example.com",
+          tags: [],
+          url: "https://example.com/login",
+        },
+      }),
+    ).rejects.toBeInstanceOf(SyncConflictDetectedError);
+
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.remove,
+    ).toHaveBeenCalled();
+    expect(ctx.saved.unlockedVaultSession).toBeUndefined();
   });
 
   it("does not save the session vault when snapshot persistence fails", async () => {

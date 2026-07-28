@@ -11,6 +11,7 @@ import {
   RemoteVaultSnapshotAheadError,
   SyncConflictDetectedError,
   SyncNotConfiguredError,
+  SyncRemovalPendingError,
 } from "../../errors/sync.errors";
 import { VaultSnapshotSignatureVerificationFailedError } from "../../errors/unlock-vault.errors";
 import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
@@ -30,6 +31,7 @@ function createContext() {
   const vaultSyncGuard = new VaultSyncGuardService(
     ports.syncProvider,
     vaultSnapshot,
+    ports.sessionServices.unlockedVaultSession,
   );
   vi.spyOn(vaultSnapshot, "requireCurrentSnapshotForUnlockedVault");
   const unlockedVault = createUnlockedVaultWithEntries(values, []);
@@ -281,6 +283,32 @@ describe("InitializeDeviceEnrollmentUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
+  it("does not start enrollment while remote cleanup is pending", async () => {
+    const ctx = createContext();
+    const session = ctx.ports.saved.unlockedVaultSession!;
+    ctx.ports.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          syncRemovalPending: true,
+        },
+      },
+    };
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        remoteSnapshotDescriptor: ctx.remoteSnapshotDescriptor,
+      }),
+    ).rejects.toBeInstanceOf(SyncRemovalPendingError);
+
+    expect(
+      ctx.vaultSnapshot.requireCurrentSnapshotForUnlockedVault,
+    ).not.toHaveBeenCalled();
+  });
+
   it("fails when the target vault is not unlocked", async () => {
     const ctx = createContext();
     ctx.ports.saved.unlockedVaultSession = undefined;
@@ -521,11 +549,7 @@ describe("InitializeDeviceEnrollmentUseCase", () => {
         }),
       }),
     );
-    expect(ctx.ports.saved.unlockedVaultSession).toMatchObject({
-      sourceSnapshotVersionVector: {
-        [ctx.values.deviceId]: 1,
-      },
-    });
+    expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
   });
 
   it("preserves sync conflict when session rollback fails", async () => {
