@@ -1,6 +1,9 @@
 import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it } from "vitest";
-import type { VersionVector } from "@lfspm/core";
+import type {
+  EncryptedUnlockedVaultSessionPayload,
+  VersionVector,
+} from "@lfspm/core";
 import type { Base64URLString } from "@lfspm/core/lib";
 import {
   ACTIVE_UNLOCKED_VAULT_SESSION_PAYLOAD_ID,
@@ -88,7 +91,9 @@ describe("IndexedDbEncryptedUnlockedVaultSessionPayloadRepository", () => {
   });
 });
 
-function createPayload(sourceSnapshotVersionVector: VersionVector) {
+function createPayload(
+  sourceSnapshotVersionVector: VersionVector,
+): EncryptedUnlockedVaultSessionPayload {
   const versionLabel = Object.entries(sourceSnapshotVersionVector)
     .map(([deviceId, version]) => `${deviceId}-${version}`)
     .join("-");

@@ -1,6 +1,4 @@
-import type { SerializedEncrypted } from "../../domain/crypto/protected-artifact";
-import type { Vault } from "../../domain/vault/vault";
-import type { VersionVector } from "../../domain/versioning/version-vector.type";
+import type { EncryptedUnlockedVaultSessionPayload } from "../../domain/session/unlocked-vault-session.type";
 
 /**
  * Stores the encrypted active unlocked-vault session payload.
@@ -11,21 +9,9 @@ import type { VersionVector } from "../../domain/versioning/version-vector.type"
  * must remove it when the unlocked session is removed.
  */
 export interface EncryptedUnlockedVaultSessionPayloadRepositoryPort {
-  saveEncryptedUnlockedVaultSessionPayload: (encryptedPayload: {
-    readonly sessionId: string;
-    readonly vaultId: string;
-    readonly sourceSnapshotVersionVector: VersionVector;
-    readonly content: SerializedEncrypted<{
-      readonly vault: Vault;
-    }>;
-  }) => Promise<void>;
-  getEncryptedUnlockedVaultSessionPayload: () => Promise<{
-    readonly sessionId: string;
-    readonly vaultId: string;
-    readonly sourceSnapshotVersionVector: VersionVector;
-    readonly content: SerializedEncrypted<{
-      readonly vault: Vault;
-    }>;
-  } | null>;
+  saveEncryptedUnlockedVaultSessionPayload: (
+    encryptedPayload: EncryptedUnlockedVaultSessionPayload,
+  ) => Promise<void>;
+  getEncryptedUnlockedVaultSessionPayload: () => Promise<EncryptedUnlockedVaultSessionPayload | null>;
   removeEncryptedUnlockedVaultSessionPayload: () => Promise<void>;
 }

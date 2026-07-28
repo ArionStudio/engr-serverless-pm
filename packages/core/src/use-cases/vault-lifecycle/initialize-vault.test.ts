@@ -39,6 +39,7 @@ describe("InitializeVaultUseCase", () => {
     const expectedLocalKeysPayload: LocalKeysPayload = {
       deviceSlotKey: ctx.values.deviceSlotKey,
       devicePrivateSignKey: ctx.values.devicePrivateSignKey,
+      vaultTrustAnchor: ctx.values.vaultTrustAnchor,
     };
 
     expect(ctx.ports.crypto.wrapLocalKeysPayload).toHaveBeenCalledWith(
@@ -117,7 +118,7 @@ describe("InitializeVaultUseCase", () => {
     expect(ctx.saved.vaultSnapshot).toEqual({
       metadata: {
         id: ctx.values.vaultId,
-        schemaVersion: 1,
+        schemaVersion: 2,
         vaultCreationTimestamp: ctx.values.timestamp,
         revisionTimestamp: ctx.values.timestamp,
         snapshotVersionVector: {
@@ -126,6 +127,7 @@ describe("InitializeVaultUseCase", () => {
         algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
         createdByDeviceId: ctx.values.deviceId,
       },
+      trustChain: ctx.values.vaultTrustChain,
       keySlots: {
         deviceSlots: [
           {
@@ -142,6 +144,7 @@ describe("InitializeVaultUseCase", () => {
     expect(ctx.ports.crypto.signVaultSnapshot).toHaveBeenCalledWith(
       {
         metadata: ctx.saved.vaultSnapshot?.metadata,
+        trustChain: ctx.saved.vaultSnapshot?.trustChain,
         keySlots: ctx.saved.vaultSnapshot?.keySlots,
         content: ctx.saved.vaultSnapshot?.content,
       },
@@ -155,11 +158,19 @@ describe("InitializeVaultUseCase", () => {
         vault: expectedVault,
         vaultMasterKey: ctx.values.vaultMasterKey,
         devicePrivateSignKey: ctx.values.devicePrivateSignKey,
+        trustedSnapshotContext: {
+          snapshotDigest: ctx.values.vaultSnapshotDigest,
+          trust: ctx.values.verifiedVaultTrustState,
+        },
+        vaultTrustAnchor: ctx.values.vaultTrustAnchor,
       },
       sourceSnapshotVersionVector: {
         [ctx.values.deviceId]: 1,
       },
     });
+    expect(ctx.saved.localVaultTrustCheckpoint).toEqual(
+      ctx.values.localVaultTrustCheckpoint,
+    );
   });
 
   it("bubbles local initialization errors and does not save unlocked state", async () => {
@@ -190,7 +201,7 @@ describe("InitializeVaultUseCase", () => {
       ctx.ports.vaultLocalRepository.saveDeviceAccessMaterial,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
   });
 
@@ -257,6 +268,11 @@ describe("InitializeVaultUseCase", () => {
       vaultMasterKey: ctx.values.vaultMasterKey,
       devicePrivateSignKey: ctx.values.devicePrivateSignKey,
       payloadKey: ctx.values.unlockedVaultSessionPayloadKey,
+      trustedSnapshotContext: {
+        snapshotDigest: ctx.values.vaultSnapshotDigest,
+        trust: ctx.values.verifiedVaultTrustState,
+      },
+      vaultTrustAnchor: ctx.values.vaultTrustAnchor,
     };
 
     await expect(

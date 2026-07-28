@@ -24,21 +24,23 @@ import {
   SnapshotSigningDeviceNotTrustedError,
   VaultSnapshotVersionMismatchError,
 } from "../../errors/vault-snapshot.errors";
+import { VaultTrustStateInvalidError } from "../../errors/vault-trust.errors";
 import {
   compareVersionVectors,
   incrementVersionVector,
 } from "../../domain/versioning/version-vector.utils";
 import type { VersionVector } from "../../domain/versioning/version-vector.type";
-
-export type OpenTrustedVaultSnapshotResult = {
-  readonly vault: Vault;
-  readonly completedEnrollmentProof: CompletedDeviceEnrollmentProof | null;
-};
+import type {
+  VaultTrustChain,
+  VerifiedVaultTrustState,
+} from "../../domain/device-trust";
+import { VaultTrustService } from "../trust/vault-trust.service";
 
 export class VaultSnapshotService {
   private readonly crypto: CryptoPort;
   private readonly clock: ClockPort;
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
+  private readonly vaultTrust: VaultTrustService;
 
   constructor(
     crypto: CryptoPort,
@@ -48,6 +50,7 @@ export class VaultSnapshotService {
     this.crypto = crypto;
     this.clock = clock;
     this.vaultLocalRepository = vaultLocalRepository;
+    this.vaultTrust = new VaultTrustService(crypto);
   }
 
   async persistUnlockedVault(
@@ -57,11 +60,12 @@ export class VaultSnapshotService {
     options: {
       readonly baseSnapshotVersionVector?: VersionVector;
       readonly keySlots?: UnsignedVaultSnapshot["keySlots"];
+      readonly nextTrust?: {
+        readonly chain: VaultTrustChain;
+        readonly state: VerifiedVaultTrustState;
+      };
     } = {},
-  ): Promise<{
-    readonly snapshotVersionVector: VersionVector;
-    readonly revisionTimestamp: number;
-  }> {
+  ) {
     const currentVaultSnapshot =
       await this.requireCurrentSnapshotForUnlockedVault(
         vaultId,
@@ -71,11 +75,33 @@ export class VaultSnapshotService {
 
     const revisionTimestamp = this.clock.now();
     const keySlots = options.keySlots ?? currentVaultSnapshot.keySlots;
+    const trustChain =
+      options.nextTrust?.chain ?? currentVaultSnapshot.trustChain;
+    const trustState =
+      options.nextTrust?.state ?? unlockedVault.trustedSnapshotContext.trust;
+
+    if (trustChain === undefined) {
+      throw new VaultTrustStateInvalidError(vaultId, "trust chain is missing");
+    }
+
+    const trustedSigningDevice = trustState.trustedDevices.find(
+      (device) => device.deviceId === unlockedVault.deviceId,
+    );
+    const signingDeviceSlot = keySlots.deviceSlots.find(
+      (deviceSlot) => deviceSlot.deviceId === unlockedVault.deviceId,
+    );
 
     if (
-      !keySlots.deviceSlots.some(
-        (deviceSlot) => deviceSlot.deviceId === unlockedVault.deviceId,
-      )
+      trustedSigningDevice === undefined ||
+      signingDeviceSlot === undefined ||
+      !(await this.crypto.verifyDeviceSignKeyPair(
+        trustedSigningDevice.publicSignKey,
+        unlockedVault.devicePrivateSignKey,
+      )) ||
+      !(await this.crypto.verifyDeviceSignKeyPair(
+        signingDeviceSlot.publicSignKey,
+        unlockedVault.devicePrivateSignKey,
+      ))
     ) {
       throw new SnapshotSigningDeviceNotTrustedError(
         vaultId,
@@ -94,6 +120,7 @@ export class VaultSnapshotService {
         ),
         createdByDeviceId: unlockedVault.deviceId,
       },
+      trustChain,
       keySlots,
       content: await this.crypto.encryptVaultSnapshotContent(
         unlockedVault.vault,
@@ -109,11 +136,29 @@ export class VaultSnapshotService {
       ),
     };
 
-    await this.vaultLocalRepository.saveVaultSnapshot(vaultSnapshot);
+    const snapshotDigest = await this.crypto.digestVaultSnapshot(vaultSnapshot);
+    const checkpoint = await this.vaultTrust.createCheckpoint(
+      vaultSnapshot,
+      trustState,
+      unlockedVault.deviceId,
+      unlockedVault.devicePrivateSignKey,
+    );
+
+    await this.vaultLocalRepository.saveVaultSnapshotWithCheckpoint({
+      expectedSnapshotDigest:
+        unlockedVault.trustedSnapshotContext.snapshotDigest,
+      snapshot: vaultSnapshot,
+      checkpoint,
+    });
 
     return {
       snapshotVersionVector: vaultSnapshot.metadata.snapshotVersionVector,
       revisionTimestamp: vaultSnapshot.metadata.revisionTimestamp,
+      trustedSnapshotContext: {
+        snapshotDigest,
+        trust: trustState,
+      },
+      snapshot: vaultSnapshot,
     };
   }
 
@@ -128,8 +173,58 @@ export class VaultSnapshotService {
     return vaultSnapshot;
   }
 
-  async restoreLocalVaultSnapshot(vaultSnapshot: VaultSnapshot): Promise<void> {
-    await this.vaultLocalRepository.saveVaultSnapshot(vaultSnapshot);
+  async verifyCandidateSnapshotTrust(
+    vaultId: string,
+    vaultSnapshot: VaultSnapshot,
+    unlockedVault: UnlockedVault,
+  ): Promise<{
+    readonly chain: VaultTrustChain;
+    readonly state: VerifiedVaultTrustState;
+  }> {
+    this.requireSupportedSnapshotAlgorithm(vaultId, vaultSnapshot);
+
+    if (vaultSnapshot.metadata.id !== vaultId) {
+      throw new PersistedVaultMismatchError(vaultId, vaultSnapshot.metadata.id);
+    }
+
+    const chain = vaultSnapshot.trustChain;
+
+    if (chain === undefined) {
+      throw new VaultTrustStateInvalidError(vaultId, "trust chain is missing");
+    }
+
+    const state = await this.vaultTrust.verifyTrustChain(
+      vaultId,
+      unlockedVault.vaultTrustAnchor,
+      chain,
+    );
+    await this.vaultTrust.requireTrustDescendsFrom(
+      vaultId,
+      chain,
+      state,
+      unlockedVault.trustedSnapshotContext.trust,
+    );
+    await this.vaultTrust.verifySnapshot(vaultId, vaultSnapshot, state);
+
+    return { chain, state };
+  }
+
+  async restoreLocalVaultSnapshot(
+    vaultSnapshot: VaultSnapshot,
+    replacedSnapshot: VaultSnapshot,
+    unlockedVault: UnlockedVault,
+  ): Promise<void> {
+    await this.vaultLocalRepository.saveVaultSnapshotWithCheckpoint({
+      expectedSnapshotDigest:
+        await this.crypto.digestVaultSnapshot(replacedSnapshot),
+      snapshot: vaultSnapshot,
+      checkpoint: await this.vaultTrust.createCheckpoint(
+        vaultSnapshot,
+        unlockedVault.trustedSnapshotContext.trust,
+        unlockedVault.deviceId,
+        unlockedVault.devicePrivateSignKey,
+      ),
+    });
   }
 
   async openTrustedVaultSnapshot(
@@ -153,7 +248,7 @@ export class VaultSnapshotService {
     vaultSnapshot: VaultSnapshot,
     vaultMasterKey: VaultMasterKey,
     trustSourceSnapshot: Pick<VaultSnapshot, "keySlots">,
-  ): Promise<OpenTrustedVaultSnapshotResult> {
+  ) {
     this.requireSupportedSnapshotAlgorithm(vaultId, vaultSnapshot);
 
     if (vaultSnapshot.metadata.id !== vaultId) {
@@ -209,10 +304,24 @@ export class VaultSnapshotService {
     }
 
     this.requireSupportedSnapshotAlgorithm(vaultId, currentVaultSnapshot);
-    await this.requireTrustedSnapshotSignature(
+    const currentSnapshotDigest =
+      await this.crypto.digestVaultSnapshot(currentVaultSnapshot);
+
+    if (
+      currentSnapshotDigest !==
+      unlockedVault.trustedSnapshotContext.snapshotDigest
+    ) {
+      throw new VaultSnapshotVersionMismatchError(
+        vaultId,
+        sourceSnapshotVersionVector,
+        currentVaultSnapshot.metadata.snapshotVersionVector,
+      );
+    }
+
+    await this.vaultTrust.verifySnapshot(
       vaultId,
       currentVaultSnapshot,
-      currentVaultSnapshot,
+      unlockedVault.trustedSnapshotContext.trust,
     );
 
     const trustedDevice = currentVaultSnapshot.keySlots.deviceSlots.find(
@@ -375,6 +484,13 @@ export class VaultSnapshotService {
     vaultId: string,
     vaultSnapshot: VaultSnapshot,
   ): void {
+    if (vaultSnapshot.metadata.schemaVersion !== 2) {
+      throw new VaultTrustStateInvalidError(
+        vaultId,
+        "unsupported snapshot schema version",
+      );
+    }
+
     if (
       vaultSnapshot.metadata.algorithmSuiteId !== this.crypto.algorithmSuite.id
     ) {

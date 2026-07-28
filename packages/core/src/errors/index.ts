@@ -13,3 +13,4 @@ export * from "./vault-device.errors";
 export * from "./vault-entry.errors";
 export * from "./vault-session.errors";
 export * from "./vault-snapshot.errors";
+export * from "./vault-trust.errors";

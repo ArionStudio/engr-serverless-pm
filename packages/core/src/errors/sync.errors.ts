@@ -21,6 +21,15 @@ export class SyncAlreadyConfiguredError extends Error {
   }
 }
 
+export class SyncRemovalPendingError extends Error {
+  constructor(vaultId: string, operation: string) {
+    super(
+      `Vault "${vaultId}" has remote sync cleanup pending and cannot ${operation}.`,
+    );
+    this.name = "SyncRemovalPendingError";
+  }
+}
+
 export class RemoteVaultSnapshotNotFoundError extends Error {
   constructor(vaultId: string) {
     super(`Remote vault snapshot for vault "${vaultId}" was not found.`);

@@ -21,6 +21,7 @@ function createContext() {
   const vaultSyncGuard = new VaultSyncGuardService(
     ports.syncProvider,
     vaultSnapshot,
+    ports.sessionServices.unlockedVaultSession,
   );
   const unlockedVault = createUnlockedVaultWithEntries(values, []);
 
@@ -234,6 +235,31 @@ describe("SetupSyncUseCase", () => {
     expect(
       ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncConfig,
     ).toBeUndefined();
+  });
+
+  it("invalidates the session when first sync upload restoration fails", async () => {
+    const ctx = createContext();
+    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockRejectedValueOnce(
+      new Error("upload failed"),
+    );
+    vi.mocked(
+      ctx.vaultSnapshot.restoreLocalVaultSnapshot,
+    ).mockRejectedValueOnce(new Error("restore failed"));
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        syncConfig: ctx.values.syncConfigInput,
+      }),
+    ).rejects.toThrow("upload failed");
+
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.remove,
+    ).toHaveBeenCalled();
+    expect(ctx.saved.unlockedVaultSession).toBeUndefined();
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
+    ).not.toHaveBeenCalled();
   });
 
   it("bubbles the session commit failure after snapshot persistence", async () => {

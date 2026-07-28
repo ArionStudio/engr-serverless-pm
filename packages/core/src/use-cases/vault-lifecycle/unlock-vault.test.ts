@@ -13,6 +13,7 @@ import {
   InvalidVaultLockDelayError,
 } from "../../errors/vault-session.errors";
 import { PersistedVaultMismatchError } from "../../errors/vault-snapshot.errors";
+import { VaultTrustStateInvalidError } from "../../errors/vault-trust.errors";
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
 
 describe("UnlockVaultUseCase", () => {
@@ -74,6 +75,11 @@ describe("UnlockVaultUseCase", () => {
         vault: ctx.values.decryptedVault,
         vaultMasterKey: ctx.values.vaultMasterKey,
         devicePrivateSignKey: ctx.values.devicePrivateSignKey,
+        trustedSnapshotContext: {
+          snapshotDigest: ctx.values.vaultSnapshotDigest,
+          trust: ctx.values.verifiedVaultTrustState,
+        },
+        vaultTrustAnchor: ctx.values.vaultTrustAnchor,
       },
       sourceSnapshotVersionVector: {
         [ctx.values.deviceId]: 1,
@@ -101,6 +107,24 @@ describe("UnlockVaultUseCase", () => {
       metadata: {
         ...ctx.vaultSnapshot.metadata,
         createdByDeviceId: "other-device-id",
+      },
+      trustChain: {
+        ...ctx.values.vaultTrustChain,
+        certificates: [
+          {
+            ...ctx.values.vaultTrustCertificate,
+            payload: {
+              ...ctx.values.vaultTrustCertificate.payload,
+              trustedDevices: [
+                ...ctx.values.vaultTrustCertificate.payload.trustedDevices,
+                {
+                  deviceId: "other-device-id",
+                  publicSignKey: ctx.values.pendingDevicePublicSignKey,
+                },
+              ],
+            },
+          },
+        ],
       },
       keySlots: {
         ...ctx.vaultSnapshot.keySlots,
@@ -136,6 +160,100 @@ describe("UnlockVaultUseCase", () => {
     expect(ctx.saved.unlockedVaultSession?.unlockedVault.deviceId).toBe(
       ctx.values.deviceId,
     );
+  });
+
+  it("rejects a local device revoked by the verified trust chain", async () => {
+    const ctx = createUnlockVaultTestContext();
+    const remainingDeviceId = "remaining-device-id";
+    ctx.saved.vaultSnapshot = {
+      ...ctx.vaultSnapshot,
+      trustChain: {
+        certificates: [
+          ctx.values.vaultTrustCertificate,
+          {
+            ...ctx.values.vaultTrustCertificate,
+            payload: {
+              ...ctx.values.vaultTrustCertificate.payload,
+              generation: 1,
+              previousCertificateDigest: ctx.values.vaultTrustCertificateDigest,
+              trustedDevices: [
+                {
+                  deviceId: remainingDeviceId,
+                  publicSignKey: ctx.values.pendingDevicePublicSignKey,
+                },
+              ],
+            },
+          },
+        ],
+      },
+    };
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 600_000,
+      }),
+    ).rejects.toBeInstanceOf(VaultTrustStateInvalidError);
+
+    expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.commit,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unsupported snapshot schema before trust-chain verification", async () => {
+    const ctx = createUnlockVaultTestContext();
+    ctx.saved.vaultSnapshot = {
+      ...ctx.vaultSnapshot,
+      metadata: {
+        ...ctx.vaultSnapshot.metadata,
+        schemaVersion: 1,
+      },
+    } as unknown as typeof ctx.vaultSnapshot;
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 600_000,
+      }),
+    ).rejects.toBeInstanceOf(VaultTrustStateInvalidError);
+
+    expect(
+      ctx.ports.crypto.verifyVaultTrustCertificateSignature,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("updates a newer checkpoint with the snapshot-and-checkpoint compare-and-set", async () => {
+    const ctx = createUnlockVaultTestContext();
+    ctx.saved.vaultSnapshot = {
+      ...ctx.vaultSnapshot,
+      metadata: {
+        ...ctx.vaultSnapshot.metadata,
+        snapshotVersionVector: {
+          [ctx.values.deviceId]: 2,
+        },
+      },
+    };
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      masterPassword: ctx.values.masterPassword,
+      lockAfterMs: 600_000,
+    });
+
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).toHaveBeenCalledWith({
+      expectedSnapshotDigest: ctx.values.vaultSnapshotDigest,
+      snapshot: ctx.saved.vaultSnapshot,
+      checkpoint: expect.objectContaining({
+        payload: expect.objectContaining({
+          snapshotVersionVector: { [ctx.values.deviceId]: 2 },
+        }),
+      }),
+    });
   });
 
   it("fails when device access material is missing", async () => {
@@ -193,7 +311,9 @@ describe("UnlockVaultUseCase", () => {
       }),
     ).rejects.toBeInstanceOf(VaultSnapshotSignatureVerificationFailedError);
 
-    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenCalled();
+    expect(ctx.ports.crypto.unwrapVaultMasterKey).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
     expect(
       ctx.ports.sessionServices.unlockedVaultSession.commit,
     ).not.toHaveBeenCalled();
@@ -305,7 +425,7 @@ describe("UnlockVaultUseCase", () => {
     expect(
       ctx.ports.crypto.verifyVaultSnapshotSignature,
     ).not.toHaveBeenCalled();
-    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenCalled();
     expect(
       ctx.ports.sessionServices.unlockedVaultSession.commit,
     ).not.toHaveBeenCalled();
@@ -507,6 +627,11 @@ describe("UnlockVaultUseCase", () => {
       vaultMasterKey: ctx.values.vaultMasterKey,
       devicePrivateSignKey: ctx.values.devicePrivateSignKey,
       payloadKey: ctx.values.unlockedVaultSessionPayloadKey,
+      trustedSnapshotContext: {
+        snapshotDigest: ctx.values.vaultSnapshotDigest,
+        trust: ctx.values.verifiedVaultTrustState,
+      },
+      vaultTrustAnchor: ctx.values.vaultTrustAnchor,
     };
 
     await expect(

@@ -16,24 +16,22 @@ import {
   SyncConflictDetectedError,
 } from "../../errors/sync.errors";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
+import type { UnlockedVaultSessionService } from "../session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../snapshot/vault-snapshot.service";
-
-export type LocalMutationSyncState = {
-  readonly localSnapshot: VaultSnapshot;
-  readonly syncConfig?: SyncConfig;
-  readonly remoteSnapshotDescriptor?: VaultSnapshotDescriptor;
-};
 
 export class VaultSyncGuardService {
   private readonly syncProvider: SyncProviderPort;
   private readonly vaultSnapshot: VaultSnapshotService;
+  private readonly unlockedVaultSession: UnlockedVaultSessionService;
 
   constructor(
     syncProvider: SyncProviderPort,
     vaultSnapshot: VaultSnapshotService,
+    unlockedVaultSession: UnlockedVaultSessionService,
   ) {
     this.syncProvider = syncProvider;
     this.vaultSnapshot = vaultSnapshot;
+    this.unlockedVaultSession = unlockedVaultSession;
   }
 
   async requireReadyForLocalMutation(
@@ -54,7 +52,11 @@ export class VaultSyncGuardService {
     vaultId: string,
     unlockedVault: UnlockedVault,
     sourceSnapshotVersionVector: VersionVector,
-  ): Promise<LocalMutationSyncState> {
+  ): Promise<{
+    readonly localSnapshot: VaultSnapshot;
+    readonly syncConfig?: SyncConfig;
+    readonly remoteSnapshotDescriptor?: VaultSnapshotDescriptor;
+  }> {
     const localSnapshot =
       await this.vaultSnapshot.requireCurrentSnapshotForUnlockedVault(
         vaultId,
@@ -63,7 +65,10 @@ export class VaultSyncGuardService {
       );
     const syncConfig = unlockedVault.vault.syncConfig;
 
-    if (syncConfig === undefined) {
+    if (
+      syncConfig === undefined ||
+      unlockedVault.vault.syncRemovalPending === true
+    ) {
       return {
         localSnapshot,
       };
@@ -115,8 +120,13 @@ export class VaultSyncGuardService {
 
   async uploadPersistedLocalMutation(
     vaultId: string,
-    syncState: LocalMutationSyncState,
+    syncState: {
+      readonly localSnapshot: VaultSnapshot;
+      readonly syncConfig?: SyncConfig;
+      readonly remoteSnapshotDescriptor?: VaultSnapshotDescriptor;
+    },
     persistedSnapshot: VaultSnapshot,
+    unlockedVault: UnlockedVault,
   ): Promise<void> {
     if (
       syncState.syncConfig === undefined ||
@@ -135,9 +145,15 @@ export class VaultSyncGuardService {
       try {
         await this.vaultSnapshot.restoreLocalVaultSnapshot(
           syncState.localSnapshot,
+          persistedSnapshot,
+          unlockedVault,
         );
       } catch {
-        // Preserve the upload failure as the root cause.
+        try {
+          await this.unlockedVaultSession.remove();
+        } catch {
+          // Preserve the upload failure as the root cause.
+        }
       }
 
       if (error instanceof RemoteVaultSnapshotChangedError) {
@@ -153,6 +169,7 @@ export class VaultSyncGuardService {
     syncConfig: SyncConfig,
     localSnapshot: VaultSnapshot,
     persistedSnapshot: VaultSnapshot,
+    unlockedVault: UnlockedVault,
   ): Promise<void> {
     try {
       await this.syncProvider.uploadVaultSnapshot(
@@ -162,9 +179,17 @@ export class VaultSyncGuardService {
       );
     } catch (error) {
       try {
-        await this.vaultSnapshot.restoreLocalVaultSnapshot(localSnapshot);
+        await this.vaultSnapshot.restoreLocalVaultSnapshot(
+          localSnapshot,
+          persistedSnapshot,
+          unlockedVault,
+        );
       } catch {
-        // Preserve the upload failure as the root cause.
+        try {
+          await this.unlockedVaultSession.remove();
+        } catch {
+          // Preserve the upload failure as the root cause.
+        }
       }
 
       if (error instanceof RemoteVaultSnapshotChangedError) {

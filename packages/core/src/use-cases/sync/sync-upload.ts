@@ -9,6 +9,7 @@ import {
   RemoteVaultSnapshotIntegrityError,
   SyncConflictDetectedError,
   SyncNotConfiguredError,
+  SyncRemovalPendingError,
 } from "../../errors/sync.errors";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
@@ -43,6 +44,10 @@ export class SyncUploadUseCase {
 
     if (syncConfig === undefined) {
       throw new SyncNotConfiguredError(params.vaultId, "sync upload");
+    }
+
+    if (unlockedVault.vault.syncRemovalPending === true) {
+      throw new SyncRemovalPendingError(params.vaultId, "sync upload");
     }
 
     const localSnapshot =

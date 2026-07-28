@@ -33,15 +33,31 @@ describe("VaultSnapshotService", () => {
       ports.clock,
       ports.vaultLocalRepository,
     );
-    const unlockedVault = createUnlockedVaultWithEntries(
+    const baseUnlockedVault = createUnlockedVaultWithEntries(
       values,
       [singlePasswordEntry],
       [workTag],
     );
+    const unlockedVault = {
+      ...baseUnlockedVault,
+      trustedSnapshotContext: {
+        ...baseUnlockedVault.trustedSnapshotContext,
+        trust: {
+          ...baseUnlockedVault.trustedSnapshotContext.trust,
+          trustedDevices: [
+            ...baseUnlockedVault.trustedSnapshotContext.trust.trustedDevices,
+            {
+              deviceId: previousDeviceId,
+              publicSignKey: values.devicePublicSignKey,
+            },
+          ],
+        },
+      },
+    };
     const currentSnapshot: VaultSnapshot = {
       metadata: {
         id: values.vaultId,
-        schemaVersion: 1,
+        schemaVersion: 2,
         vaultCreationTimestamp: values.timestamp - 1_000,
         revisionTimestamp: values.timestamp - 500,
         snapshotVersionVector: {
@@ -50,6 +66,7 @@ describe("VaultSnapshotService", () => {
         algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
         createdByDeviceId: previousDeviceId,
       },
+      trustChain: values.vaultTrustChain,
       keySlots: {
         deviceSlots: [
           {
@@ -94,6 +111,11 @@ describe("VaultSnapshotService", () => {
         [ctx.values.deviceId]: 4,
       },
       revisionTimestamp: ctx.values.timestamp,
+      trustedSnapshotContext: {
+        snapshotDigest: ctx.values.vaultSnapshotDigest,
+        trust: ctx.unlockedVault.trustedSnapshotContext.trust,
+      },
+      snapshot: ctx.saved.vaultSnapshot,
     });
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).toHaveBeenCalledWith(
       ctx.unlockedVault.vault,
@@ -111,6 +133,7 @@ describe("VaultSnapshotService", () => {
         },
         keySlots: ctx.currentSnapshot.keySlots,
         content: ctx.values.encryptedVault,
+        trustChain: ctx.currentSnapshot.trustChain,
       },
       ctx.values.devicePrivateSignKey,
     );
@@ -125,6 +148,7 @@ describe("VaultSnapshotService", () => {
       },
       keySlots: ctx.currentSnapshot.keySlots,
       content: ctx.values.encryptedVault,
+      trustChain: ctx.currentSnapshot.trustChain,
       signature: ctx.values.snapshotSignature,
     });
   });
@@ -143,7 +167,7 @@ describe("VaultSnapshotService", () => {
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
     expect(ctx.ports.crypto.signVaultSnapshot).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
   });
 
@@ -708,7 +732,7 @@ describe("VaultSnapshotService", () => {
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
     expect(ctx.ports.crypto.signVaultSnapshot).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
   });
 
@@ -727,7 +751,7 @@ describe("VaultSnapshotService", () => {
       ctx.ports.vaultLocalRepository.getVaultSnapshot,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
   });
 
@@ -745,7 +769,7 @@ describe("VaultSnapshotService", () => {
 
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
   });
 
@@ -760,7 +784,7 @@ describe("VaultSnapshotService", () => {
 
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
   });
 
@@ -784,7 +808,7 @@ describe("VaultSnapshotService", () => {
 
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
   });
 
@@ -813,7 +837,7 @@ describe("VaultSnapshotService", () => {
     ).not.toHaveBeenCalled();
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
   });
 
@@ -833,7 +857,7 @@ describe("VaultSnapshotService", () => {
 
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
   });
 
@@ -859,7 +883,37 @@ describe("VaultSnapshotService", () => {
 
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("fails when the current device is absent from the effective trust state", async () => {
+    const ctx = createContext();
+    const unlockedVault = {
+      ...ctx.unlockedVault,
+      trustedSnapshotContext: {
+        ...ctx.unlockedVault.trustedSnapshotContext,
+        trust: {
+          ...ctx.unlockedVault.trustedSnapshotContext.trust,
+          trustedDevices:
+            ctx.unlockedVault.trustedSnapshotContext.trust.trustedDevices.filter(
+              (device) => device.deviceId !== ctx.values.deviceId,
+            ),
+        },
+      },
+    };
+
+    await expect(
+      ctx.service.persistUnlockedVault(
+        ctx.values.vaultId,
+        unlockedVault,
+        ctx.currentSnapshot.metadata.snapshotVersionVector,
+      ),
+    ).rejects.toThrow(SnapshotSigningDeviceNotTrustedError);
+
+    expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
   });
 
@@ -881,7 +935,7 @@ describe("VaultSnapshotService", () => {
 
     expect(ctx.ports.crypto.signVaultSnapshot).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
   });
 
@@ -904,7 +958,7 @@ describe("VaultSnapshotService", () => {
       ctx.values.vaultMasterKey,
     );
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
   });
 });

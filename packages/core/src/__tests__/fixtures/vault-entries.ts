@@ -81,6 +81,11 @@ export function createUnlockedVaultWithEntries(
     },
     vaultMasterKey: values.vaultMasterKey,
     devicePrivateSignKey: values.devicePrivateSignKey,
+    trustedSnapshotContext: {
+      snapshotDigest: values.vaultSnapshotDigest,
+      trust: values.verifiedVaultTrustState,
+    },
+    vaultTrustAnchor: values.vaultTrustAnchor,
   };
 }
 
@@ -115,7 +120,7 @@ export function createVaultSnapshotServiceMock(
   let savedVaultSnapshot: VaultSnapshot = {
     metadata: {
       id: values.vaultId,
-      schemaVersion: 1,
+      schemaVersion: 2,
       vaultCreationTimestamp: values.timestamp - 1_000,
       revisionTimestamp: values.timestamp,
       snapshotVersionVector: {
@@ -124,6 +129,7 @@ export function createVaultSnapshotServiceMock(
       algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
       createdByDeviceId: values.deviceId,
     },
+    trustChain: values.vaultTrustChain,
     keySlots: {
       deviceSlots: [
         {
@@ -176,6 +182,11 @@ export function createVaultSnapshotServiceMock(
           snapshotVersionVector:
             savedVaultSnapshot.metadata.snapshotVersionVector,
           revisionTimestamp: savedVaultSnapshot.metadata.revisionTimestamp,
+          trustedSnapshotContext: {
+            snapshotDigest: values.vaultSnapshotDigest,
+            trust: values.verifiedVaultTrustState,
+          },
+          snapshot: savedVaultSnapshot,
         };
       },
     ),

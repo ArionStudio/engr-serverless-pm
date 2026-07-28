@@ -42,9 +42,10 @@ export class DeviceEnrollmentAlreadyCompletedError extends Error {
 }
 
 export class DeviceEnrollmentIntegrityError extends Error {
-  constructor(vaultId: string, reason: string) {
+  constructor(vaultId: string, reason: string, options?: ErrorOptions) {
     super(
       `Vault "${vaultId}" device enrollment integrity check failed: ${reason}`,
+      options,
     );
     this.name = "DeviceEnrollmentIntegrityError";
   }

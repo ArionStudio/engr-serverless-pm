@@ -13,10 +13,7 @@ import {
 } from "../../errors/unlock-vault.errors";
 import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 import { RemoteVaultSnapshotAheadError } from "../../errors/sync.errors";
-import {
-  SnapshotSigningDeviceNotTrustedError,
-  VaultSnapshotVersionMismatchError,
-} from "../../errors/vault-snapshot.errors";
+import { VaultSnapshotVersionMismatchError } from "../../errors/vault-snapshot.errors";
 import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import { VaultSyncGuardService } from "../../services/sync";
 import { CURRENT_ALGORITHM_SUITE } from "../../domain/crypto/algorithm-suite.const";
@@ -65,7 +62,7 @@ function createVaultSnapshot(values: CoreTestValues): VaultSnapshot {
   return {
     metadata: {
       id: values.vaultId,
-      schemaVersion: 1,
+      schemaVersion: 2,
       vaultCreationTimestamp: values.timestamp - 10,
       revisionTimestamp: values.timestamp - 1,
       snapshotVersionVector: {
@@ -74,6 +71,7 @@ function createVaultSnapshot(values: CoreTestValues): VaultSnapshot {
       algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
       createdByDeviceId: values.deviceId,
     },
+    trustChain: values.vaultTrustChain,
     keySlots: {
       deviceSlots: [
         {
@@ -104,11 +102,13 @@ function createContext() {
   const vaultSyncGuard = new VaultSyncGuardService(
     ports.syncProvider,
     snapshotService,
+    ports.sessionServices.unlockedVaultSession,
   );
   const vault = createVault(values);
   const vaultSnapshot = createVaultSnapshot(values);
 
   ports.saved.vaultSnapshot = vaultSnapshot;
+  ports.saved.localVaultTrustCheckpoint = values.localVaultTrustCheckpoint;
   ports.saved.unlockedVaultSession = {
     unlockedVault: {
       vaultId: values.vaultId,
@@ -116,6 +116,11 @@ function createContext() {
       vault,
       vaultMasterKey: values.vaultMasterKey,
       devicePrivateSignKey: values.devicePrivateSignKey,
+      trustedSnapshotContext: {
+        snapshotDigest: values.vaultSnapshotDigest,
+        trust: values.verifiedVaultTrustState,
+      },
+      vaultTrustAnchor: values.vaultTrustAnchor,
     },
     sourceSnapshotVersionVector: vaultSnapshot.metadata.snapshotVersionVector,
   };
@@ -132,7 +137,7 @@ function createContext() {
       ports.crypto,
       ports.sessionServices.unlockedVaultSession,
       vaultSyncGuard,
-      ports.vaultLocalRepository,
+      snapshotService,
     ),
   };
 }
@@ -189,30 +194,42 @@ describe("RevokeDeviceUseCase", () => {
       expectedVault,
       ctx.values.vaultMasterKey,
     );
-    expect(ctx.saved.vaultSnapshot).toEqual({
-      metadata: {
-        ...ctx.vaultSnapshot.metadata,
-        snapshotVersionVector: {
-          [ctx.values.deviceId]: 2,
-        },
-        revisionTimestamp: ctx.values.timestamp,
-        createdByDeviceId: ctx.values.deviceId,
-      },
-      keySlots: {
-        deviceSlots: [
-          {
-            deviceId: ctx.values.deviceId,
-            protectedVaultMasterKey: ctx.values.protectedDeviceVaultMasterKey,
-            publicSignKey: ctx.values.devicePublicSignKey,
+    expect(ctx.saved.vaultSnapshot).toEqual(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          snapshotVersionVector: {
+            [ctx.values.deviceId]: 2,
           },
-        ],
+          revisionTimestamp: ctx.values.timestamp,
+          createdByDeviceId: ctx.values.deviceId,
+        }),
+        keySlots: expect.objectContaining({
+          deviceSlots: [
+            {
+              deviceId: ctx.values.deviceId,
+              protectedVaultMasterKey: ctx.values.protectedDeviceVaultMasterKey,
+              publicSignKey: ctx.values.devicePublicSignKey,
+            },
+          ],
+        }),
+        content: ctx.values.encryptedVault,
+        signature: ctx.values.snapshotSignature,
+      }),
+    );
+    expect(ctx.saved.vaultSnapshot?.trustChain?.certificates).toHaveLength(2);
+    expect(
+      ctx.saved.vaultSnapshot?.trustChain?.certificates.at(-1)?.payload
+        .trustedDevices,
+    ).toEqual([
+      {
+        deviceId: ctx.values.deviceId,
+        publicSignKey: ctx.values.devicePublicSignKey,
       },
-      content: ctx.values.encryptedVault,
-      signature: ctx.values.snapshotSignature,
-    });
+    ]);
     expect(ctx.ports.crypto.signVaultSnapshot).toHaveBeenCalledWith(
       {
         metadata: ctx.saved.vaultSnapshot?.metadata,
+        trustChain: ctx.saved.vaultSnapshot?.trustChain,
         keySlots: ctx.saved.vaultSnapshot?.keySlots,
         content: ctx.saved.vaultSnapshot?.content,
       },
@@ -225,14 +242,28 @@ describe("RevokeDeviceUseCase", () => {
         vault: expectedVault,
         vaultMasterKey: ctx.values.vaultMasterKey,
         devicePrivateSignKey: ctx.values.devicePrivateSignKey,
+        trustedSnapshotContext: {
+          snapshotDigest: ctx.values.vaultSnapshotDigest,
+          trust: {
+            generation: 1,
+            certificateDigest: ctx.values.vaultTrustCertificateDigest,
+            trustedDevices: [
+              {
+                deviceId: ctx.values.deviceId,
+                publicSignKey: ctx.values.devicePublicSignKey,
+              },
+            ],
+          },
+        },
+        vaultTrustAnchor: ctx.values.vaultTrustAnchor,
       },
       sourceSnapshotVersionVector: {
         [ctx.values.deviceId]: 2,
       },
     });
     expect(
-      vi.mocked(ctx.ports.vaultLocalRepository.saveVaultSnapshot).mock
-        .invocationCallOrder[0],
+      vi.mocked(ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint)
+        .mock.invocationCallOrder[0],
     ).toBeLessThan(
       vi.mocked(ctx.ports.sessionServices.unlockedVaultSession.commit).mock
         .invocationCallOrder[0],
@@ -379,6 +410,11 @@ describe("RevokeDeviceUseCase", () => {
         vault: ctx.vault,
         vaultMasterKey: ctx.values.vaultMasterKey,
         devicePrivateSignKey: ctx.values.devicePrivateSignKey,
+        trustedSnapshotContext: {
+          snapshotDigest: ctx.values.vaultSnapshotDigest,
+          trust: ctx.values.verifiedVaultTrustState,
+        },
+        vaultTrustAnchor: ctx.values.vaultTrustAnchor,
       },
       sourceSnapshotVersionVector:
         ctx.vaultSnapshot.metadata.snapshotVersionVector,
@@ -426,7 +462,7 @@ describe("RevokeDeviceUseCase", () => {
       ctx.ports.crypto.verifyVaultSnapshotSignature,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
   });
 
@@ -453,7 +489,7 @@ describe("RevokeDeviceUseCase", () => {
       ctx.ports.crypto.verifyVaultSnapshotSignature,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
   });
 
@@ -492,7 +528,7 @@ describe("RevokeDeviceUseCase", () => {
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
     expect(ctx.ports.crypto.signVaultSnapshot).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
     expect(
       ctx.ports.sessionServices.unlockedVaultSession.commit,
@@ -520,7 +556,7 @@ describe("RevokeDeviceUseCase", () => {
       ctx.ports.crypto.verifyVaultSnapshotSignature,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
   });
 
@@ -545,7 +581,7 @@ describe("RevokeDeviceUseCase", () => {
       ctx.ports.crypto.verifyVaultSnapshotSignature,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
   });
 
@@ -564,11 +600,11 @@ describe("RevokeDeviceUseCase", () => {
 
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
   });
 
-  it("fails when the current device is no longer trusted", async () => {
+  it("rejects a signer trusted only by a manipulated snapshot roster", async () => {
     const ctx = createContext();
     ctx.saved.vaultSnapshot = {
       ...ctx.vaultSnapshot,
@@ -593,11 +629,11 @@ describe("RevokeDeviceUseCase", () => {
         vaultId: ctx.values.vaultId,
         deviceId: revokedDeviceId,
       }),
-    ).rejects.toBeInstanceOf(SnapshotSigningDeviceNotTrustedError);
+    ).rejects.toBeInstanceOf(VaultSnapshotSignerNotTrustedError);
 
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
   });
 
@@ -622,7 +658,7 @@ describe("RevokeDeviceUseCase", () => {
 
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
   });
 
@@ -647,7 +683,7 @@ describe("RevokeDeviceUseCase", () => {
 
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
   });
 
@@ -665,6 +701,11 @@ describe("RevokeDeviceUseCase", () => {
         },
         vaultMasterKey: ctx.values.vaultMasterKey,
         devicePrivateSignKey: ctx.values.devicePrivateSignKey,
+        trustedSnapshotContext: {
+          snapshotDigest: ctx.values.vaultSnapshotDigest,
+          trust: ctx.values.verifiedVaultTrustState,
+        },
+        vaultTrustAnchor: ctx.values.vaultTrustAnchor,
       },
       sourceSnapshotVersionVector:
         ctx.vaultSnapshot.metadata.snapshotVersionVector,
@@ -679,14 +720,14 @@ describe("RevokeDeviceUseCase", () => {
 
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
   });
 
   it("does not commit the session when snapshot persistence fails", async () => {
     const ctx = createContext();
     vi.mocked(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).mockRejectedValueOnce(new Error("snapshot save failed"));
 
     await expect(
@@ -719,7 +760,7 @@ describe("RevokeDeviceUseCase", () => {
     ).rejects.toThrow("session save failed");
 
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).toHaveBeenCalledTimes(1);
     expect(
       ctx.ports.sessionServices.unlockedVaultSession.remove,

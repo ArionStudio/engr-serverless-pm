@@ -12,6 +12,7 @@ import {
   RemoteVaultSnapshotIntegrityError,
   RemoteVaultSnapshotNotFoundError,
   SyncNotConfiguredError,
+  SyncRemovalPendingError,
 } from "../../errors/sync.errors";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
@@ -75,6 +76,10 @@ export class PrepareSyncReviewUseCase {
       throw new SyncNotConfiguredError(params.vaultId, "prepare sync review");
     }
 
+    if (unlockedVault.vault.syncRemovalPending === true) {
+      throw new SyncRemovalPendingError(params.vaultId, "prepare sync review");
+    }
+
     const localSnapshot =
       await this.vaultSnapshot.requireCurrentSnapshotForUnlockedVault(
         params.vaultId,
@@ -128,6 +133,11 @@ export class PrepareSyncReviewUseCase {
     const remoteSnapshot = await this.syncProvider.downloadVaultSnapshot(
       syncConfig,
       remoteSnapshotDescriptor,
+    );
+    await this.vaultSnapshot.verifyCandidateSnapshotTrust(
+      params.vaultId,
+      remoteSnapshot,
+      unlockedVault,
     );
     const remoteVault = await this.vaultSnapshot.openTrustedVaultSnapshot(
       params.vaultId,

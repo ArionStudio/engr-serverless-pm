@@ -15,6 +15,12 @@ import type {
 } from "../../domain/device-trust/brand-keys";
 import type { DeviceEnrollmentAuthorizationPayload } from "../../domain/device-trust/device-enrollment-authorization";
 import type {
+  LocalVaultTrustCheckpoint,
+  LocalVaultTrustCheckpointPayload,
+  VaultTrustCertificate,
+  VaultTrustCertificatePayload,
+} from "../../domain/device-trust";
+import type {
   LocalKeysPayload,
   LocalRootKey,
 } from "../../domain/device-trust/local-protection.type";
@@ -151,6 +157,28 @@ export interface CryptoPort {
   verifyDeviceSignKeyPair: (
     publicKey: DevicePublicSignKey,
     privateKey: DevicePrivateSignKey,
+  ) => Promise<boolean>;
+
+  // Vault trust
+  digestVaultTrustCertificate: (
+    certificate: VaultTrustCertificate,
+  ) => Promise<string>;
+  signVaultTrustCertificate: (
+    payload: VaultTrustCertificatePayload,
+    privateKey: DevicePrivateSignKey,
+  ) => Promise<SerializedSignatureOf<VaultTrustCertificatePayload>>;
+  verifyVaultTrustCertificateSignature: (
+    certificate: VaultTrustCertificate,
+    publicKey: DevicePublicSignKey,
+  ) => Promise<boolean>;
+  digestVaultSnapshot: (snapshot: VaultSnapshot) => Promise<string>;
+  signLocalVaultTrustCheckpoint: (
+    payload: LocalVaultTrustCheckpointPayload,
+    privateKey: DevicePrivateSignKey,
+  ) => Promise<SerializedSignatureOf<LocalVaultTrustCheckpointPayload>>;
+  verifyLocalVaultTrustCheckpointSignature: (
+    checkpoint: LocalVaultTrustCheckpoint,
+    publicKey: DevicePublicSignKey,
   ) => Promise<boolean>;
 
   // Device enrollment authorization

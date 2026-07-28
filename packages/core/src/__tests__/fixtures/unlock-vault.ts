@@ -24,7 +24,7 @@ export function createUnlockVaultTestContext() {
   const vaultSnapshot: VaultSnapshot = {
     metadata: {
       id: values.vaultId,
-      schemaVersion: 1,
+      schemaVersion: 2,
       vaultCreationTimestamp: values.timestamp,
       revisionTimestamp: values.timestamp,
       snapshotVersionVector: {
@@ -33,6 +33,7 @@ export function createUnlockVaultTestContext() {
       algorithmSuiteId: ports.crypto.algorithmSuite.id,
       createdByDeviceId: values.deviceId,
     },
+    trustChain: values.vaultTrustChain,
     keySlots: {
       deviceSlots: [
         {
@@ -48,6 +49,7 @@ export function createUnlockVaultTestContext() {
 
   ports.saved.deviceAccessMaterial = deviceAccessMaterial;
   ports.saved.vaultSnapshot = vaultSnapshot;
+  ports.saved.localVaultTrustCheckpoint = values.localVaultTrustCheckpoint;
 
   const useCase = new UnlockVaultUseCase(
     ports.clock,

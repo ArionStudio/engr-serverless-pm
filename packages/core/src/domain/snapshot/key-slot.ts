@@ -1,6 +1,7 @@
 import type {
   DeviceEnrollmentAuthorizationPayload,
   DevicePublicSignKey,
+  DeviceTrustIdentity,
 } from "../device-trust";
 import type {
   SerializedSignatureOf,
@@ -8,10 +9,8 @@ import type {
 } from "../crypto/protected-artifact";
 import type { VaultMasterKey } from "./brand-keys";
 
-export type DeviceKeySlot = {
-  deviceId: string;
+export type DeviceKeySlot = DeviceTrustIdentity & {
   protectedVaultMasterKey: SerializedWrapped<VaultMasterKey>;
-  publicSignKey: DevicePublicSignKey;
 };
 
 /**

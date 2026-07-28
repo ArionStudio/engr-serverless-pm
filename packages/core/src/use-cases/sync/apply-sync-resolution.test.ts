@@ -5,6 +5,7 @@ import { createUnlockedVaultWithEntries } from "../../__tests__/fixtures/vault-e
 import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import { CURRENT_ALGORITHM_SUITE } from "../../domain/crypto/algorithm-suite.const";
 import type { CompletedDeviceEnrollmentProof } from "../../domain/device-trust";
+import type { VaultTrustChain } from "../../domain/device-trust";
 import type { PasswordEntry } from "../../domain/entry/password-entry.type";
 import type { EnrollmentKeySlot } from "../../domain/snapshot";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
@@ -18,6 +19,7 @@ import {
   SyncAlreadyResolvedError,
   SyncConflictDetectedError,
   SyncResolutionIncompleteError,
+  SyncRemovalPendingError,
   SyncTrustChangeRequiresDeviceTrustFlowError,
 } from "../../errors/sync.errors";
 import { VaultSnapshotSignerNotTrustedError } from "../../errors/unlock-vault.errors";
@@ -26,12 +28,15 @@ import { ApplySyncResolutionUseCase } from "./apply-sync-resolution";
 
 function createSnapshot(
   values: ReturnType<typeof createCoreTestValues>,
-  overrides: Partial<VaultSnapshot> = {},
+  overrides: Partial<Omit<VaultSnapshot, "metadata">> & {
+    readonly metadata?: Partial<VaultSnapshot["metadata"]>;
+  } = {},
 ): VaultSnapshot {
   return {
+    ...overrides,
     metadata: {
       id: values.vaultId,
-      schemaVersion: 1,
+      schemaVersion: 2,
       vaultCreationTimestamp: values.timestamp - 1_000,
       revisionTimestamp: values.timestamp,
       snapshotVersionVector: {
@@ -41,7 +46,8 @@ function createSnapshot(
       createdByDeviceId: values.deviceId,
       ...overrides.metadata,
     },
-    keySlots: {
+    trustChain: overrides.trustChain ?? values.vaultTrustChain,
+    keySlots: overrides.keySlots ?? {
       deviceSlots: [
         {
           deviceId: values.deviceId,
@@ -50,9 +56,8 @@ function createSnapshot(
         },
       ],
     },
-    content: values.encryptedVault,
-    signature: values.snapshotSignature,
-    ...overrides,
+    content: overrides.content ?? values.encryptedVault,
+    signature: overrides.signature ?? values.snapshotSignature,
   };
 }
 
@@ -116,6 +121,32 @@ function createCompletedEnrollmentProof(
   };
 }
 
+function createEnrollmentTrustChain(
+  values: ReturnType<typeof createCoreTestValues>,
+): VaultTrustChain {
+  return {
+    ...values.vaultTrustChain,
+    certificates: [
+      ...values.vaultTrustChain.certificates,
+      {
+        ...values.vaultTrustCertificate,
+        payload: {
+          ...values.vaultTrustCertificate.payload,
+          generation: 1,
+          previousCertificateDigest: values.vaultTrustCertificateDigest,
+          trustedDevices: [
+            ...values.verifiedVaultTrustState.trustedDevices,
+            {
+              deviceId: values.pendingDeviceId,
+              publicSignKey: values.pendingDevicePublicSignKey,
+            },
+          ],
+        },
+      },
+    ],
+  };
+}
+
 function createContext() {
   const values = createCoreTestValues();
   const ports = createCoreTestPorts(values);
@@ -129,7 +160,7 @@ function createContext() {
   const localSnapshot = createSnapshot(values, {
     metadata: {
       id: values.vaultId,
-      schemaVersion: 1,
+      schemaVersion: 2,
       vaultCreationTimestamp: values.timestamp - 1_000,
       revisionTimestamp: values.timestamp,
       snapshotVersionVector: {
@@ -176,6 +207,37 @@ function createContext() {
 }
 
 describe("ApplySyncResolutionUseCase", () => {
+  it("does not read remote state while remote cleanup is pending", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession!;
+    ctx.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          syncRemovalPending: true,
+        },
+      },
+    };
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        remoteSnapshotDescriptor: createRemoteSnapshotDescriptor(ctx.values),
+        resolution: {
+          entryResolutions: [],
+          tagResolutions: [],
+          deviceProfileResolutions: [],
+        },
+      }),
+    ).rejects.toBeInstanceOf(SyncRemovalPendingError);
+
+    expect(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).not.toHaveBeenCalled();
+  });
+
   it("applies explicit resolutions, persists locally, commits session, and uploads", async () => {
     const ctx = createContext();
     const remoteEntry = createEntry("remote-entry", {
@@ -202,7 +264,7 @@ describe("ApplySyncResolutionUseCase", () => {
     const remoteSnapshot = createSnapshot(ctx.values, {
       metadata: {
         id: ctx.values.vaultId,
-        schemaVersion: 1,
+        schemaVersion: 2,
         vaultCreationTimestamp: ctx.values.timestamp - 1_000,
         revisionTimestamp: ctx.values.timestamp + 1,
         snapshotVersionVector: {
@@ -277,12 +339,12 @@ describe("ApplySyncResolutionUseCase", () => {
       {
         [ctx.values.deviceId]: 3,
       },
-      {
+      expect.objectContaining({
         baseSnapshotVersionVector: {
           [ctx.values.deviceId]: 3,
           "remote-device-id": 1,
         },
-      },
+      }),
     );
     expect(ctx.saved.vaultSnapshot?.metadata.snapshotVersionVector).toEqual({
       [ctx.values.deviceId]: 4,
@@ -346,7 +408,7 @@ describe("ApplySyncResolutionUseCase", () => {
     const remoteSnapshot = createSnapshot(ctx.values, {
       metadata: {
         id: ctx.values.vaultId,
-        schemaVersion: 1,
+        schemaVersion: 2,
         vaultCreationTimestamp: ctx.values.timestamp - 1_000,
         revisionTimestamp: ctx.values.timestamp + 1,
         snapshotVersionVector: {
@@ -367,6 +429,7 @@ describe("ApplySyncResolutionUseCase", () => {
         ],
         completedEnrollments: [createCompletedEnrollmentProof(ctx.values)],
       },
+      trustChain: createEnrollmentTrustChain(ctx.values),
     });
 
     ctx.saved.vaultSnapshot = localSnapshotWithEnrollment;
@@ -421,15 +484,26 @@ describe("ApplySyncResolutionUseCase", () => {
       {
         [ctx.values.deviceId]: 3,
       },
-      {
+      expect.objectContaining({
         baseSnapshotVersionVector: {
           [ctx.values.deviceId]: 3,
           [ctx.values.pendingDeviceId]: 1,
         },
         keySlots: remoteSnapshot.keySlots,
-      },
+      }),
     );
     expect(ctx.saved.vaultSnapshot?.keySlots).toEqual(remoteSnapshot.keySlots);
+    expect(ctx.saved.vaultSnapshot?.trustChain).toEqual(
+      remoteSnapshot.trustChain,
+    );
+    expect(
+      ctx.saved.unlockedVaultSession?.unlockedVault.trustedSnapshotContext.trust
+        .trustedDevices,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ deviceId: ctx.values.pendingDeviceId }),
+      ]),
+    );
     expect(ctx.saved.vaultSnapshot?.metadata.createdByDeviceId).toBe(
       ctx.values.deviceId,
     );
@@ -479,7 +553,7 @@ describe("ApplySyncResolutionUseCase", () => {
     const remoteSnapshot = createSnapshot(ctx.values, {
       metadata: {
         id: ctx.values.vaultId,
-        schemaVersion: 1,
+        schemaVersion: 2,
         vaultCreationTimestamp: ctx.values.timestamp - 1_000,
         revisionTimestamp: ctx.values.timestamp + 1,
         snapshotVersionVector: {
@@ -500,6 +574,7 @@ describe("ApplySyncResolutionUseCase", () => {
         ],
         completedEnrollments: [createCompletedEnrollmentProof(ctx.values)],
       },
+      trustChain: createEnrollmentTrustChain(ctx.values),
     });
 
     ctx.saved.vaultSnapshot = localSnapshotWithEnrollment;
@@ -531,12 +606,12 @@ describe("ApplySyncResolutionUseCase", () => {
     ).rejects.toBeInstanceOf(InvalidSyncResolutionError);
 
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });
 
-  it("restores the local snapshot and does not commit when resolved upload races", async () => {
+  it("invalidates the session when resolved upload restoration fails", async () => {
     const ctx = createContext();
     const remoteEntry = createEntry("remote-entry", {
       "remote-device-id": 1,
@@ -562,7 +637,7 @@ describe("ApplySyncResolutionUseCase", () => {
     const remoteSnapshot = createSnapshot(ctx.values, {
       metadata: {
         id: ctx.values.vaultId,
-        schemaVersion: 1,
+        schemaVersion: 2,
         vaultCreationTimestamp: ctx.values.timestamp - 1_000,
         revisionTimestamp: ctx.values.timestamp + 1,
         snapshotVersionVector: {
@@ -586,6 +661,9 @@ describe("ApplySyncResolutionUseCase", () => {
     vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockRejectedValueOnce(
       new RemoteVaultSnapshotChangedError(ctx.values.vaultId),
     );
+    ctx.restoreLocalVaultSnapshot.mockRejectedValueOnce(
+      new Error("restore failed"),
+    );
 
     await expect(
       ctx.useCase.execute({
@@ -606,8 +684,20 @@ describe("ApplySyncResolutionUseCase", () => {
 
     expect(ctx.restoreLocalVaultSnapshot).toHaveBeenCalledWith(
       ctx.localSnapshot,
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          snapshotVersionVector: {
+            [ctx.values.deviceId]: 4,
+            "remote-device-id": 1,
+          },
+        }),
+      }),
+      expect.objectContaining({ vaultId: ctx.values.vaultId }),
     );
-    expect(ctx.saved.vaultSnapshot).toBe(ctx.localSnapshot);
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.remove,
+    ).toHaveBeenCalled();
+    expect(ctx.saved.unlockedVaultSession).toBeUndefined();
     expect(
       ctx.ports.sessionServices.unlockedVaultSession.commit,
     ).not.toHaveBeenCalled();
@@ -646,7 +736,7 @@ describe("ApplySyncResolutionUseCase", () => {
 
     expect(ctx.ports.syncProvider.downloadVaultSnapshot).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });
@@ -681,7 +771,7 @@ describe("ApplySyncResolutionUseCase", () => {
     const remoteSnapshot = createSnapshot(ctx.values, {
       metadata: {
         id: ctx.values.vaultId,
-        schemaVersion: 1,
+        schemaVersion: 2,
         vaultCreationTimestamp: ctx.values.timestamp - 1_000,
         revisionTimestamp: ctx.values.timestamp,
         snapshotVersionVector: {
@@ -716,7 +806,7 @@ describe("ApplySyncResolutionUseCase", () => {
     ).rejects.toBeInstanceOf(SyncResolutionIncompleteError);
 
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });
@@ -735,7 +825,7 @@ describe("ApplySyncResolutionUseCase", () => {
     const remoteSnapshot = createSnapshot(ctx.values, {
       metadata: {
         id: ctx.values.vaultId,
-        schemaVersion: 1,
+        schemaVersion: 2,
         vaultCreationTimestamp: ctx.values.timestamp - 1_000,
         revisionTimestamp: ctx.values.timestamp,
         snapshotVersionVector: {
@@ -769,7 +859,7 @@ describe("ApplySyncResolutionUseCase", () => {
     ).rejects.toBeInstanceOf(SyncAlreadyResolvedError);
 
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });
@@ -788,7 +878,7 @@ describe("ApplySyncResolutionUseCase", () => {
     const remoteSnapshot = createSnapshot(ctx.values, {
       metadata: {
         id: ctx.values.vaultId,
-        schemaVersion: 1,
+        schemaVersion: 2,
         vaultCreationTimestamp: ctx.values.timestamp - 1_000,
         revisionTimestamp: ctx.values.timestamp,
         snapshotVersionVector: {
@@ -842,7 +932,7 @@ describe("ApplySyncResolutionUseCase", () => {
       ctx.values.devicePublicSignKey,
     );
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });
@@ -852,7 +942,7 @@ describe("ApplySyncResolutionUseCase", () => {
     ctx.saved.vaultSnapshot = createSnapshot(ctx.values, {
       metadata: {
         id: ctx.values.vaultId,
-        schemaVersion: 1,
+        schemaVersion: 2,
         vaultCreationTimestamp: ctx.values.timestamp - 1_000,
         revisionTimestamp: ctx.values.timestamp + 1,
         snapshotVersionVector: {
@@ -892,7 +982,7 @@ describe("ApplySyncResolutionUseCase", () => {
     ctx.saved.vaultSnapshot = createSnapshot(ctx.values, {
       metadata: {
         id: ctx.values.vaultId,
-        schemaVersion: 1,
+        schemaVersion: 2,
         vaultCreationTimestamp: ctx.values.timestamp - 1_000,
         revisionTimestamp: ctx.values.timestamp + 1,
         snapshotVersionVector: {
@@ -935,7 +1025,7 @@ describe("ApplySyncResolutionUseCase", () => {
 
     expect(ctx.ports.syncProvider.downloadVaultSnapshot).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });
@@ -945,7 +1035,7 @@ describe("ApplySyncResolutionUseCase", () => {
     ctx.saved.vaultSnapshot = createSnapshot(ctx.values, {
       metadata: {
         id: ctx.values.vaultId,
-        schemaVersion: 1,
+        schemaVersion: 2,
         vaultCreationTimestamp: ctx.values.timestamp - 1_000,
         revisionTimestamp: ctx.values.timestamp + 1,
         snapshotVersionVector: {
@@ -991,7 +1081,7 @@ describe("ApplySyncResolutionUseCase", () => {
 
     expect(ctx.ports.syncProvider.downloadVaultSnapshot).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });
@@ -1026,7 +1116,7 @@ describe("ApplySyncResolutionUseCase", () => {
     const remoteSnapshot = createSnapshot(ctx.values, {
       metadata: {
         id: ctx.values.vaultId,
-        schemaVersion: 1,
+        schemaVersion: 2,
         vaultCreationTimestamp: ctx.values.timestamp - 1_000,
         revisionTimestamp: ctx.values.timestamp,
         snapshotVersionVector: {
@@ -1077,7 +1167,7 @@ describe("ApplySyncResolutionUseCase", () => {
     ).rejects.toBeInstanceOf(SyncTrustChangeRequiresDeviceTrustFlowError);
 
     expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshot,
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });

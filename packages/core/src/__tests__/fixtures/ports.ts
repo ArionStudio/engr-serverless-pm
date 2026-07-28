@@ -6,10 +6,12 @@ import type { DeviceAccessMaterial } from "../../domain/device-trust/device-acce
 import type { DeviceAccessRecoveryBackup } from "../../domain/device-trust/device-access-recovery-backup";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import type { LocalVaultDescriptor } from "../../domain/vault/local-vault-descriptor";
-import type { UnlockedVault } from "../../domain/session/unlocked-vault";
-import type { UnlockedVaultSessionPayloadKey } from "../../domain/session/unlocked-vault-session-payload-key";
+import type {
+  EncryptedUnlockedVaultSessionPayload,
+  UnlockedVaultSession,
+  UnlockedVaultSessionMaterial,
+} from "../../domain/session/unlocked-vault-session.type";
 import type { Vault } from "../../domain/vault/vault";
-import type { VersionVector } from "../../domain/versioning/version-vector.type";
 import type { Bip39Port } from "../../ports/crypto/bip39.port";
 import type { ClockPort } from "../../ports/system/clock.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
@@ -23,34 +25,17 @@ import type { UnlockedVaultSessionMaterialRepositoryPort } from "../../ports/ses
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import { createCoreTestValues, type CoreTestValues } from "./values";
-import type { SerializedEncrypted } from "../../domain";
+import type { LocalVaultTrustCheckpoint } from "../../domain/device-trust";
 
 export type SavedCoreRecords = {
   localVaultDescriptor?: LocalVaultDescriptor;
   deviceAccessMaterial?: DeviceAccessMaterial;
   deviceAccessRecoveryBackup?: DeviceAccessRecoveryBackup;
   vaultSnapshot?: VaultSnapshot;
-  unlockedVaultSession?: {
-    readonly unlockedVault: UnlockedVault;
-    readonly sourceSnapshotVersionVector: VersionVector;
-  };
-  unlockedVaultSessionMaterial?: {
-    readonly sessionId: string;
-    readonly vaultId: string;
-    readonly sourceSnapshotVersionVector: VersionVector;
-    readonly deviceId: string;
-    readonly vaultMasterKey: UnlockedVault["vaultMasterKey"];
-    readonly devicePrivateSignKey: UnlockedVault["devicePrivateSignKey"];
-    readonly payloadKey: UnlockedVaultSessionPayloadKey;
-  };
-  encryptedUnlockedVaultSessionPayload?: {
-    readonly sessionId: string;
-    readonly vaultId: string;
-    readonly sourceSnapshotVersionVector: VersionVector;
-    readonly content: SerializedEncrypted<{
-      readonly vault: Vault;
-    }>;
-  };
+  localVaultTrustCheckpoint?: LocalVaultTrustCheckpoint;
+  unlockedVaultSession?: UnlockedVaultSession;
+  unlockedVaultSessionMaterial?: UnlockedVaultSessionMaterial;
+  encryptedUnlockedVaultSessionPayload?: EncryptedUnlockedVaultSessionPayload;
   unlockedVaultSessionPayload?: {
     readonly vault: Vault;
   };
@@ -62,17 +47,11 @@ export function createCoreTestPorts(
   values: CoreTestValues = createCoreTestValues(),
 ) {
   const saved: SavedCoreRecords = {};
-  let unlockedVaultSessionMirror:
-    | {
-        readonly unlockedVault: UnlockedVault;
-        readonly sourceSnapshotVersionVector: VersionVector;
-      }
-    | undefined;
+  let unlockedVaultSessionMirror: UnlockedVaultSession | undefined;
 
-  function writeSplitUnlockedVaultSessionRecords(session: {
-    readonly unlockedVault: UnlockedVault;
-    readonly sourceSnapshotVersionVector: VersionVector;
-  }): void {
+  function writeSplitUnlockedVaultSessionRecords(
+    session: UnlockedVaultSession,
+  ): void {
     const context = {
       sessionId: values.sessionId,
       vaultId: session.unlockedVault.vaultId,
@@ -84,6 +63,8 @@ export function createCoreTestPorts(
       deviceId: session.unlockedVault.deviceId,
       vaultMasterKey: session.unlockedVault.vaultMasterKey,
       devicePrivateSignKey: session.unlockedVault.devicePrivateSignKey,
+      trustedSnapshotContext: session.unlockedVault.trustedSnapshotContext,
+      vaultTrustAnchor: session.unlockedVault.vaultTrustAnchor,
       payloadKey: values.unlockedVaultSessionPayloadKey,
     };
     saved.encryptedUnlockedVaultSessionPayload = {
@@ -103,14 +84,7 @@ export function createCoreTestPorts(
 
   Object.defineProperty(saved, "unlockedVaultSession", {
     get: () => unlockedVaultSessionMirror,
-    set: (
-      session:
-        | {
-            readonly unlockedVault: UnlockedVault;
-            readonly sourceSnapshotVersionVector: VersionVector;
-          }
-        | undefined,
-    ) => {
+    set: (session: UnlockedVaultSession | undefined) => {
       unlockedVaultSessionMirror = session;
 
       if (session === undefined) {
@@ -193,6 +167,7 @@ export function createCoreTestPorts(
     unwrapLocalKeysPayload: vi.fn(async () => ({
       deviceSlotKey: values.deviceSlotKey,
       devicePrivateSignKey: values.devicePrivateSignKey,
+      vaultTrustAnchor: values.vaultTrustAnchor,
     })),
     wrapVaultMasterKey: vi.fn(async (_vaultMasterKey, protectionKey) => {
       if (protectionKey === values.enrollmentVaultMasterKeyProtectionKey) {
@@ -205,8 +180,10 @@ export function createCoreTestPorts(
     digestProtectedVaultMasterKey: vi.fn(
       async () => values.protectedEnrollmentVaultMasterKeyDigest,
     ),
-    digestDevicePublicSignKey: vi.fn(
-      async () => values.pendingDevicePublicSignKeyDigest,
+    digestDevicePublicSignKey: vi.fn(async (publicKey) =>
+      publicKey === values.pendingDevicePublicSignKey
+        ? values.pendingDevicePublicSignKeyDigest
+        : values.devicePublicSignKeyDigest,
     ),
     encryptVaultSnapshotContent: vi.fn(async () => values.encryptedVault),
     decryptVaultSnapshotContent: vi.fn(async () => values.decryptedVault),
@@ -224,6 +201,18 @@ export function createCoreTestPorts(
     signVaultSnapshot: vi.fn(async () => values.snapshotSignature),
     verifyVaultSnapshotSignature: vi.fn(async () => true),
     verifyDeviceSignKeyPair: vi.fn(async () => true),
+    digestVaultTrustCertificate: vi.fn(
+      async () => values.vaultTrustCertificateDigest,
+    ),
+    signVaultTrustCertificate: vi.fn(
+      async () => values.vaultTrustCertificateSignature,
+    ),
+    verifyVaultTrustCertificateSignature: vi.fn(async () => true),
+    digestVaultSnapshot: vi.fn(async () => values.vaultSnapshotDigest),
+    signLocalVaultTrustCheckpoint: vi.fn(
+      async () => values.localVaultTrustCheckpoint.signature,
+    ),
+    verifyLocalVaultTrustCheckpointSignature: vi.fn(async () => true),
     signDeviceEnrollmentAuthorization: vi.fn(
       async () => values.deviceEnrollmentAuthorizationSignature,
     ),
@@ -245,16 +234,18 @@ export function createCoreTestPorts(
 
   const vaultLocalRepository: VaultLocalRepositoryPort = {
     saveInitializedLocalVault: vi.fn(
-      async (
+      async ({
         descriptor,
         deviceAccessMaterial,
         deviceAccessRecoveryBackup,
         snapshot,
-      ) => {
+        checkpoint,
+      }) => {
         saved.localVaultDescriptor = descriptor;
         saved.deviceAccessMaterial = deviceAccessMaterial;
         saved.deviceAccessRecoveryBackup = deviceAccessRecoveryBackup;
         saved.vaultSnapshot = snapshot;
+        saved.localVaultTrustCheckpoint = checkpoint;
       },
     ),
     removePersistedLocalVault: vi.fn(async () => {
@@ -262,6 +253,7 @@ export function createCoreTestPorts(
       saved.deviceAccessMaterial = undefined;
       saved.deviceAccessRecoveryBackup = undefined;
       saved.vaultSnapshot = undefined;
+      saved.localVaultTrustCheckpoint = undefined;
     }),
     saveLocalVaultDescriptor: vi.fn(async (descriptor) => {
       saved.localVaultDescriptor = descriptor;
@@ -311,9 +303,6 @@ export function createCoreTestPorts(
     removeDeviceAccessRecoveryBackup: vi.fn(async () => {
       saved.deviceAccessRecoveryBackup = undefined;
     }),
-    saveVaultSnapshot: vi.fn(async (vaultSnapshot) => {
-      saved.vaultSnapshot = vaultSnapshot;
-    }),
     getVaultSnapshot: vi.fn(async (vaultId) => {
       const vaultSnapshot = saved.vaultSnapshot;
 
@@ -324,6 +313,20 @@ export function createCoreTestPorts(
       return vaultSnapshot.metadata.id === vaultId ? vaultSnapshot : null;
     }),
     removeVaultSnapshot: vi.fn(),
+    saveVaultSnapshotWithCheckpoint: vi.fn(async ({ snapshot, checkpoint }) => {
+      saved.vaultSnapshot = snapshot;
+      saved.localVaultTrustCheckpoint = checkpoint;
+    }),
+    getLocalVaultTrustCheckpoint: vi.fn(async (vaultId) => {
+      const checkpoint = saved.localVaultTrustCheckpoint;
+
+      return checkpoint !== undefined && checkpoint.payload.vaultId === vaultId
+        ? checkpoint
+        : null;
+    }),
+    removeLocalVaultTrustCheckpoint: vi.fn(async () => {
+      saved.localVaultTrustCheckpoint = undefined;
+    }),
   };
 
   const unlockedVaultSessionMaterialRepository: UnlockedVaultSessionMaterialRepositoryPort =

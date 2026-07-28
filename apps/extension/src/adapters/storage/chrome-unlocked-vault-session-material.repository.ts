@@ -1,9 +1,6 @@
 import type {
-  DevicePrivateSignKey,
+  UnlockedVaultSessionMaterial,
   UnlockedVaultSessionMaterialRepositoryPort,
-  UnlockedVaultSessionPayloadKey,
-  VersionVector,
-  VaultMasterKey,
 } from "@lfspm/core";
 import {
   deserializeUnlockedVaultSessionMaterial,
@@ -32,29 +29,15 @@ export class ChromeUnlockedVaultSessionMaterialRepository implements UnlockedVau
     this.storageKey = storageKey;
   }
 
-  async saveUnlockedVaultSessionMaterial(material: {
-    readonly sessionId: string;
-    readonly vaultId: string;
-    readonly sourceSnapshotVersionVector: VersionVector;
-    readonly deviceId: string;
-    readonly vaultMasterKey: VaultMasterKey;
-    readonly devicePrivateSignKey: DevicePrivateSignKey;
-    readonly payloadKey: UnlockedVaultSessionPayloadKey;
-  }): Promise<void> {
+  async saveUnlockedVaultSessionMaterial(
+    material: UnlockedVaultSessionMaterial,
+  ): Promise<void> {
     await this.storageArea.set({
       [this.storageKey]: serializeUnlockedVaultSessionMaterial(material),
     });
   }
 
-  async getUnlockedVaultSessionMaterial(): Promise<{
-    readonly sessionId: string;
-    readonly vaultId: string;
-    readonly sourceSnapshotVersionVector: VersionVector;
-    readonly deviceId: string;
-    readonly vaultMasterKey: VaultMasterKey;
-    readonly devicePrivateSignKey: DevicePrivateSignKey;
-    readonly payloadKey: UnlockedVaultSessionPayloadKey;
-  } | null> {
+  async getUnlockedVaultSessionMaterial(): Promise<UnlockedVaultSessionMaterial | null> {
     const storedRecords = await this.storageArea.get(this.storageKey);
     const material = storedRecords[this.storageKey];
 
