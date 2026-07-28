@@ -407,7 +407,7 @@ describe("RecoverDeviceAccessUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("rejects an unsupported snapshot schema before trust-chain verification", async () => {
+  it("rejects an unsupported snapshot schema before recovery-key operations", async () => {
     const ctx = createContext();
     ctx.ports.saved.vaultSnapshot = {
       ...ctx.vaultSnapshot,
@@ -425,9 +425,12 @@ describe("RecoverDeviceAccessUseCase", () => {
       }),
     ).rejects.toBeInstanceOf(VaultTrustStateInvalidError);
 
+    expect(ctx.ports.bip39.mnemonicToRecoveryKey).not.toHaveBeenCalled();
     expect(
-      ctx.ports.crypto.verifyVaultTrustCertificateSignature,
+      ctx.ports.crypto.deriveRecoveryLocalKeysProtectionKey,
     ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.unwrapLocalKeysPayload).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.verifyDeviceSignKeyPair).not.toHaveBeenCalled();
     expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
   });
 

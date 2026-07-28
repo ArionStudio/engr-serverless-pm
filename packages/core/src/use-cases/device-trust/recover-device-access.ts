@@ -109,6 +109,13 @@ export class RecoverDeviceAccessUseCase {
       });
     }
 
+    if (vaultSnapshot.metadata.schemaVersion !== 2) {
+      throw new VaultTrustStateInvalidError(
+        params.vaultId,
+        "unsupported snapshot schema version",
+      );
+    }
+
     const deviceKeySlot = vaultSnapshot.keySlots.deviceSlots.find(
       (slot: DeviceKeySlot) => slot.deviceId === recoveryBackup.deviceId,
     );
@@ -156,13 +163,6 @@ export class RecoverDeviceAccessUseCase {
       throw new DeviceKeySlotVerificationFailedError(
         params.vaultId,
         recoveryBackup.deviceId,
-      );
-    }
-
-    if (vaultSnapshot.metadata.schemaVersion !== 2) {
-      throw new VaultTrustStateInvalidError(
-        params.vaultId,
-        "unsupported snapshot schema version",
       );
     }
 
