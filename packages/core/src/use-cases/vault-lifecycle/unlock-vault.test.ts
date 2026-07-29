@@ -265,7 +265,8 @@ describe("UnlockVaultUseCase", () => {
 
   it("updates a newer checkpoint with the snapshot-and-checkpoint compare-and-set", async () => {
     const ctx = createUnlockVaultTestContext();
-    ctx.saved.vaultSnapshot = {
+    const newerSnapshotDigest = "newer-vault-snapshot-digest";
+    const newerSnapshot = {
       ...ctx.vaultSnapshot,
       metadata: {
         ...ctx.vaultSnapshot.metadata,
@@ -274,6 +275,14 @@ describe("UnlockVaultUseCase", () => {
         },
       },
     };
+    ctx.saved.vaultSnapshot = newerSnapshot;
+    ctx.saved.vaultSnapshotDigest = newerSnapshotDigest;
+    vi.mocked(ctx.ports.crypto.digestVaultSnapshot).mockImplementation(
+      async (snapshot) =>
+        snapshot === newerSnapshot
+          ? newerSnapshotDigest
+          : ctx.values.vaultSnapshotDigest,
+    );
 
     await ctx.useCase.execute({
       vaultId: ctx.values.vaultId,
@@ -284,10 +293,11 @@ describe("UnlockVaultUseCase", () => {
     expect(
       ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).toHaveBeenCalledWith({
-      expectedSnapshotDigest: ctx.values.vaultSnapshotDigest,
+      expectedSnapshotDigest: newerSnapshotDigest,
       snapshot: ctx.saved.vaultSnapshot,
       checkpoint: expect.objectContaining({
         payload: expect.objectContaining({
+          snapshotDigest: newerSnapshotDigest,
           snapshotVersionVector: { [ctx.values.deviceId]: 2 },
         }),
       }),

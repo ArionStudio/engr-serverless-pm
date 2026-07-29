@@ -191,6 +191,14 @@ function createContext() {
     },
   };
   ports.saved.vaultSnapshot = localSnapshot;
+  ports.saved.localVaultTrustCheckpoint = {
+    ...values.localVaultTrustCheckpoint,
+    payload: {
+      ...values.localVaultTrustCheckpoint.payload,
+      snapshotVersionVector: localSnapshot.metadata.snapshotVersionVector,
+      snapshotDigest: values.vaultSnapshotDigest,
+    },
+  };
 
   return {
     values,
