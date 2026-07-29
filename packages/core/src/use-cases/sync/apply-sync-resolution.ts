@@ -72,7 +72,7 @@ export class ApplySyncResolutionUseCase {
   async execute(
     params: ApplySyncResolutionCommandParams,
   ): Promise<ApplySyncResolutionResult> {
-    const { sourceSnapshotVersionVector, unlockedVault } =
+    const { sessionId, sourceSnapshotVersionVector, unlockedVault } =
       await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
         "apply sync resolution",
@@ -331,12 +331,18 @@ export class ApplySyncResolutionUseCase {
             keySlots: acceptedCompletedEnrollmentTrustState.keySlots,
             nextTrust: remoteTrust,
           };
-    const persistedSnapshot = await this.vaultSnapshot.persistUnlockedVault(
-      params.vaultId,
-      updatedUnlockedVault,
-      sourceSnapshotVersionVector,
-      persistOptions,
-    );
+    const persistedSnapshot =
+      await this.unlockedVaultSession.persistForActiveSession(
+        sessionId,
+        params.vaultId,
+        async () =>
+          this.vaultSnapshot.persistUnlockedVault(
+            params.vaultId,
+            updatedUnlockedVault,
+            sourceSnapshotVersionVector,
+            persistOptions,
+          ),
+      );
 
     const resolvedSnapshot = persistedSnapshot.snapshot;
 
@@ -347,19 +353,17 @@ export class ApplySyncResolutionUseCase {
         params.remoteSnapshotDescriptor,
       );
     } catch (error) {
-      try {
-        await this.vaultSnapshot.restoreLocalVaultSnapshot(
-          localSnapshot,
-          resolvedSnapshot,
-          unlockedVault,
-        );
-      } catch {
-        try {
-          await this.unlockedVaultSession.remove();
-        } catch {
-          // Preserve the upload failure as the root cause.
-        }
-      }
+      await this.unlockedVaultSession.restoreIfSessionIsActive(
+        sessionId,
+        params.vaultId,
+        async () => {
+          await this.vaultSnapshot.restoreLocalVaultSnapshot(
+            localSnapshot,
+            resolvedSnapshot,
+            unlockedVault,
+          );
+        },
+      );
 
       if (error instanceof RemoteVaultSnapshotChangedError) {
         throw new SyncConflictDetectedError(params.vaultId);
@@ -369,6 +373,7 @@ export class ApplySyncResolutionUseCase {
     }
 
     await this.unlockedVaultSession.commitPersistedSnapshot(
+      sessionId,
       {
         ...updatedUnlockedVault,
         trustedSnapshotContext: persistedSnapshot.trustedSnapshotContext,

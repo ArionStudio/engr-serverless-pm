@@ -11,6 +11,7 @@ import {
 import {
   ActiveUnlockedVaultMismatchError,
   InvalidVaultLockDelayError,
+  UnlockedVaultSessionExpiredError,
 } from "../../errors/vault-session.errors";
 import { PersistedVaultMismatchError } from "../../errors/vault-snapshot.errors";
 import { VaultTrustStateInvalidError } from "../../errors/vault-trust.errors";
@@ -69,6 +70,7 @@ describe("UnlockVaultUseCase", () => {
     );
 
     expect(ctx.saved.unlockedVaultSession).toEqual({
+      sessionId: ctx.values.sessionId,
       unlockedVault: {
         vaultId: ctx.values.vaultId,
         deviceId: ctx.values.deviceId,
@@ -162,6 +164,42 @@ describe("UnlockVaultUseCase", () => {
     );
   });
 
+  it("does not activate after vault lock invalidates an in-progress unlock", async () => {
+    const ctx = createUnlockVaultTestContext();
+    let allowUnlockToContinue!: () => void;
+    let markUnlockPaused!: () => void;
+    const unlockPaused = new Promise<void>((resolve) => {
+      markUnlockPaused = resolve;
+    });
+    const allowUnlock = new Promise<void>((resolve) => {
+      allowUnlockToContinue = resolve;
+    });
+
+    vi.mocked(ctx.ports.crypto.deriveLocalRootKey)
+      .mockReset()
+      .mockImplementation(async () => {
+        markUnlockPaused();
+        await allowUnlock;
+
+        return ctx.values.localRootKey;
+      });
+
+    const unlocking = ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      masterPassword: ctx.values.masterPassword,
+      lockAfterMs: 600_000,
+    });
+
+    await unlockPaused;
+    await ctx.ports.sessionServices.unlockedVaultSession.remove();
+    allowUnlockToContinue();
+
+    await expect(unlocking).rejects.toBeInstanceOf(
+      UnlockedVaultSessionExpiredError,
+    );
+    expect(ctx.saved.unlockedVaultSession).toBeUndefined();
+  });
+
   it("rejects a local device revoked by the verified trust chain", async () => {
     const ctx = createUnlockVaultTestContext();
     const remainingDeviceId = "remaining-device-id";
@@ -198,7 +236,7 @@ describe("UnlockVaultUseCase", () => {
 
     expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.activate,
     ).not.toHaveBeenCalled();
   });
 
@@ -272,7 +310,7 @@ describe("UnlockVaultUseCase", () => {
       ctx.ports.vaultLocalRepository.getVaultSnapshot,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.activate,
     ).not.toHaveBeenCalled();
   });
 
@@ -292,7 +330,7 @@ describe("UnlockVaultUseCase", () => {
       ctx.ports.crypto.verifyVaultSnapshotSignature,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.activate,
     ).not.toHaveBeenCalled();
   });
 
@@ -315,7 +353,7 @@ describe("UnlockVaultUseCase", () => {
     expect(ctx.ports.crypto.unwrapVaultMasterKey).not.toHaveBeenCalled();
     expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.activate,
     ).not.toHaveBeenCalled();
   });
 
@@ -339,7 +377,7 @@ describe("UnlockVaultUseCase", () => {
     ).not.toHaveBeenCalled();
     expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.activate,
     ).not.toHaveBeenCalled();
   });
 
@@ -366,7 +404,7 @@ describe("UnlockVaultUseCase", () => {
     ).not.toHaveBeenCalled();
     expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.activate,
     ).not.toHaveBeenCalled();
   });
 
@@ -397,7 +435,7 @@ describe("UnlockVaultUseCase", () => {
     ).not.toHaveBeenCalled();
     expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.activate,
     ).not.toHaveBeenCalled();
   });
 
@@ -427,7 +465,7 @@ describe("UnlockVaultUseCase", () => {
     ).not.toHaveBeenCalled();
     expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.activate,
     ).not.toHaveBeenCalled();
   });
 
@@ -462,7 +500,7 @@ describe("UnlockVaultUseCase", () => {
 
     expect(ctx.ports.crypto.unwrapVaultMasterKey).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.activate,
     ).not.toHaveBeenCalled();
   });
 
@@ -503,7 +541,7 @@ describe("UnlockVaultUseCase", () => {
     ).not.toHaveBeenCalled();
     expect(ctx.ports.crypto.unwrapVaultMasterKey).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.activate,
     ).not.toHaveBeenCalled();
   });
 
@@ -540,7 +578,7 @@ describe("UnlockVaultUseCase", () => {
     ).not.toHaveBeenCalled();
     expect(ctx.ports.crypto.unwrapVaultMasterKey).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.activate,
     ).not.toHaveBeenCalled();
   });
 
@@ -561,7 +599,7 @@ describe("UnlockVaultUseCase", () => {
     ).rejects.toThrow(error);
 
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.activate,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.vaultLockTasks.remove).toHaveBeenCalledTimes(1);
   });
@@ -587,7 +625,7 @@ describe("UnlockVaultUseCase", () => {
     ).rejects.toThrow(scheduleError);
 
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.activate,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.vaultLockTasks.remove).toHaveBeenCalledTimes(1);
   });
@@ -597,7 +635,7 @@ describe("UnlockVaultUseCase", () => {
     const error = new Error("save failed");
 
     vi.mocked(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.activate,
     ).mockRejectedValueOnce(error);
 
     await expect(
@@ -655,7 +693,7 @@ describe("UnlockVaultUseCase", () => {
     expect(ctx.ports.vaultLockTasks.save).not.toHaveBeenCalled();
     expect(ctx.ports.scheduledTasks.scheduleTask).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.activate,
     ).not.toHaveBeenCalled();
   });
 
@@ -665,7 +703,7 @@ describe("UnlockVaultUseCase", () => {
     const cancelError = new Error("cancel failed");
 
     vi.mocked(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.activate,
     ).mockRejectedValueOnce(saveError);
     vi.mocked(ctx.ports.scheduledTasks.cancelTask).mockRejectedValueOnce(
       cancelError,

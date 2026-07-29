@@ -96,6 +96,7 @@ export function createUnlockedVaultSessionWithEntries(
   sourceSnapshotVersionVector: VersionVector = { [values.deviceId]: 1 },
 ) {
   return {
+    sessionId: values.sessionId,
     unlockedVault: createUnlockedVaultWithEntries(values, entries, tags),
     sourceSnapshotVersionVector,
   };

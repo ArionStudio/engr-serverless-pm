@@ -110,6 +110,7 @@ function createContext() {
   ports.saved.vaultSnapshot = vaultSnapshot;
   ports.saved.localVaultTrustCheckpoint = values.localVaultTrustCheckpoint;
   ports.saved.unlockedVaultSession = {
+    sessionId: values.sessionId,
     unlockedVault: {
       vaultId: values.vaultId,
       deviceId: values.deviceId,
@@ -236,6 +237,7 @@ describe("RevokeDeviceUseCase", () => {
       ctx.values.devicePrivateSignKey,
     );
     expect(ctx.saved.unlockedVaultSession).toEqual({
+      sessionId: ctx.values.sessionId,
       unlockedVault: {
         vaultId: ctx.values.vaultId,
         deviceId: ctx.values.deviceId,
@@ -265,8 +267,9 @@ describe("RevokeDeviceUseCase", () => {
       vi.mocked(ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint)
         .mock.invocationCallOrder[0],
     ).toBeLessThan(
-      vi.mocked(ctx.ports.sessionServices.unlockedVaultSession.commit).mock
-        .invocationCallOrder[0],
+      vi.mocked(
+        ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
+      ).mock.invocationCallOrder[0],
     );
   });
 
@@ -314,8 +317,9 @@ describe("RevokeDeviceUseCase", () => {
       vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mock
         .invocationCallOrder[0],
     ).toBeLessThan(
-      vi.mocked(ctx.ports.sessionServices.unlockedVaultSession.commit).mock
-        .invocationCallOrder[0],
+      vi.mocked(
+        ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
+      ).mock.invocationCallOrder[0],
     );
   });
 
@@ -404,6 +408,7 @@ describe("RevokeDeviceUseCase", () => {
   it("fails when another vault is unlocked", async () => {
     const ctx = createContext();
     ctx.saved.unlockedVaultSession = {
+      sessionId: ctx.values.sessionId,
       unlockedVault: {
         vaultId: "another-vault-id",
         deviceId: ctx.values.deviceId,
@@ -531,7 +536,7 @@ describe("RevokeDeviceUseCase", () => {
       ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
     ).not.toHaveBeenCalled();
   });
 
@@ -690,6 +695,7 @@ describe("RevokeDeviceUseCase", () => {
   it("fails when the target device profile is missing", async () => {
     const ctx = createContext();
     ctx.saved.unlockedVaultSession = {
+      sessionId: ctx.values.sessionId,
       unlockedVault: {
         vaultId: ctx.values.vaultId,
         deviceId: ctx.values.deviceId,
@@ -738,7 +744,7 @@ describe("RevokeDeviceUseCase", () => {
     ).rejects.toThrow("snapshot save failed");
 
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
     ).not.toHaveBeenCalled();
     expect(ctx.saved.vaultSnapshot).toEqual(ctx.vaultSnapshot);
     expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault).toEqual(
@@ -749,7 +755,7 @@ describe("RevokeDeviceUseCase", () => {
   it("invalidates the session when session commit fails after snapshot persistence", async () => {
     const ctx = createContext();
     vi.mocked(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.crypto.encryptUnlockedVaultSessionPayload,
     ).mockRejectedValueOnce(new Error("session save failed"));
 
     await expect(
@@ -762,9 +768,6 @@ describe("RevokeDeviceUseCase", () => {
     expect(
       ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).toHaveBeenCalledTimes(1);
-    expect(
-      ctx.ports.sessionServices.unlockedVaultSession.remove,
-    ).toHaveBeenCalled();
     expect(ctx.saved.unlockedVaultSession).toBeUndefined();
   });
 });

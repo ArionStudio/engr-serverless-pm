@@ -77,6 +77,7 @@ function createContext() {
   });
 
   ports.saved.unlockedVaultSession = {
+    sessionId: values.sessionId,
     unlockedVault: {
       ...unlockedVault,
       vault: {
@@ -351,6 +352,7 @@ describe("SyncUploadUseCase", () => {
   it("fails when sync is not configured", async () => {
     const ctx = createContext();
     ctx.saved.unlockedVaultSession = {
+      sessionId: ctx.values.sessionId,
       unlockedVault: createUnlockedVaultWithEntries(ctx.values, []),
       sourceSnapshotVersionVector: {
         [ctx.values.deviceId]: 1,

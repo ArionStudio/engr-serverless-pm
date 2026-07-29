@@ -33,7 +33,7 @@ export class SetupSyncUseCase {
   }
 
   async execute(params: SetupSyncCommandParams): Promise<void> {
-    const { sourceSnapshotVersionVector, unlockedVault } =
+    const { sessionId, sourceSnapshotVersionVector, unlockedVault } =
       await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
         "setup sync",
@@ -75,11 +75,17 @@ export class SetupSyncUseCase {
       },
     };
 
-    const persistedSnapshot = await this.vaultSnapshot.persistUnlockedVault(
-      params.vaultId,
-      updatedUnlockedVault,
-      sourceSnapshotVersionVector,
-    );
+    const persistedSnapshot =
+      await this.unlockedVaultSession.persistForActiveSession(
+        sessionId,
+        params.vaultId,
+        async () =>
+          this.vaultSnapshot.persistUnlockedVault(
+            params.vaultId,
+            updatedUnlockedVault,
+            sourceSnapshotVersionVector,
+          ),
+      );
 
     await this.vaultSyncGuard.uploadPersistedInitialSyncSnapshot(
       params.vaultId,
@@ -87,9 +93,11 @@ export class SetupSyncUseCase {
       syncState.localSnapshot,
       persistedSnapshot.snapshot,
       unlockedVault,
+      sessionId,
     );
 
     await this.unlockedVaultSession.commitPersistedSnapshot(
+      sessionId,
       {
         ...updatedUnlockedVault,
         trustedSnapshotContext: persistedSnapshot.trustedSnapshotContext,

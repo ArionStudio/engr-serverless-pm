@@ -13,6 +13,7 @@ import type { EncryptedUnlockedVaultSessionPayloadRepositoryPort } from "../../p
 import type { UnlockedVaultSessionMaterialRepositoryPort } from "../../ports/session/unlocked-vault-session-material-repository.port";
 import {
   ActiveUnlockedVaultMismatchError,
+  UnlockedVaultSessionExpiredError,
   UnlockedVaultSessionInvalidError,
   VaultMustBeUnlockedError,
 } from "../../errors/vault-session.errors";
@@ -22,6 +23,9 @@ export class UnlockedVaultSessionService {
   private readonly encryptedPayloadRepository: EncryptedUnlockedVaultSessionPayloadRepositoryPort;
   private readonly crypto: CryptoPort;
   private readonly ids: IdPort;
+  private pendingSessionOperation: Promise<void> = Promise.resolve();
+  private activationGeneration = 0;
+  private sessionIsInvalidated = false;
 
   constructor(
     materialRepository: UnlockedVaultSessionMaterialRepositoryPort,
@@ -35,21 +39,196 @@ export class UnlockedVaultSessionService {
     this.ids = ids;
   }
 
-  async requireVaultCanBeActivated(vaultId: string): Promise<void> {
-    const activeMaterial =
-      await this.materialRepository.getUnlockedVaultSessionMaterial();
+  async requireVaultCanBeActivated(vaultId: string): Promise<number> {
+    return this.serializeSessionOperation(async () => {
+      const storedMaterial =
+        await this.materialRepository.getUnlockedVaultSessionMaterial();
+      const activeMaterial = this.getActiveMaterial(storedMaterial);
 
-    if (activeMaterial !== null && activeMaterial.vaultId !== vaultId) {
-      throw new ActiveUnlockedVaultMismatchError(
-        activeMaterial.vaultId,
-        vaultId,
-      );
-    }
+      if (activeMaterial !== null && activeMaterial.vaultId !== vaultId) {
+        throw new ActiveUnlockedVaultMismatchError(
+          activeMaterial.vaultId,
+          vaultId,
+        );
+      }
+
+      return this.activationGeneration;
+    });
   }
 
   async get(): Promise<UnlockedVaultSession | null> {
-    const material =
+    return this.serializeSessionOperation(async () => this.restoreSession());
+  }
+
+  async requireUnlockedVaultContext(
+    vaultId: string,
+    operation: string,
+  ): Promise<UnlockedVaultSession> {
+    return this.serializeSessionOperation(async () => {
+      const unlockedVaultSession = await this.restoreSession();
+
+      if (
+        unlockedVaultSession === null ||
+        unlockedVaultSession.unlockedVault.vaultId !== vaultId
+      ) {
+        throw new VaultMustBeUnlockedError(vaultId, operation);
+      }
+
+      return unlockedVaultSession;
+    });
+  }
+
+  async persistForActiveSession<T>(
+    sessionId: string,
+    vaultId: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    return this.serializeSessionOperation(async () => {
+      this.requireActiveSession(
+        await this.materialRepository.getUnlockedVaultSessionMaterial(),
+        sessionId,
+        vaultId,
+      );
+
+      return operation();
+    });
+  }
+
+  async restoreIfSessionIsActive(
+    sessionId: string,
+    vaultId: string,
+    restore: () => Promise<void>,
+  ): Promise<boolean> {
+    return this.serializeSessionOperation(async () => {
+      const storedMaterial =
+        await this.materialRepository.getUnlockedVaultSessionMaterial();
+      const activeMaterial = this.getActiveMaterial(storedMaterial);
+
+      if (!this.isActiveSession(activeMaterial, sessionId, vaultId)) {
+        return false;
+      }
+
+      try {
+        await restore();
+        return true;
+      } catch {
+        await this.removeSessionRecordsPreservingRootCause();
+        return false;
+      }
+    });
+  }
+
+  async discardIfSessionIsActive(
+    sessionId: string,
+    vaultId: string,
+    discard: () => Promise<void>,
+  ): Promise<boolean> {
+    return this.serializeSessionOperation(async () => {
+      const activeMaterial =
+        await this.materialRepository.getUnlockedVaultSessionMaterial();
+
+      if (!this.isActiveSession(activeMaterial, sessionId, vaultId)) {
+        return false;
+      }
+
+      try {
+        await this.removeSessionRecords();
+      } catch {
+        return false;
+      }
+
+      try {
+        await discard();
+        return true;
+      } catch {
+        return false;
+      }
+    });
+  }
+
+  async activate(
+    activationGeneration: number,
+    unlockedVault: UnlockedVault,
+    sourceSnapshotVersionVector: VersionVector,
+  ): Promise<string> {
+    return this.serializeSessionOperation(async () => {
+      if (activationGeneration !== this.activationGeneration) {
+        throw new UnlockedVaultSessionExpiredError(unlockedVault.vaultId);
+      }
+
+      const storedMaterial =
+        await this.materialRepository.getUnlockedVaultSessionMaterial();
+      const activeMaterial = this.getActiveMaterial(storedMaterial);
+
+      if (
+        activeMaterial !== null &&
+        activeMaterial.vaultId !== unlockedVault.vaultId
+      ) {
+        throw new ActiveUnlockedVaultMismatchError(
+          activeMaterial.vaultId,
+          unlockedVault.vaultId,
+        );
+      }
+
+      const protectedSession = await this.protect(
+        {
+          unlockedVault,
+          sourceSnapshotVersionVector,
+        },
+        activeMaterial ?? undefined,
+      );
+
+      try {
+        await this.persistProtectedSession(protectedSession);
+      } catch (error) {
+        await this.removeSessionRecordsPreservingRootCause();
+        throw error;
+      }
+
+      this.sessionIsInvalidated = false;
+      this.activationGeneration += 1;
+      return protectedSession.material.sessionId;
+    });
+  }
+
+  async commitPersistedSnapshot(
+    sessionId: string,
+    unlockedVault: UnlockedVault,
+    sourceSnapshotVersionVector: VersionVector,
+  ): Promise<void> {
+    await this.serializeSessionOperation(async () => {
+      const activeMaterial = this.requireActiveSession(
+        await this.materialRepository.getUnlockedVaultSessionMaterial(),
+        sessionId,
+        unlockedVault.vaultId,
+      );
+
+      try {
+        const protectedSession = await this.protect(
+          {
+            unlockedVault,
+            sourceSnapshotVersionVector,
+          },
+          activeMaterial,
+        );
+        await this.persistProtectedSession(protectedSession);
+      } catch (error) {
+        await this.removeSessionRecordsPreservingRootCause();
+        throw error;
+      }
+    });
+  }
+
+  async remove(): Promise<void> {
+    await this.serializeSessionOperation(async () => {
+      await this.removeSessionRecords();
+    });
+  }
+
+  private async restoreSession(): Promise<UnlockedVaultSession | null> {
+    const storedMaterial =
       await this.materialRepository.getUnlockedVaultSessionMaterial();
+    const material = this.getActiveMaterial(storedMaterial);
 
     if (material === null) {
       return null;
@@ -67,52 +246,10 @@ export class UnlockedVaultSessionService {
     return this.restore(material, encryptedPayload);
   }
 
-  async requireUnlockedVaultContext(
-    vaultId: string,
-    operation: string,
-  ): Promise<UnlockedVaultSession> {
-    const unlockedVaultSession = await this.get();
+  private async removeSessionRecords(): Promise<void> {
+    this.activationGeneration += 1;
+    this.sessionIsInvalidated = true;
 
-    if (
-      unlockedVaultSession === null ||
-      unlockedVaultSession.unlockedVault.vaultId !== vaultId
-    ) {
-      throw new VaultMustBeUnlockedError(vaultId, operation);
-    }
-
-    return {
-      unlockedVault: unlockedVaultSession.unlockedVault,
-      sourceSnapshotVersionVector:
-        unlockedVaultSession.sourceSnapshotVersionVector,
-    };
-  }
-
-  async commit(
-    unlockedVault: UnlockedVault,
-    sourceSnapshotVersionVector: VersionVector,
-  ): Promise<void> {
-    await this.save({
-      unlockedVault,
-      sourceSnapshotVersionVector,
-    });
-  }
-
-  async commitPersistedSnapshot(
-    unlockedVault: UnlockedVault,
-    sourceSnapshotVersionVector: VersionVector,
-  ): Promise<void> {
-    try {
-      await this.commit(unlockedVault, sourceSnapshotVersionVector);
-    } catch (error) {
-      if (!(error instanceof ActiveUnlockedVaultMismatchError)) {
-        await this.removePreservingRootCause();
-      }
-
-      throw error;
-    }
-  }
-
-  async remove(): Promise<void> {
     let removalError: unknown;
 
     try {
@@ -134,38 +271,23 @@ export class UnlockedVaultSessionService {
     }
   }
 
-  private async save(session: UnlockedVaultSession): Promise<void> {
-    const activeMaterial =
-      await this.materialRepository.getUnlockedVaultSessionMaterial();
-    const incomingVaultId = session.unlockedVault.vaultId;
-
-    if (activeMaterial !== null && activeMaterial.vaultId !== incomingVaultId) {
-      throw new ActiveUnlockedVaultMismatchError(
-        activeMaterial.vaultId,
-        incomingVaultId,
-      );
-    }
-
-    const protectedSession = await this.protect(
-      session,
-      activeMaterial ?? undefined,
+  private async persistProtectedSession(protectedSession: {
+    readonly material: UnlockedVaultSessionMaterial;
+    readonly encryptedPayload: EncryptedUnlockedVaultSessionPayload;
+  }): Promise<void> {
+    await this.encryptedPayloadRepository.saveEncryptedUnlockedVaultSessionPayload(
+      protectedSession.encryptedPayload,
     );
-
-    try {
-      await this.encryptedPayloadRepository.saveEncryptedUnlockedVaultSessionPayload(
-        protectedSession.encryptedPayload,
-      );
-      await this.materialRepository.saveUnlockedVaultSessionMaterial(
-        protectedSession.material,
-      );
-    } catch (error) {
-      await this.removePreservingRootCause();
-      throw error;
-    }
+    await this.materialRepository.saveUnlockedVaultSessionMaterial(
+      protectedSession.material,
+    );
   }
 
   private async protect(
-    session: UnlockedVaultSession,
+    session: Pick<
+      UnlockedVaultSession,
+      "unlockedVault" | "sourceSnapshotVersionVector"
+    >,
     activeMaterial?: Pick<
       UnlockedVaultSessionMaterial,
       "sessionId" | "payloadKey"
@@ -240,6 +362,7 @@ export class UnlockedVaultSessionService {
     }
 
     return {
+      sessionId: material.sessionId,
       unlockedVault: {
         vaultId: material.vaultId,
         deviceId: material.deviceId,
@@ -253,12 +376,64 @@ export class UnlockedVaultSessionService {
     };
   }
 
-  private async removePreservingRootCause(): Promise<void> {
+  private async removeSessionRecordsPreservingRootCause(): Promise<void> {
     try {
-      await this.remove();
+      await this.removeSessionRecords();
     } catch {
       // Preserve the original failure as the root cause.
     }
+  }
+
+  private async serializeSessionOperation<T>(
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const previousOperation = this.pendingSessionOperation;
+    let completeOperation!: () => void;
+    this.pendingSessionOperation = new Promise<void>((resolve) => {
+      completeOperation = resolve;
+    });
+
+    await previousOperation;
+
+    try {
+      return await operation();
+    } finally {
+      completeOperation();
+    }
+  }
+
+  private requireActiveSession(
+    activeMaterial: UnlockedVaultSessionMaterial | null,
+    sessionId: string,
+    vaultId: string,
+  ): UnlockedVaultSessionMaterial {
+    if (
+      activeMaterial === null ||
+      !this.isActiveSession(activeMaterial, sessionId, vaultId)
+    ) {
+      throw new UnlockedVaultSessionExpiredError(vaultId);
+    }
+
+    return activeMaterial;
+  }
+
+  private isActiveSession(
+    activeMaterial: UnlockedVaultSessionMaterial | null,
+    sessionId: string,
+    vaultId: string,
+  ): boolean {
+    return (
+      activeMaterial !== null &&
+      !this.sessionIsInvalidated &&
+      activeMaterial.sessionId === sessionId &&
+      activeMaterial.vaultId === vaultId
+    );
+  }
+
+  private getActiveMaterial(
+    material: UnlockedVaultSessionMaterial | null,
+  ): UnlockedVaultSessionMaterial | null {
+    return this.sessionIsInvalidated ? null : material;
   }
 
   private requireMatchingSessionRecords(

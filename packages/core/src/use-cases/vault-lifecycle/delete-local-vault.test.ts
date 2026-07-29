@@ -13,6 +13,7 @@ function createContext() {
   );
 
   ports.saved.unlockedVaultSession = {
+    sessionId: values.sessionId,
     unlockedVault: {
       vaultId: values.vaultId,
       deviceId: values.deviceId,

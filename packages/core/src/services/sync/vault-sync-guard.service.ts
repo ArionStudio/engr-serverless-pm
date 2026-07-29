@@ -127,6 +127,7 @@ export class VaultSyncGuardService {
     },
     persistedSnapshot: VaultSnapshot,
     unlockedVault: UnlockedVault,
+    sessionId: string,
   ): Promise<void> {
     if (
       syncState.syncConfig === undefined ||
@@ -142,19 +143,17 @@ export class VaultSyncGuardService {
         syncState.remoteSnapshotDescriptor,
       );
     } catch (error) {
-      try {
-        await this.vaultSnapshot.restoreLocalVaultSnapshot(
-          syncState.localSnapshot,
-          persistedSnapshot,
-          unlockedVault,
-        );
-      } catch {
-        try {
-          await this.unlockedVaultSession.remove();
-        } catch {
-          // Preserve the upload failure as the root cause.
-        }
-      }
+      await this.unlockedVaultSession.restoreIfSessionIsActive(
+        sessionId,
+        vaultId,
+        async () => {
+          await this.vaultSnapshot.restoreLocalVaultSnapshot(
+            syncState.localSnapshot,
+            persistedSnapshot,
+            unlockedVault,
+          );
+        },
+      );
 
       if (error instanceof RemoteVaultSnapshotChangedError) {
         throw new SyncConflictDetectedError(vaultId);
@@ -170,6 +169,7 @@ export class VaultSyncGuardService {
     localSnapshot: VaultSnapshot,
     persistedSnapshot: VaultSnapshot,
     unlockedVault: UnlockedVault,
+    sessionId: string,
   ): Promise<void> {
     try {
       await this.syncProvider.uploadVaultSnapshot(
@@ -178,19 +178,17 @@ export class VaultSyncGuardService {
         null,
       );
     } catch (error) {
-      try {
-        await this.vaultSnapshot.restoreLocalVaultSnapshot(
-          localSnapshot,
-          persistedSnapshot,
-          unlockedVault,
-        );
-      } catch {
-        try {
-          await this.unlockedVaultSession.remove();
-        } catch {
-          // Preserve the upload failure as the root cause.
-        }
-      }
+      await this.unlockedVaultSession.restoreIfSessionIsActive(
+        sessionId,
+        vaultId,
+        async () => {
+          await this.vaultSnapshot.restoreLocalVaultSnapshot(
+            localSnapshot,
+            persistedSnapshot,
+            unlockedVault,
+          );
+        },
+      );
 
       if (error instanceof RemoteVaultSnapshotChangedError) {
         throw new SyncConflictDetectedError(vaultId);

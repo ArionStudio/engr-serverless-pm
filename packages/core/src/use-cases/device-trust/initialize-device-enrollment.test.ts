@@ -63,6 +63,7 @@ function createContext() {
   } satisfies VaultSnapshot;
 
   ports.saved.unlockedVaultSession = {
+    sessionId: values.sessionId,
     unlockedVault: {
       ...unlockedVault,
       vault: {
@@ -429,12 +430,12 @@ describe("InitializeDeviceEnrollmentUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("restores the local snapshot when session commit fails", async () => {
+  it("keeps the persisted snapshot when session commit fails", async () => {
     const ctx = createContext();
     const commitError = new Error("commit failed");
 
     vi.mocked(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.crypto.encryptUnlockedVaultSessionPayload,
     ).mockRejectedValueOnce(commitError);
 
     await expect(
@@ -446,16 +447,16 @@ describe("InitializeDeviceEnrollmentUseCase", () => {
 
     expect(
       ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
-    ).toHaveBeenCalledTimes(2);
+    ).toHaveBeenCalledTimes(1);
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
     expect(ctx.ports.saved.vaultSnapshot).toEqual(
       expect.objectContaining({
         metadata: expect.objectContaining({
           snapshotVersionVector: {
-            [ctx.values.deviceId]: 1,
+            [ctx.values.deviceId]: 2,
           },
         }),
-        keySlots: expect.not.objectContaining({
+        keySlots: expect.objectContaining({
           enrollmentKeySlot: expect.anything(),
         }),
       }),
@@ -556,14 +557,12 @@ describe("InitializeDeviceEnrollmentUseCase", () => {
     const ctx = createContext();
     const rollbackError = new Error("session rollback failed");
     const unlockedVaultSession = ctx.ports.sessionServices.unlockedVaultSession;
-    const commitPersistedSnapshotOriginal =
-      unlockedVaultSession.commitPersistedSnapshot.bind(unlockedVaultSession);
 
     vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockRejectedValueOnce(
       new RemoteVaultSnapshotChangedError(ctx.values.vaultId),
     );
-    vi.spyOn(unlockedVaultSession, "commitPersistedSnapshot")
-      .mockImplementationOnce(commitPersistedSnapshotOriginal)
+    vi.mocked(ctx.ports.crypto.encryptUnlockedVaultSessionPayload)
+      .mockResolvedValueOnce(ctx.values.encryptedUnlockedVaultSessionPayload)
       .mockRejectedValueOnce(rollbackError);
 
     await expect(
@@ -591,10 +590,6 @@ describe("InitializeDeviceEnrollmentUseCase", () => {
     expect(unlockedVaultSession.commitPersistedSnapshot).toHaveBeenCalledTimes(
       2,
     );
-    expect(ctx.ports.saved.unlockedVaultSession).toMatchObject({
-      sourceSnapshotVersionVector: {
-        [ctx.values.deviceId]: 2,
-      },
-    });
+    expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
   });
 });

@@ -63,7 +63,8 @@ export class InitializeVaultUseCase {
     initializeVaultCommandParams: InitializeVaultCommandParams,
   ): Promise<InitializeVaultResult> {
     const vaultId = await this.ids.generateId();
-    await this.unlockedVaultSession.requireVaultCanBeActivated(vaultId);
+    const activationGeneration =
+      await this.unlockedVaultSession.requireVaultCanBeActivated(vaultId);
 
     const deviceId = await this.ids.generateId();
     const timestamp = this.clock.now();
@@ -240,7 +241,8 @@ export class InitializeVaultUseCase {
       checkpoint,
     });
     try {
-      await this.unlockedVaultSession.commit(
+      await this.unlockedVaultSession.activate(
+        activationGeneration,
         unlockedVault,
         vaultSnapshot.metadata.snapshotVersionVector,
       );

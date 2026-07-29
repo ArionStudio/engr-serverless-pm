@@ -26,6 +26,7 @@ function createContext() {
   const unlockedVault = createUnlockedVaultWithEntries(values, []);
 
   ports.saved.unlockedVaultSession = {
+    sessionId: values.sessionId,
     unlockedVault,
     sourceSnapshotVersionVector: {
       [values.deviceId]: 1,
@@ -106,8 +107,9 @@ describe("SetupSyncUseCase", () => {
       vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mock
         .invocationCallOrder[0],
     ).toBeLessThan(
-      vi.mocked(ctx.ports.sessionServices.unlockedVaultSession.commit).mock
-        .invocationCallOrder[0],
+      vi.mocked(
+        ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
+      ).mock.invocationCallOrder[0],
     );
   });
 
@@ -141,7 +143,7 @@ describe("SetupSyncUseCase", () => {
 
     expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
     ).not.toHaveBeenCalled();
     expect(
       ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncConfig,
@@ -176,7 +178,7 @@ describe("SetupSyncUseCase", () => {
     ).not.toHaveBeenCalled();
     expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
     ).not.toHaveBeenCalled();
     expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncConfig).toBe(
       ctx.values.syncConfig,
@@ -209,7 +211,7 @@ describe("SetupSyncUseCase", () => {
     expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
     ).not.toHaveBeenCalled();
     expect(
       ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncConfig,
@@ -230,7 +232,7 @@ describe("SetupSyncUseCase", () => {
     ).rejects.toThrow("persist failed");
 
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
     ).not.toHaveBeenCalled();
     expect(
       ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncConfig,
@@ -253,19 +255,16 @@ describe("SetupSyncUseCase", () => {
       }),
     ).rejects.toThrow("upload failed");
 
-    expect(
-      ctx.ports.sessionServices.unlockedVaultSession.remove,
-    ).toHaveBeenCalled();
     expect(ctx.saved.unlockedVaultSession).toBeUndefined();
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
     ).not.toHaveBeenCalled();
   });
 
   it("bubbles the session commit failure after snapshot persistence", async () => {
     const ctx = createContext();
     vi.mocked(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
     ).mockRejectedValueOnce(new Error("session save failed"));
 
     await expect(
@@ -281,7 +280,7 @@ describe("SetupSyncUseCase", () => {
   it("preserves the session commit error", async () => {
     const ctx = createContext();
     vi.mocked(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
     ).mockRejectedValueOnce(new Error("session save failed"));
 
     await expect(

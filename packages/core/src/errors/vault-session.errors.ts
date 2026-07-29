@@ -19,6 +19,13 @@ export class UnlockedVaultSessionInvalidError extends Error {
   }
 }
 
+export class UnlockedVaultSessionExpiredError extends Error {
+  constructor(vaultId: string) {
+    super(`Unlocked vault session for vault "${vaultId}" is no longer active.`);
+    this.name = "UnlockedVaultSessionExpiredError";
+  }
+}
+
 export class ActiveUnlockedVaultMismatchError extends Error {
   constructor(activeVaultId: string, incomingVaultId: string) {
     super(

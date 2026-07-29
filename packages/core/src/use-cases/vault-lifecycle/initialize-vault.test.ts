@@ -152,6 +152,7 @@ describe("InitializeVaultUseCase", () => {
     );
 
     expect(ctx.saved.unlockedVaultSession).toEqual({
+      sessionId: ctx.values.sessionId,
       unlockedVault: {
         vaultId: ctx.values.vaultId,
         deviceId: ctx.values.deviceId,
@@ -192,7 +193,7 @@ describe("InitializeVaultUseCase", () => {
       ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
     ).toHaveBeenCalledTimes(1);
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.activate,
     ).not.toHaveBeenCalled();
     expect(
       ctx.ports.vaultLocalRepository.saveLocalVaultDescriptor,
@@ -205,20 +206,20 @@ describe("InitializeVaultUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("removes initialized local vault when unlocked session commit fails", async () => {
+  it("removes initialized local vault when session activation fails", async () => {
     const ctx = createInitializeVaultTestContext();
-    const error = new Error("session commit failed");
+    const activationError = new Error("session activation failed");
 
     vi.mocked(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
-    ).mockRejectedValueOnce(error);
+      ctx.ports.sessionServices.unlockedVaultSession.activate,
+    ).mockRejectedValueOnce(activationError);
 
     await expect(
       ctx.useCase.execute({
         masterPassword: ctx.values.masterPassword,
         deviceName: "Work laptop",
       }),
-    ).rejects.toBe(error);
+    ).rejects.toBe(activationError);
 
     expect(
       ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
@@ -232,14 +233,14 @@ describe("InitializeVaultUseCase", () => {
     expect(ctx.saved.vaultSnapshot).toBeUndefined();
   });
 
-  it("preserves session commit error when initialized local cleanup fails", async () => {
+  it("preserves session activation error when initialized local cleanup fails", async () => {
     const ctx = createInitializeVaultTestContext();
-    const commitError = new Error("session commit failed");
+    const activationError = new Error("session activation failed");
     const cleanupError = new Error("initialized local cleanup failed");
 
     vi.mocked(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
-    ).mockRejectedValueOnce(commitError);
+      ctx.ports.sessionServices.unlockedVaultSession.activate,
+    ).mockRejectedValueOnce(activationError);
     vi.mocked(
       ctx.ports.vaultLocalRepository.removePersistedLocalVault,
     ).mockRejectedValueOnce(cleanupError);
@@ -249,7 +250,7 @@ describe("InitializeVaultUseCase", () => {
         masterPassword: ctx.values.masterPassword,
         deviceName: "Work laptop",
       }),
-    ).rejects.toBe(commitError);
+    ).rejects.toBe(activationError);
 
     expect(
       ctx.ports.vaultLocalRepository.removePersistedLocalVault,
@@ -287,7 +288,7 @@ describe("InitializeVaultUseCase", () => {
       ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.activate,
     ).not.toHaveBeenCalled();
   });
 });
