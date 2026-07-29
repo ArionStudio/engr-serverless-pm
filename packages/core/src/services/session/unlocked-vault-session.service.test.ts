@@ -706,6 +706,12 @@ describe("UnlockedVaultSessionService", () => {
     ).resolves.toBe(false);
 
     expect(discard).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.unlockedVaultSessionMaterial).toEqual(
+      createMaterial(ctx),
+    );
+    expect(
+      ctx.ports.saved.encryptedUnlockedVaultSessionPayload,
+    ).toBeUndefined();
   });
 
   it("does not invalidate another active vault after persisted snapshot commit mismatch", async () => {
