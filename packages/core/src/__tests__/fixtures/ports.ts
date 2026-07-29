@@ -26,12 +26,14 @@ import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-rep
 import { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import { createCoreTestValues, type CoreTestValues } from "./values";
 import type { LocalVaultTrustCheckpoint } from "../../domain/device-trust";
+import { LocalVaultSnapshotChangedError } from "../../errors/vault-snapshot.errors";
 
 export type SavedCoreRecords = {
   localVaultDescriptor?: LocalVaultDescriptor;
   deviceAccessMaterial?: DeviceAccessMaterial;
   deviceAccessRecoveryBackup?: DeviceAccessRecoveryBackup;
   vaultSnapshot?: VaultSnapshot;
+  vaultSnapshotDigest?: string;
   localVaultTrustCheckpoint?: LocalVaultTrustCheckpoint;
   unlockedVaultSession?: UnlockedVaultSession;
   unlockedVaultSessionMaterial?: UnlockedVaultSessionMaterial;
@@ -46,7 +48,9 @@ export type CoreTestPorts = ReturnType<typeof createCoreTestPorts>;
 export function createCoreTestPorts(
   values: CoreTestValues = createCoreTestValues(),
 ) {
-  const saved: SavedCoreRecords = {};
+  const saved: SavedCoreRecords = {
+    vaultSnapshotDigest: values.vaultSnapshotDigest,
+  };
   let unlockedVaultSessionMirror: UnlockedVaultSession | undefined;
 
   function writeSplitUnlockedVaultSessionRecords(
@@ -245,6 +249,7 @@ export function createCoreTestPorts(
         saved.deviceAccessMaterial = deviceAccessMaterial;
         saved.deviceAccessRecoveryBackup = deviceAccessRecoveryBackup;
         saved.vaultSnapshot = snapshot;
+        saved.vaultSnapshotDigest = checkpoint.payload.snapshotDigest;
         saved.localVaultTrustCheckpoint = checkpoint;
       },
     ),
@@ -253,6 +258,7 @@ export function createCoreTestPorts(
       saved.deviceAccessMaterial = undefined;
       saved.deviceAccessRecoveryBackup = undefined;
       saved.vaultSnapshot = undefined;
+      saved.vaultSnapshotDigest = undefined;
       saved.localVaultTrustCheckpoint = undefined;
     }),
     saveLocalVaultDescriptor: vi.fn(async (descriptor) => {
@@ -313,10 +319,23 @@ export function createCoreTestPorts(
       return vaultSnapshot.metadata.id === vaultId ? vaultSnapshot : null;
     }),
     removeVaultSnapshot: vi.fn(),
-    saveVaultSnapshotWithCheckpoint: vi.fn(async ({ snapshot, checkpoint }) => {
-      saved.vaultSnapshot = snapshot;
-      saved.localVaultTrustCheckpoint = checkpoint;
-    }),
+    saveVaultSnapshotWithCheckpoint: vi.fn(
+      async ({ expectedSnapshotDigest, snapshot, checkpoint }) => {
+        const currentSnapshot = saved.vaultSnapshot;
+
+        if (
+          currentSnapshot === undefined ||
+          currentSnapshot.metadata.id !== snapshot.metadata.id ||
+          saved.vaultSnapshotDigest !== expectedSnapshotDigest
+        ) {
+          throw new LocalVaultSnapshotChangedError(snapshot.metadata.id);
+        }
+
+        saved.vaultSnapshot = snapshot;
+        saved.vaultSnapshotDigest = checkpoint.payload.snapshotDigest;
+        saved.localVaultTrustCheckpoint = checkpoint;
+      },
+    ),
     getLocalVaultTrustCheckpoint: vi.fn(async (vaultId) => {
       const checkpoint = saved.localVaultTrustCheckpoint;
 

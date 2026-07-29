@@ -22,6 +22,13 @@ export class VaultSnapshotVersionMismatchError extends Error {
   }
 }
 
+export class LocalVaultSnapshotChangedError extends Error {
+  constructor(vaultId: string) {
+    super(`Local vault snapshot for vault "${vaultId}" changed before save.`);
+    this.name = "LocalVaultSnapshotChangedError";
+  }
+}
+
 export class SnapshotSigningDeviceNotTrustedError extends Error {
   constructor(vaultId: string, deviceId: string) {
     super(`Device "${deviceId}" is not trusted to sign vault "${vaultId}".`);

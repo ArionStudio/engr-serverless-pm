@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
-import { createCoreTestValues } from "../../__tests__/fixtures/values";
+import { b64, createCoreTestValues } from "../../__tests__/fixtures/values";
 import {
   createUnlockedVaultWithEntries,
   singlePasswordEntry,
@@ -16,6 +16,7 @@ import {
   VaultSnapshotSignerNotTrustedError,
 } from "../../errors/unlock-vault.errors";
 import {
+  LocalVaultSnapshotChangedError,
   PersistedVaultMismatchError,
   SnapshotSigningDeviceNotTrustedError,
   VaultSnapshotVersionMismatchError,
@@ -86,6 +87,14 @@ describe("VaultSnapshotService", () => {
     };
 
     ports.saved.vaultSnapshot = currentSnapshot;
+    ports.saved.localVaultTrustCheckpoint = {
+      ...values.localVaultTrustCheckpoint,
+      payload: {
+        ...values.localVaultTrustCheckpoint.payload,
+        snapshotVersionVector: currentSnapshot.metadata.snapshotVersionVector,
+        snapshotDigest: values.vaultSnapshotDigest,
+      },
+    };
 
     return {
       values,
@@ -151,6 +160,108 @@ describe("VaultSnapshotService", () => {
       trustChain: ctx.currentSnapshot.trustChain,
       signature: ctx.values.snapshotSignature,
     });
+  });
+
+  it("rejects the second concurrent save based on the same snapshot", async () => {
+    const ctx = createContext();
+    const firstUnlockedVault = {
+      ...ctx.unlockedVault,
+      vault: {
+        ...ctx.unlockedVault.vault,
+        entries: [singlePasswordEntry],
+      },
+    };
+    const secondUnlockedVault = {
+      ...ctx.unlockedVault,
+      vault: {
+        ...ctx.unlockedVault.vault,
+        entries: [],
+      },
+    };
+    const firstEncryptedVault = {
+      ...ctx.values.encryptedVault,
+      ciphertext: b64("first-encrypted-vault"),
+    };
+    const secondEncryptedVault = {
+      ...ctx.values.encryptedVault,
+      ciphertext: b64("second-encrypted-vault"),
+    };
+    const snapshotDigests = new Map<VaultSnapshot, string>([
+      [ctx.currentSnapshot, ctx.values.vaultSnapshotDigest],
+    ]);
+    let nextSnapshotDigest = 1;
+    const saveSnapshot = vi.mocked(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    );
+    const saveSnapshotOriginal = saveSnapshot.getMockImplementation();
+
+    if (saveSnapshotOriginal === undefined) {
+      throw new Error("Expected the local snapshot save fixture.");
+    }
+
+    let saveAttempts = 0;
+    let releaseSaveAttempts!: () => void;
+    const bothSaveAttemptsReady = new Promise<void>((resolve) => {
+      releaseSaveAttempts = resolve;
+    });
+
+    vi.mocked(ctx.ports.crypto.encryptVaultSnapshotContent).mockImplementation(
+      async (vault) =>
+        vault === firstUnlockedVault.vault
+          ? firstEncryptedVault
+          : secondEncryptedVault,
+    );
+    vi.mocked(ctx.ports.crypto.digestVaultSnapshot).mockImplementation(
+      async (snapshot) => {
+        const existingDigest = snapshotDigests.get(snapshot);
+
+        if (existingDigest !== undefined) {
+          return existingDigest;
+        }
+
+        const digest = `next-snapshot-digest-${nextSnapshotDigest}`;
+        nextSnapshotDigest += 1;
+        snapshotDigests.set(snapshot, digest);
+
+        return digest;
+      },
+    );
+    saveSnapshot.mockImplementation(async (params) => {
+      saveAttempts += 1;
+
+      if (saveAttempts === 2) {
+        releaseSaveAttempts();
+      }
+
+      await bothSaveAttemptsReady;
+      await saveSnapshotOriginal(params);
+    });
+
+    const results = await Promise.allSettled([
+      ctx.service.persistUnlockedVault(
+        ctx.values.vaultId,
+        firstUnlockedVault,
+        ctx.currentSnapshot.metadata.snapshotVersionVector,
+      ),
+      ctx.service.persistUnlockedVault(
+        ctx.values.vaultId,
+        secondUnlockedVault,
+        ctx.currentSnapshot.metadata.snapshotVersionVector,
+      ),
+    ]);
+    const winner = results.find((result) => result.status === "fulfilled");
+    const loser = results.find((result) => result.status === "rejected");
+
+    if (winner?.status !== "fulfilled" || loser?.status !== "rejected") {
+      throw new Error("Expected exactly one concurrent snapshot save to win.");
+    }
+
+    expect(loser.reason).toBeInstanceOf(LocalVaultSnapshotChangedError);
+    expect(saveSnapshot).toHaveBeenCalledTimes(2);
+    expect(ctx.saved.vaultSnapshot).toBe(winner.value.snapshot);
+    expect(ctx.saved.localVaultTrustCheckpoint?.payload.snapshotDigest).toBe(
+      winner.value.trustedSnapshotContext.snapshotDigest,
+    );
   });
 
   it("requires the current snapshot for an unlocked vault without saving", async () => {

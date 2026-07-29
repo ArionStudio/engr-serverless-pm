@@ -61,6 +61,16 @@ function createContext() {
     content: values.encryptedVault,
     signature: values.snapshotSignature,
   } satisfies VaultSnapshot;
+  ports.saved.localVaultTrustCheckpoint = {
+    ...values.localVaultTrustCheckpoint,
+    payload: {
+      ...values.localVaultTrustCheckpoint.payload,
+      snapshotVersionVector: {
+        [values.deviceId]: 1,
+      },
+      snapshotDigest: values.vaultSnapshotDigest,
+    },
+  };
 
   ports.saved.unlockedVaultSession = {
     sessionId: values.sessionId,

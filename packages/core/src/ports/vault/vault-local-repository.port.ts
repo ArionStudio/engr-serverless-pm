@@ -55,7 +55,9 @@ export interface VaultLocalRepositoryPort {
 
   /**
    * Atomically replaces the snapshot and signed rollback checkpoint only when
-   * the persisted snapshot still matches `expectedSnapshotDigest`.
+   * the persisted snapshot still matches `expectedSnapshotDigest`. Rejects
+   * with `LocalVaultSnapshotChangedError` without changing either record when
+   * the expected snapshot is no longer current.
    */
   saveVaultSnapshotWithCheckpoint: (params: {
     readonly expectedSnapshotDigest: string;
