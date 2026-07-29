@@ -36,6 +36,7 @@ function createContext(syncConfigured = true) {
   };
 
   ports.saved.unlockedVaultSession = {
+    sessionId: values.sessionId,
     unlockedVault,
     sourceSnapshotVersionVector: {
       [values.deviceId]: 1,
@@ -233,8 +234,9 @@ describe("DisableSyncUseCase", () => {
         .invocationCallOrder[0],
     );
     expect(
-      vi.mocked(ctx.ports.sessionServices.unlockedVaultSession.commit).mock
-        .invocationCallOrder[0],
+      vi.mocked(
+        ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
+      ).mock.invocationCallOrder[0],
     ).toBeLessThan(
       vi.mocked(ctx.ports.syncProvider.removeVaultSnapshots).mock
         .invocationCallOrder[0],
@@ -296,7 +298,7 @@ describe("DisableSyncUseCase", () => {
     expect(ctx.ports.syncProvider.removeVaultSnapshots).not.toHaveBeenCalled();
     expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
     ).not.toHaveBeenCalled();
     expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncConfig).toBe(
       ctx.values.syncConfig,
@@ -326,7 +328,7 @@ describe("DisableSyncUseCase", () => {
     expect(ctx.ports.syncProvider.removeVaultSnapshots).not.toHaveBeenCalled();
     expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
     ).not.toHaveBeenCalled();
     expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncConfig).toBe(
       ctx.values.syncConfig,
@@ -356,7 +358,7 @@ describe("DisableSyncUseCase", () => {
     expect(ctx.ports.syncProvider.removeVaultSnapshots).not.toHaveBeenCalled();
     expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
     ).not.toHaveBeenCalled();
     expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncConfig).toBe(
       ctx.values.syncConfig,
@@ -385,7 +387,7 @@ describe("DisableSyncUseCase", () => {
     expect(ctx.ports.syncProvider.removeVaultSnapshots).not.toHaveBeenCalled();
     expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
     ).not.toHaveBeenCalled();
     expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncConfig).toBe(
       ctx.values.syncConfig,
@@ -406,7 +408,7 @@ describe("DisableSyncUseCase", () => {
 
     expect(ctx.vaultSnapshot.persistUnlockedVault).toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
     ).toHaveBeenCalled();
     expect(
       ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncConfig,
@@ -483,7 +485,7 @@ describe("DisableSyncUseCase", () => {
 
     expect(ctx.ports.syncProvider.removeVaultSnapshots).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
     ).not.toHaveBeenCalled();
     expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncConfig).toBe(
       ctx.values.syncConfig,

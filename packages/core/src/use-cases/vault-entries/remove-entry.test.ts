@@ -77,8 +77,9 @@ describe("RemoveEntryUseCase", () => {
       vi.mocked(ctx.vaultSnapshot.persistUnlockedVault).mock
         .invocationCallOrder[0],
     ).toBeLessThan(
-      vi.mocked(ctx.ports.sessionServices.unlockedVaultSession.commit).mock
-        .invocationCallOrder[0],
+      vi.mocked(
+        ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
+      ).mock.invocationCallOrder[0],
     );
   });
 
@@ -127,8 +128,9 @@ describe("RemoveEntryUseCase", () => {
       vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mock
         .invocationCallOrder[0],
     ).toBeLessThan(
-      vi.mocked(ctx.ports.sessionServices.unlockedVaultSession.commit).mock
-        .invocationCallOrder[0],
+      vi.mocked(
+        ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
+      ).mock.invocationCallOrder[0],
     );
   });
 
@@ -155,7 +157,7 @@ describe("RemoveEntryUseCase", () => {
     ).rejects.toBeInstanceOf(PasswordEntryNotFoundError);
 
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
     ).not.toHaveBeenCalled();
     expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
   });
@@ -174,7 +176,7 @@ describe("RemoveEntryUseCase", () => {
     ).rejects.toThrow("persist failed");
 
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
     ).not.toHaveBeenCalled();
     expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries).toEqual(
       [firstPasswordEntry, secondPasswordEntry],
@@ -184,7 +186,7 @@ describe("RemoveEntryUseCase", () => {
   it("bubbles the session commit failure after snapshot persistence", async () => {
     const ctx = createContext();
     vi.mocked(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
     ).mockRejectedValueOnce(new Error("session save failed"));
 
     await expect(
@@ -200,7 +202,7 @@ describe("RemoveEntryUseCase", () => {
   it("preserves the session commit error", async () => {
     const ctx = createContext();
     vi.mocked(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
     ).mockRejectedValueOnce(new Error("session save failed"));
 
     await expect(

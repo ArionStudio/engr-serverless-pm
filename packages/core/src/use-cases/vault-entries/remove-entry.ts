@@ -36,7 +36,7 @@ export class RemoveEntryUseCase {
   }
 
   async execute(params: RemoveEntryCommandParams): Promise<RemoveEntryResult> {
-    const { sourceSnapshotVersionVector, unlockedVault } =
+    const { sessionId, sourceSnapshotVersionVector, unlockedVault } =
       await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
         "remove entry",
@@ -66,11 +66,17 @@ export class RemoveEntryUseCase {
       ),
     };
 
-    const persistedSnapshot = await this.vaultSnapshot.persistUnlockedVault(
-      params.vaultId,
-      updatedUnlockedVault,
-      sourceSnapshotVersionVector,
-    );
+    const persistedSnapshot =
+      await this.unlockedVaultSession.persistForActiveSession(
+        sessionId,
+        params.vaultId,
+        async () =>
+          this.vaultSnapshot.persistUnlockedVault(
+            params.vaultId,
+            updatedUnlockedVault,
+            sourceSnapshotVersionVector,
+          ),
+      );
 
     if (syncState.syncConfig !== undefined) {
       await this.vaultSyncGuard.uploadPersistedLocalMutation(
@@ -78,10 +84,12 @@ export class RemoveEntryUseCase {
         syncState,
         persistedSnapshot.snapshot,
         updatedUnlockedVault,
+        sessionId,
       );
     }
 
     await this.unlockedVaultSession.commitPersistedSnapshot(
+      sessionId,
       {
         ...updatedUnlockedVault,
         trustedSnapshotContext: persistedSnapshot.trustedSnapshotContext,

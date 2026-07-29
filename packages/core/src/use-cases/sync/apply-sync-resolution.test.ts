@@ -181,6 +181,7 @@ function createContext() {
     "restoreLocalVaultSnapshot",
   );
   ports.saved.unlockedVaultSession = {
+    sessionId: values.sessionId,
     unlockedVault: {
       ...createUnlockedVaultWithEntries(values, []),
       vault: localVault,
@@ -365,8 +366,9 @@ describe("ApplySyncResolutionUseCase", () => {
       vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mock
         .invocationCallOrder[0],
     ).toBeLessThan(
-      vi.mocked(ctx.ports.sessionServices.unlockedVaultSession.commit).mock
-        .invocationCallOrder[0],
+      vi.mocked(
+        ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
+      ).mock.invocationCallOrder[0],
     );
   });
 
@@ -694,12 +696,9 @@ describe("ApplySyncResolutionUseCase", () => {
       }),
       expect.objectContaining({ vaultId: ctx.values.vaultId }),
     );
-    expect(
-      ctx.ports.sessionServices.unlockedVaultSession.remove,
-    ).toHaveBeenCalled();
     expect(ctx.saved.unlockedVaultSession).toBeUndefined();
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
     ).not.toHaveBeenCalled();
   });
 

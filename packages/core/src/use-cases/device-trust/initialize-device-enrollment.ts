@@ -62,7 +62,7 @@ export class InitializeDeviceEnrollmentUseCase {
   async execute(
     params: InitializeDeviceEnrollmentCommandParams,
   ): Promise<InitializeDeviceEnrollmentResult> {
-    const { sourceSnapshotVersionVector, unlockedVault } =
+    const { sessionId, sourceSnapshotVersionVector, unlockedVault } =
       await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
         "initialize device enrollment",
@@ -161,59 +161,54 @@ export class InitializeDeviceEnrollmentUseCase {
         enrollmentAuthorization,
         unlockedVault.devicePrivateSignKey,
       );
-    const persistedSnapshot = await this.vaultSnapshot.persistUnlockedVault(
-      params.vaultId,
-      unlockedVault,
-      sourceSnapshotVersionVector,
-      {
-        keySlots: {
-          deviceSlots: currentVaultSnapshot.keySlots.deviceSlots,
-          ...(currentVaultSnapshot.keySlots.completedEnrollments === undefined
-            ? {}
-            : {
-                completedEnrollments:
-                  currentVaultSnapshot.keySlots.completedEnrollments,
-              }),
-          enrollmentKeySlot: {
-            enrollmentId,
-            pendingDeviceId,
-            pendingDevicePublicSignKey: pendingDeviceSignKeyPair.publicKey,
-            pendingDevicePublicSignKeyDigest,
-            protectedVaultMasterKeyDigest,
-            protectedVaultMasterKey: protectedEnrollmentVaultMasterKey,
-            authorizedByDeviceId: unlockedVault.deviceId,
-            authorizerSignature,
-          },
-        },
-        nextTrust: {
-          chain: nextTrust.chain,
-          state: nextTrust.trust,
-        },
-      },
-    );
+    const persistedSnapshot =
+      await this.unlockedVaultSession.persistForActiveSession(
+        sessionId,
+        params.vaultId,
+        async () =>
+          this.vaultSnapshot.persistUnlockedVault(
+            params.vaultId,
+            unlockedVault,
+            sourceSnapshotVersionVector,
+            {
+              keySlots: {
+                deviceSlots: currentVaultSnapshot.keySlots.deviceSlots,
+                ...(currentVaultSnapshot.keySlots.completedEnrollments ===
+                undefined
+                  ? {}
+                  : {
+                      completedEnrollments:
+                        currentVaultSnapshot.keySlots.completedEnrollments,
+                    }),
+                enrollmentKeySlot: {
+                  enrollmentId,
+                  pendingDeviceId,
+                  pendingDevicePublicSignKey:
+                    pendingDeviceSignKeyPair.publicKey,
+                  pendingDevicePublicSignKeyDigest,
+                  protectedVaultMasterKeyDigest,
+                  protectedVaultMasterKey: protectedEnrollmentVaultMasterKey,
+                  authorizedByDeviceId: unlockedVault.deviceId,
+                  authorizerSignature,
+                },
+              },
+              nextTrust: {
+                chain: nextTrust.chain,
+                state: nextTrust.trust,
+              },
+            },
+          ),
+      );
     const nextUnlockedVault = {
       ...unlockedVault,
       trustedSnapshotContext: persistedSnapshot.trustedSnapshotContext,
     };
 
-    try {
-      await this.unlockedVaultSession.commitPersistedSnapshot(
-        nextUnlockedVault,
-        persistedSnapshot.snapshotVersionVector,
-      );
-    } catch (error) {
-      try {
-        await this.vaultSnapshot.restoreLocalVaultSnapshot(
-          currentVaultSnapshot,
-          persistedSnapshot.snapshot,
-          unlockedVault,
-        );
-      } catch {
-        // Preserve the session commit failure as the root cause.
-      }
-
-      throw error;
-    }
+    await this.unlockedVaultSession.commitPersistedSnapshot(
+      sessionId,
+      nextUnlockedVault,
+      persistedSnapshot.snapshotVersionVector,
+    );
 
     try {
       await this.syncProvider.uploadVaultSnapshot(
@@ -226,26 +221,22 @@ export class InitializeDeviceEnrollmentUseCase {
         error instanceof RemoteVaultSnapshotChangedError
           ? new SyncConflictDetectedError(params.vaultId)
           : error;
-      let restored = false;
-
-      try {
-        await this.vaultSnapshot.restoreLocalVaultSnapshot(
-          currentVaultSnapshot,
-          persistedSnapshot.snapshot,
-          unlockedVault,
-        );
-        restored = true;
-      } catch {
-        try {
-          await this.unlockedVaultSession.remove();
-        } catch {
-          // Preserve the upload failure as the root cause.
-        }
-      }
+      const restored = await this.unlockedVaultSession.restoreIfSessionIsActive(
+        sessionId,
+        params.vaultId,
+        async () => {
+          await this.vaultSnapshot.restoreLocalVaultSnapshot(
+            currentVaultSnapshot,
+            persistedSnapshot.snapshot,
+            unlockedVault,
+          );
+        },
+      );
 
       if (restored) {
         try {
           await this.unlockedVaultSession.commitPersistedSnapshot(
+            sessionId,
             unlockedVault,
             sourceSnapshotVersionVector,
           );

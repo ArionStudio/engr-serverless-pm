@@ -220,7 +220,7 @@ describe("RecoverDeviceAccessUseCase", () => {
       ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.activate,
     ).not.toHaveBeenCalled();
   });
 
@@ -249,6 +249,7 @@ describe("RecoverDeviceAccessUseCase", () => {
   it("fails when another vault is active", async () => {
     const ctx = createContext();
     ctx.ports.saved.unlockedVaultSession = {
+      sessionId: ctx.values.sessionId,
       unlockedVault: {
         vaultId: "another-vault-id",
         deviceId: ctx.values.deviceId,

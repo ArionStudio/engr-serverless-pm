@@ -9,7 +9,9 @@ export function createUnlockVaultTestContext() {
   const values = createCoreTestValues();
   const ports = createCoreTestPorts(values);
   vi.mocked(ports.ids.generateId).mockReset();
-  vi.mocked(ports.ids.generateId).mockResolvedValue(values.vaultLockActionId);
+  vi.mocked(ports.ids.generateId)
+    .mockResolvedValueOnce(values.vaultLockActionId)
+    .mockResolvedValue(values.sessionId);
 
   const deviceAccessMaterial: DeviceAccessMaterial = {
     vaultId: values.vaultId,

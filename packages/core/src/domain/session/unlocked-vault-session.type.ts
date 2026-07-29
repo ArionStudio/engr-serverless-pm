@@ -5,6 +5,7 @@ import type { UnlockedVault } from "./unlocked-vault";
 import type { UnlockedVaultSessionPayloadKey } from "./unlocked-vault-session-payload-key";
 
 export type UnlockedVaultSession = {
+  readonly sessionId: string;
   readonly unlockedVault: UnlockedVault;
   readonly sourceSnapshotVersionVector: VersionVector;
 };

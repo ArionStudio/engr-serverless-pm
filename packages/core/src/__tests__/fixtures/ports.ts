@@ -53,7 +53,7 @@ export function createCoreTestPorts(
     session: UnlockedVaultSession,
   ): void {
     const context = {
-      sessionId: values.sessionId,
+      sessionId: session.sessionId,
       vaultId: session.unlockedVault.vaultId,
       sourceSnapshotVersionVector: session.sourceSnapshotVersionVector,
     };
@@ -339,6 +339,7 @@ export function createCoreTestPorts(
       ),
       removeUnlockedVaultSessionMaterial: vi.fn(async () => {
         saved.unlockedVaultSessionMaterial = undefined;
+        unlockedVaultSessionMirror = undefined;
       }),
     };
 
@@ -376,22 +377,54 @@ export function createCoreTestPorts(
     unlockedVaultSession,
   };
 
-  const commitSessionOriginal =
-    sessionServices.unlockedVaultSession.commit.bind(
+  const activateSessionOriginal =
+    sessionServices.unlockedVaultSession.activate.bind(
       sessionServices.unlockedVaultSession,
     );
   const getSessionOriginal = sessionServices.unlockedVaultSession.get.bind(
     sessionServices.unlockedVaultSession,
   );
+  const commitPersistedSnapshotOriginal =
+    sessionServices.unlockedVaultSession.commitPersistedSnapshot.bind(
+      sessionServices.unlockedVaultSession,
+    );
   const removeSessionOriginal =
     sessionServices.unlockedVaultSession.remove.bind(
       sessionServices.unlockedVaultSession,
     );
 
-  vi.spyOn(sessionServices.unlockedVaultSession, "commit").mockImplementation(
-    async (unlockedVault, sourceSnapshotVersionVector) => {
-      await commitSessionOriginal(unlockedVault, sourceSnapshotVersionVector);
+  vi.spyOn(sessionServices.unlockedVaultSession, "activate").mockImplementation(
+    async (
+      activationGeneration,
+      unlockedVault,
+      sourceSnapshotVersionVector,
+    ) => {
+      const sessionId = await activateSessionOriginal(
+        activationGeneration,
+        unlockedVault,
+        sourceSnapshotVersionVector,
+      );
       unlockedVaultSessionMirror = {
+        sessionId,
+        unlockedVault,
+        sourceSnapshotVersionVector,
+      };
+
+      return sessionId;
+    },
+  );
+  vi.spyOn(
+    sessionServices.unlockedVaultSession,
+    "commitPersistedSnapshot",
+  ).mockImplementation(
+    async (sessionId, unlockedVault, sourceSnapshotVersionVector) => {
+      await commitPersistedSnapshotOriginal(
+        sessionId,
+        unlockedVault,
+        sourceSnapshotVersionVector,
+      );
+      unlockedVaultSessionMirror = {
+        sessionId,
         unlockedVault,
         sourceSnapshotVersionVector,
       };

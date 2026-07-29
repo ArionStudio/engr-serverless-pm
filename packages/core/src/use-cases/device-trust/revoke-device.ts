@@ -51,7 +51,7 @@ export class RevokeDeviceUseCase {
   ): Promise<RevokeDeviceResult> {
     // Revoke can only be performed by the currently unlocked vault, and a
     // device cannot revoke the local identity it is actively using.
-    const { sourceSnapshotVersionVector, unlockedVault } =
+    const { sessionId, sourceSnapshotVersionVector, unlockedVault } =
       await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
         "revoke device",
@@ -130,27 +130,33 @@ export class RevokeDeviceUseCase {
       ...unlockedVault,
       vault: revokedVault,
     };
-    const persistedSnapshot = await this.vaultSnapshot.persistUnlockedVault(
-      params.vaultId,
-      updatedUnlockedVault,
-      sourceSnapshotVersionVector,
-      {
-        keySlots: {
-          deviceSlots: currentVaultSnapshot.keySlots.deviceSlots.filter(
-            (deviceSlot) => deviceSlot.deviceId !== params.deviceId,
+    const persistedSnapshot =
+      await this.unlockedVaultSession.persistForActiveSession(
+        sessionId,
+        params.vaultId,
+        async () =>
+          this.vaultSnapshot.persistUnlockedVault(
+            params.vaultId,
+            updatedUnlockedVault,
+            sourceSnapshotVersionVector,
+            {
+              keySlots: {
+                deviceSlots: currentVaultSnapshot.keySlots.deviceSlots.filter(
+                  (deviceSlot) => deviceSlot.deviceId !== params.deviceId,
+                ),
+                ...(retainedEnrollmentKeySlot === undefined
+                  ? {}
+                  : { enrollmentKeySlot: retainedEnrollmentKeySlot }),
+                completedEnrollments:
+                  currentVaultSnapshot.keySlots.completedEnrollments,
+              },
+              nextTrust: {
+                chain: nextTrust.chain,
+                state: nextTrust.trust,
+              },
+            },
           ),
-          ...(retainedEnrollmentKeySlot === undefined
-            ? {}
-            : { enrollmentKeySlot: retainedEnrollmentKeySlot }),
-          completedEnrollments:
-            currentVaultSnapshot.keySlots.completedEnrollments,
-        },
-        nextTrust: {
-          chain: nextTrust.chain,
-          state: nextTrust.trust,
-        },
-      },
-    );
+      );
     const persistedUnlockedVault = {
       ...updatedUnlockedVault,
       trustedSnapshotContext: persistedSnapshot.trustedSnapshotContext,
@@ -161,9 +167,11 @@ export class RevokeDeviceUseCase {
       syncState,
       persistedSnapshot.snapshot,
       unlockedVault,
+      sessionId,
     );
 
     await this.unlockedVaultSession.commitPersistedSnapshot(
+      sessionId,
       persistedUnlockedVault,
       persistedSnapshot.snapshotVersionVector,
     );

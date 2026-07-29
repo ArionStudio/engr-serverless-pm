@@ -93,9 +93,10 @@ export class PerformDeviceEnrollmentUseCase {
   ): Promise<PerformDeviceEnrollmentResult> {
     const { enrollmentBundle } = params;
 
-    await this.unlockedVaultSession.requireVaultCanBeActivated(
-      enrollmentBundle.vaultId,
-    );
+    const activationGeneration =
+      await this.unlockedVaultSession.requireVaultCanBeActivated(
+        enrollmentBundle.vaultId,
+      );
 
     const remoteSnapshotDescriptor =
       await this.syncProvider.getLatestVaultSnapshotDescriptor(
@@ -447,8 +448,11 @@ export class PerformDeviceEnrollmentUseCase {
       checkpoint,
     });
 
+    let sessionId: string;
+
     try {
-      await this.unlockedVaultSession.commit(
+      sessionId = await this.unlockedVaultSession.activate(
+        activationGeneration,
         unlockedVault,
         registeredVaultSnapshot.metadata.snapshotVersionVector,
       );
@@ -476,19 +480,15 @@ export class PerformDeviceEnrollmentUseCase {
           ? new SyncConflictDetectedError(enrollmentBundle.vaultId)
           : error;
 
-      try {
-        await this.unlockedVaultSession.remove();
-      } catch {
-        // Preserve the upload failure as the root cause.
-      }
-
-      try {
-        await this.vaultLocalRepository.removePersistedLocalVault(
-          enrollmentBundle.vaultId,
-        );
-      } catch {
-        // Preserve the upload failure as the root cause.
-      }
+      await this.unlockedVaultSession.discardIfSessionIsActive(
+        sessionId,
+        enrollmentBundle.vaultId,
+        async () => {
+          await this.vaultLocalRepository.removePersistedLocalVault(
+            enrollmentBundle.vaultId,
+          );
+        },
+      );
 
       throw mappedError;
     }

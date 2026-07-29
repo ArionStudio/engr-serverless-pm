@@ -74,7 +74,10 @@ export class UnlockVaultUseCase {
       throw new InvalidVaultLockDelayError(lockDelayResult.error);
     }
 
-    await this.unlockedVaultSession.requireVaultCanBeActivated(params.vaultId);
+    const activationGeneration =
+      await this.unlockedVaultSession.requireVaultCanBeActivated(
+        params.vaultId,
+      );
 
     const deviceAccessMaterial =
       await this.vaultLocalRepository.getDeviceAccessMaterial(params.vaultId);
@@ -298,7 +301,8 @@ export class UnlockVaultUseCase {
     }
 
     try {
-      await this.unlockedVaultSession.commit(
+      await this.unlockedVaultSession.activate(
+        activationGeneration,
         unlockedVault,
         vaultSnapshot.metadata.snapshotVersionVector,
       );

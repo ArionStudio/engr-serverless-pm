@@ -47,7 +47,7 @@ export class DisableSyncUseCase {
   }
 
   async execute(params: DisableSyncCommandParams): Promise<void> {
-    const { sourceSnapshotVersionVector, unlockedVault } =
+    const { sessionId, sourceSnapshotVersionVector, unlockedVault } =
       await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
         "disable sync",
@@ -104,11 +104,17 @@ export class DisableSyncUseCase {
         ...unlockedVault,
         vault: markVaultSyncRemovalPending(unlockedVault.vault),
       };
-      const pendingSnapshot = await this.vaultSnapshot.persistUnlockedVault(
-        params.vaultId,
-        pendingUnlockedVault,
-        sourceSnapshotVersionVector,
-      );
+      const pendingSnapshot =
+        await this.unlockedVaultSession.persistForActiveSession(
+          sessionId,
+          params.vaultId,
+          async () =>
+            this.vaultSnapshot.persistUnlockedVault(
+              params.vaultId,
+              pendingUnlockedVault,
+              sourceSnapshotVersionVector,
+            ),
+        );
 
       currentUnlockedVault = {
         ...pendingUnlockedVault,
@@ -118,6 +124,7 @@ export class DisableSyncUseCase {
       currentSnapshot = pendingSnapshot.snapshot;
 
       await this.unlockedVaultSession.commitPersistedSnapshot(
+        sessionId,
         currentUnlockedVault,
         currentSnapshotVersionVector,
       );
@@ -159,23 +166,31 @@ export class DisableSyncUseCase {
       currentUnlockedVault.devicePrivateSignKey,
     );
 
-    const persistedSnapshot = await this.vaultSnapshot.persistUnlockedVault(
-      params.vaultId,
-      updatedUnlockedVault,
-      currentSnapshotVersionVector,
-      {
-        keySlots: {
-          deviceSlots: currentDeviceSlots,
-          completedEnrollments: currentSnapshot.keySlots.completedEnrollments,
-        },
-        nextTrust: {
-          chain: nextTrust.chain,
-          state: nextTrust.trust,
-        },
-      },
-    );
+    const persistedSnapshot =
+      await this.unlockedVaultSession.persistForActiveSession(
+        sessionId,
+        params.vaultId,
+        async () =>
+          this.vaultSnapshot.persistUnlockedVault(
+            params.vaultId,
+            updatedUnlockedVault,
+            currentSnapshotVersionVector,
+            {
+              keySlots: {
+                deviceSlots: currentDeviceSlots,
+                completedEnrollments:
+                  currentSnapshot.keySlots.completedEnrollments,
+              },
+              nextTrust: {
+                chain: nextTrust.chain,
+                state: nextTrust.trust,
+              },
+            },
+          ),
+      );
 
     await this.unlockedVaultSession.commitPersistedSnapshot(
+      sessionId,
       {
         ...updatedUnlockedVault,
         trustedSnapshotContext: persistedSnapshot.trustedSnapshotContext,

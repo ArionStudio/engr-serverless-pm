@@ -776,7 +776,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     const error = new Error("commit failed");
 
     vi.mocked(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.activate,
     ).mockRejectedValueOnce(error);
 
     await expect(
@@ -817,9 +817,6 @@ describe("PerformDeviceEnrollmentUseCase", () => {
 
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.remove,
-    ).toHaveBeenCalled();
-    expect(
       ctx.ports.vaultLocalRepository.removePersistedLocalVault,
     ).toHaveBeenCalledWith(ctx.values.vaultId);
     expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
@@ -827,5 +824,49 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     expect(ctx.ports.saved.deviceAccessMaterial).toBeUndefined();
     expect(ctx.ports.saved.deviceAccessRecoveryBackup).toBeUndefined();
     expect(ctx.ports.saved.vaultSnapshot).toBeUndefined();
+  });
+
+  it("does not remove a newer enrollment session after a stale upload fails", async () => {
+    const ctx = createContext();
+    let originalSessionId = "";
+
+    vi.mocked(
+      ctx.ports.syncProvider.uploadVaultSnapshot,
+    ).mockImplementationOnce(async () => {
+      const activeSession = ctx.ports.saved.unlockedVaultSession!;
+      originalSessionId = activeSession.sessionId;
+
+      await ctx.ports.sessionServices.unlockedVaultSession.remove();
+      vi.mocked(ctx.ports.ids.generateId).mockResolvedValueOnce(
+        "new-session-id",
+      );
+      const activationGeneration =
+        await ctx.ports.sessionServices.unlockedVaultSession.requireVaultCanBeActivated(
+          ctx.values.vaultId,
+        );
+      await ctx.ports.sessionServices.unlockedVaultSession.activate(
+        activationGeneration,
+        activeSession.unlockedVault,
+        activeSession.sourceSnapshotVersionVector,
+      );
+
+      throw new RemoteVaultSnapshotChangedError(ctx.values.vaultId);
+    });
+
+    await expect(
+      ctx.useCase.execute({
+        enrollmentBundle: ctx.enrollmentBundle,
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "New laptop",
+      }),
+    ).rejects.toBeInstanceOf(SyncConflictDetectedError);
+
+    expect(
+      ctx.ports.vaultLocalRepository.removePersistedLocalVault,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.unlockedVaultSession?.sessionId).not.toBe(
+      originalSessionId,
+    );
+    expect(ctx.ports.saved.localVaultDescriptor).toBeDefined();
   });
 });

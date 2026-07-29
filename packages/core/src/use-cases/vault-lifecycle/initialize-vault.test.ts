@@ -152,6 +152,7 @@ describe("InitializeVaultUseCase", () => {
     );
 
     expect(ctx.saved.unlockedVaultSession).toEqual({
+      sessionId: ctx.values.sessionId,
       unlockedVault: {
         vaultId: ctx.values.vaultId,
         deviceId: ctx.values.deviceId,
@@ -192,7 +193,7 @@ describe("InitializeVaultUseCase", () => {
       ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
     ).toHaveBeenCalledTimes(1);
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.activate,
     ).not.toHaveBeenCalled();
     expect(
       ctx.ports.vaultLocalRepository.saveLocalVaultDescriptor,
@@ -210,7 +211,7 @@ describe("InitializeVaultUseCase", () => {
     const error = new Error("session commit failed");
 
     vi.mocked(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.activate,
     ).mockRejectedValueOnce(error);
 
     await expect(
@@ -238,7 +239,7 @@ describe("InitializeVaultUseCase", () => {
     const cleanupError = new Error("initialized local cleanup failed");
 
     vi.mocked(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.activate,
     ).mockRejectedValueOnce(commitError);
     vi.mocked(
       ctx.ports.vaultLocalRepository.removePersistedLocalVault,
@@ -287,7 +288,7 @@ describe("InitializeVaultUseCase", () => {
       ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commit,
+      ctx.ports.sessionServices.unlockedVaultSession.activate,
     ).not.toHaveBeenCalled();
   });
 });

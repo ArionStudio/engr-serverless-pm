@@ -20,6 +20,7 @@ export function createChangeMasterPasswordTestContext() {
 
   ports.saved.deviceAccessMaterial = deviceAccessMaterial;
   ports.saved.unlockedVaultSession = {
+    sessionId: values.sessionId,
     unlockedVault: {
       vaultId: values.vaultId,
       deviceId: values.deviceId,
