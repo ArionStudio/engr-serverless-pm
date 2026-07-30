@@ -1,6 +1,6 @@
 import type { RandomBytes } from "../crypto/brand-keys";
 import type { SerializedEncrypted } from "../crypto/protected-artifact";
-import type { DeviceVaultPublicKey } from "../device-trust";
+import type { DeviceVaultPublicKey } from "../device-trust/brand-keys";
 import type { VaultMasterKey } from "./brand-keys";
 
 export type DeviceVaultKeyEnvelope = {

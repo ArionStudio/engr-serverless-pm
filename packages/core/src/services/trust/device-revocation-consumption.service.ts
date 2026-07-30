@@ -10,7 +10,10 @@ import type { VaultSnapshotDescriptor } from "../../domain/snapshot";
 import type { Vault } from "../../domain/vault";
 import { revokeDeviceProfileFromVault } from "../../domain/vault/vault-device.mutations";
 import { compareVersionVectors } from "../../domain/versioning";
-import { InvalidDeviceRevocationTransitionError } from "../../errors/device-revocation.errors";
+import {
+  CurrentDeviceRevokedError,
+  InvalidDeviceRevocationTransitionError,
+} from "../../errors/device-revocation.errors";
 import {
   InvalidSyncConfigError,
   RemoteVaultSnapshotChangedError,
@@ -139,7 +142,7 @@ export class DeviceRevocationConsumptionService {
     );
 
     if (finalLocalIdentity === undefined) {
-      throw new DeviceKeySlotNotFoundError(
+      throw new CurrentDeviceRevokedError(
         params.vaultId,
         params.unlockedVault.deviceId,
       );

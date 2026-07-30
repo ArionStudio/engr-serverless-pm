@@ -51,7 +51,7 @@ export interface AlgorithmSuite {
     readonly saltLengthBytes: 32;
   };
   readonly keyWrapping: {
-    readonly algorithm: "A256GCMKW";
+    readonly algorithm: "AES-256-GCM";
     readonly nonceLengthBytes: 12;
   };
   readonly vaultSnapshotEncryption: {

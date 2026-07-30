@@ -205,7 +205,7 @@ export class ConsumeDeviceRevocationUseCase {
         encryptedCredentialState,
       );
     } else {
-      let resolvedVault;
+      let resolvedVault: Vault;
 
       try {
         resolvedVault = applyVaultSyncResolution(
@@ -265,13 +265,18 @@ export class ConsumeDeviceRevocationUseCase {
       unlockedVault.devicePrivateSignKey,
     );
 
-    await this.vaultLocalRepository.saveVaultSnapshotWithCheckpoint({
-      expectedSnapshotDigest:
-        unlockedVault.trustedSnapshotContext.snapshotDigest,
-      snapshot: remoteSnapshot,
-      checkpoint,
-      syncCredentialState: encryptedCredentialState,
-    });
+    await this.unlockedVaultSession.persistForActiveSession(
+      sessionId,
+      unlockedVault.vaultId,
+      async () =>
+        this.vaultLocalRepository.saveVaultSnapshotWithCheckpoint({
+          expectedSnapshotDigest:
+            unlockedVault.trustedSnapshotContext.snapshotDigest,
+          snapshot: remoteSnapshot,
+          checkpoint,
+          syncCredentialState: encryptedCredentialState,
+        }),
+    );
 
     await this.unlockedVaultSession.commitPersistedSnapshot(
       sessionId,

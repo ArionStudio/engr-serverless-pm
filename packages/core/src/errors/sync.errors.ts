@@ -196,9 +196,10 @@ export class ChangedDeviceKeySlotsError extends Error {
 }
 
 export class SyncTrustChangeRequiresDeviceTrustFlowError extends Error {
-  constructor(vaultId: string) {
+  constructor(vaultId: string, cause?: unknown) {
     super(
       `Vault "${vaultId}" has device trust changes that must be handled by the device trust flow.`,
+      { cause },
     );
     this.name = "SyncTrustChangeRequiresDeviceTrustFlowError";
   }

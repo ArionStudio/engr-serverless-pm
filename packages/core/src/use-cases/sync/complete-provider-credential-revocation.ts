@@ -4,6 +4,7 @@ import {
   SyncNotConfiguredError,
 } from "../../errors/sync.errors";
 import { InvalidDeviceRevocationTransitionError } from "../../errors/device-revocation.errors";
+import { LocalVaultTrustCheckpointNotFoundError } from "../../errors/vault-trust.errors";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
@@ -38,7 +39,7 @@ export class CompleteProviderCredentialRevocationUseCase {
   async execute(
     params: CompleteProviderCredentialRevocationCommandParams,
   ): Promise<{ readonly providerCredentialRevocation: "complete" }> {
-    const { sourceSnapshotVersionVector, unlockedVault } =
+    const { sessionId, sourceSnapshotVersionVector, unlockedVault } =
       await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
         "complete provider credential revocation",
@@ -112,9 +113,26 @@ export class CompleteProviderCredentialRevocationUseCase {
       unlockedVault.deviceLocalProtectionKey,
       context,
     );
-    await this.vaultLocalRepository.saveDeviceSyncCredentialState(
+    const checkpoint =
+      await this.vaultLocalRepository.getLocalVaultTrustCheckpoint(
+        params.vaultId,
+      );
+
+    if (checkpoint === null) {
+      throw new LocalVaultTrustCheckpointNotFoundError(params.vaultId);
+    }
+
+    await this.unlockedVaultSession.persistForActiveSession(
+      sessionId,
       params.vaultId,
-      completedState,
+      async () =>
+        this.vaultLocalRepository.saveVaultSnapshotWithCheckpoint({
+          expectedSnapshotDigest:
+            unlockedVault.trustedSnapshotContext.snapshotDigest,
+          snapshot,
+          checkpoint,
+          syncCredentialState: completedState,
+        }),
     );
 
     return { providerCredentialRevocation: "complete" };

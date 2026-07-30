@@ -14,13 +14,16 @@ import type { UnlockedVault } from "../../domain/session";
 import type { VaultSnapshot } from "../../domain/snapshot";
 import { toVaultSnapshotDescriptor } from "../../domain/snapshot";
 import { revokeDeviceProfileFromVault } from "../../domain/vault/vault-device.mutations";
-import { InvalidDeviceRevocationTransitionError } from "../../errors/device-revocation.errors";
+import {
+  CurrentDeviceRevokedError,
+  InvalidDeviceRevocationTransitionError,
+} from "../../errors/device-revocation.errors";
 import {
   RemoteVaultSnapshotChangedError,
   SyncConflictDetectedError,
   SyncResolutionIncompleteError,
 } from "../../errors/sync.errors";
-import { DeviceKeySlotNotFoundError } from "../../errors/unlock-vault.errors";
+import { UnlockedVaultSessionExpiredError } from "../../errors/vault-session.errors";
 import { LocalVaultSnapshotChangedError } from "../../errors/vault-snapshot.errors";
 import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import { ConsumeDeviceRevocationUseCase } from "./consume-device-revocation";
@@ -291,11 +294,16 @@ describe("PrepareDeviceRevocationConsumptionUseCase", () => {
 describe("ConsumeDeviceRevocationUseCase", () => {
   it("opens the survivor envelope and commits the rotated snapshot", async () => {
     const ctx = createContext();
+    const survivorSlot = ctx.remoteSnapshot.keySlots.deviceSlots[0];
+
+    if (survivorSlot === undefined) {
+      throw new Error("Expected a survivor slot.");
+    }
 
     const result = await ctx.useCase.execute(createCommand(ctx));
 
     expect(ctx.ports.crypto.openDeviceVaultKeyEnvelope).toHaveBeenCalledWith(
-      ctx.remoteSnapshot.keySlots.deviceSlots[0]?.envelope,
+      survivorSlot.envelope,
       ctx.values.devicePrivateVaultKey,
       {
         vaultId: ctx.values.vaultId,
@@ -423,6 +431,12 @@ describe("ConsumeDeviceRevocationUseCase", () => {
       },
       signature: ctx.values.vaultTrustCertificateSignature,
     };
+    const survivorSlot = localSnapshot.keySlots.deviceSlots.at(0);
+
+    if (survivorSlot === undefined) {
+      throw new Error("Expected a survivor slot.");
+    }
+
     const remoteSnapshot: VaultSnapshot = {
       ...localSnapshot,
       metadata: {
@@ -441,7 +455,7 @@ describe("ConsumeDeviceRevocationUseCase", () => {
       keySlots: {
         deviceSlots: [
           {
-            ...localSnapshot.keySlots.deviceSlots[0],
+            ...survivorSlot,
             vaultKeyGeneration: 3,
             envelope: {
               ...ctx.values.vaultKeyEnvelope,
@@ -833,6 +847,25 @@ describe("ConsumeDeviceRevocationUseCase", () => {
     );
   });
 
+  it("does not persist the remote snapshot after the unlocked session expires", async () => {
+    const ctx = createContext();
+    vi.mocked(
+      ctx.ports.crypto.encryptDeviceSyncCredentialState,
+    ).mockImplementationOnce(async () => {
+      await ctx.ports.sessionServices.unlockedVaultSession.remove();
+      return ctx.values.replacementEncryptedDeviceSyncCredentialState;
+    });
+
+    await expect(
+      ctx.useCase.execute(createCommand(ctx)),
+    ).rejects.toBeInstanceOf(UnlockedVaultSessionExpiredError);
+
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.vaultSnapshot).toEqual(ctx.localSnapshot);
+  });
+
   it("rejects a revoked local device before vault decryption", async () => {
     const ctx = createContext();
     const certificates = ctx.remoteSnapshot.trustChain.certificates;
@@ -901,7 +934,7 @@ describe("ConsumeDeviceRevocationUseCase", () => {
           remoteSnapshot,
         ),
       }),
-    ).rejects.toBeInstanceOf(DeviceKeySlotNotFoundError);
+    ).rejects.toBeInstanceOf(CurrentDeviceRevokedError);
 
     expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
   });

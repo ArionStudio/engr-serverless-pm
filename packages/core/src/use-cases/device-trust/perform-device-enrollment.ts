@@ -33,6 +33,7 @@ import {
 import {
   InvalidSyncConfigError,
   RemoteVaultSnapshotChangedError,
+  SyncRemovalPendingError,
 } from "../../errors/sync.errors";
 import type { Bip39Port } from "../../ports/crypto/bip39.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
@@ -447,6 +448,10 @@ export class PerformDeviceEnrollmentUseCase {
     syncConfig: SyncSetupInput | undefined,
     authorizedSnapshot: VaultSnapshot,
   ): Promise<SyncAccess | undefined> {
+    if (vault.syncRemovalPending === true) {
+      throw new SyncRemovalPendingError(vaultId, "complete device enrollment");
+    }
+
     if (vault.syncTarget === undefined) {
       return undefined;
     }

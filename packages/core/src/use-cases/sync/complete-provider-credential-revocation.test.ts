@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
 import { createUnlockedVaultWithEntries } from "../../__tests__/fixtures/vault-entries";
+import { InvalidDeviceRevocationTransitionError } from "../../errors/device-revocation.errors";
 import { PreviousSyncCredentialStillActiveError } from "../../errors/sync.errors";
+import { LocalVaultSnapshotChangedError } from "../../errors/vault-snapshot.errors";
 import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import { CompleteProviderCredentialRevocationUseCase } from "./complete-provider-credential-revocation";
 
@@ -28,6 +30,13 @@ function createContext() {
   };
   const unlockedVault = createUnlockedVaultWithEntries(ctx.values, []);
   ctx.saved.vaultSnapshot = snapshot;
+  ctx.saved.localVaultTrustCheckpoint = {
+    ...ctx.values.localVaultTrustCheckpoint,
+    payload: {
+      ...ctx.values.localVaultTrustCheckpoint.payload,
+      vaultKeyGeneration: 2,
+    },
+  };
   ctx.saved.deviceSyncCredentialState =
     ctx.values.replacementEncryptedDeviceSyncCredentialState;
   ctx.saved.unlockedVaultSession = {
@@ -82,6 +91,18 @@ describe("CompleteProviderCredentialRevocationUseCase", () => {
     expect(ctx.saved.deviceSyncCredentialState).toBe(
       ctx.values.encryptedDeviceSyncCredentialState,
     );
+    expect(
+      ctx.ports.vaultLocalRepository.saveDeviceSyncCredentialState,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expectedSnapshotDigest: ctx.values.vaultSnapshotDigest,
+        snapshot: ctx.saved.vaultSnapshot,
+        syncCredentialState: ctx.values.encryptedDeviceSyncCredentialState,
+      }),
+    );
   });
 
   it("keeps pending state while the old credential remains accessible", async () => {
@@ -109,5 +130,46 @@ describe("CompleteProviderCredentialRevocationUseCase", () => {
     ).resolves.toEqual({ providerCredentialRevocation: "complete" });
 
     expect(ctx.ports.syncProvider.checkVaultAccess).not.toHaveBeenCalled();
+  });
+
+  it("rejects pending credentials bound to another vault-key generation", async () => {
+    const ctx = createContext();
+    vi.mocked(
+      ctx.ports.crypto.decryptDeviceSyncCredentialState,
+    ).mockResolvedValueOnce({
+      currentCredentials: ctx.values.replacementSyncCredentials,
+      previousCredentials: {
+        credentials: ctx.values.syncCredentials,
+        revokedDeviceIds: [ctx.values.pendingDeviceId],
+        vaultKeyGeneration: 1,
+      },
+    });
+
+    await expect(
+      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toBeInstanceOf(InvalidDeviceRevocationTransitionError);
+
+    expect(ctx.ports.syncProvider.checkVaultAccess).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("does not overwrite credentials when the snapshot changes during provider verification", async () => {
+    const ctx = createContext();
+    vi.mocked(ctx.ports.syncProvider.checkVaultAccess).mockImplementationOnce(
+      async () => {
+        ctx.saved.vaultSnapshotDigest = "newer-snapshot-digest";
+        return "authentication_rejected";
+      },
+    );
+
+    await expect(
+      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toBeInstanceOf(LocalVaultSnapshotChangedError);
+
+    expect(ctx.saved.deviceSyncCredentialState).toBe(
+      ctx.values.replacementEncryptedDeviceSyncCredentialState,
+    );
   });
 });

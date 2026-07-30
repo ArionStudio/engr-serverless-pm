@@ -13,7 +13,10 @@ import {
   DeviceEnrollmentRemoteSnapshotChangedError,
   PendingDeviceEnrollmentMismatchError,
 } from "../../errors/device-enrollment.errors";
-import { RemoteVaultSnapshotChangedError } from "../../errors/sync.errors";
+import {
+  RemoteVaultSnapshotChangedError,
+  SyncRemovalPendingError,
+} from "../../errors/sync.errors";
 import { PerformDeviceEnrollmentUseCase } from "./perform-device-enrollment";
 
 function createContext(synced = false) {
@@ -147,7 +150,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
   it("encrypts manually supplied sync credentials only in local storage", async () => {
     const ctx = createContext(true);
 
-    await ctx.useCase.execute({
+    const result = await ctx.useCase.execute({
       enrollmentResponse: ctx.response,
       masterPassword: ctx.values.masterPassword,
       deviceName: "New laptop",
@@ -169,7 +172,30 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     expect(ctx.ports.saved.deviceSyncCredentialState).toBe(
       ctx.values.encryptedDeviceSyncCredentialState,
     );
-    expect(ctx.response).not.toHaveProperty("credentials");
+    expect(result).not.toHaveProperty("credentials");
+    expect(result).not.toHaveProperty("syncConfig");
+  });
+
+  it("rejects enrollment while remote sync removal is pending", async () => {
+    const ctx = createContext(true);
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
+      ...ctx.values.decryptedVault,
+      syncTarget: ctx.values.syncTarget,
+      syncRemovalPending: true,
+    });
+
+    await expect(
+      ctx.useCase.execute({
+        enrollmentResponse: ctx.response,
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "New laptop",
+        syncConfig: ctx.values.syncConfigInput,
+      }),
+    ).rejects.toBeInstanceOf(SyncRemovalPendingError);
+
+    expect(ctx.ports.syncProvider.setup).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.localVaultDescriptor).toBeUndefined();
+    expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
   });
 
   it("retains pending state when a target key pair does not match", async () => {

@@ -22,6 +22,15 @@ export class VaultSnapshotVersionMismatchError extends Error {
   }
 }
 
+export class VaultSnapshotDigestMismatchError extends Error {
+  constructor(vaultId: string) {
+    super(
+      `Vault "${vaultId}" local snapshot does not match the unlocked session's trusted snapshot digest.`,
+    );
+    this.name = "VaultSnapshotDigestMismatchError";
+  }
+}
+
 export class LocalVaultSnapshotChangedError extends Error {
   constructor(vaultId: string) {
     super(`Local vault snapshot for vault "${vaultId}" changed before save.`);

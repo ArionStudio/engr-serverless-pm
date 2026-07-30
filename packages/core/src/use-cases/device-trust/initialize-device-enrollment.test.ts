@@ -6,7 +6,11 @@ import type {
   DeviceVaultPublicKey,
 } from "../../domain/device-trust";
 import { toVaultSnapshotDescriptor } from "../../domain/snapshot";
-import { DeviceEnrollmentIntegrityError } from "../../errors/device-enrollment.errors";
+import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
+import {
+  DeviceEnrollmentIntegrityError,
+  DeviceEnrollmentVaultNotSynchronizedError,
+} from "../../errors/device-enrollment.errors";
 import { ProviderCredentialRevocationPendingError } from "../../errors/sync.errors";
 import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import { VaultSyncGuardService } from "../../services/sync";
@@ -92,6 +96,30 @@ describe("InitializeDeviceEnrollmentUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
+  it("rejects an enrollment request for another algorithm suite", async () => {
+    const ctx = createContext();
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        request: {
+          ...ctx.values.enrollmentRequest,
+          payload: {
+            ...ctx.values.enrollmentRequest.payload,
+            algorithmSuiteId: "another-suite",
+          },
+        },
+      }),
+    ).rejects.toBeInstanceOf(UnsupportedAlgorithmSuiteError);
+
+    expect(
+      ctx.ports.crypto.verifyDeviceEnrollmentRequestSignature,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+  });
+
   it("rejects a request pinned to another trust anchor", async () => {
     const ctx = createContext();
 
@@ -107,6 +135,45 @@ describe("InitializeDeviceEnrollmentUseCase", () => {
         },
       }),
     ).rejects.toBeInstanceOf(DeviceEnrollmentIntegrityError);
+
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("rejects authorization when the remote snapshot differs from local state", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession;
+
+    if (session === undefined) {
+      throw new Error("Expected an unlocked test session.");
+    }
+
+    ctx.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          syncTarget: ctx.values.syncTarget,
+        },
+      },
+    };
+    ctx.saved.deviceSyncCredentialState =
+      ctx.values.encryptedDeviceSyncCredentialState;
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValue({
+      ...toVaultSnapshotDescriptor(ctx.values.vaultId, ctx.vaultSnapshot),
+      snapshotVersionVector: { [ctx.values.deviceId]: 0 },
+    });
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        request: ctx.values.enrollmentRequest,
+      }),
+    ).rejects.toBeInstanceOf(DeviceEnrollmentVaultNotSynchronizedError);
 
     expect(
       ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,

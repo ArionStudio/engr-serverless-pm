@@ -159,6 +159,15 @@ export class DisableSyncUseCase {
     const survivingIdentities = currentTrust.trustedDevices.filter(
       (device) => device.deviceId === currentUnlockedVault.deviceId,
     );
+    const currentIdentity = survivingIdentities[0];
+
+    if (currentIdentity === undefined) {
+      throw new VaultTrustStateInvalidError(
+        params.vaultId,
+        "current device is not trusted",
+      );
+    }
+
     const revokesOtherDevices =
       survivingIdentities.length !== currentTrust.trustedDevices.length;
     const vaultKeyGeneration = revokesOtherDevices
@@ -178,14 +187,6 @@ export class DisableSyncUseCase {
           chain: currentSnapshot.trustChain,
           trust: currentTrust,
         };
-    const currentIdentity = survivingIdentities[0];
-
-    if (currentIdentity === undefined) {
-      throw new VaultTrustStateInvalidError(
-        params.vaultId,
-        "current device is not trusted",
-      );
-    }
 
     const vaultMasterKey = revokesOtherDevices
       ? await this.crypto.generateVaultMasterKey()

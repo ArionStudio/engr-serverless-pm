@@ -53,7 +53,7 @@ export const CURRENT_ALGORITHM_SUITE: AlgorithmSuite = {
     saltLengthBytes: 32,
   },
   keyWrapping: {
-    algorithm: "A256GCMKW",
+    algorithm: "AES-256-GCM",
     nonceLengthBytes: 12,
   },
   vaultSnapshotEncryption: {

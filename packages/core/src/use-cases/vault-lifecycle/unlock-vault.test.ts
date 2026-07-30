@@ -123,4 +123,28 @@ describe("UnlockVaultUseCase", () => {
     expect(ctx.ports.vaultLockTasks.remove).toHaveBeenCalled();
     expect(ctx.saved.unlockedVaultSession).toBeUndefined();
   });
+
+  it("cancels the scheduled lock and removes metadata when activation fails", async () => {
+    const ctx = createUnlockVaultTestContext();
+    const activationError = new Error("session activation failed");
+    vi.mocked(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .saveUnlockedVaultSessionMaterial,
+    ).mockRejectedValueOnce(activationError);
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 60_000,
+      }),
+    ).rejects.toBe(activationError);
+
+    expect(ctx.ports.scheduledTasks.cancelTask).toHaveBeenCalledWith({
+      name: "lockVault",
+      actionId: ctx.values.vaultLockActionId,
+    });
+    expect(ctx.ports.vaultLockTasks.remove).toHaveBeenCalled();
+    expect(ctx.saved.unlockedVaultSession).toBeUndefined();
+  });
 });

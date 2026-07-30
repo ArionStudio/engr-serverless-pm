@@ -86,7 +86,8 @@ cryptographic primitives. Arbitrary mixing of algorithms is not permitted.
 
 ### 3.4 Vault-Key Envelopes
 
-- Algorithm: AES-256-GCM (A256GCMKW per RFC 7518 §4.7)
+- Algorithm: custom AES-256-GCM key wrapping with the authenticated context
+  defined below
 - IV: 12 random bytes, unique per wrap operation
 - Tag length: 128 bits
 - A fresh ephemeral ECDH P-256 pair and HKDF salt are generated per recipient.
@@ -246,7 +247,7 @@ IndexedDB stores:
     - `wrappedVaultPrivateKey`
     - `wrappedLocalProtectionKey`
     - `signingPublicKeyBytes`
-    - `agreementPublicKeyBytes`
+    - `vaultPublicKeyBytes`
   - `createdAt`, `lastSyncTimestamp` (nullable)
 - `pendingSync` queue records:
   - `id`, `operation`, `entryId`, `timestamp`, `retryCount`

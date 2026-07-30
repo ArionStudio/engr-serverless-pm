@@ -7,6 +7,7 @@ import {
 } from "../../domain/snapshot/vault-snapshot-descriptor.utils";
 
 import {
+  ChangedDeviceKeySlotsError,
   LocalVaultSnapshotAheadError,
   RemoteVaultSnapshotChangedError,
   RemoteVaultSnapshotIntegrityError,
@@ -165,8 +166,15 @@ export class PrepareSyncReviewUseCase {
         localSnapshot.keySlots,
         remoteSnapshot.keySlots,
       );
-    } catch {
-      throw new SyncTrustChangeRequiresDeviceTrustFlowError(params.vaultId);
+    } catch (error) {
+      if (error instanceof ChangedDeviceKeySlotsError) {
+        throw new SyncTrustChangeRequiresDeviceTrustFlowError(
+          params.vaultId,
+          error,
+        );
+      }
+
+      throw error;
     }
 
     if (

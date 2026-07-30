@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
 import { createUnlockedVaultWithEntries } from "../../__tests__/fixtures/vault-entries";
 import { VaultTrustStateInvalidError } from "../../errors/vault-trust.errors";
-import { SnapshotSigningDeviceNotTrustedError } from "../../errors/vault-snapshot.errors";
+import {
+  SnapshotSigningDeviceNotTrustedError,
+  VaultSnapshotDigestMismatchError,
+} from "../../errors/vault-snapshot.errors";
 import { VaultSnapshotService } from "./vault-snapshot.service";
 
 function createContext() {
@@ -79,6 +82,21 @@ describe("VaultSnapshotService", () => {
     ).rejects.toBeInstanceOf(SnapshotSigningDeviceNotTrustedError);
 
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
+  });
+
+  it("distinguishes a changed snapshot digest from a version mismatch", async () => {
+    const ctx = createContext();
+    vi.mocked(ctx.ports.crypto.digestVaultSnapshot).mockResolvedValueOnce(
+      "changed-snapshot-digest",
+    );
+
+    await expect(
+      ctx.service.requireCurrentSnapshotForUnlockedVault(
+        ctx.values.vaultId,
+        ctx.unlockedVault,
+        ctx.vaultSnapshot.metadata.snapshotVersionVector,
+      ),
+    ).rejects.toBeInstanceOf(VaultSnapshotDigestMismatchError);
   });
 
   it("does not save when encryption fails", async () => {

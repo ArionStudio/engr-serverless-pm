@@ -123,6 +123,7 @@ export class RevokeDeviceUseCase {
       throw new DeviceToRevokeNotTrustedError(params.vaultId, params.deviceId);
     }
 
+    const vaultKeyGeneration = currentSnapshot.metadata.vaultKeyGeneration + 1;
     let previousEncryptedCredentials: EncryptedDeviceSyncCredentialState | null =
       null;
     let replacementAccess: SyncAccess | undefined;
@@ -208,7 +209,7 @@ export class RevokeDeviceUseCase {
         previousCredentials: {
           credentials: previousState.currentCredentials,
           revokedDeviceIds: [params.deviceId],
-          vaultKeyGeneration: currentSnapshot.metadata.vaultKeyGeneration + 1,
+          vaultKeyGeneration,
         },
       };
     } else if (params.replacementSyncConfig !== undefined) {
@@ -225,7 +226,6 @@ export class RevokeDeviceUseCase {
       unlockedVault.trustedSnapshotContext.trust.trustedDevices.filter(
         (device) => device.deviceId !== params.deviceId,
       );
-    const vaultKeyGeneration = currentSnapshot.metadata.vaultKeyGeneration + 1;
     const nextTrust = await this.vaultTrust.appendTrustTransition(
       params.vaultId,
       currentSnapshot.trustChain,

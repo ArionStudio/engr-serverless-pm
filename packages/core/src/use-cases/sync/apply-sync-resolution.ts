@@ -12,6 +12,7 @@ import {
   toVaultSnapshotDescriptor,
 } from "../../domain/snapshot/vault-snapshot-descriptor.utils";
 import { mergeVersionVectors } from "../../domain/versioning/version-vector.utils";
+import type { Vault } from "../../domain/vault";
 import {
   InvalidSyncResolutionError,
   InvalidVaultSyncResolutionError,
@@ -157,8 +158,11 @@ export class ApplySyncResolutionUseCase {
         localSnapshot.keySlots,
         remoteSnapshot.keySlots,
       ).hasChanges;
-    } catch {
-      throw new SyncTrustChangeRequiresDeviceTrustFlowError(params.vaultId);
+    } catch (error) {
+      throw new SyncTrustChangeRequiresDeviceTrustFlowError(
+        params.vaultId,
+        error,
+      );
     }
 
     if (
@@ -207,7 +211,7 @@ export class ApplySyncResolutionUseCase {
       throw new SyncResolutionIncompleteError(params.vaultId);
     }
 
-    let resolvedVault;
+    let resolvedVault: Vault;
 
     try {
       resolvedVault = applyVaultSyncResolution(

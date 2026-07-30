@@ -20,6 +20,7 @@ import { VaultSnapshotNotFoundError } from "../../errors/unlock-vault.errors";
 import {
   PersistedVaultMismatchError,
   SnapshotSigningDeviceNotTrustedError,
+  VaultSnapshotDigestMismatchError,
   VaultSnapshotVersionMismatchError,
 } from "../../errors/vault-snapshot.errors";
 import { VaultTrustStateInvalidError } from "../../errors/vault-trust.errors";
@@ -257,11 +258,7 @@ export class VaultSnapshotService {
       (await this.crypto.digestVaultSnapshot(snapshot)) !==
       unlockedVault.trustedSnapshotContext.snapshotDigest
     ) {
-      throw new VaultSnapshotVersionMismatchError(
-        vaultId,
-        sourceSnapshotVersionVector,
-        snapshot.metadata.snapshotVersionVector,
-      );
+      throw new VaultSnapshotDigestMismatchError(vaultId);
     }
 
     await this.vaultTrust.verifySnapshot(
