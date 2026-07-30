@@ -1,4 +1,8 @@
-import type { DevicePrivateSignKey } from "../device-trust/brand-keys";
+import type {
+  DeviceLocalProtectionKey,
+  DevicePrivateSignKey,
+  DeviceVaultPrivateKey,
+} from "../device-trust/brand-keys";
 import type { VaultMasterKey } from "../snapshot/brand-keys";
 import type { Vault } from "../vault/vault";
 import type { VerifiedVaultTrustState } from "../device-trust/vault-trust";
@@ -15,6 +19,8 @@ export type UnlockedVault = {
   readonly vault: Vault;
   readonly vaultMasterKey: VaultMasterKey;
   readonly devicePrivateSignKey: DevicePrivateSignKey;
+  readonly devicePrivateVaultKey: DeviceVaultPrivateKey;
+  readonly deviceLocalProtectionKey: DeviceLocalProtectionKey;
   readonly trustedSnapshotContext: TrustedSnapshotContext;
   readonly vaultTrustAnchor: LocalVaultTrustAnchor;
 };

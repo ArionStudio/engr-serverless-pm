@@ -1,39 +1,31 @@
 import type {
+  VaultTrustChain,
+  VerifiedVaultTrustState,
+} from "../../domain/device-trust";
+import type { UnlockedVault } from "../../domain/session/unlocked-vault";
+import type { VaultMasterKey } from "../../domain/snapshot/brand-keys";
+import type {
   UnsignedVaultSnapshot,
   VaultSnapshot,
 } from "../../domain/snapshot/vault-snapshot";
-import type { DeviceKeySlot } from "../../domain/snapshot/key-slot";
-import type {
-  CompletedDeviceEnrollmentProof,
-  DeviceEnrollmentAuthorizationPayload,
-} from "../../domain/device-trust";
-import type { VaultMasterKey } from "../../domain/snapshot/brand-keys";
-import type { UnlockedVault } from "../../domain/session/unlocked-vault";
 import type { Vault } from "../../domain/vault/vault";
-import type { CryptoPort } from "../../ports/crypto/crypto.port";
-import type { ClockPort } from "../../ports/system/clock.port";
-import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
-import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
+import type { EncryptedDeviceSyncCredentialState } from "../../domain/sync";
+import type { VersionVector } from "../../domain/versioning/version-vector.type";
 import {
-  VaultSnapshotNotFoundError,
-  VaultSnapshotSignatureVerificationFailedError,
-  VaultSnapshotSignerNotTrustedError,
-} from "../../errors/unlock-vault.errors";
+  compareVersionVectors,
+  incrementVersionVector,
+} from "../../domain/versioning/version-vector.utils";
+import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
+import { VaultSnapshotNotFoundError } from "../../errors/unlock-vault.errors";
 import {
   PersistedVaultMismatchError,
   SnapshotSigningDeviceNotTrustedError,
   VaultSnapshotVersionMismatchError,
 } from "../../errors/vault-snapshot.errors";
 import { VaultTrustStateInvalidError } from "../../errors/vault-trust.errors";
-import {
-  compareVersionVectors,
-  incrementVersionVector,
-} from "../../domain/versioning/version-vector.utils";
-import type { VersionVector } from "../../domain/versioning/version-vector.type";
-import type {
-  VaultTrustChain,
-  VerifiedVaultTrustState,
-} from "../../domain/device-trust";
+import type { CryptoPort } from "../../ports/crypto/crypto.port";
+import type { ClockPort } from "../../ports/system/clock.port";
+import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import { VaultTrustService } from "../trust/vault-trust.service";
 
 export class VaultSnapshotService {
@@ -60,23 +52,20 @@ export class VaultSnapshotService {
     options: {
       readonly baseSnapshotVersionVector?: VersionVector;
       readonly keySlots?: UnsignedVaultSnapshot["keySlots"];
+      readonly vaultKeyGeneration?: number;
+      readonly syncCredentialState?: EncryptedDeviceSyncCredentialState | null;
       readonly nextTrust?: {
         readonly chain: VaultTrustChain;
         readonly state: VerifiedVaultTrustState;
       };
     } = {},
   ) {
-    const currentVaultSnapshot =
-      await this.requireCurrentSnapshotForUnlockedVault(
-        vaultId,
-        unlockedVault,
-        sourceSnapshotVersionVector,
-      );
-
-    const revisionTimestamp = this.clock.now();
-    const keySlots = options.keySlots ?? currentVaultSnapshot.keySlots;
-    const trustChain =
-      options.nextTrust?.chain ?? currentVaultSnapshot.trustChain;
+    const currentSnapshot = await this.requireCurrentSnapshotForUnlockedVault(
+      vaultId,
+      unlockedVault,
+      sourceSnapshotVersionVector,
+    );
+    const trustChain = options.nextTrust?.chain ?? currentSnapshot.trustChain;
     const trustState =
       options.nextTrust?.state ?? unlockedVault.trustedSnapshotContext.trust;
 
@@ -84,22 +73,14 @@ export class VaultSnapshotService {
       throw new VaultTrustStateInvalidError(vaultId, "trust chain is missing");
     }
 
-    const trustedSigningDevice = trustState.trustedDevices.find(
+    const signingDevice = trustState.trustedDevices.find(
       (device) => device.deviceId === unlockedVault.deviceId,
-    );
-    const signingDeviceSlot = keySlots.deviceSlots.find(
-      (deviceSlot) => deviceSlot.deviceId === unlockedVault.deviceId,
     );
 
     if (
-      trustedSigningDevice === undefined ||
-      signingDeviceSlot === undefined ||
+      signingDevice === undefined ||
       !(await this.crypto.verifyDeviceSignKeyPair(
-        trustedSigningDevice.publicSignKey,
-        unlockedVault.devicePrivateSignKey,
-      )) ||
-      !(await this.crypto.verifyDeviceSignKeyPair(
-        signingDeviceSlot.publicSignKey,
+        signingDevice.publicSignKey,
         unlockedVault.devicePrivateSignKey,
       ))
     ) {
@@ -109,36 +90,40 @@ export class VaultSnapshotService {
       );
     }
 
-    const unsignedVaultSnapshot: UnsignedVaultSnapshot = {
+    const unsignedSnapshot: UnsignedVaultSnapshot = {
       metadata: {
-        ...currentVaultSnapshot.metadata,
-        revisionTimestamp,
+        ...currentSnapshot.metadata,
+        revisionTimestamp: this.clock.now(),
         snapshotVersionVector: incrementVersionVector(
           options.baseSnapshotVersionVector ??
-            currentVaultSnapshot.metadata.snapshotVersionVector,
+            currentSnapshot.metadata.snapshotVersionVector,
           unlockedVault.deviceId,
         ),
         createdByDeviceId: unlockedVault.deviceId,
+        vaultKeyGeneration:
+          options.vaultKeyGeneration ??
+          currentSnapshot.metadata.vaultKeyGeneration,
       },
       trustChain,
-      keySlots,
+      keySlots: options.keySlots ?? currentSnapshot.keySlots,
       content: await this.crypto.encryptVaultSnapshotContent(
         unlockedVault.vault,
         unlockedVault.vaultMasterKey,
       ),
     };
-
-    const vaultSnapshot: VaultSnapshot = {
-      ...unsignedVaultSnapshot,
+    const snapshot: VaultSnapshot = {
+      ...unsignedSnapshot,
       signature: await this.crypto.signVaultSnapshot(
-        unsignedVaultSnapshot,
+        unsignedSnapshot,
         unlockedVault.devicePrivateSignKey,
       ),
     };
 
-    const snapshotDigest = await this.crypto.digestVaultSnapshot(vaultSnapshot);
+    await this.vaultTrust.verifySnapshot(vaultId, snapshot, trustState);
+
+    const snapshotDigest = await this.crypto.digestVaultSnapshot(snapshot);
     const checkpoint = await this.vaultTrust.createCheckpoint(
-      vaultSnapshot,
+      snapshot,
       trustState,
       unlockedVault.deviceId,
       unlockedVault.devicePrivateSignKey,
@@ -147,136 +132,99 @@ export class VaultSnapshotService {
     await this.vaultLocalRepository.saveVaultSnapshotWithCheckpoint({
       expectedSnapshotDigest:
         unlockedVault.trustedSnapshotContext.snapshotDigest,
-      snapshot: vaultSnapshot,
+      snapshot,
       checkpoint,
+      ...(options.syncCredentialState === undefined
+        ? {}
+        : { syncCredentialState: options.syncCredentialState }),
     });
 
     return {
-      snapshotVersionVector: vaultSnapshot.metadata.snapshotVersionVector,
-      revisionTimestamp: vaultSnapshot.metadata.revisionTimestamp,
+      snapshotVersionVector: snapshot.metadata.snapshotVersionVector,
+      revisionTimestamp: snapshot.metadata.revisionTimestamp,
       trustedSnapshotContext: {
         snapshotDigest,
         trust: trustState,
       },
-      snapshot: vaultSnapshot,
+      snapshot,
     };
   }
 
   async requireLocalVaultSnapshot(vaultId: string): Promise<VaultSnapshot> {
-    const vaultSnapshot =
-      await this.vaultLocalRepository.getVaultSnapshot(vaultId);
+    const snapshot = await this.vaultLocalRepository.getVaultSnapshot(vaultId);
 
-    if (vaultSnapshot === null) {
+    if (snapshot === null) {
       throw new VaultSnapshotNotFoundError(vaultId);
     }
 
-    return vaultSnapshot;
+    return snapshot;
   }
 
   async verifyCandidateSnapshotTrust(
     vaultId: string,
-    vaultSnapshot: VaultSnapshot,
+    snapshot: VaultSnapshot,
     unlockedVault: UnlockedVault,
   ): Promise<{
     readonly chain: VaultTrustChain;
     readonly state: VerifiedVaultTrustState;
   }> {
-    this.requireSupportedSnapshotAlgorithm(vaultId, vaultSnapshot);
+    this.requireSupportedSnapshotAlgorithm(vaultId, snapshot);
 
-    if (vaultSnapshot.metadata.id !== vaultId) {
-      throw new PersistedVaultMismatchError(vaultId, vaultSnapshot.metadata.id);
-    }
-
-    const chain = vaultSnapshot.trustChain;
-
-    if (chain === undefined) {
-      throw new VaultTrustStateInvalidError(vaultId, "trust chain is missing");
+    if (snapshot.metadata.id !== vaultId) {
+      throw new PersistedVaultMismatchError(vaultId, snapshot.metadata.id);
     }
 
     const state = await this.vaultTrust.verifyTrustChain(
       vaultId,
       unlockedVault.vaultTrustAnchor,
-      chain,
+      snapshot.trustChain,
     );
     await this.vaultTrust.requireTrustDescendsFrom(
       vaultId,
-      chain,
+      snapshot.trustChain,
       state,
       unlockedVault.trustedSnapshotContext.trust,
     );
-    await this.vaultTrust.verifySnapshot(vaultId, vaultSnapshot, state);
+    await this.vaultTrust.verifySnapshot(vaultId, snapshot, state);
 
-    return { chain, state };
+    return { chain: snapshot.trustChain, state };
   }
 
   async restoreLocalVaultSnapshot(
-    vaultSnapshot: VaultSnapshot,
+    snapshot: VaultSnapshot,
     replacedSnapshot: VaultSnapshot,
     unlockedVault: UnlockedVault,
+    syncCredentialState?: EncryptedDeviceSyncCredentialState | null,
   ): Promise<void> {
     await this.vaultLocalRepository.saveVaultSnapshotWithCheckpoint({
       expectedSnapshotDigest:
         await this.crypto.digestVaultSnapshot(replacedSnapshot),
-      snapshot: vaultSnapshot,
+      snapshot,
       checkpoint: await this.vaultTrust.createCheckpoint(
-        vaultSnapshot,
+        snapshot,
         unlockedVault.trustedSnapshotContext.trust,
         unlockedVault.deviceId,
         unlockedVault.devicePrivateSignKey,
       ),
+      ...(syncCredentialState === undefined ? {} : { syncCredentialState }),
     });
   }
 
   async openTrustedVaultSnapshot(
     vaultId: string,
-    vaultSnapshot: VaultSnapshot,
+    snapshot: VaultSnapshot,
     vaultMasterKey: VaultMasterKey,
-    trustSourceSnapshot: Pick<VaultSnapshot, "keySlots">,
   ): Promise<Vault> {
-    const { vault } = await this.openTrustedVaultSnapshotWithTrustResult(
-      vaultId,
-      vaultSnapshot,
-      vaultMasterKey,
-      trustSourceSnapshot,
-    );
+    this.requireSupportedSnapshotAlgorithm(vaultId, snapshot);
 
-    return vault;
-  }
-
-  async openTrustedVaultSnapshotWithTrustResult(
-    vaultId: string,
-    vaultSnapshot: VaultSnapshot,
-    vaultMasterKey: VaultMasterKey,
-    trustSourceSnapshot: Pick<VaultSnapshot, "keySlots">,
-  ) {
-    this.requireSupportedSnapshotAlgorithm(vaultId, vaultSnapshot);
-
-    if (vaultSnapshot.metadata.id !== vaultId) {
-      throw new PersistedVaultMismatchError(vaultId, vaultSnapshot.metadata.id);
+    if (snapshot.metadata.id !== vaultId) {
+      throw new PersistedVaultMismatchError(vaultId, snapshot.metadata.id);
     }
 
-    const completedEnrollmentProof = await this.requireTrustedSnapshotSignature(
-      vaultId,
-      vaultSnapshot,
-      trustSourceSnapshot,
-    );
-    const vault = await this.crypto.decryptVaultSnapshotContent(
-      vaultSnapshot.content,
+    return this.crypto.decryptVaultSnapshotContent(
+      snapshot.content,
       vaultMasterKey,
     );
-
-    if (completedEnrollmentProof !== null) {
-      this.requireCompletedEnrollmentVaultState(
-        vaultId,
-        vault,
-        completedEnrollmentProof,
-      );
-    }
-
-    return {
-      vault,
-      completedEnrollmentProof,
-    };
   }
 
   async requireCurrentSnapshotForUnlockedVault(
@@ -288,245 +236,72 @@ export class VaultSnapshotService {
       throw new PersistedVaultMismatchError(vaultId, unlockedVault.vaultId);
     }
 
-    const currentVaultSnapshot = await this.requireLocalVaultSnapshot(vaultId);
+    const snapshot = await this.requireLocalVaultSnapshot(vaultId);
 
     if (
       compareVersionVectors(
-        currentVaultSnapshot.metadata.snapshotVersionVector,
+        snapshot.metadata.snapshotVersionVector,
         sourceSnapshotVersionVector,
       ) !== "equal"
     ) {
       throw new VaultSnapshotVersionMismatchError(
         vaultId,
         sourceSnapshotVersionVector,
-        currentVaultSnapshot.metadata.snapshotVersionVector,
+        snapshot.metadata.snapshotVersionVector,
       );
     }
 
-    this.requireSupportedSnapshotAlgorithm(vaultId, currentVaultSnapshot);
-    const currentSnapshotDigest =
-      await this.crypto.digestVaultSnapshot(currentVaultSnapshot);
+    this.requireSupportedSnapshotAlgorithm(vaultId, snapshot);
 
     if (
-      currentSnapshotDigest !==
+      (await this.crypto.digestVaultSnapshot(snapshot)) !==
       unlockedVault.trustedSnapshotContext.snapshotDigest
     ) {
       throw new VaultSnapshotVersionMismatchError(
         vaultId,
         sourceSnapshotVersionVector,
-        currentVaultSnapshot.metadata.snapshotVersionVector,
+        snapshot.metadata.snapshotVersionVector,
       );
     }
 
     await this.vaultTrust.verifySnapshot(
       vaultId,
-      currentVaultSnapshot,
+      snapshot,
       unlockedVault.trustedSnapshotContext.trust,
     );
 
-    const trustedDevice = currentVaultSnapshot.keySlots.deviceSlots.find(
-      (deviceSlot) => deviceSlot.deviceId === unlockedVault.deviceId,
-    );
-
-    if (trustedDevice === undefined) {
+    if (
+      !snapshot.keySlots.deviceSlots.some(
+        (slot) => slot.deviceId === unlockedVault.deviceId,
+      )
+    ) {
       throw new SnapshotSigningDeviceNotTrustedError(
         vaultId,
         unlockedVault.deviceId,
       );
     }
 
-    return currentVaultSnapshot;
-  }
-
-  private async requireTrustedSnapshotSignature(
-    vaultId: string,
-    vaultSnapshot: VaultSnapshot,
-    trustSourceSnapshot: Pick<VaultSnapshot, "keySlots">,
-  ): Promise<CompletedDeviceEnrollmentProof | null> {
-    const signerDevice = trustSourceSnapshot.keySlots.deviceSlots.find(
-      (deviceSlot) =>
-        deviceSlot.deviceId === vaultSnapshot.metadata.createdByDeviceId,
-    );
-
-    if (signerDevice === undefined) {
-      return this.requireCompletedEnrollmentSnapshotSignature(
-        vaultId,
-        vaultSnapshot,
-        trustSourceSnapshot,
-      );
-    }
-
-    const isSnapshotAuthentic = await this.crypto.verifyVaultSnapshotSignature(
-      vaultSnapshot,
-      signerDevice.publicSignKey,
-    );
-
-    if (!isSnapshotAuthentic) {
-      throw new VaultSnapshotSignatureVerificationFailedError(vaultId);
-    }
-
-    return null;
-  }
-
-  private async requireCompletedEnrollmentSnapshotSignature(
-    vaultId: string,
-    vaultSnapshot: VaultSnapshot,
-    trustSourceSnapshot: Pick<VaultSnapshot, "keySlots">,
-  ): Promise<CompletedDeviceEnrollmentProof> {
-    const pendingDeviceId = vaultSnapshot.metadata.createdByDeviceId;
-    const completedEnrollmentProofs =
-      vaultSnapshot.keySlots.completedEnrollments?.filter(
-        (proof) => proof.pendingDeviceId === pendingDeviceId,
-      ) ?? [];
-
-    if (completedEnrollmentProofs.length !== 1) {
-      throw new VaultSnapshotSignerNotTrustedError(vaultId, pendingDeviceId);
-    }
-
-    const completedEnrollmentProof = completedEnrollmentProofs[0];
-
-    if (completedEnrollmentProof.vaultId !== vaultId) {
-      throw new VaultSnapshotSignerNotTrustedError(vaultId, pendingDeviceId);
-    }
-
-    if (
-      isCompletedEnrollmentProofKnown(
-        trustSourceSnapshot.keySlots.completedEnrollments,
-        completedEnrollmentProof,
-      )
-    ) {
-      throw new VaultSnapshotSignerNotTrustedError(vaultId, pendingDeviceId);
-    }
-
-    const authorizerDevice = trustSourceSnapshot.keySlots.deviceSlots.find(
-      (deviceSlot) =>
-        deviceSlot.deviceId === completedEnrollmentProof.authorizedByDeviceId,
-    );
-
-    if (authorizerDevice === undefined) {
-      throw new VaultSnapshotSignerNotTrustedError(vaultId, pendingDeviceId);
-    }
-
-    const authorization = toAuthorizationPayload(completedEnrollmentProof);
-    const isEnrollmentAuthorized =
-      await this.crypto.verifyDeviceEnrollmentAuthorizationSignature(
-        authorization,
-        completedEnrollmentProof.authorizerSignature,
-        authorizerDevice.publicSignKey,
-      );
-
-    if (!isEnrollmentAuthorized) {
-      throw new VaultSnapshotSignerNotTrustedError(vaultId, pendingDeviceId);
-    }
-
-    const signerDevice = this.findUniqueDeviceSlot(
-      vaultId,
-      vaultSnapshot.keySlots.deviceSlots,
-      pendingDeviceId,
-    );
-    const signerDevicePublicSignKeyDigest =
-      await this.crypto.digestDevicePublicSignKey(signerDevice.publicSignKey);
-
-    if (
-      signerDevicePublicSignKeyDigest !==
-      completedEnrollmentProof.pendingDevicePublicSignKeyDigest
-    ) {
-      throw new VaultSnapshotSignerNotTrustedError(vaultId, pendingDeviceId);
-    }
-
-    const isSnapshotAuthentic = await this.crypto.verifyVaultSnapshotSignature(
-      vaultSnapshot,
-      signerDevice.publicSignKey,
-    );
-
-    if (!isSnapshotAuthentic) {
-      throw new VaultSnapshotSignatureVerificationFailedError(vaultId);
-    }
-
-    return completedEnrollmentProof;
-  }
-
-  private findUniqueDeviceSlot(
-    vaultId: string,
-    deviceSlots: readonly DeviceKeySlot[],
-    deviceId: string,
-  ): DeviceKeySlot {
-    const matchingDeviceSlots = deviceSlots.filter(
-      (deviceSlot) => deviceSlot.deviceId === deviceId,
-    );
-
-    if (matchingDeviceSlots.length !== 1) {
-      throw new VaultSnapshotSignerNotTrustedError(vaultId, deviceId);
-    }
-
-    return matchingDeviceSlots[0];
-  }
-
-  private requireCompletedEnrollmentVaultState(
-    vaultId: string,
-    vault: Vault,
-    completedEnrollmentProof: CompletedDeviceEnrollmentProof,
-  ): void {
-    if (
-      !vault.deviceProfiles.some(
-        (deviceProfile) =>
-          deviceProfile.id === completedEnrollmentProof.pendingDeviceId,
-      )
-    ) {
-      throw new VaultSnapshotSignerNotTrustedError(
-        vaultId,
-        completedEnrollmentProof.pendingDeviceId,
-      );
-    }
+    return snapshot;
   }
 
   private requireSupportedSnapshotAlgorithm(
     vaultId: string,
-    vaultSnapshot: VaultSnapshot,
+    snapshot: VaultSnapshot,
   ): void {
-    if (vaultSnapshot.metadata.schemaVersion !== 2) {
+    if (snapshot.metadata.schemaVersion !== 1) {
       throw new VaultTrustStateInvalidError(
         vaultId,
         "unsupported snapshot schema version",
       );
     }
 
-    if (
-      vaultSnapshot.metadata.algorithmSuiteId !== this.crypto.algorithmSuite.id
-    ) {
+    if (snapshot.metadata.algorithmSuiteId !== this.crypto.algorithmSuite.id) {
       throw new UnsupportedAlgorithmSuiteError({
         vaultId,
         artifact: "vault snapshot",
         expectedAlgorithmSuiteId: this.crypto.algorithmSuite.id,
-        actualAlgorithmSuiteId: vaultSnapshot.metadata.algorithmSuiteId,
+        actualAlgorithmSuiteId: snapshot.metadata.algorithmSuiteId,
       });
     }
   }
-}
-
-function toAuthorizationPayload(
-  completedEnrollmentProof: CompletedDeviceEnrollmentProof,
-): DeviceEnrollmentAuthorizationPayload {
-  return {
-    version: completedEnrollmentProof.version,
-    vaultId: completedEnrollmentProof.vaultId,
-    enrollmentId: completedEnrollmentProof.enrollmentId,
-    pendingDeviceId: completedEnrollmentProof.pendingDeviceId,
-    pendingDevicePublicSignKeyDigest:
-      completedEnrollmentProof.pendingDevicePublicSignKeyDigest,
-    protectedVaultMasterKeyDigest:
-      completedEnrollmentProof.protectedVaultMasterKeyDigest,
-  };
-}
-
-function isCompletedEnrollmentProofKnown(
-  completedEnrollments: readonly CompletedDeviceEnrollmentProof[] | undefined,
-  completedEnrollmentProof: CompletedDeviceEnrollmentProof,
-): boolean {
-  return (completedEnrollments ?? []).some(
-    (knownProof) =>
-      knownProof.vaultId === completedEnrollmentProof.vaultId &&
-      knownProof.enrollmentId === completedEnrollmentProof.enrollmentId &&
-      knownProof.pendingDeviceId === completedEnrollmentProof.pendingDeviceId,
-  );
 }

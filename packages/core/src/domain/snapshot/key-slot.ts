@@ -1,33 +1,25 @@
-import type {
-  DeviceEnrollmentAuthorizationPayload,
-  DevicePublicSignKey,
-  DeviceTrustIdentity,
-} from "../device-trust";
-import type {
-  SerializedSignatureOf,
-  SerializedWrapped,
-} from "../crypto/protected-artifact";
+import type { RandomBytes } from "../crypto/brand-keys";
+import type { SerializedEncrypted } from "../crypto/protected-artifact";
+import type { DeviceVaultPublicKey } from "../device-trust";
 import type { VaultMasterKey } from "./brand-keys";
 
-export type DeviceKeySlot = DeviceTrustIdentity & {
-  protectedVaultMasterKey: SerializedWrapped<VaultMasterKey>;
+export type DeviceVaultKeyEnvelope = {
+  readonly recipientDeviceId: string;
+  readonly vaultKeyGeneration: number;
+  readonly ephemeralPublicKey: DeviceVaultPublicKey;
+  readonly hkdfSalt: RandomBytes;
+  readonly encryptedVaultMasterKey: SerializedEncrypted<VaultMasterKey>;
 };
 
-/**
- * Pending device enrollment material persisted inside a signed vault snapshot.
- *
- * This intentionally has no expiry field. Core has no trusted time authority in
- * the local-first threat model, so a local clock check would not be a security
- * boundary. User interfaces may choose to hide stale enrollment invitations, but
- * persisted trust state must rely on signed key material and sync guards.
- */
-export type EnrollmentKeySlot = {
-  enrollmentId: string;
-  pendingDeviceId: string;
-  pendingDevicePublicSignKey: DevicePublicSignKey;
-  pendingDevicePublicSignKeyDigest: string;
-  protectedVaultMasterKeyDigest: string;
-  protectedVaultMasterKey: SerializedWrapped<VaultMasterKey>;
-  authorizedByDeviceId: string;
-  authorizerSignature: SerializedSignatureOf<DeviceEnrollmentAuthorizationPayload>;
+export type DeviceVaultKeyEnvelopeContext = {
+  readonly vaultId: string;
+  readonly deviceId: string;
+  readonly vaultKeyGeneration: number;
+  readonly algorithmSuiteId: string;
+};
+
+export type DeviceKeySlot = {
+  readonly deviceId: string;
+  readonly vaultKeyGeneration: number;
+  readonly envelope: DeviceVaultKeyEnvelope;
 };

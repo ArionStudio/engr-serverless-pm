@@ -60,6 +60,8 @@ function createMaterial(
     deviceId: ctx.values.deviceId,
     vaultMasterKey: ctx.values.vaultMasterKey,
     devicePrivateSignKey: ctx.values.devicePrivateSignKey,
+    devicePrivateVaultKey: ctx.values.devicePrivateVaultKey,
+    deviceLocalProtectionKey: ctx.values.deviceLocalProtectionKey,
     payloadKey: ctx.values.unlockedVaultSessionPayloadKey,
     trustedSnapshotContext: ctx.session.unlockedVault.trustedSnapshotContext,
     vaultTrustAnchor: ctx.session.unlockedVault.vaultTrustAnchor,
@@ -183,6 +185,8 @@ describe("UnlockedVaultSessionService", () => {
         vault: ctx.values.decryptedVault,
         vaultMasterKey: ctx.values.vaultMasterKey,
         devicePrivateSignKey: ctx.values.devicePrivateSignKey,
+        devicePrivateVaultKey: ctx.values.devicePrivateVaultKey,
+        deviceLocalProtectionKey: ctx.values.deviceLocalProtectionKey,
         trustedSnapshotContext:
           ctx.session.unlockedVault.trustedSnapshotContext,
         vaultTrustAnchor: ctx.session.unlockedVault.vaultTrustAnchor,
@@ -221,6 +225,8 @@ describe("UnlockedVaultSessionService", () => {
         vault: ctx.values.decryptedVault,
         vaultMasterKey: ctx.values.vaultMasterKey,
         devicePrivateSignKey: ctx.values.devicePrivateSignKey,
+        devicePrivateVaultKey: ctx.values.devicePrivateVaultKey,
+        deviceLocalProtectionKey: ctx.values.deviceLocalProtectionKey,
         trustedSnapshotContext:
           ctx.session.unlockedVault.trustedSnapshotContext,
         vaultTrustAnchor: ctx.session.unlockedVault.vaultTrustAnchor,
@@ -386,6 +392,8 @@ describe("UnlockedVaultSessionService", () => {
       deviceId: ctx.values.deviceId,
       vaultMasterKey: ctx.values.vaultMasterKey,
       devicePrivateSignKey: ctx.values.devicePrivateSignKey,
+      devicePrivateVaultKey: ctx.values.devicePrivateVaultKey,
+      deviceLocalProtectionKey: ctx.values.deviceLocalProtectionKey,
       payloadKey: ctx.values.unlockedVaultSessionPayloadKey,
       trustedSnapshotContext: ctx.session.unlockedVault.trustedSnapshotContext,
       vaultTrustAnchor: ctx.session.unlockedVault.vaultTrustAnchor,
@@ -430,6 +438,8 @@ describe("UnlockedVaultSessionService", () => {
       deviceId: ctx.values.deviceId,
       vaultMasterKey: ctx.values.vaultMasterKey,
       devicePrivateSignKey: ctx.values.devicePrivateSignKey,
+      devicePrivateVaultKey: ctx.values.devicePrivateVaultKey,
+      deviceLocalProtectionKey: ctx.values.deviceLocalProtectionKey,
       payloadKey: ctx.values.unlockedVaultSessionPayloadKey,
       trustedSnapshotContext: ctx.session.unlockedVault.trustedSnapshotContext,
       vaultTrustAnchor: ctx.session.unlockedVault.vaultTrustAnchor,
@@ -613,7 +623,7 @@ describe("UnlockedVaultSessionService", () => {
     ).toBe("new-session-id");
   });
 
-  it("does not restore state for a stale session", async () => {
+  it("restores state for a stale session and invalidates its replacement", async () => {
     const ctx = createContext();
     ctx.ports.saved.unlockedVaultSessionMaterial = createMaterial(ctx);
     ctx.ports.saved.encryptedUnlockedVaultSessionPayload =
@@ -630,19 +640,19 @@ describe("UnlockedVaultSessionService", () => {
       ctx.sourceSnapshotVersionVector,
     );
 
-    const restored = await ctx.service.restoreIfSessionIsActive(
+    const restore = vi.fn();
+    const restored = await ctx.service.restorePersistedState(
       ctx.values.sessionId,
       ctx.values.vaultId,
-      async () => undefined,
+      restore,
     );
 
-    expect(restored).toBe(false);
-    expect(ctx.ports.saved.unlockedVaultSessionMaterial?.sessionId).toBe(
-      "new-session-id",
-    );
+    expect(restored).toBe(true);
+    expect(restore).toHaveBeenCalledOnce();
+    expect(ctx.ports.saved.unlockedVaultSessionMaterial).toBeUndefined();
     expect(
-      ctx.ports.saved.encryptedUnlockedVaultSessionPayload?.sessionId,
-    ).toBe("new-session-id");
+      ctx.ports.saved.encryptedUnlockedVaultSessionPayload,
+    ).toBeUndefined();
   });
 
   it("does not allow lock to interleave with active session work", async () => {

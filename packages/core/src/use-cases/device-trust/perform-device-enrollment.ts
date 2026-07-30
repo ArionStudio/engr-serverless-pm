@@ -1,39 +1,38 @@
+import { areJsonEqual } from "../../domain/common";
 import type {
-  CompletedDeviceEnrollmentProof,
-  DeviceEnrollmentAuthorizationPayload,
+  DeviceAccessMaterial,
+  DeviceAccessRecoveryBackup,
+  DeviceEnrollmentResponse,
+  LocalKeysPayload,
 } from "../../domain/device-trust";
-import type { DeviceAccessMaterial } from "../../domain/device-trust/device-access-material";
-import type { DeviceAccessRecoveryBackup } from "../../domain/device-trust/device-access-recovery-backup";
-import type { DeviceEnrollmentBundle } from "../../domain/device-trust/device-enrollment-bundle";
-import type { LocalKeysPayload } from "../../domain/device-trust/local-protection.type";
 import type { RawMasterPassword } from "../../domain/master-password";
-import type { RecoveryKeyMnemonic } from "../../domain/recovery/bip39-mnemonic";
-import {
-  areVaultSnapshotDescriptorsEqual,
-  toVaultSnapshotDescriptor,
-} from "../../domain/snapshot/vault-snapshot-descriptor.utils";
+import type { RecoveryKeyMnemonic } from "../../domain/recovery";
+import type { SyncAccess, SyncSetupInput } from "../../domain/sync";
 import type {
   UnsignedVaultSnapshot,
   VaultSnapshot,
-} from "../../domain/snapshot/vault-snapshot";
-import type { UnlockedVault } from "../../domain/session/unlocked-vault";
-import type { LocalVaultDescriptor } from "../../domain/vault/local-vault-descriptor";
-import type { Vault } from "../../domain/vault/vault";
+} from "../../domain/snapshot";
+import {
+  areVaultSnapshotDescriptorsEqual,
+  toVaultSnapshotDescriptor,
+} from "../../domain/snapshot";
+import type { UnlockedVault } from "../../domain/session";
+import type { Vault } from "../../domain/vault";
+import type { LocalVaultDescriptor } from "../../domain/vault";
 import { addDeviceProfileToVault } from "../../domain/vault/vault-device.mutations";
-import { incrementVersionVector } from "../../domain/versioning/version-vector.utils";
-import type { VersionVector } from "../../domain/versioning/version-vector.type";
+import { incrementVersionVector } from "../../domain/versioning";
 import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
 import {
-  DeviceEnrollmentAlreadyCompletedError,
   DeviceEnrollmentIntegrityError,
   DeviceEnrollmentRemoteSnapshotChangedError,
-  DeviceEnrollmentKeySlotNotFoundError,
   DeviceEnrollmentSnapshotMismatchError,
+  DeviceEnrollmentSyncCredentialsRequiredError,
+  PendingDeviceEnrollmentMismatchError,
+  PendingDeviceEnrollmentNotFoundError,
 } from "../../errors/device-enrollment.errors";
 import {
+  InvalidSyncConfigError,
   RemoteVaultSnapshotChangedError,
-  RemoteVaultSnapshotNotFoundError,
-  SyncConflictDetectedError,
 } from "../../errors/sync.errors";
 import type { Bip39Port } from "../../ports/crypto/bip39.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
@@ -43,20 +42,19 @@ import type { VaultDisplayNamePort } from "../../ports/vault/vault-display-name.
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import { VaultTrustService } from "../../services/trust/vault-trust.service";
-import { VaultTrustStateInvalidError } from "../../errors/vault-trust.errors";
 
 export type PerformDeviceEnrollmentCommandParams = {
-  readonly enrollmentBundle: DeviceEnrollmentBundle;
+  readonly enrollmentResponse: DeviceEnrollmentResponse;
   readonly masterPassword: RawMasterPassword;
   readonly deviceName: string;
+  readonly syncConfig?: SyncSetupInput;
 };
 
 export type PerformDeviceEnrollmentResult = {
   readonly vault: Vault;
-  readonly snapshotVersionVector: VersionVector;
-  readonly revisionTimestamp: number;
   readonly deviceId: string;
   readonly recoveryMnemonicKey: RecoveryKeyMnemonic;
+  readonly syncUpload: "complete" | "pending";
 };
 
 export class PerformDeviceEnrollmentUseCase {
@@ -91,208 +89,195 @@ export class PerformDeviceEnrollmentUseCase {
   async execute(
     params: PerformDeviceEnrollmentCommandParams,
   ): Promise<PerformDeviceEnrollmentResult> {
-    const { enrollmentBundle } = params;
+    const response = params.enrollmentResponse;
+    const pending = await this.vaultLocalRepository.getPendingDeviceEnrollment(
+      response.requestId,
+    );
+
+    if (pending === null) {
+      throw new PendingDeviceEnrollmentNotFoundError(response.requestId);
+    }
+
+    if (
+      response.version !== 1 ||
+      pending.requestId !== response.requestId ||
+      pending.vaultId !== response.vaultId ||
+      pending.algorithmSuiteId !== this.crypto.algorithmSuite.id
+    ) {
+      throw new PendingDeviceEnrollmentMismatchError(response.requestId);
+    }
 
     const activationGeneration =
       await this.unlockedVaultSession.requireVaultCanBeActivated(
-        enrollmentBundle.vaultId,
+        response.vaultId,
       );
-
-    const remoteSnapshotDescriptor =
-      await this.syncProvider.getLatestVaultSnapshotDescriptor(
-        enrollmentBundle.syncConfig,
-        enrollmentBundle.vaultId,
-      );
-
-    if (remoteSnapshotDescriptor === null) {
-      throw new RemoteVaultSnapshotNotFoundError(enrollmentBundle.vaultId);
-    }
-
-    const expectedSnapshotDescriptor = {
-      vaultId: enrollmentBundle.vaultId,
-      snapshotVersionVector: enrollmentBundle.snapshotVersionVector,
-      revisionTimestamp: enrollmentBundle.revisionTimestamp,
-    };
-
-    if (
-      !areVaultSnapshotDescriptorsEqual(
-        remoteSnapshotDescriptor,
-        expectedSnapshotDescriptor,
-      )
-    ) {
-      throw new DeviceEnrollmentRemoteSnapshotChangedError(
-        enrollmentBundle.vaultId,
-      );
-    }
-
-    const remoteSnapshot = await this.syncProvider.downloadVaultSnapshot(
-      enrollmentBundle.syncConfig,
-      remoteSnapshotDescriptor,
+    const localRootKey = await this.crypto.deriveLocalRootKey(
+      params.masterPassword,
+      pending.masterPasswordSalt,
     );
+    const pendingProtectionKey =
+      await this.crypto.deriveDeviceEnrollmentPrivateStateProtectionKey(
+        localRootKey,
+        pending.localKeysProtectionSalt,
+      );
+    const privateState = await this.crypto.unwrapDeviceEnrollmentPrivateState(
+      pending.protectedPrivateState,
+      pendingProtectionKey,
+    );
+    const request = privateState.request;
 
-    if (remoteSnapshot.metadata.id !== enrollmentBundle.vaultId) {
+    if (
+      request.payload.requestId !== response.requestId ||
+      request.payload.vaultId !== response.vaultId ||
+      request.payload.deviceId !== pending.deviceId ||
+      !(await this.crypto.verifyDeviceEnrollmentRequestSignature(request)) ||
+      !(await this.crypto.verifyDeviceSignKeyPair(
+        request.payload.publicSignKey,
+        privateState.devicePrivateSignKey,
+      )) ||
+      !(await this.crypto.verifyDeviceVaultKeyPair(
+        request.payload.publicVaultKey,
+        privateState.devicePrivateVaultKey,
+      ))
+    ) {
+      throw new PendingDeviceEnrollmentMismatchError(response.requestId);
+    }
+
+    const authorizedSnapshot = response.snapshot;
+
+    if (authorizedSnapshot.metadata.id !== response.vaultId) {
       throw new DeviceEnrollmentSnapshotMismatchError(
-        enrollmentBundle.vaultId,
-        remoteSnapshot.metadata.id,
+        response.vaultId,
+        authorizedSnapshot.metadata.id,
       );
     }
 
     if (
-      remoteSnapshot.metadata.algorithmSuiteId !== this.crypto.algorithmSuite.id
+      authorizedSnapshot.metadata.schemaVersion !== 1 ||
+      authorizedSnapshot.metadata.algorithmSuiteId !==
+        this.crypto.algorithmSuite.id
     ) {
       throw new UnsupportedAlgorithmSuiteError({
-        vaultId: enrollmentBundle.vaultId,
-        artifact: "vault snapshot",
+        vaultId: response.vaultId,
+        artifact: "device enrollment snapshot",
         expectedAlgorithmSuiteId: this.crypto.algorithmSuite.id,
-        actualAlgorithmSuiteId: remoteSnapshot.metadata.algorithmSuiteId,
+        actualAlgorithmSuiteId: authorizedSnapshot.metadata.algorithmSuiteId,
       });
     }
 
-    if (remoteSnapshot.trustChain === undefined) {
-      throw new VaultTrustStateInvalidError(
-        enrollmentBundle.vaultId,
-        "trust chain is missing",
+    if (
+      response.vaultTrustAnchor.genesisCertificateDigest !==
+      request.payload.expectedGenesisCertificateDigest
+    ) {
+      throw new DeviceEnrollmentIntegrityError(
+        response.vaultId,
+        "response trust anchor does not match the enrollment request",
       );
     }
 
     const verifiedTrust = await this.vaultTrust.verifyTrustChain(
-      enrollmentBundle.vaultId,
-      enrollmentBundle.vaultTrustAnchor,
-      remoteSnapshot.trustChain,
+      response.vaultId,
+      response.vaultTrustAnchor,
+      authorizedSnapshot.trustChain,
     );
     await this.vaultTrust.verifySnapshot(
-      enrollmentBundle.vaultId,
-      remoteSnapshot,
+      response.vaultId,
+      authorizedSnapshot,
       verifiedTrust,
     );
 
-    const enrollmentKeySlot = remoteSnapshot.keySlots.enrollmentKeySlot;
-
-    if (enrollmentKeySlot === undefined) {
-      throw new DeviceEnrollmentKeySlotNotFoundError(enrollmentBundle.vaultId);
-    }
-
-    const revisionTimestamp = this.clock.now();
-
-    const completedEnrollments =
-      remoteSnapshot.keySlots.completedEnrollments ?? [];
-
-    if (
-      completedEnrollments.some(
-        (proof) =>
-          proof.enrollmentId === enrollmentKeySlot.enrollmentId ||
-          proof.pendingDeviceId === enrollmentKeySlot.pendingDeviceId,
-      ) ||
-      remoteSnapshot.keySlots.deviceSlots.some(
-        (deviceSlot) =>
-          deviceSlot.deviceId === enrollmentKeySlot.pendingDeviceId,
-      )
-    ) {
-      throw new DeviceEnrollmentAlreadyCompletedError(
-        enrollmentBundle.vaultId,
-        enrollmentKeySlot.enrollmentId,
-      );
-    }
-
-    const pendingDevicePublicSignKeyDigest =
-      await this.crypto.digestDevicePublicSignKey(
-        enrollmentKeySlot.pendingDevicePublicSignKey,
-      );
-
-    if (
-      pendingDevicePublicSignKeyDigest !==
-      enrollmentKeySlot.pendingDevicePublicSignKeyDigest
-    ) {
-      throw new DeviceEnrollmentIntegrityError(
-        enrollmentBundle.vaultId,
-        "pending device public key digest does not match the enrollment slot",
-      );
-    }
-
-    const protectedVaultMasterKeyDigest =
-      await this.crypto.digestProtectedVaultMasterKey(
-        enrollmentKeySlot.protectedVaultMasterKey,
-      );
-
-    if (
-      protectedVaultMasterKeyDigest !==
-      enrollmentKeySlot.protectedVaultMasterKeyDigest
-    ) {
-      throw new DeviceEnrollmentIntegrityError(
-        enrollmentBundle.vaultId,
-        "protected vault master key digest does not match the enrollment slot",
-      );
-    }
-
-    const authorizerDevice = verifiedTrust.trustedDevices.find(
-      (device) => device.deviceId === enrollmentKeySlot.authorizedByDeviceId,
+    const targetIdentity = verifiedTrust.trustedDevices.find(
+      (device) => device.deviceId === request.payload.deviceId,
+    );
+    const targetSlots = authorizedSnapshot.keySlots.deviceSlots.filter(
+      (slot) => slot.deviceId === request.payload.deviceId,
     );
 
-    if (authorizerDevice === undefined) {
+    if (
+      targetIdentity === undefined ||
+      targetSlots.length !== 1 ||
+      (await this.crypto.digestDevicePublicSignKey(
+        targetIdentity.publicSignKey,
+      )) !==
+        (await this.crypto.digestDevicePublicSignKey(
+          request.payload.publicSignKey,
+        )) ||
+      (await this.crypto.digestDevicePublicVaultKey(
+        targetIdentity.publicVaultKey,
+      )) !==
+        (await this.crypto.digestDevicePublicVaultKey(
+          request.payload.publicVaultKey,
+        ))
+    ) {
       throw new DeviceEnrollmentIntegrityError(
-        enrollmentBundle.vaultId,
-        "enrollment authorizer device is not trusted by the snapshot",
+        response.vaultId,
+        "target identity or vault key envelope does not match the request",
       );
     }
 
-    const enrollmentAuthorization: DeviceEnrollmentAuthorizationPayload = {
-      version: 1,
-      vaultId: enrollmentBundle.vaultId,
-      enrollmentId: enrollmentKeySlot.enrollmentId,
-      pendingDeviceId: enrollmentKeySlot.pendingDeviceId,
-      pendingDevicePublicSignKeyDigest:
-        enrollmentKeySlot.pendingDevicePublicSignKeyDigest,
-      protectedVaultMasterKeyDigest:
-        enrollmentKeySlot.protectedVaultMasterKeyDigest,
-    };
-    const isEnrollmentAuthorized =
-      await this.crypto.verifyDeviceEnrollmentAuthorizationSignature(
-        enrollmentAuthorization,
-        enrollmentKeySlot.authorizerSignature,
-        authorizerDevice.publicSignKey,
-      );
-
-    if (!isEnrollmentAuthorized) {
-      throw new DeviceEnrollmentIntegrityError(
-        enrollmentBundle.vaultId,
-        "enrollment authorization signature is invalid",
-      );
-    }
-
-    const enrollmentVaultMasterKeyProtectionKey =
-      await this.crypto.deriveEnrollmentVaultMasterKeyProtectionKey(
-        enrollmentBundle.enrollmentSecret,
-      );
-    const vaultMasterKey = await this.crypto.unwrapVaultMasterKey(
-      enrollmentKeySlot.protectedVaultMasterKey,
-      enrollmentVaultMasterKeyProtectionKey,
+    const targetSlot = targetSlots[0];
+    const vaultMasterKey = await this.crypto.openDeviceVaultKeyEnvelope(
+      targetSlot.envelope,
+      privateState.devicePrivateVaultKey,
+      {
+        vaultId: response.vaultId,
+        deviceId: request.payload.deviceId,
+        vaultKeyGeneration: authorizedSnapshot.metadata.vaultKeyGeneration,
+        algorithmSuiteId: authorizedSnapshot.metadata.algorithmSuiteId,
+      },
     );
-    const vault = await this.crypto.decryptVaultSnapshotContent(
-      remoteSnapshot.content,
+    const authorizedVault = await this.crypto.decryptVaultSnapshotContent(
+      authorizedSnapshot.content,
       vaultMasterKey,
     );
-    const downloadedDescriptor = toVaultSnapshotDescriptor(
-      enrollmentBundle.vaultId,
-      remoteSnapshot,
+    const timestamp = this.clock.now();
+    const vault = addDeviceProfileToVault(
+      authorizedVault,
+      request.payload.deviceId,
+      params.deviceName,
+      timestamp,
+    );
+    const syncAccess = await this.prepareSyncAccess(
+      response.vaultId,
+      vault,
+      params.syncConfig,
+      authorizedSnapshot,
+    );
+    const unsignedSnapshot: UnsignedVaultSnapshot = {
+      metadata: {
+        ...authorizedSnapshot.metadata,
+        revisionTimestamp: timestamp,
+        snapshotVersionVector: incrementVersionVector(
+          authorizedSnapshot.metadata.snapshotVersionVector,
+          request.payload.deviceId,
+        ),
+        createdByDeviceId: request.payload.deviceId,
+      },
+      trustChain: authorizedSnapshot.trustChain,
+      keySlots: authorizedSnapshot.keySlots,
+      content: await this.crypto.encryptVaultSnapshotContent(
+        vault,
+        vaultMasterKey,
+      ),
+    };
+    const snapshot: VaultSnapshot = {
+      ...unsignedSnapshot,
+      signature: await this.crypto.signVaultSnapshot(
+        unsignedSnapshot,
+        privateState.devicePrivateSignKey,
+      ),
+    };
+    await this.vaultTrust.verifySnapshot(
+      response.vaultId,
+      snapshot,
+      verifiedTrust,
     );
 
-    if (
-      !areVaultSnapshotDescriptorsEqual(
-        downloadedDescriptor,
-        remoteSnapshotDescriptor,
-      )
-    ) {
-      throw new RemoteVaultSnapshotChangedError(enrollmentBundle.vaultId);
-    }
-
-    const deviceId = enrollmentKeySlot.pendingDeviceId;
-    const devicePublicSignKey = enrollmentKeySlot.pendingDevicePublicSignKey;
-    const devicePrivateSignKey = enrollmentBundle.pendingDevicePrivateSignKey;
-    const vaultDisplayName =
-      await this.vaultDisplayName.generateVaultDisplayName();
-    const deviceSlotKey = await this.crypto.generateDeviceSlotKey();
+    const recoverySecretKey = await this.crypto.generateRecoveryKey();
+    const recoveryMnemonicKey =
+      await this.bip39.recoveryKeyToMnemonic(recoverySecretKey);
     const masterPasswordSalt = await this.crypto.generateMasterPasswordSalt();
-    const localRootKey = await this.crypto.deriveLocalRootKey(
+    const nextLocalRootKey = await this.crypto.deriveLocalRootKey(
       params.masterPassword,
       masterPasswordSalt,
     );
@@ -300,21 +285,15 @@ export class PerformDeviceEnrollmentUseCase {
       await this.crypto.generateLocalKeysProtectionSalt();
     const localKeysProtectionKey =
       await this.crypto.deriveLocalKeysProtectionKey(
-        localRootKey,
+        nextLocalRootKey,
         localKeysProtectionSalt,
       );
     const localKeysPayload: LocalKeysPayload = {
-      deviceSlotKey,
-      devicePrivateSignKey,
-      vaultTrustAnchor: enrollmentBundle.vaultTrustAnchor,
+      devicePrivateSignKey: privateState.devicePrivateSignKey,
+      devicePrivateVaultKey: privateState.devicePrivateVaultKey,
+      deviceLocalProtectionKey: privateState.deviceLocalProtectionKey,
+      vaultTrustAnchor: response.vaultTrustAnchor,
     };
-    const protectedLocalKeys = await this.crypto.wrapLocalKeysPayload(
-      localKeysPayload,
-      localKeysProtectionKey,
-    );
-    const recoverySecretKey = await this.crypto.generateRecoveryKey();
-    const recoveryMnemonicKey =
-      await this.bip39.recoveryKeyToMnemonic(recoverySecretKey);
     const recoveryLocalKeysProtectionSalt =
       await this.crypto.generateRecoveryLocalKeysProtectionSalt();
     const recoveryLocalKeysProtectionKey =
@@ -322,130 +301,80 @@ export class PerformDeviceEnrollmentUseCase {
         recoverySecretKey,
         recoveryLocalKeysProtectionSalt,
       );
-    const recoveryProtectedLocalKeys = await this.crypto.wrapLocalKeysPayload(
-      localKeysPayload,
-      recoveryLocalKeysProtectionKey,
-    );
-    const deviceSlotVaultMasterKeyProtectionKey =
-      await this.crypto.deriveDeviceSlotVaultMasterKeyProtectionKey(
-        deviceSlotKey,
-      );
-    const protectedDeviceVaultMasterKey = await this.crypto.wrapVaultMasterKey(
-      vaultMasterKey,
-      deviceSlotVaultMasterKeyProtectionKey,
-    );
-    const registeredVault = addDeviceProfileToVault(
-      vault,
-      deviceId,
-      params.deviceName,
-      revisionTimestamp,
-    );
-    const completedEnrollmentProof: CompletedDeviceEnrollmentProof = {
-      ...enrollmentAuthorization,
-      authorizedByDeviceId: enrollmentKeySlot.authorizedByDeviceId,
-      authorizerSignature: enrollmentKeySlot.authorizerSignature,
-    };
-    const unsignedVaultSnapshot: UnsignedVaultSnapshot = {
-      metadata: {
-        ...remoteSnapshot.metadata,
-        id: enrollmentBundle.vaultId,
-        revisionTimestamp,
-        snapshotVersionVector: incrementVersionVector(
-          remoteSnapshot.metadata.snapshotVersionVector,
-          deviceId,
-        ),
-        createdByDeviceId: deviceId,
-      },
-      trustChain: remoteSnapshot.trustChain,
-      keySlots: {
-        deviceSlots: [
-          ...remoteSnapshot.keySlots.deviceSlots,
-          {
-            deviceId,
-            protectedVaultMasterKey: protectedDeviceVaultMasterKey,
-            publicSignKey: devicePublicSignKey,
-          },
-        ],
-        completedEnrollments: [
-          ...completedEnrollments,
-          completedEnrollmentProof,
-        ],
-      },
-      content: await this.crypto.encryptVaultSnapshotContent(
-        registeredVault,
-        vaultMasterKey,
-      ),
-    };
-    const registeredVaultSnapshot: VaultSnapshot = {
-      ...unsignedVaultSnapshot,
-      signature: await this.crypto.signVaultSnapshot(
-        unsignedVaultSnapshot,
-        devicePrivateSignKey,
-      ),
-    };
-    try {
-      await this.vaultTrust.verifySnapshot(
-        enrollmentBundle.vaultId,
-        registeredVaultSnapshot,
-        verifiedTrust,
-      );
-    } catch (error) {
-      throw new DeviceEnrollmentIntegrityError(
-        enrollmentBundle.vaultId,
-        "pending device cannot authenticate the completed snapshot",
-        { cause: error },
-      );
-    }
-
     const deviceAccessMaterial: DeviceAccessMaterial = {
-      vaultId: enrollmentBundle.vaultId,
-      deviceId,
+      vaultId: response.vaultId,
+      deviceId: request.payload.deviceId,
       algorithmSuiteId: this.crypto.algorithmSuite.id,
       masterPasswordSalt,
       localKeysProtectionSalt,
-      devicePublicSignKey,
-      protectedLocalKeys,
+      devicePublicSignKey: request.payload.publicSignKey,
+      devicePublicVaultKey: request.payload.publicVaultKey,
+      protectedLocalKeys: await this.crypto.wrapLocalKeysPayload(
+        localKeysPayload,
+        localKeysProtectionKey,
+      ),
     };
     const deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup = {
-      vaultId: enrollmentBundle.vaultId,
-      deviceId,
+      vaultId: response.vaultId,
+      deviceId: request.payload.deviceId,
       algorithmSuiteId: this.crypto.algorithmSuite.id,
       recoveryLocalKeysProtectionSalt,
-      devicePublicSignKey,
-      protectedLocalKeys: recoveryProtectedLocalKeys,
+      devicePublicSignKey: request.payload.publicSignKey,
+      devicePublicVaultKey: request.payload.publicVaultKey,
+      protectedLocalKeys: await this.crypto.wrapLocalKeysPayload(
+        localKeysPayload,
+        recoveryLocalKeysProtectionKey,
+      ),
     };
-    const localVaultDescriptor: LocalVaultDescriptor = {
-      vaultId: enrollmentBundle.vaultId,
-      displayName: vaultDisplayName,
-      createdAt: revisionTimestamp,
+    const descriptor: LocalVaultDescriptor = {
+      vaultId: response.vaultId,
+      displayName: await this.vaultDisplayName.generateVaultDisplayName(),
+      createdAt: authorizedSnapshot.metadata.vaultCreationTimestamp,
     };
+    const snapshotDigest = await this.crypto.digestVaultSnapshot(snapshot);
+    const checkpoint = await this.vaultTrust.createCheckpoint(
+      snapshot,
+      verifiedTrust,
+      request.payload.deviceId,
+      privateState.devicePrivateSignKey,
+    );
+    const encryptedSyncCredentialState =
+      syncAccess === undefined
+        ? undefined
+        : await this.crypto.encryptDeviceSyncCredentialState(
+            { currentCredentials: syncAccess.credentials },
+            privateState.deviceLocalProtectionKey,
+            {
+              vaultId: response.vaultId,
+              deviceId: request.payload.deviceId,
+              provider: syncAccess.target.provider,
+              target: syncAccess.target,
+            },
+          );
     const unlockedVault: UnlockedVault = {
-      vaultId: enrollmentBundle.vaultId,
-      deviceId,
-      vault: registeredVault,
+      vaultId: response.vaultId,
+      deviceId: request.payload.deviceId,
+      vault,
       vaultMasterKey,
-      devicePrivateSignKey,
+      devicePrivateSignKey: privateState.devicePrivateSignKey,
+      devicePrivateVaultKey: privateState.devicePrivateVaultKey,
+      deviceLocalProtectionKey: privateState.deviceLocalProtectionKey,
       trustedSnapshotContext: {
-        snapshotDigest: await this.crypto.digestVaultSnapshot(
-          registeredVaultSnapshot,
-        ),
+        snapshotDigest,
         trust: verifiedTrust,
       },
-      vaultTrustAnchor: enrollmentBundle.vaultTrustAnchor,
+      vaultTrustAnchor: response.vaultTrustAnchor,
     };
-    const checkpoint = await this.vaultTrust.createCheckpoint(
-      registeredVaultSnapshot,
-      verifiedTrust,
-      deviceId,
-      devicePrivateSignKey,
-    );
 
     await this.vaultLocalRepository.saveInitializedLocalVault({
-      descriptor: localVaultDescriptor,
+      descriptor,
       deviceAccessMaterial,
       deviceAccessRecoveryBackup,
-      snapshot: registeredVaultSnapshot,
+      snapshot,
       checkpoint,
+      ...(encryptedSyncCredentialState === undefined
+        ? {}
+        : { syncCredentialState: encryptedSyncCredentialState }),
     });
 
     let sessionId: string;
@@ -454,52 +383,109 @@ export class PerformDeviceEnrollmentUseCase {
       sessionId = await this.unlockedVaultSession.activate(
         activationGeneration,
         unlockedVault,
-        registeredVaultSnapshot.metadata.snapshotVersionVector,
+        snapshot.metadata.snapshotVersionVector,
       );
     } catch (error) {
       try {
         await this.vaultLocalRepository.removePersistedLocalVault(
-          enrollmentBundle.vaultId,
+          response.vaultId,
         );
       } catch {
-        // Preserve the session activation failure as the root cause.
+        // Preserve the activation failure as the root cause.
       }
 
       throw error;
     }
 
-    try {
-      await this.syncProvider.uploadVaultSnapshot(
-        enrollmentBundle.syncConfig,
-        registeredVaultSnapshot,
-        remoteSnapshotDescriptor,
-      );
-    } catch (error) {
-      const mappedError =
-        error instanceof RemoteVaultSnapshotChangedError
-          ? new SyncConflictDetectedError(enrollmentBundle.vaultId)
-          : error;
+    let syncUpload: "complete" | "pending" = "complete";
 
-      await this.unlockedVaultSession.discardIfSessionIsActive(
-        sessionId,
-        enrollmentBundle.vaultId,
-        async () => {
-          await this.vaultLocalRepository.removePersistedLocalVault(
-            enrollmentBundle.vaultId,
+    if (syncAccess !== undefined) {
+      try {
+        await this.syncProvider.uploadVaultSnapshot(
+          syncAccess,
+          snapshot,
+          toVaultSnapshotDescriptor(response.vaultId, authorizedSnapshot),
+        );
+      } catch (error) {
+        if (!(error instanceof RemoteVaultSnapshotChangedError)) {
+          syncUpload = "pending";
+        } else {
+          await this.unlockedVaultSession.discardIfSessionIsActive(
+            sessionId,
+            response.vaultId,
+            async () =>
+              this.vaultLocalRepository.removePersistedLocalVault(
+                response.vaultId,
+              ),
           );
-        },
-      );
+          throw new DeviceEnrollmentRemoteSnapshotChangedError(
+            response.vaultId,
+          );
+        }
+      }
+    }
 
-      throw mappedError;
+    try {
+      await this.vaultLocalRepository.removePendingDeviceEnrollment(
+        response.requestId,
+      );
+    } catch {
+      // Cleanup cannot turn an already committed enrollment into a failure.
     }
 
     return {
-      vault: registeredVault,
-      snapshotVersionVector:
-        registeredVaultSnapshot.metadata.snapshotVersionVector,
-      revisionTimestamp: registeredVaultSnapshot.metadata.revisionTimestamp,
-      deviceId: registeredVaultSnapshot.metadata.createdByDeviceId,
+      vault,
+      deviceId: request.payload.deviceId,
       recoveryMnemonicKey,
+      syncUpload,
     };
+  }
+
+  private async prepareSyncAccess(
+    vaultId: string,
+    vault: Vault,
+    syncConfig: SyncSetupInput | undefined,
+    authorizedSnapshot: VaultSnapshot,
+  ): Promise<SyncAccess | undefined> {
+    if (vault.syncTarget === undefined) {
+      return undefined;
+    }
+
+    if (syncConfig === undefined) {
+      throw new DeviceEnrollmentSyncCredentialsRequiredError(vaultId);
+    }
+
+    let syncAccess: SyncAccess;
+
+    try {
+      syncAccess = await this.syncProvider.setup(syncConfig);
+    } catch (error) {
+      throw new InvalidSyncConfigError(error);
+    }
+
+    if (!areJsonEqual(syncAccess.target, vault.syncTarget)) {
+      throw new DeviceEnrollmentIntegrityError(
+        vaultId,
+        "local sync credentials target another vault namespace",
+      );
+    }
+
+    const remoteDescriptor =
+      await this.syncProvider.getLatestVaultSnapshotDescriptor(
+        syncAccess,
+        vaultId,
+      );
+
+    if (
+      remoteDescriptor === null ||
+      !areVaultSnapshotDescriptorsEqual(
+        remoteDescriptor,
+        toVaultSnapshotDescriptor(vaultId, authorizedSnapshot),
+      )
+    ) {
+      throw new DeviceEnrollmentRemoteSnapshotChangedError(vaultId);
+    }
+
+    return syncAccess;
   }
 }

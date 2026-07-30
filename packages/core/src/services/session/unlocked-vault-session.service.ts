@@ -94,27 +94,31 @@ export class UnlockedVaultSessionService {
     });
   }
 
-  async restoreIfSessionIsActive(
+  async restorePersistedState(
     sessionId: string,
     vaultId: string,
     restore: () => Promise<void>,
   ): Promise<boolean> {
     return this.serializeSessionOperation(async () => {
-      const storedMaterial =
-        await this.materialRepository.getUnlockedVaultSessionMaterial();
-      const activeMaterial = this.getActiveMaterial(storedMaterial);
-
-      if (!this.isActiveSession(activeMaterial, sessionId, vaultId)) {
-        return false;
-      }
-
       try {
         await restore();
-        return true;
       } catch {
         await this.removeSessionRecordsPreservingRootCause();
         return false;
       }
+
+      const activeMaterial = this.getActiveMaterial(
+        await this.materialRepository.getUnlockedVaultSessionMaterial(),
+      );
+
+      if (
+        activeMaterial !== null &&
+        !this.isActiveSession(activeMaterial, sessionId, vaultId)
+      ) {
+        await this.removeSessionRecordsPreservingRootCause();
+      }
+
+      return true;
     });
   }
 
@@ -321,6 +325,8 @@ export class UnlockedVaultSessionService {
         deviceId: unlockedVault.deviceId,
         vaultMasterKey: unlockedVault.vaultMasterKey,
         devicePrivateSignKey: unlockedVault.devicePrivateSignKey,
+        devicePrivateVaultKey: unlockedVault.devicePrivateVaultKey,
+        deviceLocalProtectionKey: unlockedVault.deviceLocalProtectionKey,
         trustedSnapshotContext: unlockedVault.trustedSnapshotContext,
         vaultTrustAnchor: unlockedVault.vaultTrustAnchor,
         payloadKey,
@@ -369,6 +375,8 @@ export class UnlockedVaultSessionService {
         vault: payload.vault,
         vaultMasterKey: material.vaultMasterKey,
         devicePrivateSignKey: material.devicePrivateSignKey,
+        devicePrivateVaultKey: material.devicePrivateVaultKey,
+        deviceLocalProtectionKey: material.deviceLocalProtectionKey,
         trustedSnapshotContext: material.trustedSnapshotContext,
         vaultTrustAnchor: material.vaultTrustAnchor,
       },

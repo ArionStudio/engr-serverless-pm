@@ -1,61 +1,28 @@
 import { describe, expect, it } from "vitest";
-import type { Vault } from "./vault";
+import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import {
   markVaultSyncRemovalPending,
-  removeVaultSyncConfig,
+  removeVaultSyncTarget,
 } from "./vault-sync-config.mutations";
 
-function createVault(overrides: Partial<Vault> = {}): Vault {
-  return {
-    versionVector: {},
-    entries: [],
-    deletedEntries: [],
-    deviceProfiles: [],
-    deletedDeviceProfiles: [],
-    tags: [],
-    deletedTags: [],
-    ...overrides,
-  };
-}
+describe("vault sync target mutations", () => {
+  it("marks remote removal pending", () => {
+    const values = createCoreTestValues();
 
-describe("vault sync config mutations", () => {
-  it("marks sync removal pending without removing sync config", () => {
-    const vault = createVault({
-      syncConfig: {
-        provider: "aws-s3-v1",
-        providerConfig: {
-          bucketName: "vault-bucket",
-        },
-      },
-    });
-
-    const updatedVault = markVaultSyncRemovalPending(vault);
-
-    expect(updatedVault.syncRemovalPending).toBe(true);
-    expect(updatedVault.syncConfig).toEqual(vault.syncConfig);
-    expect(vault.syncRemovalPending).toBeUndefined();
+    expect(
+      markVaultSyncRemovalPending(values.decryptedVault).syncRemovalPending,
+    ).toBe(true);
   });
 
-  it("removes sync config without mutating the source vault", () => {
-    const vault = createVault({
-      syncConfig: {
-        provider: "aws-s3-v1",
-        providerConfig: {
-          bucketName: "vault-bucket",
-        },
-      },
+  it("removes target and pending marker", () => {
+    const values = createCoreTestValues();
+    const result = removeVaultSyncTarget({
+      ...values.decryptedVault,
+      syncTarget: values.syncTarget,
       syncRemovalPending: true,
     });
 
-    const updatedVault = removeVaultSyncConfig(vault);
-
-    expect("syncConfig" in updatedVault).toBe(false);
-    expect("syncRemovalPending" in updatedVault).toBe(false);
-    expect(vault.syncConfig).toEqual({
-      provider: "aws-s3-v1",
-      providerConfig: {
-        bucketName: "vault-bucket",
-      },
-    });
+    expect("syncTarget" in result).toBe(false);
+    expect("syncRemovalPending" in result).toBe(false);
   });
 });

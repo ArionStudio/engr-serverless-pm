@@ -1,299 +1,143 @@
-# Sync Strategy Design
+# Sync Strategy
 
-> **Status**: Design document
-> **Date**: 2026-01-17
-> **Related**: [architecture-comparison.md](../architecture/architecture-comparison.md)
+> Sync is optional, local-first, and user-controlled. The project operates no
+> credential or coordination server.
 
----
+## Shared target and local credentials
 
-## 1. Core Principle
+The encrypted vault stores only a non-secret `SyncTarget`:
 
-**Local-first, user-controlled sync** — vault works fully offline, sync is optional.
-
-**Sync after unlock** — provider configuration and credentials are encrypted vault
-contents. The app must unlock the local vault snapshot before it can authenticate
-to the sync provider.
-
-**User-controlled conflict resolution** — no auto-merge for security-critical data.
-
-Why:
-
-- Password managers hold sensitive credentials
-- Silent merges can overwrite intentional changes
-- Users must see and approve every conflict resolution
-- Auditable sync history for security reviews
-
----
-
-## 2. Credential Model
-
-Sync credentials are stored inside the encrypted vault payload, alongside the
-password entries and device registry. There is no separate local encrypted
-`syncConfig` blob and no master-password-derived purpose key for sync
-credentials.
-
-Consequences:
-
-- locked vault means no sync credentials are available
-- sync upload/download requires an unlocked local vault session
-- enrollment obtains a local encrypted vault snapshot first through a separate
-  file or short-lived link; after unlock, the target device reads sync
-  credentials from that vault
-- rotating cloud credentials is a vault update that must be synced before the
-  old cloud key is revoked
-
----
-
-## 3. Sync Flow
-
-### 6-Step Process
-
-```text
-┌─────────────────────────────────────────────────────────────────────┐
-│                    SYNC FLOW (Optional)                             │
-│              Requires: Sync enabled + Network access                │
-└─────────────────────────────────────────────────────────────────────┘
-
-Step 1: User unlocks local vault, then initiates sync (manual or scheduled)
-         │
-         ▼
-Step 2: If sync enabled, read credentials from unlocked vault
-         and download remote vault snapshot
-         │
-         ▼
-Step 3: Compare local vs remote
-         │
-         ├─── No conflicts ──► Step 6: Complete sync silently
-         │
-         ▼
-Step 4: Conflicts detected → Show diff UI
-         │
-         ▼
-Step 5: User resolves each conflict
-         │
-         ▼
-Step 6: Upload merged vault, update local
+```ts
+type SyncTarget = {
+  readonly provider: SyncProvider;
+  readonly targetConfig: JsonValue;
+};
 ```
 
-### Detailed Steps
+It identifies values such as an S3 bucket, region, and object prefix. Provider
+credentials are stored separately on each device as encrypted local state:
 
-> **Note:** This flow only applies when sync is enabled. The vault works fully offline using IndexedDB as primary storage.
+```ts
+type SyncCredentials = {
+  readonly provider: SyncProvider;
+  readonly credentialsConfig: JsonValue;
+};
 
-| Step | Action                                                                 | User Involvement             |
-| ---- | ---------------------------------------------------------------------- | ---------------------------- |
-| 1    | Trigger sync from an unlocked vault session                            | Click button or auto-trigger |
-| 2    | Read sync credentials from decrypted vault and fetch `vault.encrypted` | None (background)            |
-| 3    | Decrypt remote snapshot with the Vault Key, run diff algorithm         | None (background)            |
-| 4    | If conflicts exist, pause and show diff UI                             | **Required**                 |
-| 5    | User picks local/remote/skip for each conflict                         | **Required**                 |
-| 6    | Encrypt merged vault, save to IndexedDB, upload to cloud               | None (background)            |
-
----
-
-## 4. Conflict Detection Types
-
-| Change Type  | Local     | Remote    | Result                        |
-| ------------ | --------- | --------- | ----------------------------- |
-| **Added**    | New entry | -         | Auto-add (no conflict)        |
-| **Added**    | -         | New entry | Auto-add (no conflict)        |
-| **Modified** | Changed   | Unchanged | Auto-use local (no conflict)  |
-| **Modified** | Unchanged | Changed   | Auto-use remote (no conflict) |
-| **Modified** | Changed   | Changed   | **CONFLICT** - user decides   |
-| **Deleted**  | Removed   | Unchanged | Auto-delete (no conflict)     |
-| **Deleted**  | Unchanged | Removed   | Auto-delete (no conflict)     |
-| **Deleted**  | Removed   | Changed   | **CONFLICT** - user decides   |
-| **Deleted**  | Changed   | Removed   | **CONFLICT** - user decides   |
-
----
-
-## 5. Diff UI Design
-
-### Conflict Resolution Screen
-
-```text
-┌─────────────────────────────────────────────────────────────────────┐
-│  Sync Conflicts (3)                                           [X]  │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  ┌───────────────────────────────────────────────────────────────┐  │
-│  │ 1/3  GitHub Account                               Work/Dev   │  │
-│  ├───────────────────────────────────────────────────────────────┤  │
-│  │                                                               │  │
-│  │   Field        Local (This Device)    Remote (Cloud)         │  │
-│  │   ─────────────────────────────────────────────────────────   │  │
-│  │   Username     john.doe@company.com   john@company.com       │  │
-│  │   Password     ••••••••••             ••••••••               │  │
-│  │   Updated      Jan 15, 2:30 PM        Jan 16, 9:15 AM        │  │
-│  │                                                               │  │
-│  │   ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐  │  │
-│  │   │  ◉ Use Local    │  │  ○ Use Remote   │  │  ○ Skip     │  │  │
-│  │   └─────────────────┘  └─────────────────┘  └─────────────┘  │  │
-│  │                                                               │  │
-│  └───────────────────────────────────────────────────────────────┘  │
-│                                                                     │
-│  ┌───────────────────────────────────────────────────────────────┐  │
-│  │ 2/3  AWS Console                                  Work/Admin │  │
-│  ├───────────────────────────────────────────────────────────────┤  │
-│  │   Deleted locally, but modified remotely                     │  │
-│  │                                                               │  │
-│  │   ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐  │  │
-│  │   │  ○ Keep Deleted │  │  ◉ Restore      │  │  ○ Skip     │  │  │
-│  │   └─────────────────┘  └─────────────────┘  └─────────────┘  │  │
-│  └───────────────────────────────────────────────────────────────┘  │
-│                                                                     │
-│  ┌───────────────────────────────────────────────────────────────┐  │
-│  │ 3/3  Netflix                                        Personal │  │
-│  ├───────────────────────────────────────────────────────────────┤  │
-│  │   Both modified password                                     │  │
-│  │                                                               │  │
-│  │   ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐  │  │
-│  │   │  ○ Use Local    │  │  ○ Use Remote   │  │  ◉ Skip     │  │  │
-│  │   └─────────────────┘  └─────────────────┘  └─────────────┘  │  │
-│  └───────────────────────────────────────────────────────────────┘  │
-│                                                                     │
-├─────────────────────────────────────────────────────────────────────┤
-│  Skipped items will remain in conflict until next sync.            │
-│                                                                     │
-│                    ┌────────────────────────────────┐               │
-│                    │     Apply Resolutions (2)      │               │
-│                    └────────────────────────────────┘               │
-└─────────────────────────────────────────────────────────────────────┘
+type SyncAccess = {
+  readonly target: SyncTarget;
+  readonly credentials: SyncCredentials;
+};
 ```
 
-### Key UI Decisions
+The local credential ciphertext is authenticated against the vault ID, local
+device ID, provider, and canonical target. It cannot be copied to another device
+or target without decryption failing.
 
-| Decision            | Choice            | Rationale                                   |
-| ------------------- | ----------------- | ------------------------------------------- |
-| Per-item resolution | Yes               | User controls each decision                 |
-| Skip option         | Yes               | Defer decisions, sync non-conflicting items |
-| Show password diff  | Masked by default | Security - option to reveal                 |
-| Batch operations    | No                | Forces intentional review of each conflict  |
-| Auto-select         | None              | No default selection to prevent accidents   |
+Shared snapshots and enrollment responses never contain provider credentials.
+The user enters a credential separately on every device.
 
----
+## Normal sync
 
-## 6. Architecture Types
+Normal sync requires:
 
-### Sync Diff Types
+1. an unlocked vault containing a sync target;
+2. decryptable local credentials for that target;
+3. a local snapshot verified against the device's trust anchor and checkpoint.
 
-```typescript
-// core/sync/sync-diff.type.ts
+Provider operations receive normalized `SyncAccess`. Authentication rejection is
+distinct from network errors, rate limits, and indeterminate provider failures.
+Generic sync accepts ordinary vault-content changes but rejects trust-chain,
+vault-key-generation, or device-slot changes. Those changes must use a dedicated
+device-trust workflow.
 
-export type ChangeType = "added" | "modified" | "deleted";
+Remote and local writes use snapshot descriptors for compare-and-set checks.
+This prevents a reviewed snapshot from overwriting a newer remote or local
+snapshot.
 
-export interface SyncChange {
-  id: string;
-  entryId: string;
-  changeType: ChangeType;
-  localVersion: PasswordMetadata | null; // null if deleted locally
-  remoteVersion: PasswordMetadata | null; // null if deleted remotely
-  localTimestamp: number;
-  remoteTimestamp: number;
-}
+## Initial setup
 
-export interface SyncConflict extends SyncChange {
-  // Conflict-specific metadata
-  conflictReason:
-    | "both_modified"
-    | "deleted_but_modified"
-    | "modified_but_deleted";
-}
+Provider setup normalizes the user input into a shared target and local
+credentials. The target is persisted through the encrypted vault snapshot. The
+credentials are encrypted with the device-local protection key and persisted
+only in the local vault repository.
 
-export interface SyncDiff {
-  autoResolved: SyncChange[]; // No conflicts, will apply automatically
-  conflicts: SyncConflict[]; // Requires user decision
-  syncTimestamp: number;
-}
+If setup, snapshot persistence, or upload fails, the local credential record and
+vault state are restored to their prior state.
 
-export type ConflictResolution =
-  | { action: "use_local" }
-  | { action: "use_remote" }
-  | { action: "skip" };
+## Enrollment
 
-export interface ResolvedConflict {
-  conflictId: string;
-  resolution: ConflictResolution;
-}
-```
+The registered device never exports its provider credentials. When an enrolled
+vault has a sync target, the target device asks the user for credentials,
+normalizes them through the provider adapter, and confirms that they address the
+same target and current snapshot before completing local initialization.
 
-### Sync Port Interface
+## Device revocation
 
-```typescript
-// core/sync/sync.port.ts
+Synchronized revocation requires replacement credentials. The revoking device:
 
-export interface SyncPort {
-  // Object operations
-  upload(key: string, data: Uint8Array): Promise<void>;
-  download(key: string): Promise<Uint8Array | null>;
-  delete(key: string): Promise<void>;
-  list(prefix?: string): Promise<string[]>;
+1. confirms its local snapshot exactly matches the current remote descriptor;
+2. validates and normalizes the replacement credential;
+3. confirms the normalized target is unchanged and sees the same remote
+   snapshot;
+4. stages the replacement locally while retaining the old credential;
+5. rotates the vault master key and uploads the generation-incremented
+   revocation snapshot with the replacement credential.
 
-  // Sync metadata
-  getLastSyncTimestamp(): Promise<number | null>;
-  setLastSyncTimestamp(timestamp: number): Promise<void>;
+The rotated snapshot, trust checkpoint, and staged credential state are written
+by one local compare-and-set transaction. Failed local persistence changes none
+of them; failed upload restores all three together. If
+the remote upload succeeds but session commit fails, the local session is
+invalidated and the replacement credential is retained so a later unlock can
+recover the rotated snapshot.
 
-  // Connection management
-  testConnection(): Promise<boolean>;
-  isEnabled(): Promise<boolean>;
-  initialize(): Promise<void>;
-  disconnect(): Promise<void>;
-}
+No other enrollment, revocation, or sync removal may bypass a pending provider
+credential revocation.
 
-// Sync adapter credentials are supplied from the unlocked vault session.
-// Diff logic lives in core domain, not in port
-// core/sync/sync.service.ts handles:
-// - computeDiff(local, remote): SyncDiff
-// - applyResolutions(diff, resolutions): MergedVault
-```
+## Survivor consumption
 
----
+A survivor may miss one or more consecutive revocations. It enters the latest
+replacement credential once, then prepares a revocation review. Preparation
+verifies:
 
-## 7. Sync States
+- the remote trust chain descends from its trusted local state;
+- every skipped certificate removes exactly one identity and adds none;
+- survivor signing and wrapping public keys did not change;
+- every removal advances the signed vault-key generation exactly once;
+- every survivor has exactly one matching new-generation envelope;
+- all revoked profiles and slots were removed consistently;
+- the final snapshot is causally ahead and retains the vault creation time.
 
-```typescript
-export type SyncStatus =
-  | { state: "idle" }
-  | { state: "checking" }
-  | { state: "downloading" }
-  | { state: "comparing" }
-  | { state: "conflicts"; diff: SyncDiff }
-  | { state: "uploading" }
-  | { state: "complete"; summary: SyncSummary }
-  | { state: "error"; error: SyncError };
+The consumer applies those removals as a mandatory baseline. They are not
+user-selectable resolutions and cannot be undone. Entry, tag, or surviving
+profile changes made after the revocations are presented through the normal
+sync review and resolution model.
 
-export interface SyncSummary {
-  added: number;
-  modified: number;
-  deleted: number;
-  skipped: number;
-  timestamp: number;
-}
-```
+Apply repeats all remote, trust, envelope, and vault checks. If no later content
+changed, it persists the authenticated remote snapshot directly. Otherwise it
+creates and uploads a resolved snapshot using the final trust chain,
+generation, survivor slots, and rotated vault key. Local snapshot, checkpoint,
+and credential state use compare-and-set and the session receives the new key
+only after any required upload succeeds.
 
----
+## Completing provider revocation
 
-## 8. Edge Cases
+Core does not create, disable, or delete AWS credentials. The user completes the
+external action:
 
-| Scenario                                  | Handling                                   |
-| ----------------------------------------- | ------------------------------------------ |
-| Vault locked when scheduled sync fires    | Defer sync until next unlock               |
-| Offline during sync                       | Show error, retry when online              |
-| Master password changed on another device | Prompt for new password, re-derive keys    |
-| Vault corrupted in cloud                  | Option to overwrite with local or abort    |
-| Sync interrupted mid-upload               | Atomic upload - temp file, then rename     |
-| Cloud credentials rotated in vault        | Keep old key active until all devices sync |
-| Very large vault (1000+ entries)          | Paginated diff UI, progress indicator      |
+1. Create a replacement credential in AWS.
+2. Enter it during device revocation.
+3. Upload the rotated vault.
+4. Disable or delete the old credential in AWS.
+5. Run verification in the app.
+6. Enter the replacement credential once on each survivor before its next sync.
 
----
+Verification calls the provider with the encrypted previous credential:
 
-## 9. Implementation Priority
+- `accessible` keeps revocation pending;
+- `authentication_rejected` removes the old local credential and completes the
+  workflow;
+- network, rate-limit, and indeterminate provider failures propagate and leave
+  the workflow pending.
 
-1. **Phase 1**: Manual sync button (no auto-sync)
-2. **Phase 2**: Basic diff detection (modified only)
-3. **Phase 3**: Full diff UI with conflict resolution
-4. **Phase 4**: Auto-sync on unlock (optional setting)
-5. **Phase 5**: Sync history/audit log
-6. **Phase 6**: Multi-device setup (manual config first)
-7. **Phase 7**: QR code transfer
-8. **Phase 8**: Config export/import
-9. **Phase 9**: Device management UI
+Credential removal is idempotent. Core never reports provider revocation as
+complete until the provider rejects the old credential.

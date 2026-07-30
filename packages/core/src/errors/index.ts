@@ -4,6 +4,7 @@ export * from "./change-master-password.errors";
 export * from "./clipboard.errors";
 export * from "./delete-local-vault.errors";
 export * from "./device-enrollment.errors";
+export * from "./device-revocation.errors";
 export * from "./generate-password.errors";
 export * from "./generate-username.errors";
 export * from "./randomness.errors";

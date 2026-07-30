@@ -8,7 +8,7 @@ import {
 } from "../../domain/snapshot/vault-snapshot-descriptor.utils";
 import {
   markVaultSyncRemovalPending,
-  removeVaultSyncConfig,
+  removeVaultSyncTarget,
 } from "../../domain/vault/vault-sync-config.mutations";
 import { removeOtherDeviceProfilesFromVault } from "../../domain/vault/vault-device.mutations";
 import {
@@ -20,6 +20,7 @@ import { VaultTrustStateInvalidError } from "../../errors/vault-trust.errors";
 import type { ClockPort } from "../../ports/system/clock.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
+import type { VaultSyncGuardService } from "../../services/sync";
 
 export type DisableSyncCommandParams = {
   readonly vaultId: string;
@@ -31,6 +32,8 @@ export class DisableSyncUseCase {
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
   private readonly vaultSnapshot: VaultSnapshotService;
   private readonly vaultTrust: VaultTrustService;
+  private readonly vaultSyncGuard: VaultSyncGuardService;
+  private readonly crypto: CryptoPort;
 
   constructor(
     clock: ClockPort,
@@ -38,12 +41,15 @@ export class DisableSyncUseCase {
     syncProvider: SyncProviderPort,
     unlockedVaultSession: UnlockedVaultSessionService,
     vaultSnapshot: VaultSnapshotService,
+    vaultSyncGuard: VaultSyncGuardService,
   ) {
     this.clock = clock;
+    this.crypto = crypto;
     this.syncProvider = syncProvider;
     this.unlockedVaultSession = unlockedVaultSession;
     this.vaultSnapshot = vaultSnapshot;
     this.vaultTrust = new VaultTrustService(crypto);
+    this.vaultSyncGuard = vaultSyncGuard;
   }
 
   async execute(params: DisableSyncCommandParams): Promise<void> {
@@ -52,12 +58,21 @@ export class DisableSyncUseCase {
         params.vaultId,
         "disable sync",
       );
-    const syncConfig = unlockedVault.vault.syncConfig;
+    const syncTarget = unlockedVault.vault.syncTarget;
 
-    if (syncConfig === undefined) {
+    if (syncTarget === undefined) {
       throw new SyncNotConfiguredError(params.vaultId, "disable sync");
     }
 
+    await this.vaultSyncGuard.requireProviderCredentialRevocationComplete(
+      params.vaultId,
+      unlockedVault,
+      "disable sync",
+    );
+    const syncAccess = await this.vaultSyncGuard.requireSyncAccess(
+      params.vaultId,
+      unlockedVault,
+    );
     let currentUnlockedVault = unlockedVault;
     let currentSnapshotVersionVector = sourceSnapshotVersionVector;
     let currentSnapshot =
@@ -70,7 +85,7 @@ export class DisableSyncUseCase {
     if (currentUnlockedVault.vault.syncRemovalPending !== true) {
       const remoteSnapshotDescriptor =
         await this.syncProvider.getLatestVaultSnapshotDescriptor(
-          syncConfig,
+          syncAccess,
           params.vaultId,
         );
 
@@ -130,41 +145,74 @@ export class DisableSyncUseCase {
       );
     }
 
-    await this.syncProvider.removeVaultSnapshots(syncConfig, params.vaultId);
+    await this.syncProvider.removeVaultSnapshots(syncAccess, params.vaultId);
 
     const revisionTimestamp = this.clock.now();
-    const updatedUnlockedVault = {
-      ...currentUnlockedVault,
-      vault: removeVaultSyncConfig(
-        removeOtherDeviceProfilesFromVault(
-          currentUnlockedVault.vault,
-          currentUnlockedVault.deviceId,
-          revisionTimestamp,
-        ),
+    const updatedVault = removeVaultSyncTarget(
+      removeOtherDeviceProfilesFromVault(
+        currentUnlockedVault.vault,
+        currentUnlockedVault.deviceId,
+        revisionTimestamp,
       ),
-    };
-    const currentDeviceSlots = currentSnapshot.keySlots.deviceSlots.filter(
-      (deviceSlot) => deviceSlot.deviceId === currentUnlockedVault.deviceId,
     );
-    const trustChain = currentSnapshot.trustChain;
+    const currentTrust = currentUnlockedVault.trustedSnapshotContext.trust;
+    const survivingIdentities = currentTrust.trustedDevices.filter(
+      (device) => device.deviceId === currentUnlockedVault.deviceId,
+    );
+    const revokesOtherDevices =
+      survivingIdentities.length !== currentTrust.trustedDevices.length;
+    const vaultKeyGeneration = revokesOtherDevices
+      ? currentSnapshot.metadata.vaultKeyGeneration + 1
+      : currentSnapshot.metadata.vaultKeyGeneration;
+    const nextTrust = revokesOtherDevices
+      ? await this.vaultTrust.appendTrustTransition(
+          params.vaultId,
+          currentSnapshot.trustChain,
+          currentTrust,
+          survivingIdentities,
+          vaultKeyGeneration,
+          currentUnlockedVault.deviceId,
+          currentUnlockedVault.devicePrivateSignKey,
+        )
+      : {
+          chain: currentSnapshot.trustChain,
+          trust: currentTrust,
+        };
+    const currentIdentity = survivingIdentities[0];
 
-    if (trustChain === undefined) {
+    if (currentIdentity === undefined) {
       throw new VaultTrustStateInvalidError(
         params.vaultId,
-        "trust chain is missing",
+        "current device is not trusted",
       );
     }
 
-    const nextTrust = await this.vaultTrust.appendTrustTransition(
-      params.vaultId,
-      trustChain,
-      currentUnlockedVault.trustedSnapshotContext.trust,
-      currentUnlockedVault.trustedSnapshotContext.trust.trustedDevices.filter(
-        (device) => device.deviceId === currentUnlockedVault.deviceId,
-      ),
-      currentUnlockedVault.deviceId,
-      currentUnlockedVault.devicePrivateSignKey,
-    );
+    const vaultMasterKey = revokesOtherDevices
+      ? await this.crypto.generateVaultMasterKey()
+      : currentUnlockedVault.vaultMasterKey;
+    const deviceSlots = revokesOtherDevices
+      ? [
+          {
+            deviceId: currentUnlockedVault.deviceId,
+            vaultKeyGeneration,
+            envelope: await this.crypto.createDeviceVaultKeyEnvelope(
+              vaultMasterKey,
+              currentIdentity.publicVaultKey,
+              {
+                vaultId: params.vaultId,
+                deviceId: currentUnlockedVault.deviceId,
+                vaultKeyGeneration,
+                algorithmSuiteId: this.crypto.algorithmSuite.id,
+              },
+            ),
+          },
+        ]
+      : currentSnapshot.keySlots.deviceSlots;
+    const updatedUnlockedVault = {
+      ...currentUnlockedVault,
+      vault: updatedVault,
+      vaultMasterKey,
+    };
 
     const persistedSnapshot =
       await this.unlockedVaultSession.persistForActiveSession(
@@ -176,15 +224,15 @@ export class DisableSyncUseCase {
             updatedUnlockedVault,
             currentSnapshotVersionVector,
             {
+              vaultKeyGeneration,
               keySlots: {
-                deviceSlots: currentDeviceSlots,
-                completedEnrollments:
-                  currentSnapshot.keySlots.completedEnrollments,
+                deviceSlots,
               },
               nextTrust: {
                 chain: nextTrust.chain,
                 state: nextTrust.trust,
               },
+              syncCredentialState: null,
             },
           ),
       );

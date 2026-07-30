@@ -1,5 +1,8 @@
 import type { VaultSnapshotDescriptor } from "../../domain/snapshot/vault-snapshot-descriptor.type";
-import type { SyncConfig } from "../../domain/sync/sync-config.type";
+import type {
+  SyncAccess,
+  SyncSetupInput,
+} from "../../domain/sync/sync-config.type";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 
 export interface SyncProviderPort {
@@ -9,17 +12,17 @@ export interface SyncProviderPort {
    * remote vault state here; remote snapshot changes belong to upload/download/
    * removal operations.
    */
-  setup: (syncConfig: SyncConfig) => Promise<SyncConfig>;
+  setup: (syncConfig: SyncSetupInput) => Promise<SyncAccess>;
   getLatestVaultSnapshotDescriptor: (
-    syncConfig: SyncConfig,
+    syncAccess: SyncAccess,
     vaultId: string,
   ) => Promise<VaultSnapshotDescriptor | null>;
   downloadVaultSnapshot: (
-    syncConfig: SyncConfig,
+    syncAccess: SyncAccess,
     descriptor: VaultSnapshotDescriptor,
   ) => Promise<VaultSnapshot>;
   uploadVaultSnapshot: (
-    syncConfig: SyncConfig,
+    syncAccess: SyncAccess,
     vaultSnapshot: VaultSnapshot,
     expectedRemoteSnapshotDescriptor: VaultSnapshotDescriptor | null,
   ) => Promise<void>;
@@ -28,7 +31,16 @@ export interface SyncProviderPort {
    * attempting to remove an already-absent vault is successful.
    */
   removeVaultSnapshots: (
-    syncConfig: SyncConfig,
+    syncAccess: SyncAccess,
     vaultId: string,
   ) => Promise<void>;
+  /**
+   * Returns authentication rejection only when the provider definitively
+   * rejects the credential. Network, rate-limit, and indeterminate provider
+   * failures must reject the promise.
+   */
+  checkVaultAccess: (
+    syncAccess: SyncAccess,
+    vaultId: string,
+  ) => Promise<"accessible" | "authentication_rejected">;
 }

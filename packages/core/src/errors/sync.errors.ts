@@ -21,6 +21,62 @@ export class SyncAlreadyConfiguredError extends Error {
   }
 }
 
+export class LocalSyncCredentialsMissingError extends Error {
+  override readonly name = "LocalSyncCredentialsMissingError";
+
+  constructor(vaultId: string) {
+    super(`Local sync credentials for vault "${vaultId}" were not found.`);
+  }
+}
+
+export class ReplacementSyncCredentialsRequiredError extends Error {
+  override readonly name = "ReplacementSyncCredentialsRequiredError";
+
+  constructor(vaultId: string) {
+    super(
+      `Replacement sync credentials are required to revoke a device from vault "${vaultId}".`,
+    );
+  }
+}
+
+export class ReplacementSyncTargetMismatchError extends Error {
+  override readonly name = "ReplacementSyncTargetMismatchError";
+
+  constructor(vaultId: string) {
+    super(
+      `Replacement sync credentials target another namespace for vault "${vaultId}".`,
+    );
+  }
+}
+
+export class ReplacementSyncCredentialsUnchangedError extends Error {
+  override readonly name = "ReplacementSyncCredentialsUnchangedError";
+
+  constructor(vaultId: string) {
+    super(
+      `Replacement sync credentials for vault "${vaultId}" must differ from the current credentials.`,
+    );
+  }
+}
+
+export class PreviousSyncCredentialStillActiveError extends Error {
+  override readonly name = "PreviousSyncCredentialStillActiveError";
+
+  constructor(vaultId: string) {
+    super(`The previous provider credential for vault "${vaultId}" is active.`);
+  }
+}
+
+export class ProviderCredentialRevocationPendingError extends Error {
+  override readonly name = "ProviderCredentialRevocationPendingError";
+
+  constructor(vaultId: string, operation: string) {
+    super(
+      `Vault "${vaultId}" must complete provider credential revocation before it can ${operation}.`,
+    );
+  }
+}
+
 export class SyncRemovalPendingError extends Error {
   constructor(vaultId: string, operation: string) {
     super(

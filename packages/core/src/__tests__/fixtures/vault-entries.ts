@@ -81,6 +81,8 @@ export function createUnlockedVaultWithEntries(
     },
     vaultMasterKey: values.vaultMasterKey,
     devicePrivateSignKey: values.devicePrivateSignKey,
+    devicePrivateVaultKey: values.devicePrivateVaultKey,
+    deviceLocalProtectionKey: values.deviceLocalProtectionKey,
     trustedSnapshotContext: {
       snapshotDigest: values.vaultSnapshotDigest,
       trust: values.verifiedVaultTrustState,
@@ -121,7 +123,7 @@ export function createVaultSnapshotServiceMock(
   let savedVaultSnapshot: VaultSnapshot = {
     metadata: {
       id: values.vaultId,
-      schemaVersion: 2,
+      schemaVersion: 1,
       vaultCreationTimestamp: values.timestamp - 1_000,
       revisionTimestamp: values.timestamp,
       snapshotVersionVector: {
@@ -129,14 +131,15 @@ export function createVaultSnapshotServiceMock(
       },
       algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
       createdByDeviceId: values.deviceId,
+      vaultKeyGeneration: values.vaultKeyGeneration,
     },
     trustChain: values.vaultTrustChain,
     keySlots: {
       deviceSlots: [
         {
           deviceId: values.deviceId,
-          protectedVaultMasterKey: values.protectedDeviceVaultMasterKey,
-          publicSignKey: values.devicePublicSignKey,
+          vaultKeyGeneration: values.vaultKeyGeneration,
+          envelope: values.vaultKeyEnvelope,
         },
       ],
     },
@@ -160,6 +163,7 @@ export function createVaultSnapshotServiceMock(
         options: {
           readonly baseSnapshotVersionVector?: VersionVector;
           readonly keySlots?: VaultSnapshot["keySlots"];
+          readonly vaultKeyGeneration?: number;
         } = {},
       ) => {
         savedVaultSnapshot = {
@@ -173,6 +177,9 @@ export function createVaultSnapshotServiceMock(
               unlockedVault.deviceId,
             ),
             createdByDeviceId: unlockedVault.deviceId,
+            vaultKeyGeneration:
+              options.vaultKeyGeneration ??
+              savedVaultSnapshot.metadata.vaultKeyGeneration,
           },
           keySlots: options.keySlots ?? savedVaultSnapshot.keySlots,
           content: values.encryptedVault,

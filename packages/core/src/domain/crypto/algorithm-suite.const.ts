@@ -10,10 +10,31 @@ export const CURRENT_ALGORITHM_SUITE: AlgorithmSuite = {
     keyFormat: "raw",
     keyLengthBits: 256,
   },
-  deviceSlotKeyGeneration: {
+  vaultKeyWrapping: {
+    keyAgreement: "ECDH",
+    namedCurve: "P-256",
+    keyDerivation: "HKDF",
+    hash: "SHA-256",
+    encryption: "AES-256-GCM",
+    keyLengthBits: 256,
+    saltLengthBytes: 32,
+    nonceLengthBytes: 12,
+    authenticatedData: [
+      "vaultId",
+      "deviceId",
+      "vaultKeyGeneration",
+      "algorithmSuiteId",
+    ],
+  },
+  deviceLocalProtectionKeyGeneration: {
     method: "secure-random",
     byteLength: 32,
     keyFormat: "raw",
+  },
+  deviceSyncCredentialEncryption: {
+    algorithm: "AES-256-GCM",
+    nonceLengthBytes: 12,
+    authenticatedData: ["vaultId", "deviceId", "provider", "target"],
   },
   recoverySecretGeneration: {
     method: "secure-random",

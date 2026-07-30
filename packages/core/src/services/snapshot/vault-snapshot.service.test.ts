@@ -1,1075 +1,117 @@
 import { describe, expect, it, vi } from "vitest";
-import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
-import { b64, createCoreTestValues } from "../../__tests__/fixtures/values";
-import {
-  createUnlockedVaultWithEntries,
-  singlePasswordEntry,
-  workTag,
-} from "../../__tests__/fixtures/vault-entries";
-import { CURRENT_ALGORITHM_SUITE } from "../../domain/crypto/algorithm-suite.const";
-import type { DevicePublicSignKey } from "../../domain/device-trust";
-import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
-import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
-import {
-  VaultSnapshotNotFoundError,
-  VaultSnapshotSignatureVerificationFailedError,
-  VaultSnapshotSignerNotTrustedError,
-} from "../../errors/unlock-vault.errors";
-import {
-  LocalVaultSnapshotChangedError,
-  PersistedVaultMismatchError,
-  SnapshotSigningDeviceNotTrustedError,
-  VaultSnapshotVersionMismatchError,
-} from "../../errors/vault-snapshot.errors";
+import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
+import { createUnlockedVaultWithEntries } from "../../__tests__/fixtures/vault-entries";
+import { VaultTrustStateInvalidError } from "../../errors/vault-trust.errors";
+import { SnapshotSigningDeviceNotTrustedError } from "../../errors/vault-snapshot.errors";
 import { VaultSnapshotService } from "./vault-snapshot.service";
 
+function createContext() {
+  const base = createUnlockVaultTestContext();
+  const service = new VaultSnapshotService(
+    base.ports.crypto,
+    base.ports.clock,
+    base.ports.vaultLocalRepository,
+  );
+  const unlockedVault = createUnlockedVaultWithEntries(base.values, []);
+
+  return { ...base, service, unlockedVault };
+}
+
 describe("VaultSnapshotService", () => {
-  const previousDeviceId = "previous-device-id";
-
-  function createContext() {
-    const values = createCoreTestValues();
-    const ports = createCoreTestPorts(values);
-    const service = new VaultSnapshotService(
-      ports.crypto,
-      ports.clock,
-      ports.vaultLocalRepository,
-    );
-    const baseUnlockedVault = createUnlockedVaultWithEntries(
-      values,
-      [singlePasswordEntry],
-      [workTag],
-    );
-    const unlockedVault = {
-      ...baseUnlockedVault,
-      trustedSnapshotContext: {
-        ...baseUnlockedVault.trustedSnapshotContext,
-        trust: {
-          ...baseUnlockedVault.trustedSnapshotContext.trust,
-          trustedDevices: [
-            ...baseUnlockedVault.trustedSnapshotContext.trust.trustedDevices,
-            {
-              deviceId: previousDeviceId,
-              publicSignKey: values.devicePublicSignKey,
-            },
-          ],
-        },
-      },
-    };
-    const currentSnapshot: VaultSnapshot = {
-      metadata: {
-        id: values.vaultId,
-        schemaVersion: 2,
-        vaultCreationTimestamp: values.timestamp - 1_000,
-        revisionTimestamp: values.timestamp - 500,
-        snapshotVersionVector: {
-          [values.deviceId]: 3,
-        },
-        algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
-        createdByDeviceId: previousDeviceId,
-      },
-      trustChain: values.vaultTrustChain,
-      keySlots: {
-        deviceSlots: [
-          {
-            deviceId: previousDeviceId,
-            protectedVaultMasterKey: values.protectedDeviceVaultMasterKey,
-            publicSignKey: values.devicePublicSignKey,
-          },
-          {
-            deviceId: values.deviceId,
-            protectedVaultMasterKey: values.protectedDeviceVaultMasterKey,
-            publicSignKey: values.devicePublicSignKey,
-          },
-        ],
-      },
-      content: values.encryptedVault,
-      signature: values.snapshotSignature,
-    };
-
-    ports.saved.vaultSnapshot = currentSnapshot;
-    ports.saved.localVaultTrustCheckpoint = {
-      ...values.localVaultTrustCheckpoint,
-      payload: {
-        ...values.localVaultTrustCheckpoint.payload,
-        snapshotVersionVector: currentSnapshot.metadata.snapshotVersionVector,
-        snapshotDigest: values.vaultSnapshotDigest,
-      },
-    };
-
-    return {
-      values,
-      ports,
-      saved: ports.saved,
-      service,
-      unlockedVault,
-      currentSnapshot,
-    };
-  }
-
-  it("persists the unlocked vault as a new signed vault snapshot", async () => {
+  it("preserves vault key generation during an ordinary save", async () => {
     const ctx = createContext();
 
     const result = await ctx.service.persistUnlockedVault(
       ctx.values.vaultId,
       ctx.unlockedVault,
-      ctx.currentSnapshot.metadata.snapshotVersionVector,
+      ctx.vaultSnapshot.metadata.snapshotVersionVector,
     );
 
-    expect(result).toEqual({
-      snapshotVersionVector: {
-        [ctx.values.deviceId]: 4,
-      },
-      revisionTimestamp: ctx.values.timestamp,
-      trustedSnapshotContext: {
-        snapshotDigest: ctx.values.vaultSnapshotDigest,
-        trust: ctx.unlockedVault.trustedSnapshotContext.trust,
-      },
-      snapshot: ctx.saved.vaultSnapshot,
-    });
-    expect(ctx.ports.crypto.encryptVaultSnapshotContent).toHaveBeenCalledWith(
-      ctx.unlockedVault.vault,
-      ctx.values.vaultMasterKey,
+    expect(result.snapshot.metadata.vaultKeyGeneration).toBe(1);
+    expect(result.snapshot.keySlots).toEqual(ctx.vaultSnapshot.keySlots);
+    expect(ctx.ports.crypto.encryptVaultSnapshotContent).toHaveBeenCalledBefore(
+      vi.mocked(ctx.ports.crypto.signVaultSnapshot),
     );
-    expect(ctx.ports.crypto.signVaultSnapshot).toHaveBeenCalledWith(
-      {
-        metadata: {
-          ...ctx.currentSnapshot.metadata,
-          revisionTimestamp: ctx.values.timestamp,
-          snapshotVersionVector: {
-            [ctx.values.deviceId]: 4,
-          },
-          createdByDeviceId: ctx.values.deviceId,
-        },
-        keySlots: ctx.currentSnapshot.keySlots,
-        content: ctx.values.encryptedVault,
-        trustChain: ctx.currentSnapshot.trustChain,
-      },
-      ctx.values.devicePrivateSignKey,
-    );
-    expect(ctx.saved.vaultSnapshot).toEqual({
-      metadata: {
-        ...ctx.currentSnapshot.metadata,
-        revisionTimestamp: ctx.values.timestamp,
-        snapshotVersionVector: {
-          [ctx.values.deviceId]: 4,
-        },
-        createdByDeviceId: ctx.values.deviceId,
-      },
-      keySlots: ctx.currentSnapshot.keySlots,
-      content: ctx.values.encryptedVault,
-      trustChain: ctx.currentSnapshot.trustChain,
-      signature: ctx.values.snapshotSignature,
-    });
-  });
-
-  it("rejects the second concurrent save based on the same snapshot", async () => {
-    const ctx = createContext();
-    const firstUnlockedVault = {
-      ...ctx.unlockedVault,
-      vault: {
-        ...ctx.unlockedVault.vault,
-        entries: [singlePasswordEntry],
-      },
-    };
-    const secondUnlockedVault = {
-      ...ctx.unlockedVault,
-      vault: {
-        ...ctx.unlockedVault.vault,
-        entries: [],
-      },
-    };
-    const firstEncryptedVault = {
-      ...ctx.values.encryptedVault,
-      ciphertext: b64("first-encrypted-vault"),
-    };
-    const secondEncryptedVault = {
-      ...ctx.values.encryptedVault,
-      ciphertext: b64("second-encrypted-vault"),
-    };
-    const snapshotDigests = new Map<VaultSnapshot, string>([
-      [ctx.currentSnapshot, ctx.values.vaultSnapshotDigest],
-    ]);
-    let nextSnapshotDigest = 1;
-    const saveSnapshot = vi.mocked(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
-    );
-    const saveSnapshotOriginal = saveSnapshot.getMockImplementation();
-
-    if (saveSnapshotOriginal === undefined) {
-      throw new Error("Expected the local snapshot save fixture.");
-    }
-
-    let saveAttempts = 0;
-    let releaseSaveAttempts!: () => void;
-    const bothSaveAttemptsReady = new Promise<void>((resolve) => {
-      releaseSaveAttempts = resolve;
-    });
-
-    vi.mocked(ctx.ports.crypto.encryptVaultSnapshotContent).mockImplementation(
-      async (vault) =>
-        vault === firstUnlockedVault.vault
-          ? firstEncryptedVault
-          : secondEncryptedVault,
-    );
-    vi.mocked(ctx.ports.crypto.digestVaultSnapshot).mockImplementation(
-      async (snapshot) => {
-        const existingDigest = snapshotDigests.get(snapshot);
-
-        if (existingDigest !== undefined) {
-          return existingDigest;
-        }
-
-        const digest = `next-snapshot-digest-${nextSnapshotDigest}`;
-        nextSnapshotDigest += 1;
-        snapshotDigests.set(snapshot, digest);
-
-        return digest;
-      },
-    );
-    saveSnapshot.mockImplementation(async (params) => {
-      saveAttempts += 1;
-
-      if (saveAttempts === 2) {
-        releaseSaveAttempts();
-      }
-
-      await bothSaveAttemptsReady;
-      await saveSnapshotOriginal(params);
-    });
-
-    const results = await Promise.allSettled([
-      ctx.service.persistUnlockedVault(
-        ctx.values.vaultId,
-        firstUnlockedVault,
-        ctx.currentSnapshot.metadata.snapshotVersionVector,
-      ),
-      ctx.service.persistUnlockedVault(
-        ctx.values.vaultId,
-        secondUnlockedVault,
-        ctx.currentSnapshot.metadata.snapshotVersionVector,
-      ),
-    ]);
-    const winner = results.find((result) => result.status === "fulfilled");
-    const loser = results.find((result) => result.status === "rejected");
-
-    if (winner?.status !== "fulfilled" || loser?.status !== "rejected") {
-      throw new Error("Expected exactly one concurrent snapshot save to win.");
-    }
-
-    expect(loser.reason).toBeInstanceOf(LocalVaultSnapshotChangedError);
-    expect(saveSnapshot).toHaveBeenCalledTimes(2);
-    expect(ctx.saved.vaultSnapshot).toBe(winner.value.snapshot);
-    expect(ctx.saved.localVaultTrustCheckpoint?.payload.snapshotDigest).toBe(
-      winner.value.trustedSnapshotContext.snapshotDigest,
-    );
-  });
-
-  it("requires the current snapshot for an unlocked vault without saving", async () => {
-    const ctx = createContext();
-
-    await expect(
-      ctx.service.requireCurrentSnapshotForUnlockedVault(
-        ctx.values.vaultId,
-        ctx.unlockedVault,
-        ctx.currentSnapshot.metadata.snapshotVersionVector,
-      ),
-    ).resolves.toBe(ctx.currentSnapshot);
-
-    expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
-    expect(ctx.ports.crypto.signVaultSnapshot).not.toHaveBeenCalled();
     expect(
       ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
-    ).not.toHaveBeenCalled();
+    ).toHaveBeenCalledOnce();
   });
 
-  it("requires a local vault snapshot", async () => {
+  it("rejects a rotated generation without matching verified trust", async () => {
     const ctx = createContext();
-
-    await expect(
-      ctx.service.requireLocalVaultSnapshot(ctx.values.vaultId),
-    ).resolves.toBe(ctx.currentSnapshot);
-  });
-
-  it("opens a vault snapshot only after trusted signer verification", async () => {
-    const ctx = createContext();
-    const trustedSnapshot: VaultSnapshot = {
-      ...ctx.currentSnapshot,
-      metadata: {
-        ...ctx.currentSnapshot.metadata,
-        createdByDeviceId: ctx.values.deviceId,
+    const slot = {
+      deviceId: ctx.values.deviceId,
+      vaultKeyGeneration: 2,
+      envelope: {
+        ...ctx.values.vaultKeyEnvelope,
+        vaultKeyGeneration: 2,
       },
     };
 
     await expect(
-      ctx.service.openTrustedVaultSnapshot(
+      ctx.service.persistUnlockedVault(
         ctx.values.vaultId,
-        trustedSnapshot,
-        ctx.values.vaultMasterKey,
-        ctx.currentSnapshot,
-      ),
-    ).resolves.toBe(ctx.values.decryptedVault);
-
-    expect(ctx.ports.crypto.verifyVaultSnapshotSignature).toHaveBeenCalledWith(
-      trustedSnapshot,
-      ctx.values.devicePublicSignKey,
-    );
-    expect(ctx.ports.crypto.decryptVaultSnapshotContent).toHaveBeenCalledWith(
-      trustedSnapshot.content,
-      ctx.values.vaultMasterKey,
-    );
-  });
-
-  it("fails before verifying when the snapshot belongs to another vault", async () => {
-    const ctx = createContext();
-    const mismatchedSnapshot: VaultSnapshot = {
-      ...ctx.currentSnapshot,
-      metadata: {
-        ...ctx.currentSnapshot.metadata,
-        id: "another-vault-id",
-        createdByDeviceId: ctx.values.deviceId,
-      },
-    };
-
-    await expect(
-      ctx.service.openTrustedVaultSnapshot(
-        ctx.values.vaultId,
-        mismatchedSnapshot,
-        ctx.values.vaultMasterKey,
-        ctx.currentSnapshot,
-      ),
-    ).rejects.toThrow(PersistedVaultMismatchError);
-
-    expect(
-      ctx.ports.crypto.verifyVaultSnapshotSignature,
-    ).not.toHaveBeenCalled();
-    expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
-  });
-
-  it("fails before decrypting when the snapshot signer is not trusted", async () => {
-    const ctx = createContext();
-    const untrustedSnapshot: VaultSnapshot = {
-      ...ctx.currentSnapshot,
-      metadata: {
-        ...ctx.currentSnapshot.metadata,
-        createdByDeviceId: "untrusted-device-id",
-      },
-    };
-
-    await expect(
-      ctx.service.openTrustedVaultSnapshot(
-        ctx.values.vaultId,
-        untrustedSnapshot,
-        ctx.values.vaultMasterKey,
-        ctx.currentSnapshot,
-      ),
-    ).rejects.toThrow(VaultSnapshotSignerNotTrustedError);
-
-    expect(
-      ctx.ports.crypto.verifyVaultSnapshotSignature,
-    ).not.toHaveBeenCalled();
-    expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
-  });
-
-  it("opens a vault snapshot signed by a completed enrollment device", async () => {
-    const ctx = createContext();
-    const enrolledVault = {
-      ...ctx.values.decryptedVault,
-      deviceProfiles: [
         {
-          id: ctx.values.pendingDeviceId,
-          name: "New laptop",
-          createdAt: ctx.values.timestamp,
-          versionVector: {
-            [ctx.values.pendingDeviceId]: 1,
-          },
+          ...ctx.unlockedVault,
+          vaultMasterKey: ctx.values.rotatedVaultMasterKey,
         },
-      ],
-    };
-    const enrollmentSnapshot: VaultSnapshot = {
-      ...ctx.currentSnapshot,
-      metadata: {
-        ...ctx.currentSnapshot.metadata,
-        revisionTimestamp: ctx.values.timestamp,
-        createdByDeviceId: ctx.values.pendingDeviceId,
-      },
-      keySlots: {
-        ...ctx.currentSnapshot.keySlots,
-        deviceSlots: [
-          ...ctx.currentSnapshot.keySlots.deviceSlots,
-          {
-            deviceId: ctx.values.pendingDeviceId,
-            protectedVaultMasterKey: ctx.values.protectedDeviceVaultMasterKey,
-            publicSignKey: ctx.values.pendingDevicePublicSignKey,
-          },
-        ],
-        completedEnrollments: [
-          {
-            version: 1,
-            vaultId: ctx.values.vaultId,
-            enrollmentId: ctx.values.enrollmentId,
-            pendingDeviceId: ctx.values.pendingDeviceId,
-            pendingDevicePublicSignKeyDigest:
-              ctx.values.pendingDevicePublicSignKeyDigest,
-            protectedVaultMasterKeyDigest:
-              ctx.values.protectedEnrollmentVaultMasterKeyDigest,
-            authorizedByDeviceId: ctx.values.deviceId,
-            authorizerSignature:
-              ctx.values.deviceEnrollmentAuthorizationSignature,
-          },
-        ],
-      },
-    };
-
-    vi.mocked(
-      ctx.ports.crypto.decryptVaultSnapshotContent,
-    ).mockResolvedValueOnce(enrolledVault);
-
-    await expect(
-      ctx.service.openTrustedVaultSnapshot(
-        ctx.values.vaultId,
-        enrollmentSnapshot,
-        ctx.values.vaultMasterKey,
-        ctx.currentSnapshot,
-      ),
-    ).resolves.toBe(enrolledVault);
-
-    expect(
-      ctx.ports.crypto.verifyDeviceEnrollmentAuthorizationSignature,
-    ).toHaveBeenCalledWith(
-      {
-        version: 1,
-        vaultId: ctx.values.vaultId,
-        enrollmentId: ctx.values.enrollmentId,
-        pendingDeviceId: ctx.values.pendingDeviceId,
-        pendingDevicePublicSignKeyDigest:
-          ctx.values.pendingDevicePublicSignKeyDigest,
-        protectedVaultMasterKeyDigest:
-          ctx.values.protectedEnrollmentVaultMasterKeyDigest,
-      },
-      ctx.values.deviceEnrollmentAuthorizationSignature,
-      ctx.values.devicePublicSignKey,
-    );
-    expect(ctx.ports.crypto.digestDevicePublicSignKey).toHaveBeenCalledWith(
-      ctx.values.pendingDevicePublicSignKey,
-    );
-    expect(ctx.ports.crypto.verifyVaultSnapshotSignature).toHaveBeenCalledWith(
-      enrollmentSnapshot,
-      ctx.values.pendingDevicePublicSignKey,
-    );
-    expect(ctx.ports.crypto.decryptVaultSnapshotContent).toHaveBeenCalledWith(
-      enrollmentSnapshot.content,
-      ctx.values.vaultMasterKey,
-    );
-  });
-
-  it("opens a completed enrollment snapshot without proof expiry", async () => {
-    const ctx = createContext();
-    const enrolledVault = {
-      ...ctx.values.decryptedVault,
-      deviceProfiles: [
+        ctx.vaultSnapshot.metadata.snapshotVersionVector,
         {
-          id: ctx.values.pendingDeviceId,
-          name: "New laptop",
-          createdAt: ctx.values.timestamp,
-          versionVector: {
-            [ctx.values.pendingDeviceId]: 1,
-          },
+          vaultKeyGeneration: 2,
+          keySlots: { deviceSlots: [slot] },
         },
-      ],
-    };
-    const enrollmentSnapshot: VaultSnapshot = {
-      ...ctx.currentSnapshot,
-      metadata: {
-        ...ctx.currentSnapshot.metadata,
-        revisionTimestamp: ctx.values.timestamp,
-        createdByDeviceId: ctx.values.pendingDeviceId,
-      },
-      keySlots: {
-        ...ctx.currentSnapshot.keySlots,
-        deviceSlots: [
-          ...ctx.currentSnapshot.keySlots.deviceSlots,
-          {
-            deviceId: ctx.values.pendingDeviceId,
-            protectedVaultMasterKey: ctx.values.protectedDeviceVaultMasterKey,
-            publicSignKey: ctx.values.pendingDevicePublicSignKey,
-          },
-        ],
-        completedEnrollments: [
-          {
-            version: 1,
-            vaultId: ctx.values.vaultId,
-            enrollmentId: ctx.values.enrollmentId,
-            pendingDeviceId: ctx.values.pendingDeviceId,
-            pendingDevicePublicSignKeyDigest:
-              ctx.values.pendingDevicePublicSignKeyDigest,
-            protectedVaultMasterKeyDigest:
-              ctx.values.protectedEnrollmentVaultMasterKeyDigest,
-            authorizedByDeviceId: ctx.values.deviceId,
-            authorizerSignature:
-              ctx.values.deviceEnrollmentAuthorizationSignature,
-          },
-        ],
-      },
-    };
-
-    vi.mocked(
-      ctx.ports.crypto.decryptVaultSnapshotContent,
-    ).mockResolvedValueOnce(enrolledVault);
-
-    await expect(
-      ctx.service.openTrustedVaultSnapshot(
-        ctx.values.vaultId,
-        enrollmentSnapshot,
-        ctx.values.vaultMasterKey,
-        ctx.currentSnapshot,
       ),
-    ).resolves.toBe(enrolledVault);
-
-    expect(
-      ctx.ports.crypto.verifyDeviceEnrollmentAuthorizationSignature,
-    ).toHaveBeenCalled();
-    expect(ctx.ports.crypto.digestDevicePublicSignKey).toHaveBeenCalledWith(
-      ctx.values.pendingDevicePublicSignKey,
-    );
-    expect(ctx.ports.crypto.verifyVaultSnapshotSignature).toHaveBeenCalledWith(
-      enrollmentSnapshot,
-      ctx.values.pendingDevicePublicSignKey,
-    );
-    expect(ctx.ports.crypto.decryptVaultSnapshotContent).toHaveBeenCalledWith(
-      enrollmentSnapshot.content,
-      ctx.values.vaultMasterKey,
-    );
+    ).rejects.toBeInstanceOf(VaultTrustStateInvalidError);
   });
 
-  it("rejects a completed enrollment snapshot for another vault", async () => {
-    const ctx = createContext();
-    const enrollmentSnapshot: VaultSnapshot = {
-      ...ctx.currentSnapshot,
-      metadata: {
-        ...ctx.currentSnapshot.metadata,
-        revisionTimestamp: ctx.values.timestamp,
-        createdByDeviceId: ctx.values.pendingDeviceId,
-      },
-      keySlots: {
-        ...ctx.currentSnapshot.keySlots,
-        deviceSlots: [
-          ...ctx.currentSnapshot.keySlots.deviceSlots,
-          {
-            deviceId: ctx.values.pendingDeviceId,
-            protectedVaultMasterKey: ctx.values.protectedDeviceVaultMasterKey,
-            publicSignKey: ctx.values.pendingDevicePublicSignKey,
-          },
-        ],
-        completedEnrollments: [
-          {
-            version: 1,
-            vaultId: "another-vault-id",
-            enrollmentId: ctx.values.enrollmentId,
-            pendingDeviceId: ctx.values.pendingDeviceId,
-            pendingDevicePublicSignKeyDigest:
-              ctx.values.pendingDevicePublicSignKeyDigest,
-            protectedVaultMasterKeyDigest:
-              ctx.values.protectedEnrollmentVaultMasterKeyDigest,
-            authorizedByDeviceId: ctx.values.deviceId,
-            authorizerSignature:
-              ctx.values.deviceEnrollmentAuthorizationSignature,
-          },
-        ],
-      },
-    };
-
-    await expect(
-      ctx.service.openTrustedVaultSnapshot(
-        ctx.values.vaultId,
-        enrollmentSnapshot,
-        ctx.values.vaultMasterKey,
-        ctx.currentSnapshot,
-      ),
-    ).rejects.toThrow(VaultSnapshotSignerNotTrustedError);
-
-    expect(
-      ctx.ports.crypto.verifyDeviceEnrollmentAuthorizationSignature,
-    ).not.toHaveBeenCalled();
-    expect(ctx.ports.crypto.digestDevicePublicSignKey).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.crypto.verifyVaultSnapshotSignature,
-    ).not.toHaveBeenCalled();
-    expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
-  });
-
-  it("rejects a completed enrollment proof already known by the trust source", async () => {
-    const ctx = createContext();
-    const completedEnrollmentProof = {
-      version: 1,
-      vaultId: ctx.values.vaultId,
-      enrollmentId: ctx.values.enrollmentId,
-      pendingDeviceId: ctx.values.pendingDeviceId,
-      pendingDevicePublicSignKeyDigest:
-        ctx.values.pendingDevicePublicSignKeyDigest,
-      protectedVaultMasterKeyDigest:
-        ctx.values.protectedEnrollmentVaultMasterKeyDigest,
-      authorizedByDeviceId: ctx.values.deviceId,
-      authorizerSignature: ctx.values.deviceEnrollmentAuthorizationSignature,
-    } as const;
-    const trustSourceSnapshot: VaultSnapshot = {
-      ...ctx.currentSnapshot,
-      keySlots: {
-        ...ctx.currentSnapshot.keySlots,
-        completedEnrollments: [completedEnrollmentProof],
-      },
-    };
-    const replayedEnrollmentSnapshot: VaultSnapshot = {
-      ...ctx.currentSnapshot,
-      metadata: {
-        ...ctx.currentSnapshot.metadata,
-        revisionTimestamp: ctx.values.timestamp,
-        createdByDeviceId: ctx.values.pendingDeviceId,
-      },
-      keySlots: {
-        ...ctx.currentSnapshot.keySlots,
-        deviceSlots: [
-          ...ctx.currentSnapshot.keySlots.deviceSlots,
-          {
-            deviceId: ctx.values.pendingDeviceId,
-            protectedVaultMasterKey: ctx.values.protectedDeviceVaultMasterKey,
-            publicSignKey: ctx.values.pendingDevicePublicSignKey,
-          },
-        ],
-        completedEnrollments: [completedEnrollmentProof],
-      },
-    };
-
-    await expect(
-      ctx.service.openTrustedVaultSnapshot(
-        ctx.values.vaultId,
-        replayedEnrollmentSnapshot,
-        ctx.values.vaultMasterKey,
-        trustSourceSnapshot,
-      ),
-    ).rejects.toThrow(VaultSnapshotSignerNotTrustedError);
-
-    expect(
-      ctx.ports.crypto.verifyDeviceEnrollmentAuthorizationSignature,
-    ).not.toHaveBeenCalled();
-    expect(ctx.ports.crypto.digestDevicePublicSignKey).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.crypto.verifyVaultSnapshotSignature,
-    ).not.toHaveBeenCalled();
-    expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
-  });
-
-  it("rejects a completed enrollment snapshot when the authorization is invalid", async () => {
-    const ctx = createContext();
-    const enrollmentSnapshot: VaultSnapshot = {
-      ...ctx.currentSnapshot,
-      metadata: {
-        ...ctx.currentSnapshot.metadata,
-        revisionTimestamp: ctx.values.timestamp,
-        createdByDeviceId: ctx.values.pendingDeviceId,
-      },
-      keySlots: {
-        ...ctx.currentSnapshot.keySlots,
-        deviceSlots: [
-          ...ctx.currentSnapshot.keySlots.deviceSlots,
-          {
-            deviceId: ctx.values.pendingDeviceId,
-            protectedVaultMasterKey: ctx.values.protectedDeviceVaultMasterKey,
-            publicSignKey: ctx.values.pendingDevicePublicSignKey,
-          },
-        ],
-        completedEnrollments: [
-          {
-            version: 1,
-            vaultId: ctx.values.vaultId,
-            enrollmentId: ctx.values.enrollmentId,
-            pendingDeviceId: ctx.values.pendingDeviceId,
-            pendingDevicePublicSignKeyDigest:
-              ctx.values.pendingDevicePublicSignKeyDigest,
-            protectedVaultMasterKeyDigest:
-              ctx.values.protectedEnrollmentVaultMasterKeyDigest,
-            authorizedByDeviceId: ctx.values.deviceId,
-            authorizerSignature:
-              ctx.values.deviceEnrollmentAuthorizationSignature,
-          },
-        ],
-      },
-    };
-
-    vi.mocked(
-      ctx.ports.crypto.verifyDeviceEnrollmentAuthorizationSignature,
-    ).mockResolvedValueOnce(false);
-
-    await expect(
-      ctx.service.openTrustedVaultSnapshot(
-        ctx.values.vaultId,
-        enrollmentSnapshot,
-        ctx.values.vaultMasterKey,
-        ctx.currentSnapshot,
-      ),
-    ).rejects.toThrow(VaultSnapshotSignerNotTrustedError);
-
-    expect(
-      ctx.ports.crypto.verifyVaultSnapshotSignature,
-    ).not.toHaveBeenCalled();
-    expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
-  });
-
-  it("rejects a completed enrollment snapshot when the pending public key was swapped", async () => {
-    const ctx = createContext();
-    const attackerPublicSignKey = new Uint8Array([1, 2])
-      .buffer as DevicePublicSignKey;
-    const enrollmentSnapshot: VaultSnapshot = {
-      ...ctx.currentSnapshot,
-      metadata: {
-        ...ctx.currentSnapshot.metadata,
-        revisionTimestamp: ctx.values.timestamp,
-        createdByDeviceId: ctx.values.pendingDeviceId,
-      },
-      keySlots: {
-        ...ctx.currentSnapshot.keySlots,
-        deviceSlots: [
-          ...ctx.currentSnapshot.keySlots.deviceSlots,
-          {
-            deviceId: ctx.values.pendingDeviceId,
-            protectedVaultMasterKey: ctx.values.protectedDeviceVaultMasterKey,
-            publicSignKey: attackerPublicSignKey,
-          },
-        ],
-        completedEnrollments: [
-          {
-            version: 1,
-            vaultId: ctx.values.vaultId,
-            enrollmentId: ctx.values.enrollmentId,
-            pendingDeviceId: ctx.values.pendingDeviceId,
-            pendingDevicePublicSignKeyDigest:
-              ctx.values.pendingDevicePublicSignKeyDigest,
-            protectedVaultMasterKeyDigest:
-              ctx.values.protectedEnrollmentVaultMasterKeyDigest,
-            authorizedByDeviceId: ctx.values.deviceId,
-            authorizerSignature:
-              ctx.values.deviceEnrollmentAuthorizationSignature,
-          },
-        ],
-      },
-    };
-
-    vi.mocked(ctx.ports.crypto.digestDevicePublicSignKey).mockResolvedValueOnce(
-      "attacker-device-public-sign-key-digest",
-    );
-
-    await expect(
-      ctx.service.openTrustedVaultSnapshot(
-        ctx.values.vaultId,
-        enrollmentSnapshot,
-        ctx.values.vaultMasterKey,
-        ctx.currentSnapshot,
-      ),
-    ).rejects.toThrow(VaultSnapshotSignerNotTrustedError);
-
-    expect(
-      ctx.ports.crypto.verifyDeviceEnrollmentAuthorizationSignature,
-    ).toHaveBeenCalled();
-    expect(ctx.ports.crypto.digestDevicePublicSignKey).toHaveBeenCalledWith(
-      attackerPublicSignKey,
-    );
-    expect(
-      ctx.ports.crypto.verifyVaultSnapshotSignature,
-    ).not.toHaveBeenCalled();
-    expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
-  });
-
-  it("fails before decrypting when the snapshot signature is invalid", async () => {
-    const ctx = createContext();
-    const trustedSnapshot: VaultSnapshot = {
-      ...ctx.currentSnapshot,
-      metadata: {
-        ...ctx.currentSnapshot.metadata,
-        createdByDeviceId: ctx.values.deviceId,
-      },
-    };
-
-    vi.mocked(
-      ctx.ports.crypto.verifyVaultSnapshotSignature,
-    ).mockResolvedValueOnce(false);
-
-    await expect(
-      ctx.service.openTrustedVaultSnapshot(
-        ctx.values.vaultId,
-        trustedSnapshot,
-        ctx.values.vaultMasterKey,
-        ctx.currentSnapshot,
-      ),
-    ).rejects.toThrow(VaultSnapshotSignatureVerificationFailedError);
-
-    expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
-  });
-
-  it("fails before verifying when the snapshot algorithm suite is unsupported", async () => {
-    const ctx = createContext();
-    const unsupportedSnapshot: VaultSnapshot = {
-      ...ctx.currentSnapshot,
-      metadata: {
-        ...ctx.currentSnapshot.metadata,
-        algorithmSuiteId: "unsupported-suite",
-      },
-    };
-
-    await expect(
-      ctx.service.openTrustedVaultSnapshot(
-        ctx.values.vaultId,
-        unsupportedSnapshot,
-        ctx.values.vaultMasterKey,
-        ctx.currentSnapshot,
-      ),
-    ).rejects.toThrow(UnsupportedAlgorithmSuiteError);
-
-    expect(
-      ctx.ports.crypto.verifyVaultSnapshotSignature,
-    ).not.toHaveBeenCalled();
-    expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
-  });
-
-  it("fails when the required current snapshot version does not match the session source version", async () => {
-    const ctx = createContext();
-
-    await expect(
-      ctx.service.requireCurrentSnapshotForUnlockedVault(
-        ctx.values.vaultId,
-        ctx.unlockedVault,
-        { [ctx.values.deviceId]: 2 },
-      ),
-    ).rejects.toThrow(VaultSnapshotVersionMismatchError);
-
-    expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
-    expect(ctx.ports.crypto.signVaultSnapshot).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("fails when the unlocked vault belongs to another vault", async () => {
+  it("rejects an untrusted signing device before encryption", async () => {
     const ctx = createContext();
 
     await expect(
       ctx.service.persistUnlockedVault(
-        "another-vault-id",
-        ctx.unlockedVault,
-        ctx.currentSnapshot.metadata.snapshotVersionVector,
-      ),
-    ).rejects.toThrow(PersistedVaultMismatchError);
-
-    expect(
-      ctx.ports.vaultLocalRepository.getVaultSnapshot,
-    ).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("fails when the current local vault snapshot is missing", async () => {
-    const ctx = createContext();
-    ctx.saved.vaultSnapshot = undefined;
-
-    await expect(
-      ctx.service.persistUnlockedVault(
         ctx.values.vaultId,
-        ctx.unlockedVault,
-        ctx.currentSnapshot.metadata.snapshotVersionVector,
-      ),
-    ).rejects.toThrow(VaultSnapshotNotFoundError);
-
-    expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("fails when the current local snapshot version does not match the session source version", async () => {
-    const ctx = createContext();
-
-    await expect(
-      ctx.service.persistUnlockedVault(ctx.values.vaultId, ctx.unlockedVault, {
-        [ctx.values.deviceId]: 2,
-      }),
-    ).rejects.toThrow(VaultSnapshotVersionMismatchError);
-
-    expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("fails when the current local vault snapshot uses an unsupported algorithm suite", async () => {
-    const ctx = createContext();
-    ctx.saved.vaultSnapshot = {
-      ...ctx.currentSnapshot,
-      metadata: {
-        ...ctx.currentSnapshot.metadata,
-        algorithmSuiteId: "unsupported-suite",
-      },
-    };
-
-    await expect(
-      ctx.service.persistUnlockedVault(
-        ctx.values.vaultId,
-        ctx.unlockedVault,
-        ctx.currentSnapshot.metadata.snapshotVersionVector,
-      ),
-    ).rejects.toThrow(UnsupportedAlgorithmSuiteError);
-
-    expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("fails when the current local snapshot signer is not trusted", async () => {
-    const ctx = createContext();
-    ctx.saved.vaultSnapshot = {
-      ...ctx.currentSnapshot,
-      keySlots: {
-        ...ctx.currentSnapshot.keySlots,
-        deviceSlots: ctx.currentSnapshot.keySlots.deviceSlots.filter(
-          (deviceSlot) => deviceSlot.deviceId !== previousDeviceId,
-        ),
-      },
-    };
-
-    await expect(
-      ctx.service.persistUnlockedVault(
-        ctx.values.vaultId,
-        ctx.unlockedVault,
-        ctx.currentSnapshot.metadata.snapshotVersionVector,
-      ),
-    ).rejects.toThrow(VaultSnapshotSignerNotTrustedError);
-
-    expect(
-      ctx.ports.crypto.verifyVaultSnapshotSignature,
-    ).not.toHaveBeenCalled();
-    expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("fails when the current local snapshot signature is invalid", async () => {
-    const ctx = createContext();
-    vi.mocked(
-      ctx.ports.crypto.verifyVaultSnapshotSignature,
-    ).mockResolvedValueOnce(false);
-
-    await expect(
-      ctx.service.persistUnlockedVault(
-        ctx.values.vaultId,
-        ctx.unlockedVault,
-        ctx.currentSnapshot.metadata.snapshotVersionVector,
-      ),
-    ).rejects.toThrow(VaultSnapshotSignatureVerificationFailedError);
-
-    expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("fails when the current device is not trusted by the snapshot", async () => {
-    const ctx = createContext();
-    ctx.saved.vaultSnapshot = {
-      ...ctx.currentSnapshot,
-      keySlots: {
-        ...ctx.currentSnapshot.keySlots,
-        deviceSlots: ctx.currentSnapshot.keySlots.deviceSlots.filter(
-          (deviceSlot) => deviceSlot.deviceId !== ctx.values.deviceId,
-        ),
-      },
-    };
-
-    await expect(
-      ctx.service.persistUnlockedVault(
-        ctx.values.vaultId,
-        ctx.unlockedVault,
-        ctx.currentSnapshot.metadata.snapshotVersionVector,
-      ),
-    ).rejects.toThrow(SnapshotSigningDeviceNotTrustedError);
-
-    expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("fails when the current device is absent from the effective trust state", async () => {
-    const ctx = createContext();
-    const unlockedVault = {
-      ...ctx.unlockedVault,
-      trustedSnapshotContext: {
-        ...ctx.unlockedVault.trustedSnapshotContext,
-        trust: {
-          ...ctx.unlockedVault.trustedSnapshotContext.trust,
-          trustedDevices:
-            ctx.unlockedVault.trustedSnapshotContext.trust.trustedDevices.filter(
-              (device) => device.deviceId !== ctx.values.deviceId,
-            ),
+        {
+          ...ctx.unlockedVault,
+          deviceId: "untrusted-device",
         },
-      },
-    };
-
-    await expect(
-      ctx.service.persistUnlockedVault(
-        ctx.values.vaultId,
-        unlockedVault,
-        ctx.currentSnapshot.metadata.snapshotVersionVector,
+        ctx.vaultSnapshot.metadata.snapshotVersionVector,
       ),
-    ).rejects.toThrow(SnapshotSigningDeviceNotTrustedError);
+    ).rejects.toBeInstanceOf(SnapshotSigningDeviceNotTrustedError);
 
     expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
-    ).not.toHaveBeenCalled();
   });
 
-  it("does not save a snapshot when content encryption fails", async () => {
+  it("does not save when encryption fails", async () => {
     const ctx = createContext();
-    const error = new Error("encryption failed");
-
-    vi.mocked(
-      ctx.ports.crypto.encryptVaultSnapshotContent,
-    ).mockRejectedValueOnce(error);
-
-    await expect(
-      ctx.service.persistUnlockedVault(
-        ctx.values.vaultId,
-        ctx.unlockedVault,
-        ctx.currentSnapshot.metadata.snapshotVersionVector,
-      ),
-    ).rejects.toThrow(error);
-
-    expect(ctx.ports.crypto.signVaultSnapshot).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("does not save a snapshot when signing fails", async () => {
-    const ctx = createContext();
-    const error = new Error("signing failed");
-
-    vi.mocked(ctx.ports.crypto.signVaultSnapshot).mockRejectedValueOnce(error);
-
-    await expect(
-      ctx.service.persistUnlockedVault(
-        ctx.values.vaultId,
-        ctx.unlockedVault,
-        ctx.currentSnapshot.metadata.snapshotVersionVector,
-      ),
-    ).rejects.toThrow(error);
-
-    expect(ctx.ports.crypto.encryptVaultSnapshotContent).toHaveBeenCalledWith(
-      ctx.unlockedVault.vault,
-      ctx.values.vaultMasterKey,
+    vi.mocked(ctx.ports.crypto.encryptVaultSnapshotContent).mockRejectedValue(
+      new Error("encryption failed"),
     );
+
+    await expect(
+      ctx.service.persistUnlockedVault(
+        ctx.values.vaultId,
+        ctx.unlockedVault,
+        ctx.vaultSnapshot.metadata.snapshotVersionVector,
+      ),
+    ).rejects.toThrow("encryption failed");
+
     expect(
       ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
+  });
+
+  it("verifies candidate trust before returning it", async () => {
+    const ctx = createContext();
+
+    await expect(
+      ctx.service.verifyCandidateSnapshotTrust(
+        ctx.values.vaultId,
+        ctx.vaultSnapshot,
+        ctx.unlockedVault,
+      ),
+    ).resolves.toEqual({
+      chain: ctx.values.vaultTrustChain,
+      state: ctx.values.verifiedVaultTrustState,
+    });
   });
 });

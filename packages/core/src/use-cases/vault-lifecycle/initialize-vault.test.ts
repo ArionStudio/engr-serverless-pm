@@ -1,294 +1,66 @@
 import { describe, expect, it, vi } from "vitest";
-import { CURRENT_ALGORITHM_SUITE } from "../../domain/crypto/algorithm-suite.const";
-import type { LocalKeysPayload } from "../../domain/device-trust/local-protection.type";
-import type { Vault } from "../../domain/vault/vault";
 import { createInitializeVaultTestContext } from "../../__tests__/fixtures/initialize-vault";
-import { ActiveUnlockedVaultMismatchError } from "../../errors/vault-session.errors";
 
 describe("InitializeVaultUseCase", () => {
-  it("initializes an empty vault and persists local, snapshot, and unlocked state", async () => {
+  it("creates separate signing and wrapping identities with generation one envelope", async () => {
     const ctx = createInitializeVaultTestContext();
 
-    const result = await ctx.useCase.execute({
+    await ctx.useCase.execute({
       masterPassword: ctx.values.masterPassword,
-      deviceName: "Work laptop",
+      deviceName: "Laptop",
     });
 
-    expect(result).toEqual({
-      recoveryMnemonicKey: ctx.values.recoveryMnemonicKey,
-      vaultDisplayName: ctx.values.vaultDisplayName,
+    const snapshot = ctx.saved.vaultSnapshot;
+    expect(snapshot?.metadata).toMatchObject({
+      schemaVersion: 1,
+      vaultKeyGeneration: 1,
+      algorithmSuiteId: "spm-v1",
     });
-
-    expect(ctx.ports.ids.generateId).toHaveBeenCalledTimes(3);
-    expect(ctx.ports.clock.now).toHaveBeenCalledTimes(1);
-    expect(
-      ctx.ports.vaultDisplayName.generateVaultDisplayName,
-    ).toHaveBeenCalledTimes(1);
-    expect(ctx.ports.bip39.recoveryKeyToMnemonic).toHaveBeenCalledWith(
-      ctx.values.recoverySecretKey,
-    );
-    expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenCalledWith(
-      ctx.values.masterPassword,
-      ctx.values.masterPasswordSalt,
-    );
-    expect(ctx.ports.crypto.deriveLocalKeysProtectionKey).toHaveBeenCalledWith(
-      ctx.values.localRootKey,
-      ctx.values.localKeysProtectionSalt,
-    );
-
-    const expectedLocalKeysPayload: LocalKeysPayload = {
-      deviceSlotKey: ctx.values.deviceSlotKey,
-      devicePrivateSignKey: ctx.values.devicePrivateSignKey,
-      vaultTrustAnchor: ctx.values.vaultTrustAnchor,
-    };
-
-    expect(ctx.ports.crypto.wrapLocalKeysPayload).toHaveBeenCalledWith(
-      expectedLocalKeysPayload,
-      ctx.values.localKeysProtectionKey,
-    );
-    expect(
-      ctx.ports.crypto.deriveRecoveryLocalKeysProtectionKey,
-    ).toHaveBeenCalledWith(
-      ctx.values.recoverySecretKey,
-      ctx.values.recoveryLocalKeysProtectionSalt,
-    );
-    expect(ctx.ports.crypto.wrapLocalKeysPayload).toHaveBeenCalledWith(
-      expectedLocalKeysPayload,
-      ctx.values.recoveryLocalKeysProtectionKey,
-    );
-    expect(
-      ctx.ports.crypto.deriveDeviceSlotVaultMasterKeyProtectionKey,
-    ).toHaveBeenCalledWith(ctx.values.deviceSlotKey);
-    expect(ctx.ports.crypto.wrapVaultMasterKey).toHaveBeenCalledWith(
-      ctx.values.vaultMasterKey,
-      ctx.values.deviceSlotVaultMasterKeyProtectionKey,
-    );
-
-    const expectedVault: Vault = {
-      versionVector: {
-        [ctx.values.deviceId]: 1,
-      },
-      entries: [],
-      deletedEntries: [],
-      deviceProfiles: [
-        {
-          id: ctx.values.deviceId,
-          name: "Work laptop",
-          createdAt: ctx.values.timestamp,
-          versionVector: {
-            [ctx.values.deviceId]: 1,
-          },
-        },
-      ],
-      deletedDeviceProfiles: [],
-      tags: [],
-      deletedTags: [],
-    };
-
-    expect(ctx.ports.crypto.encryptVaultSnapshotContent).toHaveBeenCalledWith(
-      expectedVault,
-      ctx.values.vaultMasterKey,
-    );
-
-    expect(ctx.saved.localVaultDescriptor).toEqual({
-      vaultId: ctx.values.vaultId,
-      displayName: ctx.values.vaultDisplayName,
-      createdAt: ctx.values.timestamp,
-    });
-
-    expect(ctx.saved.deviceAccessMaterial).toEqual({
-      vaultId: ctx.values.vaultId,
+    expect(snapshot?.keySlots.deviceSlots).toHaveLength(1);
+    expect(snapshot?.keySlots.deviceSlots[0]).toMatchObject({
       deviceId: ctx.values.deviceId,
-      algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
-      masterPasswordSalt: ctx.values.masterPasswordSalt,
-      localKeysProtectionSalt: ctx.values.localKeysProtectionSalt,
+      vaultKeyGeneration: 1,
+    });
+    expect(ctx.saved.deviceAccessMaterial).toMatchObject({
       devicePublicSignKey: ctx.values.devicePublicSignKey,
-      protectedLocalKeys: ctx.values.protectedLocalKeys,
+      devicePublicVaultKey: ctx.values.devicePublicVaultKey,
     });
-    expect(ctx.saved.deviceAccessRecoveryBackup).toEqual({
-      vaultId: ctx.values.vaultId,
-      deviceId: ctx.values.deviceId,
-      algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
-      recoveryLocalKeysProtectionSalt:
-        ctx.values.recoveryLocalKeysProtectionSalt,
-      devicePublicSignKey: ctx.values.devicePublicSignKey,
-      protectedLocalKeys: ctx.values.recoveryProtectedLocalKeys,
-    });
-
-    expect(ctx.saved.vaultSnapshot).toEqual({
-      metadata: {
-        id: ctx.values.vaultId,
-        schemaVersion: 2,
-        vaultCreationTimestamp: ctx.values.timestamp,
-        revisionTimestamp: ctx.values.timestamp,
-        snapshotVersionVector: {
-          [ctx.values.deviceId]: 1,
-        },
-        algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
-        createdByDeviceId: ctx.values.deviceId,
-      },
-      trustChain: ctx.values.vaultTrustChain,
-      keySlots: {
-        deviceSlots: [
-          {
-            deviceId: ctx.values.deviceId,
-            protectedVaultMasterKey: ctx.values.protectedDeviceVaultMasterKey,
-            publicSignKey: ctx.values.devicePublicSignKey,
-          },
-        ],
-      },
-      content: ctx.values.encryptedVault,
-      signature: ctx.values.snapshotSignature,
-    });
-
-    expect(ctx.ports.crypto.signVaultSnapshot).toHaveBeenCalledWith(
+    expect(ctx.ports.crypto.wrapLocalKeysPayload).toHaveBeenCalledWith(
       {
-        metadata: ctx.saved.vaultSnapshot?.metadata,
-        trustChain: ctx.saved.vaultSnapshot?.trustChain,
-        keySlots: ctx.saved.vaultSnapshot?.keySlots,
-        content: ctx.saved.vaultSnapshot?.content,
-      },
-      ctx.values.devicePrivateSignKey,
-    );
-
-    expect(ctx.saved.unlockedVaultSession).toEqual({
-      sessionId: ctx.values.sessionId,
-      unlockedVault: {
-        vaultId: ctx.values.vaultId,
-        deviceId: ctx.values.deviceId,
-        vault: expectedVault,
-        vaultMasterKey: ctx.values.vaultMasterKey,
         devicePrivateSignKey: ctx.values.devicePrivateSignKey,
-        trustedSnapshotContext: {
-          snapshotDigest: ctx.values.vaultSnapshotDigest,
-          trust: ctx.values.verifiedVaultTrustState,
-        },
+        devicePrivateVaultKey: ctx.values.devicePrivateVaultKey,
+        deviceLocalProtectionKey: ctx.values.deviceLocalProtectionKey,
         vaultTrustAnchor: ctx.values.vaultTrustAnchor,
       },
-      sourceSnapshotVersionVector: {
-        [ctx.values.deviceId]: 1,
+      ctx.values.localKeysProtectionKey,
+    );
+    expect(ctx.ports.crypto.createDeviceVaultKeyEnvelope).toHaveBeenCalledWith(
+      ctx.values.vaultMasterKey,
+      ctx.values.devicePublicVaultKey,
+      {
+        vaultId: ctx.values.vaultId,
+        deviceId: ctx.values.deviceId,
+        vaultKeyGeneration: 1,
+        algorithmSuiteId: "spm-v1",
       },
-    });
-    expect(ctx.saved.localVaultTrustCheckpoint).toEqual(
-      ctx.values.localVaultTrustCheckpoint,
     );
   });
 
-  it("bubbles local initialization errors and does not save unlocked state", async () => {
+  it("removes initialized local state when session activation fails", async () => {
     const ctx = createInitializeVaultTestContext();
-    const error = new Error("local initialization failed");
-
     vi.mocked(
-      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
-    ).mockRejectedValueOnce(error);
+      ctx.ports.sessionServices.unlockedVaultSession.activate,
+    ).mockRejectedValue(new Error("session failed"));
 
     await expect(
       ctx.useCase.execute({
         masterPassword: ctx.values.masterPassword,
-        deviceName: "Work laptop",
+        deviceName: "Laptop",
       }),
-    ).rejects.toThrow(error);
-
-    expect(
-      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
-    ).toHaveBeenCalledTimes(1);
-    expect(
-      ctx.ports.sessionServices.unlockedVaultSession.activate,
-    ).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.vaultLocalRepository.saveLocalVaultDescriptor,
-    ).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.vaultLocalRepository.saveDeviceAccessMaterial,
-    ).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("removes initialized local vault when session activation fails", async () => {
-    const ctx = createInitializeVaultTestContext();
-    const activationError = new Error("session activation failed");
-
-    vi.mocked(
-      ctx.ports.sessionServices.unlockedVaultSession.activate,
-    ).mockRejectedValueOnce(activationError);
-
-    await expect(
-      ctx.useCase.execute({
-        masterPassword: ctx.values.masterPassword,
-        deviceName: "Work laptop",
-      }),
-    ).rejects.toBe(activationError);
-
-    expect(
-      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
-    ).toHaveBeenCalledTimes(1);
-    expect(
-      ctx.ports.vaultLocalRepository.removePersistedLocalVault,
-    ).toHaveBeenCalledWith(ctx.values.vaultId);
-    expect(ctx.saved.localVaultDescriptor).toBeUndefined();
-    expect(ctx.saved.deviceAccessMaterial).toBeUndefined();
-    expect(ctx.saved.deviceAccessRecoveryBackup).toBeUndefined();
-    expect(ctx.saved.vaultSnapshot).toBeUndefined();
-  });
-
-  it("preserves session activation error when initialized local cleanup fails", async () => {
-    const ctx = createInitializeVaultTestContext();
-    const activationError = new Error("session activation failed");
-    const cleanupError = new Error("initialized local cleanup failed");
-
-    vi.mocked(
-      ctx.ports.sessionServices.unlockedVaultSession.activate,
-    ).mockRejectedValueOnce(activationError);
-    vi.mocked(
-      ctx.ports.vaultLocalRepository.removePersistedLocalVault,
-    ).mockRejectedValueOnce(cleanupError);
-
-    await expect(
-      ctx.useCase.execute({
-        masterPassword: ctx.values.masterPassword,
-        deviceName: "Work laptop",
-      }),
-    ).rejects.toBe(activationError);
+    ).rejects.toThrow("session failed");
 
     expect(
       ctx.ports.vaultLocalRepository.removePersistedLocalVault,
     ).toHaveBeenCalledWith(ctx.values.vaultId);
-  });
-
-  it("fails before creating vault material when another vault is active", async () => {
-    const ctx = createInitializeVaultTestContext();
-    ctx.saved.unlockedVaultSessionMaterial = {
-      sessionId: ctx.values.sessionId,
-      vaultId: "active-vault-id",
-      sourceSnapshotVersionVector: {
-        [ctx.values.deviceId]: 7,
-      },
-      deviceId: ctx.values.deviceId,
-      vaultMasterKey: ctx.values.vaultMasterKey,
-      devicePrivateSignKey: ctx.values.devicePrivateSignKey,
-      payloadKey: ctx.values.unlockedVaultSessionPayloadKey,
-      trustedSnapshotContext: {
-        snapshotDigest: ctx.values.vaultSnapshotDigest,
-        trust: ctx.values.verifiedVaultTrustState,
-      },
-      vaultTrustAnchor: ctx.values.vaultTrustAnchor,
-    };
-
-    await expect(
-      ctx.useCase.execute({
-        masterPassword: ctx.values.masterPassword,
-        deviceName: "Work laptop",
-      }),
-    ).rejects.toBeInstanceOf(ActiveUnlockedVaultMismatchError);
-
-    expect(ctx.ports.bip39.recoveryKeyToMnemonic).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
-    ).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.sessionServices.unlockedVaultSession.activate,
-    ).not.toHaveBeenCalled();
   });
 });

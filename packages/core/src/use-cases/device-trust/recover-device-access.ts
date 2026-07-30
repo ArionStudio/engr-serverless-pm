@@ -109,7 +109,7 @@ export class RecoverDeviceAccessUseCase {
       });
     }
 
-    if (vaultSnapshot.metadata.schemaVersion !== 2) {
+    if (vaultSnapshot.metadata.schemaVersion !== 1) {
       throw new VaultTrustStateInvalidError(
         params.vaultId,
         "unsupported snapshot schema version",
@@ -140,26 +140,18 @@ export class RecoverDeviceAccessUseCase {
         recoveryBackup.protectedLocalKeys,
         recoveryLocalKeysProtectionKey,
       );
-    const doesDevicePrivateKeyMatchSlot =
-      await this.crypto.verifyDeviceSignKeyPair(
-        deviceKeySlot.publicSignKey,
-        localKeysPayload.devicePrivateSignKey,
-      );
-
-    if (!doesDevicePrivateKeyMatchSlot) {
-      throw new DeviceKeySlotVerificationFailedError(
-        params.vaultId,
-        recoveryBackup.deviceId,
-      );
-    }
-
-    const doesDevicePrivateKeyMatchBackup =
+    const doesDeviceSigningKeyMatchBackup =
       await this.crypto.verifyDeviceSignKeyPair(
         recoveryBackup.devicePublicSignKey,
         localKeysPayload.devicePrivateSignKey,
       );
+    const doesDeviceVaultKeyMatchBackup =
+      await this.crypto.verifyDeviceVaultKeyPair(
+        recoveryBackup.devicePublicVaultKey,
+        localKeysPayload.devicePrivateVaultKey,
+      );
 
-    if (!doesDevicePrivateKeyMatchBackup) {
+    if (!doesDeviceSigningKeyMatchBackup || !doesDeviceVaultKeyMatchBackup) {
       throw new DeviceKeySlotVerificationFailedError(
         params.vaultId,
         recoveryBackup.deviceId,
@@ -185,6 +177,7 @@ export class RecoverDeviceAccessUseCase {
     const localDeviceIdentity = {
       deviceId: recoveryBackup.deviceId,
       publicSignKey: recoveryBackup.devicePublicSignKey,
+      publicVaultKey: recoveryBackup.devicePublicVaultKey,
     };
     await this.vaultTrust.verifyCheckpoint(
       params.vaultId,
@@ -205,6 +198,10 @@ export class RecoverDeviceAccessUseCase {
       !(await this.crypto.verifyDeviceSignKeyPair(
         trustedRecoveredDevice.publicSignKey,
         localKeysPayload.devicePrivateSignKey,
+      )) ||
+      !(await this.crypto.verifyDeviceVaultKeyPair(
+        trustedRecoveredDevice.publicVaultKey,
+        localKeysPayload.devicePrivateVaultKey,
       ))
     ) {
       throw new VaultTrustStateInvalidError(
@@ -226,16 +223,17 @@ export class RecoverDeviceAccessUseCase {
         checkpoint,
       );
 
-    const vaultMasterKeyProtectionKey =
-      await this.crypto.deriveDeviceSlotVaultMasterKeyProtectionKey(
-        localKeysPayload.deviceSlotKey,
-      );
-    const vaultMasterKey = await this.crypto.unwrapVaultMasterKey(
-      deviceKeySlot.protectedVaultMasterKey,
-      vaultMasterKeyProtectionKey,
+    const vaultMasterKey = await this.crypto.openDeviceVaultKeyEnvelope(
+      deviceKeySlot.envelope,
+      localKeysPayload.devicePrivateVaultKey,
+      {
+        vaultId: params.vaultId,
+        deviceId: recoveryBackup.deviceId,
+        vaultKeyGeneration: vaultSnapshot.metadata.vaultKeyGeneration,
+        algorithmSuiteId: vaultSnapshot.metadata.algorithmSuiteId,
+      },
     );
 
-    // Prove the recovered device slot can decrypt this snapshot before replacing local credentials.
     await this.crypto.decryptVaultSnapshotContent(
       vaultSnapshot.content,
       vaultMasterKey,
@@ -293,7 +291,8 @@ export class RecoverDeviceAccessUseCase {
       algorithmSuiteId: this.crypto.algorithmSuite.id,
       masterPasswordSalt,
       localKeysProtectionSalt,
-      devicePublicSignKey: deviceKeySlot.publicSignKey,
+      devicePublicSignKey: recoveryBackup.devicePublicSignKey,
+      devicePublicVaultKey: recoveryBackup.devicePublicVaultKey,
       protectedLocalKeys,
     };
     const deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup = {
@@ -301,7 +300,8 @@ export class RecoverDeviceAccessUseCase {
       deviceId: recoveryBackup.deviceId,
       algorithmSuiteId: this.crypto.algorithmSuite.id,
       recoveryLocalKeysProtectionSalt: nextRecoveryLocalKeysProtectionSalt,
-      devicePublicSignKey: deviceKeySlot.publicSignKey,
+      devicePublicSignKey: recoveryBackup.devicePublicSignKey,
+      devicePublicVaultKey: recoveryBackup.devicePublicVaultKey,
       protectedLocalKeys: nextRecoveryProtectedLocalKeys,
     };
 

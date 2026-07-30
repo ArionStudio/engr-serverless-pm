@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type {
+  DeviceLocalProtectionKey,
   DevicePrivateSignKey,
   DevicePublicSignKey,
+  DeviceVaultPrivateKey,
+  DeviceVaultPublicKey,
   UnlockedVaultSessionPayloadKey,
   VaultMasterKey,
 } from "@lfspm/core";
@@ -57,16 +60,24 @@ function createMaterial() {
     deviceId: "device-id",
     vaultMasterKey: arrayBuffer(1, 2, 3) as VaultMasterKey,
     devicePrivateSignKey: arrayBuffer(4, 5, 6) as DevicePrivateSignKey,
-    payloadKey: arrayBuffer(7, 8, 9) as UnlockedVaultSessionPayloadKey,
+    devicePrivateVaultKey: arrayBuffer(7, 8, 9) as DeviceVaultPrivateKey,
+    deviceLocalProtectionKey: arrayBuffer(
+      10,
+      11,
+      12,
+    ) as DeviceLocalProtectionKey,
+    payloadKey: arrayBuffer(13, 14, 15) as UnlockedVaultSessionPayloadKey,
     trustedSnapshotContext: {
       snapshotDigest: "snapshot-digest",
       trust: {
         generation: 2,
+        vaultKeyGeneration: 3,
         certificateDigest: "certificate-digest",
         trustedDevices: [
           {
             deviceId: "device-id",
-            publicSignKey: arrayBuffer(10, 11, 12) as DevicePublicSignKey,
+            publicSignKey: arrayBuffer(16, 17, 18) as DevicePublicSignKey,
+            publicVaultKey: arrayBuffer(19, 20, 21) as DeviceVaultPublicKey,
           },
         ],
       },
@@ -75,7 +86,7 @@ function createMaterial() {
       version: 1 as const,
       vaultId: "vault-id",
       genesisDeviceId: "device-id",
-      genesisPublicSignKey: arrayBuffer(13, 14, 15) as DevicePublicSignKey,
+      genesisPublicSignKey: arrayBuffer(22, 23, 24) as DevicePublicSignKey,
       genesisCertificateDigest: "genesis-certificate-digest",
     },
   };
@@ -99,16 +110,20 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
       deviceId: "device-id",
       vaultMasterKey: "AQID",
       devicePrivateSignKey: "BAUG",
-      payloadKey: "BwgJ",
+      devicePrivateVaultKey: "BwgJ",
+      deviceLocalProtectionKey: "CgsM",
+      payloadKey: "DQ4P",
       trustedSnapshotContext: {
         snapshotDigest: "snapshot-digest",
         trust: {
           generation: 2,
+          vaultKeyGeneration: 3,
           certificateDigest: "certificate-digest",
           trustedDevices: [
             {
               deviceId: "device-id",
-              publicSignKey: "CgsM",
+              publicSignKey: "EBES",
+              publicVaultKey: "ExQV",
             },
           ],
         },
@@ -117,7 +132,7 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
         version: 1,
         vaultId: "vault-id",
         genesisDeviceId: "device-id",
-        genesisPublicSignKey: "DQ4P",
+        genesisPublicSignKey: "FhcY",
         genesisCertificateDigest: "genesis-certificate-digest",
       },
     });
@@ -134,16 +149,20 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
         deviceId: "device-id",
         vaultMasterKey: "AQID",
         devicePrivateSignKey: "BAUG",
-        payloadKey: "BwgJ",
+        devicePrivateVaultKey: "BwgJ",
+        deviceLocalProtectionKey: "CgsM",
+        payloadKey: "DQ4P",
         trustedSnapshotContext: {
           snapshotDigest: "snapshot-digest",
           trust: {
             generation: 2,
+            vaultKeyGeneration: 3,
             certificateDigest: "certificate-digest",
             trustedDevices: [
               {
                 deviceId: "device-id",
-                publicSignKey: "CgsM",
+                publicSignKey: "EBES",
+                publicVaultKey: "ExQV",
               },
             ],
           },
@@ -152,7 +171,7 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
           version: 1,
           vaultId: "vault-id",
           genesisDeviceId: "device-id",
-          genesisPublicSignKey: "DQ4P",
+          genesisPublicSignKey: "FhcY",
           genesisCertificateDigest: "genesis-certificate-digest",
         },
       },
@@ -188,6 +207,8 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
         deviceId: "device-id",
         vaultMasterKey: "AQID",
         devicePrivateSignKey: "BAUG",
+        devicePrivateVaultKey: "BwgJ",
+        deviceLocalProtectionKey: "CgsM",
         payloadKey: null,
       },
     });

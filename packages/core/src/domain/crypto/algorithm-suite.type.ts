@@ -8,10 +8,31 @@ export interface AlgorithmSuite {
     readonly keyFormat: "raw";
     readonly keyLengthBits: 256;
   };
-  readonly deviceSlotKeyGeneration: {
+  readonly vaultKeyWrapping: {
+    readonly keyAgreement: "ECDH";
+    readonly namedCurve: "P-256";
+    readonly keyDerivation: "HKDF";
+    readonly hash: "SHA-256";
+    readonly encryption: "AES-256-GCM";
+    readonly keyLengthBits: 256;
+    readonly saltLengthBytes: 32;
+    readonly nonceLengthBytes: 12;
+    readonly authenticatedData: [
+      "vaultId",
+      "deviceId",
+      "vaultKeyGeneration",
+      "algorithmSuiteId",
+    ];
+  };
+  readonly deviceLocalProtectionKeyGeneration: {
     readonly method: "secure-random";
     readonly byteLength: 32;
     readonly keyFormat: "raw";
+  };
+  readonly deviceSyncCredentialEncryption: {
+    readonly algorithm: "AES-256-GCM";
+    readonly nonceLengthBytes: 12;
+    readonly authenticatedData: ["vaultId", "deviceId", "provider", "target"];
   };
   readonly recoverySecretGeneration: {
     readonly method: "secure-random";

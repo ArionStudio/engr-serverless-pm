@@ -15,6 +15,7 @@ export function createChangeMasterPasswordTestContext() {
     masterPasswordSalt: values.masterPasswordSalt,
     localKeysProtectionSalt: values.localKeysProtectionSalt,
     devicePublicSignKey: values.devicePublicSignKey,
+    devicePublicVaultKey: values.devicePublicVaultKey,
     protectedLocalKeys: values.protectedLocalKeys,
   };
 
@@ -27,6 +28,8 @@ export function createChangeMasterPasswordTestContext() {
       vault: values.decryptedVault,
       vaultMasterKey: values.vaultMasterKey,
       devicePrivateSignKey: values.devicePrivateSignKey,
+      devicePrivateVaultKey: values.devicePrivateVaultKey,
+      deviceLocalProtectionKey: values.deviceLocalProtectionKey,
       trustedSnapshotContext: {
         snapshotDigest: values.vaultSnapshotDigest,
         trust: values.verifiedVaultTrustState,

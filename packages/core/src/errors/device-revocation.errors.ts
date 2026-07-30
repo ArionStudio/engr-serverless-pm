@@ -14,11 +14,10 @@ export class DeviceToRevokeNotTrustedError extends Error {
   }
 }
 
-export class DeviceProfileNotFoundForRevocationError extends Error {
-  constructor(vaultId: string, deviceId: string) {
-    super(
-      `Device profile "${deviceId}" was not found for revocation in vault "${vaultId}".`,
-    );
-    this.name = "DeviceProfileNotFoundForRevocationError";
+export class InvalidDeviceRevocationTransitionError extends Error {
+  override readonly name = "InvalidDeviceRevocationTransitionError";
+
+  constructor(vaultId: string, reason: string) {
+    super(`Device revocation for vault "${vaultId}" is invalid: ${reason}.`);
   }
 }

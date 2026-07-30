@@ -150,26 +150,21 @@ export class UnlockVaultUseCase {
         deviceAccessMaterial.protectedLocalKeys,
         localKeysProtectionKey,
       );
-    const doesDevicePrivateKeyMatchSlot =
-      await this.crypto.verifyDeviceSignKeyPair(
-        deviceKeySlot.publicSignKey,
-        localKeysPayload.devicePrivateSignKey,
-      );
-
-    if (!doesDevicePrivateKeyMatchSlot) {
-      throw new DeviceKeySlotVerificationFailedError(
-        params.vaultId,
-        deviceAccessMaterial.deviceId,
-      );
-    }
-
-    const doesDevicePrivateKeyMatchMaterial =
+    const doesDeviceSigningKeyMatchMaterial =
       await this.crypto.verifyDeviceSignKeyPair(
         deviceAccessMaterial.devicePublicSignKey,
         localKeysPayload.devicePrivateSignKey,
       );
+    const doesDeviceVaultKeyMatchMaterial =
+      await this.crypto.verifyDeviceVaultKeyPair(
+        deviceAccessMaterial.devicePublicVaultKey,
+        localKeysPayload.devicePrivateVaultKey,
+      );
 
-    if (!doesDevicePrivateKeyMatchMaterial) {
+    if (
+      !doesDeviceSigningKeyMatchMaterial ||
+      !doesDeviceVaultKeyMatchMaterial
+    ) {
       throw new DeviceKeySlotVerificationFailedError(
         params.vaultId,
         deviceAccessMaterial.deviceId,
@@ -179,6 +174,7 @@ export class UnlockVaultUseCase {
     const localDeviceIdentity = {
       deviceId: deviceAccessMaterial.deviceId,
       publicSignKey: deviceAccessMaterial.devicePublicSignKey,
+      publicVaultKey: deviceAccessMaterial.devicePublicVaultKey,
     };
     const checkpoint =
       await this.vaultLocalRepository.getLocalVaultTrustCheckpoint(
@@ -208,6 +204,10 @@ export class UnlockVaultUseCase {
       !(await this.crypto.verifyDeviceSignKeyPair(
         trustedLocalDevice.publicSignKey,
         localKeysPayload.devicePrivateSignKey,
+      )) ||
+      !(await this.crypto.verifyDeviceVaultKeyPair(
+        trustedLocalDevice.publicVaultKey,
+        localKeysPayload.devicePrivateVaultKey,
       ))
     ) {
       throw new VaultTrustStateInvalidError(
@@ -229,14 +229,15 @@ export class UnlockVaultUseCase {
         checkpoint,
       );
 
-    const vaultMasterKeyProtectionKey =
-      await this.crypto.deriveDeviceSlotVaultMasterKeyProtectionKey(
-        localKeysPayload.deviceSlotKey,
-      );
-
-    const vaultMasterKey = await this.crypto.unwrapVaultMasterKey(
-      deviceKeySlot.protectedVaultMasterKey,
-      vaultMasterKeyProtectionKey,
+    const vaultMasterKey = await this.crypto.openDeviceVaultKeyEnvelope(
+      deviceKeySlot.envelope,
+      localKeysPayload.devicePrivateVaultKey,
+      {
+        vaultId: params.vaultId,
+        deviceId: deviceAccessMaterial.deviceId,
+        vaultKeyGeneration: vaultSnapshot.metadata.vaultKeyGeneration,
+        algorithmSuiteId: vaultSnapshot.metadata.algorithmSuiteId,
+      },
     );
 
     const vault = await this.crypto.decryptVaultSnapshotContent(
@@ -265,6 +266,8 @@ export class UnlockVaultUseCase {
       vault,
       vaultMasterKey,
       devicePrivateSignKey: localKeysPayload.devicePrivateSignKey,
+      devicePrivateVaultKey: localKeysPayload.devicePrivateVaultKey,
+      deviceLocalProtectionKey: localKeysPayload.deviceLocalProtectionKey,
       trustedSnapshotContext: {
         snapshotDigest,
         trust: verifiedTrust,
@@ -329,7 +332,7 @@ export class UnlockVaultUseCase {
     vaultId: string,
     snapshot: VaultSnapshot,
   ): NonNullable<VaultSnapshot["trustChain"]> {
-    if (snapshot.metadata.schemaVersion !== 2) {
+    if (snapshot.metadata.schemaVersion !== 1) {
       throw new VaultTrustStateInvalidError(
         vaultId,
         "unsupported snapshot schema version",

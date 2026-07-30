@@ -7,10 +7,10 @@ export function markVaultSyncRemovalPending(vault: Vault): Vault {
   };
 }
 
-export function removeVaultSyncConfig(vault: Vault): Vault {
-  const { syncConfig, syncRemovalPending, ...vaultWithoutSyncConfig } = vault;
-  void syncConfig;
+export function removeVaultSyncTarget(vault: Vault): Vault {
+  const { syncTarget, syncRemovalPending, ...vaultWithoutSyncTarget } = vault;
+  void syncTarget;
   void syncRemovalPending;
 
-  return vaultWithoutSyncConfig;
+  return vaultWithoutSyncTarget;
 }
