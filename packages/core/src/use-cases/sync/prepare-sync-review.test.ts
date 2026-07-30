@@ -3,7 +3,10 @@ import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-va
 import { createUnlockedVaultWithEntries } from "../../__tests__/fixtures/vault-entries";
 import { toVaultSnapshotDescriptor } from "../../domain/snapshot";
 import { VaultTrustStateInvalidError } from "../../errors/vault-trust.errors";
-import { SyncTrustChangeRequiresDeviceTrustFlowError } from "../../errors/sync.errors";
+import {
+  InvalidVaultSyncReviewError,
+  SyncTrustChangeRequiresDeviceTrustFlowError,
+} from "../../errors/sync.errors";
 import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import { VaultSyncGuardService } from "../../services/sync";
 import { PrepareSyncReviewUseCase } from "./prepare-sync-review";
@@ -175,5 +178,81 @@ describe("PrepareSyncReviewUseCase", () => {
       ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
     ).resolves.toMatchObject({ relation: "equal", review: null });
     expect(ctx.ports.syncProvider.downloadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("rejects a remote tombstone for a trusted device", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession;
+
+    if (session === undefined) {
+      throw new Error("Expected an unlocked test session.");
+    }
+
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
+      ...session.unlockedVault.vault,
+      deviceProfiles: [],
+      deletedDeviceProfiles: [
+        {
+          id: ctx.values.deviceId,
+          deletedAt: ctx.values.timestamp + 1,
+          versionVector: { [ctx.values.deviceId]: 2 },
+        },
+      ],
+    });
+
+    await expect(
+      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toBeInstanceOf(InvalidVaultSyncReviewError);
+  });
+
+  it("rejects an active profile for an untrusted device", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession;
+
+    if (session === undefined) {
+      throw new Error("Expected an unlocked test session.");
+    }
+
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
+      ...session.unlockedVault.vault,
+      deviceProfiles: [
+        ...session.unlockedVault.vault.deviceProfiles,
+        {
+          id: "untrusted-device",
+          name: "Untrusted",
+          createdAt: ctx.values.timestamp,
+          versionVector: { [ctx.values.deviceId]: 2 },
+        },
+      ],
+    });
+
+    await expect(
+      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toBeInstanceOf(InvalidVaultSyncReviewError);
+  });
+
+  it("rejects duplicate remote device profiles", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession;
+
+    if (session === undefined) {
+      throw new Error("Expected an unlocked test session.");
+    }
+
+    const profile = {
+      id: ctx.values.deviceId,
+      name: "Current device",
+      createdAt: ctx.values.timestamp,
+      versionVector: { [ctx.values.deviceId]: 1 },
+    };
+
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
+      ...session.unlockedVault.vault,
+      deviceProfiles: [profile, { ...profile }],
+    });
+
+    await expect(
+      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toBeInstanceOf(InvalidVaultSyncReviewError);
   });
 });

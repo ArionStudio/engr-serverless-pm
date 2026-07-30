@@ -1,7 +1,9 @@
 import type {
   LocalVaultTrustAnchor,
   LocalVaultTrustCheckpoint,
+  DeviceEnrollmentTransition,
   DeviceRevocationTransition,
+  DeviceTrustTransition,
   DeviceTrustIdentity,
   VaultTrustCertificate,
   VaultTrustChain,
@@ -101,6 +103,9 @@ export class VaultTrustService {
       readonly certificate: VaultTrustCertificate;
       readonly digest: string;
     } | null = null;
+    const seenDeviceIds = new Set<string>();
+    const seenSigningKeyDigests = new Set<string>();
+    const seenVaultKeyDigests = new Set<string>();
 
     for (const certificate of chain.certificates) {
       this.requireValidDeviceIdentities(vaultId, certificate);
@@ -179,10 +184,48 @@ export class VaultTrustService {
           );
         }
 
+        const previousDeviceIds = new Set(
+          previous.certificate.payload.trustedDevices.map(
+            (device) => device.deviceId,
+          ),
+        );
+
+        const addedDevices = certificate.payload.trustedDevices.filter(
+          (device) => !previousDeviceIds.has(device.deviceId),
+        );
+
+        for (const device of addedDevices) {
+          const [signingKeyDigest, vaultKeyDigest] = await Promise.all([
+            this.crypto.digestDevicePublicSignKey(device.publicSignKey),
+            this.crypto.digestDevicePublicVaultKey(device.publicVaultKey),
+          ]);
+
+          if (
+            seenDeviceIds.has(device.deviceId) ||
+            seenSigningKeyDigests.has(signingKeyDigest) ||
+            seenVaultKeyDigests.has(vaultKeyDigest)
+          ) {
+            throw new VaultTrustStateInvalidError(
+              vaultId,
+              "revoked device identity or public key was enrolled again",
+            );
+          }
+        }
+
         await this.requireValidTrustTransition(
           vaultId,
           previous.certificate,
           certificate,
+        );
+      }
+
+      for (const device of certificate.payload.trustedDevices) {
+        seenDeviceIds.add(device.deviceId);
+        seenSigningKeyDigests.add(
+          await this.crypto.digestDevicePublicSignKey(device.publicSignKey),
+        );
+        seenVaultKeyDigests.add(
+          await this.crypto.digestDevicePublicVaultKey(device.publicVaultKey),
         );
       }
 
@@ -249,6 +292,53 @@ export class VaultTrustService {
         vaultId,
         "current trust chain mismatch",
       );
+    }
+
+    const currentDeviceIds = new Set(
+      latestCertificate.payload.trustedDevices.map((device) => device.deviceId),
+    );
+    const seenDeviceIds = new Set(
+      chain.certificates.flatMap((certificate) =>
+        certificate.payload.trustedDevices.map((device) => device.deviceId),
+      ),
+    );
+    const historicalDevices = chain.certificates.flatMap(
+      (certificate) => certificate.payload.trustedDevices,
+    );
+    const [seenSigningKeyDigests, seenVaultKeyDigests] = await Promise.all([
+      Promise.all(
+        historicalDevices.map((device) =>
+          this.crypto.digestDevicePublicSignKey(device.publicSignKey),
+        ),
+      ),
+      Promise.all(
+        historicalDevices.map((device) =>
+          this.crypto.digestDevicePublicVaultKey(device.publicVaultKey),
+        ),
+      ),
+    ]);
+    const historicalSigningKeys = new Set(seenSigningKeyDigests);
+    const historicalVaultKeys = new Set(seenVaultKeyDigests);
+    const addedDevices = trustedDevices.filter(
+      (device) => !currentDeviceIds.has(device.deviceId),
+    );
+
+    for (const device of addedDevices) {
+      const [signingKeyDigest, vaultKeyDigest] = await Promise.all([
+        this.crypto.digestDevicePublicSignKey(device.publicSignKey),
+        this.crypto.digestDevicePublicVaultKey(device.publicVaultKey),
+      ]);
+
+      if (
+        seenDeviceIds.has(device.deviceId) ||
+        historicalSigningKeys.has(signingKeyDigest) ||
+        historicalVaultKeys.has(vaultKeyDigest)
+      ) {
+        throw new VaultTrustStateInvalidError(
+          vaultId,
+          "revoked device identity or public key cannot be enrolled again",
+        );
+      }
     }
 
     const payload = {
@@ -440,6 +530,60 @@ export class VaultTrustService {
     localTrust: VerifiedVaultTrustState,
     remoteTrust: VerifiedVaultTrustState,
   ): Promise<readonly DeviceRevocationTransition[]> {
+    const transitions = await this.verifyDeviceTrustSuffix(
+      vaultId,
+      chain,
+      localTrust,
+      remoteTrust,
+    );
+    const revocations = transitions.filter(
+      (transition): transition is DeviceRevocationTransition =>
+        transition.type === "revocation",
+    );
+
+    if (revocations.length !== transitions.length) {
+      throw new VaultTrustStateInvalidError(
+        vaultId,
+        "trust suffix is not a sequence of device revocations",
+      );
+    }
+
+    return revocations;
+  }
+
+  async verifyDeviceEnrollmentSuffix(
+    vaultId: string,
+    chain: VaultTrustChain,
+    localTrust: VerifiedVaultTrustState,
+    remoteTrust: VerifiedVaultTrustState,
+  ): Promise<readonly DeviceEnrollmentTransition[]> {
+    const transitions = await this.verifyDeviceTrustSuffix(
+      vaultId,
+      chain,
+      localTrust,
+      remoteTrust,
+    );
+    const enrollments = transitions.filter(
+      (transition): transition is DeviceEnrollmentTransition =>
+        transition.type === "enrollment",
+    );
+
+    if (enrollments.length !== transitions.length) {
+      throw new VaultTrustStateInvalidError(
+        vaultId,
+        "trust suffix is not a sequence of device enrollments",
+      );
+    }
+
+    return enrollments;
+  }
+
+  async verifyDeviceTrustSuffix(
+    vaultId: string,
+    chain: VaultTrustChain,
+    localTrust: VerifiedVaultTrustState,
+    remoteTrust: VerifiedVaultTrustState,
+  ): Promise<readonly DeviceTrustTransition[]> {
     await this.requireTrustDescendsFrom(
       vaultId,
       chain,
@@ -450,11 +594,11 @@ export class VaultTrustService {
     if (remoteTrust.generation <= localTrust.generation) {
       throw new VaultTrustStateInvalidError(
         vaultId,
-        "device revocation transition is missing",
+        "device trust transition is missing",
       );
     }
 
-    const transitions: DeviceRevocationTransition[] = [];
+    const transitions: DeviceTrustTransition[] = [];
 
     for (
       let generation = localTrust.generation + 1;
@@ -467,20 +611,20 @@ export class VaultTrustService {
       if (previousCertificate === undefined || certificate === undefined) {
         throw new VaultTrustStateInvalidError(
           vaultId,
-          "device revocation chain is incomplete",
+          "device trust chain is incomplete",
         );
       }
 
+      const addedDevices = certificate.payload.trustedDevices.filter(
+        (device) =>
+          !previousCertificate.payload.trustedDevices.some(
+            (previousDevice) => previousDevice.deviceId === device.deviceId,
+          ),
+      );
       const removedDevices = previousCertificate.payload.trustedDevices.filter(
         (previousDevice) =>
           !certificate.payload.trustedDevices.some(
             (device) => device.deviceId === previousDevice.deviceId,
-          ),
-      );
-      const addedDeviceExists = certificate.payload.trustedDevices.some(
-        (device) =>
-          !previousCertificate.payload.trustedDevices.some(
-            (previousDevice) => previousDevice.deviceId === device.deviceId,
           ),
       );
       const authorizerSurvives = certificate.payload.trustedDevices.some(
@@ -489,24 +633,42 @@ export class VaultTrustService {
       );
 
       if (
-        removedDevices.length !== 1 ||
-        addedDeviceExists ||
-        !authorizerSurvives ||
-        certificate.payload.vaultKeyGeneration !==
-          previousCertificate.payload.vaultKeyGeneration + 1
+        addedDevices.length === 1 &&
+        removedDevices.length === 0 &&
+        certificate.payload.vaultKeyGeneration ===
+          previousCertificate.payload.vaultKeyGeneration
       ) {
-        throw new VaultTrustStateInvalidError(
-          vaultId,
-          "trust suffix is not a sequence of device revocations",
-        );
+        transitions.push({
+          type: "enrollment",
+          enrolledDeviceId: addedDevices[0].deviceId,
+          authorizedByDeviceId: certificate.payload.authorizedByDeviceId,
+          trustGeneration: certificate.payload.generation,
+          vaultKeyGeneration: certificate.payload.vaultKeyGeneration,
+        });
+        continue;
       }
 
-      transitions.push({
-        revokedDeviceId: removedDevices[0].deviceId,
-        authorizedByDeviceId: certificate.payload.authorizedByDeviceId,
-        trustGeneration: certificate.payload.generation,
-        vaultKeyGeneration: certificate.payload.vaultKeyGeneration,
-      });
+      if (
+        addedDevices.length === 0 &&
+        removedDevices.length === 1 &&
+        authorizerSurvives &&
+        certificate.payload.vaultKeyGeneration ===
+          previousCertificate.payload.vaultKeyGeneration + 1
+      ) {
+        transitions.push({
+          type: "revocation",
+          revokedDeviceId: removedDevices[0].deviceId,
+          authorizedByDeviceId: certificate.payload.authorizedByDeviceId,
+          trustGeneration: certificate.payload.generation,
+          vaultKeyGeneration: certificate.payload.vaultKeyGeneration,
+        });
+        continue;
+      }
+
+      throw new VaultTrustStateInvalidError(
+        vaultId,
+        "unsupported device trust transition",
+      );
     }
 
     return transitions;

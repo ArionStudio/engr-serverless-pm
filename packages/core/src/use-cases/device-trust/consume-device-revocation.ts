@@ -49,6 +49,7 @@ export type ConsumeDeviceRevocationCommandParams = {
 
 export type ConsumeDeviceRevocationResult = {
   readonly revokedDeviceIds: readonly string[];
+  readonly enrolledDeviceIds: readonly string[];
   readonly vaultKeyGeneration: number;
   readonly providerCredentialRevocation: "pending_external_disable";
 };
@@ -151,15 +152,15 @@ export class ConsumeDeviceRevocationUseCase {
     }
 
     const entryReviews = findChangedEntries(
-      candidate.revocationBaseline,
+      candidate.trustTransitionBaseline,
       candidate.remoteVault,
     );
     const tagReviews = findChangedTags(
-      candidate.revocationBaseline,
+      candidate.trustTransitionBaseline,
       candidate.remoteVault,
     );
     const deviceProfileReviews = findChangedDeviceProfiles(
-      candidate.revocationBaseline,
+      candidate.trustTransitionBaseline,
       candidate.remoteVault,
     );
 
@@ -172,8 +173,11 @@ export class ConsumeDeviceRevocationUseCase {
       throw new SyncResolutionIncompleteError(params.vaultId);
     }
 
-    const revokedDeviceIds = candidate.transitions.map(
+    const revokedDeviceIds = candidate.revocations.map(
       (transition) => transition.revokedDeviceId,
+    );
+    const enrolledDeviceIds = candidate.enrollments.map(
+      (transition) => transition.enrolledDeviceId,
     );
     const encryptedCredentialState =
       await this.crypto.encryptDeviceSyncCredentialState(
@@ -209,7 +213,7 @@ export class ConsumeDeviceRevocationUseCase {
 
       try {
         resolvedVault = applyVaultSyncResolution(
-          candidate.revocationBaseline,
+          candidate.trustTransitionBaseline,
           candidate.remoteVault,
           { entryReviews, tagReviews, deviceProfileReviews },
           params.resolution,
@@ -242,6 +246,7 @@ export class ConsumeDeviceRevocationUseCase {
 
     return {
       revokedDeviceIds,
+      enrolledDeviceIds,
       vaultKeyGeneration: candidate.remoteSnapshot.metadata.vaultKeyGeneration,
       providerCredentialRevocation: "pending_external_disable",
     };

@@ -5,7 +5,10 @@ import {
   singlePasswordEntry,
 } from "../../__tests__/fixtures/vault-entries";
 import { toVaultSnapshotDescriptor } from "../../domain/snapshot";
-import { RemoteVaultSnapshotChangedError } from "../../errors/sync.errors";
+import {
+  InvalidVaultSyncReviewError,
+  RemoteVaultSnapshotChangedError,
+} from "../../errors/sync.errors";
 import { VaultTrustStateInvalidError } from "../../errors/vault-trust.errors";
 import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import { VaultSyncGuardService } from "../../services/sync";
@@ -161,5 +164,47 @@ describe("ApplySyncResolutionUseCase", () => {
         },
       }),
     ).rejects.toBeInstanceOf(RemoteVaultSnapshotChangedError);
+  });
+
+  it("rejects invalid profile trust state before persistence", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession;
+
+    if (session === undefined) {
+      throw new Error("Expected an unlocked test session.");
+    }
+
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
+      ...session.unlockedVault.vault,
+      versionVector: { [ctx.values.deviceId]: 2 },
+      entries: [singlePasswordEntry],
+      deviceProfiles: [],
+      deletedDeviceProfiles: [
+        {
+          id: ctx.values.deviceId,
+          deletedAt: ctx.values.timestamp + 1,
+          versionVector: { [ctx.values.deviceId]: 2 },
+        },
+      ],
+    });
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        remoteSnapshotDescriptor: ctx.remoteDescriptor,
+        resolution: {
+          entryResolutions: [
+            { entryId: singlePasswordEntry.id, action: "use_remote" },
+          ],
+          tagResolutions: [],
+          deviceProfileResolutions: [],
+        },
+      }),
+    ).rejects.toBeInstanceOf(InvalidVaultSyncReviewError);
+
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });
 });

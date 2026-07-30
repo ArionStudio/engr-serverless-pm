@@ -66,9 +66,10 @@ after its device is already trusted, the registered device compares both public
 keys and verifies the current-generation envelope. It then returns the current
 signed snapshot without another trust transition, local write, or upload. This
 lets a target finish an outstanding enrollment after unrelated revocations.
-A device ID that appeared earlier but is now revoked cannot be refreshed or
-reused; the target must create a fresh request with fresh keys and a fresh
-device ID.
+A device ID or public key that appeared earlier but is now revoked cannot be
+refreshed or reused. The target must create a fresh request with two fresh key
+pairs and a fresh device ID. Trust-chain validation enforces this
+non-resurrection rule.
 
 ### 3. Target completes enrollment
 
@@ -89,12 +90,29 @@ checkpoint, and encrypted local credential state as one initialization step.
 Pending request state is removed only after that step succeeds.
 If session activation fails after initialization, those new local vault records
 are removed while the pending request remains available for a safe retry.
+Completion also rejects a retained response when that vault is already
+initialized locally, so retrying stale pending state cannot replace newer local
+vault records.
+After a definitive remote compare-and-set rejection, rollback removes the
+newly initialized records only if the active session version and persisted
+snapshot digest still match the enrollment snapshot. If either has advanced,
+or cleanup otherwise fails, completion preserves the local records and reports
+an incomplete rollback instead of claiming that the retained request is
+immediately retryable.
 
 If the provider cannot confirm whether the completed snapshot upload succeeded,
 local enrollment still completes and returns the recovery mnemonic with sync
 upload marked pending. The next normal sync reconciles the signed local
 snapshot. A definite remote compare-and-set rejection rolls local enrollment
 back instead.
+
+Existing devices learn about the new identity through a dedicated
+enrollment-consumption review. The workflow verifies an addition-only trust
+suffix, preserves the vault-key generation and every existing envelope, and
+requires the added identities and slots to match. A completed target's active
+profile is mandatory; a pending target may still have no profile. Later
+vault-content changes remain user-reviewable through the normal sync resolution
+model.
 
 ## Trust and key slots
 
@@ -121,10 +139,12 @@ For synchronized vaults, the user first creates a replacement S3 credential and
 enters it on the revoking device. After the rotated snapshot is uploaded, the
 user disables the old credential in AWS and verifies its rejection in the app.
 Each survivor enters the latest replacement credential once before consuming
-the complete removal-only suffix. It can skip multiple revocations: each signed
-removal advances the vault-key generation once, and the final snapshot contains
-an envelope for every remaining identity. Ordinary content changes that happen
-after the removals use the normal sync review and resolution flow.
+the complete signed suffix. It can skip multiple trust changes: each enrollment
+adds one identity without rotating the key, each revocation removes one identity
+and advances the vault-key generation once, and the final snapshot contains an
+envelope for every remaining identity. Added and removed identities are shown
+in the prepared review. Ordinary content changes use the normal sync review and
+resolution flow.
 
 A revoked device may retain old local data and keys. The design does not
 remotely wipe it. Security comes from withholding all current-generation

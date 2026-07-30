@@ -1,7 +1,8 @@
 import { areJsonEqual } from "../../domain/common";
-import type { DeviceRevocationTransition } from "../../domain/device-trust";
+import type { DeviceTrustTransition } from "../../domain/device-trust";
 import type { UnlockedVault } from "../../domain/session";
 import type { SyncAccess, SyncSetupInput } from "../../domain/sync";
+import { requireDeviceProfilesMatchTrust } from "../../domain/sync/device-profile-review.utils";
 import {
   areVaultSnapshotDescriptorsEqual,
   toVaultSnapshotDescriptor,
@@ -131,12 +132,26 @@ export class DeviceRevocationConsumptionService {
       );
     }
 
-    const transitions = await this.vaultTrust.verifyDeviceRevocationSuffix(
+    const transitions = await this.vaultTrust.verifyDeviceTrustSuffix(
       params.vaultId,
       remoteTrust.chain,
       params.unlockedVault.trustedSnapshotContext.trust,
       remoteTrust.state,
     );
+    const revocations = transitions.filter(
+      (transition) => transition.type === "revocation",
+    );
+    const enrollments = transitions.filter(
+      (transition) => transition.type === "enrollment",
+    );
+
+    if (revocations.length === 0) {
+      throw new InvalidDeviceRevocationTransitionError(
+        params.vaultId,
+        "the trust suffix contains no device revocation",
+      );
+    }
+
     const finalLocalIdentity = remoteTrust.state.trustedDevices.find(
       (device) => device.deviceId === params.unlockedVault.deviceId,
     );
@@ -185,11 +200,52 @@ export class DeviceRevocationConsumptionService {
       );
     }
 
-    const revocationBaseline = this.buildRevocationBaseline(
+    try {
+      requireDeviceProfilesMatchTrust(
+        params.unlockedVault.vault,
+        new Set(
+          params.unlockedVault.trustedSnapshotContext.trust.trustedDevices.map(
+            (device) => device.deviceId,
+          ),
+        ),
+        new Set(
+          localSnapshot.trustChain.certificates.flatMap((certificate) =>
+            certificate.payload.trustedDevices.map((device) => device.deviceId),
+          ),
+        ),
+      );
+      requireDeviceProfilesMatchTrust(
+        remoteVault,
+        new Set(
+          remoteTrust.state.trustedDevices.map((device) => device.deviceId),
+        ),
+        new Set(
+          remoteTrust.chain.certificates.flatMap((certificate) =>
+            certificate.payload.trustedDevices.map((device) => device.deviceId),
+          ),
+        ),
+      );
+    } catch (error) {
+      throw new InvalidDeviceRevocationTransitionError(
+        params.vaultId,
+        "device profiles do not match the trusted identities",
+        { cause: error },
+      );
+    }
+
+    const trustTransitionBaseline = this.buildTrustTransitionBaseline(
       params.vaultId,
       params.unlockedVault.vault,
       remoteVault,
       transitions,
+      new Set(
+        remoteTrust.state.trustedDevices.map((device) => device.deviceId),
+      ),
+      new Set(
+        params.unlockedVault.trustedSnapshotContext.trust.trustedDevices.map(
+          (device) => device.deviceId,
+        ),
+      ),
     );
 
     return {
@@ -199,22 +255,79 @@ export class DeviceRevocationConsumptionService {
       remoteSnapshot,
       remoteTrust,
       transitions,
+      revocations,
+      enrollments,
       remoteVault,
-      revocationBaseline,
+      trustTransitionBaseline,
       vaultMasterKey,
     };
   }
 
-  private buildRevocationBaseline(
+  private buildTrustTransitionBaseline(
     vaultId: string,
     localVault: Vault,
     remoteVault: Vault,
-    transitions: readonly DeviceRevocationTransition[],
+    transitions: readonly DeviceTrustTransition[],
+    finalTrustedDeviceIds: ReadonlySet<string>,
+    initialTrustedDeviceIds: ReadonlySet<string>,
   ): Vault {
     let baseline = localVault;
     const revokedDeviceIds = new Set<string>();
 
     for (const transition of transitions) {
+      if (transition.type === "enrollment") {
+        const enrolledDeviceId = transition.enrolledDeviceId;
+        const localProfile = baseline.deviceProfiles.find(
+          (profile) => profile.id === enrolledDeviceId,
+        );
+        const localTombstone = baseline.deletedDeviceProfiles.find(
+          (profile) => profile.id === enrolledDeviceId,
+        );
+        const remoteProfiles = remoteVault.deviceProfiles.filter(
+          (profile) => profile.id === enrolledDeviceId,
+        );
+        const remoteTombstones = remoteVault.deletedDeviceProfiles.filter(
+          (profile) => profile.id === enrolledDeviceId,
+        );
+
+        if (
+          localProfile !== undefined ||
+          localTombstone !== undefined ||
+          remoteProfiles.length > 1 ||
+          remoteTombstones.length > 1
+        ) {
+          throw new InvalidDeviceRevocationTransitionError(
+            vaultId,
+            "an enrolled identity has inconsistent device-profile state",
+          );
+        }
+
+        if (finalTrustedDeviceIds.has(enrolledDeviceId)) {
+          if (remoteTombstones.length !== 0) {
+            throw new InvalidDeviceRevocationTransitionError(
+              vaultId,
+              "a trusted enrolled identity has a deleted profile",
+            );
+          }
+
+          const remoteProfile = remoteProfiles[0];
+
+          if (remoteProfile !== undefined) {
+            baseline = {
+              ...baseline,
+              deviceProfiles: [...baseline.deviceProfiles, remoteProfile],
+            };
+          }
+        } else if (remoteProfiles.length !== 0) {
+          throw new InvalidDeviceRevocationTransitionError(
+            vaultId,
+            "a revoked enrolled identity remains active",
+          );
+        }
+
+        continue;
+      }
+
       if (revokedDeviceIds.has(transition.revokedDeviceId)) {
         throw new InvalidDeviceRevocationTransitionError(
           vaultId,
@@ -235,28 +348,62 @@ export class DeviceRevocationConsumptionService {
         );
       }
 
-      const localProfile = baseline.deviceProfiles.find(
+      const localProfiles = baseline.deviceProfiles.filter(
         (profile) => profile.id === transition.revokedDeviceId,
       );
       const localTombstone = baseline.deletedDeviceProfiles.find(
         (profile) => profile.id === transition.revokedDeviceId,
       );
-      const remoteTombstone = remoteVault.deletedDeviceProfiles.find(
+      const remoteTombstones = remoteVault.deletedDeviceProfiles.filter(
         (profile) => profile.id === transition.revokedDeviceId,
       );
 
+      if (localProfiles.length > 1) {
+        throw new InvalidDeviceRevocationTransitionError(
+          vaultId,
+          "a revoked device has duplicate active profiles",
+        );
+      }
+
+      const localProfile = localProfiles[0];
+
       if (localProfile === undefined) {
-        if (localTombstone !== undefined || remoteTombstone !== undefined) {
+        if (localTombstone !== undefined || remoteTombstones.length > 1) {
           throw new InvalidDeviceRevocationTransitionError(
             vaultId,
             "a pending revoked identity has inconsistent profile state",
           );
         }
 
+        const remoteTombstone = remoteTombstones[0];
+
+        if (remoteTombstone !== undefined) {
+          if (initialTrustedDeviceIds.has(transition.revokedDeviceId)) {
+            throw new InvalidDeviceRevocationTransitionError(
+              vaultId,
+              "a locally pending revoked identity has a profile tombstone",
+            );
+          }
+
+          baseline = {
+            ...baseline,
+            deletedDeviceProfiles: [
+              ...baseline.deletedDeviceProfiles,
+              remoteTombstone,
+            ],
+          };
+        }
+
         continue;
       }
 
-      if (localTombstone !== undefined || remoteTombstone === undefined) {
+      const remoteTombstone = remoteTombstones[0];
+
+      if (
+        localTombstone !== undefined ||
+        remoteTombstones.length !== 1 ||
+        remoteTombstone === undefined
+      ) {
         throw new InvalidDeviceRevocationTransitionError(
           vaultId,
           "a revoked device profile is missing its tombstone",

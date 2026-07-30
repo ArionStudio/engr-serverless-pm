@@ -58,7 +58,7 @@ function findDeviceSlotChanges(
 
     if (remoteSlot === undefined) {
       removedDeviceIds.push(deviceId);
-    } else if (!areJsonEqual(localSlot, remoteSlot)) {
+    } else if (!areDeviceSlotsEqual(localSlot, remoteSlot)) {
       changedDeviceIds.push(deviceId);
     }
   }
@@ -104,4 +104,46 @@ function createDeviceSlotMap(
   }
 
   return byId;
+}
+
+function areDeviceSlotsEqual(
+  localSlot: DeviceKeySlot,
+  remoteSlot: DeviceKeySlot,
+): boolean {
+  return (
+    localSlot.deviceId === remoteSlot.deviceId &&
+    localSlot.vaultKeyGeneration === remoteSlot.vaultKeyGeneration &&
+    localSlot.envelope.recipientDeviceId ===
+      remoteSlot.envelope.recipientDeviceId &&
+    localSlot.envelope.vaultKeyGeneration ===
+      remoteSlot.envelope.vaultKeyGeneration &&
+    areBuffersEqual(
+      localSlot.envelope.ephemeralPublicKey,
+      remoteSlot.envelope.ephemeralPublicKey,
+    ) &&
+    areBuffersEqual(
+      localSlot.envelope.hkdfSalt,
+      remoteSlot.envelope.hkdfSalt,
+    ) &&
+    areJsonEqual(
+      localSlot.envelope.encryptedVaultMasterKey,
+      remoteSlot.envelope.encryptedVaultMasterKey,
+    )
+  );
+}
+
+function areBuffersEqual(
+  localBuffer: ArrayBuffer,
+  remoteBuffer: ArrayBuffer,
+): boolean {
+  if (localBuffer.byteLength !== remoteBuffer.byteLength) {
+    return false;
+  }
+
+  const localBytes = new Uint8Array(localBuffer);
+  const remoteBytes = new Uint8Array(remoteBuffer);
+
+  return localBytes.every(
+    (localByte, index) => localByte === remoteBytes[index],
+  );
 }

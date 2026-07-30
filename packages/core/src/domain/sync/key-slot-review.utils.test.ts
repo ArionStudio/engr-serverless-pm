@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
+import type { RandomBytes } from "../crypto/brand-keys";
+import type { DeviceVaultPublicKey } from "../device-trust";
 import { ChangedDeviceKeySlotsError } from "../../errors";
 import type { DeviceKeySlot } from "../snapshot";
 import { findChangesInKeySlots } from "./key-slot-review.utils";
@@ -58,6 +60,36 @@ describe("findChangesInKeySlots", () => {
         ...local.envelope,
         vaultKeyGeneration: 2,
       },
+    };
+
+    expect(() =>
+      findChangesInKeySlots(
+        { deviceSlots: [local] },
+        { deviceSlots: [remote] },
+      ),
+    ).toThrow(ChangedDeviceKeySlotsError);
+  });
+
+  it.each([
+    {
+      name: "ephemeral public key",
+      changeEnvelope: (slot: DeviceKeySlot): DeviceKeySlot["envelope"] => ({
+        ...slot.envelope,
+        ephemeralPublicKey: new Uint8Array([1]).buffer as DeviceVaultPublicKey,
+      }),
+    },
+    {
+      name: "HKDF salt",
+      changeEnvelope: (slot: DeviceKeySlot): DeviceKeySlot["envelope"] => ({
+        ...slot.envelope,
+        hkdfSalt: new Uint8Array([1]).buffer as RandomBytes,
+      }),
+    },
+  ])("rejects a changed $name", ({ changeEnvelope }) => {
+    const local = createSlot("device-id");
+    const remote = {
+      ...local,
+      envelope: changeEnvelope(local),
     };
 
     expect(() =>

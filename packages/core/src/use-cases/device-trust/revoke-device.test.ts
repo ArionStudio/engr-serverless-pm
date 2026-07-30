@@ -8,6 +8,7 @@ import type {
 import type { UnlockedVault } from "../../domain/session";
 import type { VaultSnapshot } from "../../domain/snapshot";
 import { toVaultSnapshotDescriptor } from "../../domain/snapshot";
+import { InvalidDeviceRevocationTransitionError } from "../../errors/device-revocation.errors";
 import {
   ReplacementSyncCredentialsRequiredError,
   ReplacementSyncCredentialsUnchangedError,
@@ -394,5 +395,91 @@ describe("RevokeDeviceUseCase", () => {
     ).resolves.toMatchObject({
       providerCredentialRevocation: "pending_external_disable",
     });
+  });
+
+  it("rejects a trusted device whose profile is already tombstoned", async () => {
+    const ctx = createContext();
+    const session = ctx.ports.saved.unlockedVaultSession;
+
+    if (session === undefined) {
+      throw new Error("test session missing");
+    }
+
+    ctx.ports.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          deviceProfiles: session.unlockedVault.vault.deviceProfiles.filter(
+            (profile) => profile.id !== ctx.values.pendingDeviceId,
+          ),
+          deletedDeviceProfiles: [
+            ...session.unlockedVault.vault.deletedDeviceProfiles,
+            {
+              id: ctx.values.pendingDeviceId,
+              versionVector: { [ctx.values.deviceId]: 2 },
+              deletedAt: ctx.values.timestamp,
+            },
+          ],
+        },
+      },
+    };
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        deviceId: ctx.values.pendingDeviceId,
+        replacementSyncConfig: ctx.values.replacementSyncConfigInput,
+      }),
+    ).rejects.toBeInstanceOf(InvalidDeviceRevocationTransitionError);
+
+    expect(ctx.ports.syncProvider.setup).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.generateVaultMasterKey).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("rejects a local tombstone for a device absent from trust history", async () => {
+    const ctx = createContext();
+    const session = ctx.ports.saved.unlockedVaultSession;
+
+    if (session === undefined) {
+      throw new Error("test session missing");
+    }
+
+    ctx.ports.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          deletedDeviceProfiles: [
+            ...session.unlockedVault.vault.deletedDeviceProfiles,
+            {
+              id: "never-trusted-device",
+              versionVector: { [ctx.values.deviceId]: 2 },
+              deletedAt: ctx.values.timestamp,
+            },
+          ],
+        },
+      },
+    };
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        deviceId: ctx.values.pendingDeviceId,
+        replacementSyncConfig: ctx.values.replacementSyncConfigInput,
+      }),
+    ).rejects.toBeInstanceOf(InvalidDeviceRevocationTransitionError);
+
+    expect(ctx.ports.syncProvider.setup).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.generateVaultMasterKey).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
   });
 });

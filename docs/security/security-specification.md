@@ -141,7 +141,8 @@ uses generation 1. Enrollment preserves it. A removal transition increments it
 exactly once. Empty transitions, combined additions and removals, key changes
 for surviving identities, and self-removal by the authorizer are rejected.
 Snapshot metadata must match the generation authenticated by the final trust
-certificate.
+certificate. A device ID that appeared in an earlier certificate cannot be
+enrolled again after removal.
 
 ### 5.2 ECDH + HKDF + AES-GCM derivation
 
@@ -342,7 +343,9 @@ Since JS Garbage Collection is unpredictable:
 ### 8.4 Device Revocation
 
 1.  **Preflight:** Require exact local/remote agreement and, for a synced vault,
-    validate a replacement credential for the same target.
+    validate a replacement credential for the same target. Before provider
+    access, require the revoked identity to have either one active profile and
+    no tombstone or no profile state yet while enrollment is pending.
 2.  **Stage Credential:** Encrypt the replacement locally while retaining the
     old credential for rollback and external-disable verification.
 3.  **Rotate:** Generate a fresh Vault Key and increment its generation once.
@@ -356,14 +359,24 @@ Since JS Garbage Collection is unpredictable:
     reports completion only after the provider rejects it.
 
 An offline survivor validates the complete signed suffix after its local trust
-certificate. Every suffix certificate must remove exactly one device, preserve
-all survivor public keys, preserve the authorizer, and increment the vault-key
-generation once. Enrollment or any other trust transition in this suffix is
-rejected.
+certificate. Every suffix certificate must either add exactly one identity
+while preserving the vault-key generation or remove exactly one identity while
+incrementing it once. All surviving public keys and each transition authorizer
+must remain trusted. A revocation-consumption suffix must contain at least one
+removal; its prepared result also reports any enrolled identities encountered
+before or between removals.
 
-The survivor first prepares a normal sync review. Revoked profiles form a
-mandatory baseline and cannot be restored by a resolution. Later entry, tag,
-and surviving-profile changes use the ordinary review and resolution model.
+The survivor first prepares a normal sync review. Revoked profiles and final
+active profiles for newly enrolled survivors form a mandatory baseline and
+cannot be undone by a resolution. Later entry, tag, and surviving-profile
+changes use the ordinary review and resolution model.
+An identity already known locally as pending must remain profile-less when
+revoked; only an identity first enrolled within the skipped suffix may carry a
+final tombstone without a local active profile.
+Across the final vault, a trusted identity may have one active profile or no
+profile while pending, but never a tombstone. An untrusted identity may not
+remain active, duplicate active or deleted profile records are invalid, and a
+tombstone must refer to an identity present in signed trust-chain history.
 Apply downloads and verifies the candidate again before persisting or uploading
 anything.
 
@@ -383,7 +396,8 @@ A new device joins through a two-file, asynchronous exchange:
     signed encrypted snapshot with the trust anchor.
     Re-presenting a request for an already-current identity with matching keys
     returns the latest snapshot without another transition. A previously
-    revoked identity is never refreshed.
+    revoked device ID, signing key, or wrapping key is never refreshed or
+    enrolled again.
 4.  **Complete:** Before trusting the returned chain, the target requires its
     trust anchor to match the genesis digest pinned by the request. It then
     verifies all remaining request/response bindings, trust descent, signer,
@@ -395,7 +409,10 @@ A new device joins through a two-file, asynchronous exchange:
 6.  **Persistence:** Access material, recovery backup, snapshot, checkpoint, and
     optional local credentials are initialized together. Pending request state
     is removed only after success. If session activation fails, the initialized
-    local records are removed and the pending request remains retryable.
+    local records are removed and the pending request remains retryable. A
+    later remote compare-and-set rollback may remove those records only while
+    both the active session version and persisted snapshot digest still match
+    the enrollment snapshot.
 
 The devices never need to be connected simultaneously. Neither transported
 artifact contains private device keys or provider credentials.
@@ -404,6 +421,14 @@ An indeterminate completion-upload result preserves local enrollment and
 returns the recovery mnemonic with sync marked pending. A later normal sync can
 reconcile the signed local snapshot. Only a definite remote compare-and-set
 rejection rolls local enrollment back.
+
+An already-enrolled survivor advances through a separate verified
+enrollment-consumption flow. Every skipped certificate must add exactly one
+identity and remove none, preserve the vault-key generation and all existing
+public identities, and have a matching added device envelope. Existing
+envelopes cannot change. A completed target's active profile is mandatory and a
+tombstone for a newly trusted identity is rejected. Other ordinary vault
+changes accompanying the enrollment use the normal prepare/apply review.
 
 ---
 

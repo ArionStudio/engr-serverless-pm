@@ -9,8 +9,9 @@ import type { PendingDeviceEnrollment } from "../../domain/device-trust";
 export interface VaultLocalRepositoryPort {
   /**
    * Atomically creates all local records for a new vault. Implementations must
-   * avoid leaving a partial descriptor/material/recovery-backup/snapshot set
-   * when this rejects.
+   * reject when any local record already exists for the vault and avoid
+   * leaving a partial descriptor/material/recovery-backup/snapshot set when
+   * this rejects.
    */
   saveInitializedLocalVault: (params: {
     readonly descriptor: LocalVaultDescriptor;
@@ -21,6 +22,15 @@ export interface VaultLocalRepositoryPort {
     readonly syncCredentialState?: EncryptedDeviceSyncCredentialState;
   }) => Promise<void>;
   removePersistedLocalVault: (vaultId: string) => Promise<void>;
+  /**
+   * Atomically removes all local records for a vault only when its current
+   * snapshot still matches `expectedSnapshotDigest`. Returns false without
+   * changing any record when the snapshot is absent or has changed.
+   */
+  removePersistedLocalVaultIfSnapshotMatches: (
+    vaultId: string,
+    expectedSnapshotDigest: string,
+  ) => Promise<boolean>;
 
   saveLocalVaultDescriptor: (descriptor: LocalVaultDescriptor) => Promise<void>;
   getLocalVaultDescriptor: (

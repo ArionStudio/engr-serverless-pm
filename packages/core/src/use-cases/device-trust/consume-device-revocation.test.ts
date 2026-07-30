@@ -289,6 +289,97 @@ describe("PrepareDeviceRevocationConsumptionUseCase", () => {
     ).not.toHaveBeenCalled();
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });
+
+  it("rejects duplicate local profiles for the revoked device", async () => {
+    const ctx = createContext();
+    const session = ctx.ports.saved.unlockedVaultSession;
+
+    if (session === undefined) {
+      throw new Error("Expected an unlocked test session.");
+    }
+
+    const targetProfile = session.unlockedVault.vault.deviceProfiles.find(
+      (profile) => profile.id === ctx.values.pendingDeviceId,
+    );
+
+    if (targetProfile === undefined) {
+      throw new Error("Expected a target device profile.");
+    }
+
+    ctx.ports.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          deviceProfiles: [
+            ...session.unlockedVault.vault.deviceProfiles,
+            { ...targetProfile },
+          ],
+        },
+      },
+    };
+    const useCase = new PrepareDeviceRevocationConsumptionUseCase(
+      ctx.ports.crypto,
+      ctx.ports.syncProvider,
+      ctx.ports.sessionServices.unlockedVaultSession,
+      ctx.snapshotService,
+    );
+
+    await expect(
+      useCase.execute({
+        vaultId: ctx.values.vaultId,
+        replacementSyncConfig: ctx.values.replacementSyncConfigInput,
+      }),
+    ).rejects.toBeInstanceOf(InvalidDeviceRevocationTransitionError);
+
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.crypto.encryptDeviceSyncCredentialState,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("rejects duplicate remote profiles for a trusted survivor", async () => {
+    const ctx = createContext();
+    const survivorProfile = ctx.remoteVault.deviceProfiles.find(
+      (profile) => profile.id === ctx.values.deviceId,
+    );
+
+    if (survivorProfile === undefined) {
+      throw new Error("Expected a survivor device profile.");
+    }
+
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
+      ...ctx.remoteVault,
+      deviceProfiles: [
+        ...ctx.remoteVault.deviceProfiles,
+        { ...survivorProfile },
+      ],
+    });
+    const useCase = new PrepareDeviceRevocationConsumptionUseCase(
+      ctx.ports.crypto,
+      ctx.ports.syncProvider,
+      ctx.ports.sessionServices.unlockedVaultSession,
+      ctx.snapshotService,
+    );
+
+    await expect(
+      useCase.execute({
+        vaultId: ctx.values.vaultId,
+        replacementSyncConfig: ctx.values.replacementSyncConfigInput,
+      }),
+    ).rejects.toBeInstanceOf(InvalidDeviceRevocationTransitionError);
+
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.crypto.encryptDeviceSyncCredentialState,
+    ).not.toHaveBeenCalled();
+  });
 });
 
 describe("ConsumeDeviceRevocationUseCase", () => {
@@ -548,6 +639,183 @@ describe("ConsumeDeviceRevocationUseCase", () => {
     );
   });
 
+  it("consumes an enrollment followed by a revocation from one final snapshot", async () => {
+    const ctx = createContext();
+    const session = ctx.ports.saved.unlockedVaultSession;
+
+    if (session === undefined) {
+      throw new Error("Expected an unlocked test session.");
+    }
+
+    const enrolledDeviceId = "new-survivor";
+    const enrolledPublicSignKey = new Uint8Array([7])
+      .buffer as DevicePublicSignKey;
+    const enrolledPublicVaultKey = new Uint8Array([8])
+      .buffer as DeviceVaultPublicKey;
+    const enrolledIdentity = {
+      deviceId: enrolledDeviceId,
+      publicSignKey: enrolledPublicSignKey,
+      publicVaultKey: enrolledPublicVaultKey,
+    };
+    const enrollmentCertificate = {
+      payload: {
+        version: 1 as const,
+        vaultId: ctx.values.vaultId,
+        generation: 2,
+        vaultKeyGeneration: 1,
+        previousCertificateDigest: ctx.values.vaultTrustCertificateDigest,
+        authorizedByDeviceId: ctx.values.deviceId,
+        trustedDevices: [
+          ...session.unlockedVault.trustedSnapshotContext.trust.trustedDevices,
+          enrolledIdentity,
+        ],
+      },
+      signature: ctx.values.vaultTrustCertificateSignature,
+    };
+    const revocationCertificate = {
+      payload: {
+        version: 1 as const,
+        vaultId: ctx.values.vaultId,
+        generation: 3,
+        vaultKeyGeneration: 2,
+        previousCertificateDigest: ctx.values.vaultTrustCertificateDigest,
+        authorizedByDeviceId: ctx.values.deviceId,
+        trustedDevices: [
+          ...ctx.values.verifiedVaultTrustState.trustedDevices,
+          enrolledIdentity,
+        ],
+      },
+      signature: ctx.values.vaultTrustCertificateSignature,
+    };
+    const survivorSlot = ctx.localSnapshot.keySlots.deviceSlots[0];
+
+    if (survivorSlot === undefined) {
+      throw new Error("Expected a survivor slot.");
+    }
+
+    const remoteSnapshot: VaultSnapshot = {
+      ...ctx.remoteSnapshot,
+      metadata: {
+        ...ctx.remoteSnapshot.metadata,
+        snapshotVersionVector: { [ctx.values.deviceId]: 4 },
+      },
+      trustChain: {
+        certificates: [
+          ...ctx.localSnapshot.trustChain.certificates,
+          enrollmentCertificate,
+          revocationCertificate,
+        ],
+      },
+      keySlots: {
+        deviceSlots: [
+          {
+            ...survivorSlot,
+            vaultKeyGeneration: 2,
+            envelope: {
+              ...survivorSlot.envelope,
+              vaultKeyGeneration: 2,
+            },
+          },
+          {
+            deviceId: enrolledDeviceId,
+            vaultKeyGeneration: 2,
+            envelope: {
+              ...ctx.values.pendingDeviceVaultKeyEnvelope,
+              recipientDeviceId: enrolledDeviceId,
+              vaultKeyGeneration: 2,
+            },
+          },
+        ],
+      },
+    };
+    const revokedVault = revokeDeviceProfileFromVault(
+      session.unlockedVault.vault,
+      ctx.values.deviceId,
+      ctx.values.pendingDeviceId,
+      ctx.values.timestamp + 1,
+    );
+    const remoteVault = {
+      ...revokedVault,
+      deviceProfiles: [
+        ...revokedVault.deviceProfiles,
+        {
+          id: enrolledDeviceId,
+          name: "New survivor",
+          createdAt: ctx.values.timestamp + 1,
+          versionVector: { [enrolledDeviceId]: 1 },
+        },
+      ],
+    };
+    vi.mocked(ctx.ports.crypto.digestDevicePublicSignKey).mockImplementation(
+      async (key) => {
+        if (key === ctx.values.pendingDevicePublicSignKey) {
+          return "pending-sign";
+        }
+
+        return key === enrolledPublicSignKey ? "enrolled-sign" : "initial-sign";
+      },
+    );
+    vi.mocked(ctx.ports.crypto.digestDevicePublicVaultKey).mockImplementation(
+      async (key) => {
+        if (key === ctx.values.pendingDevicePublicVaultKey) {
+          return "pending-vault";
+        }
+
+        return key === enrolledPublicVaultKey
+          ? "enrolled-vault"
+          : "initial-vault";
+      },
+    );
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValue(
+      toVaultSnapshotDescriptor(ctx.values.vaultId, remoteSnapshot),
+    );
+    vi.mocked(ctx.ports.syncProvider.downloadVaultSnapshot).mockResolvedValue(
+      remoteSnapshot,
+    );
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue(
+      remoteVault,
+    );
+    const prepareUseCase = new PrepareDeviceRevocationConsumptionUseCase(
+      ctx.ports.crypto,
+      ctx.ports.syncProvider,
+      ctx.ports.sessionServices.unlockedVaultSession,
+      ctx.snapshotService,
+    );
+
+    await expect(
+      prepareUseCase.execute({
+        vaultId: ctx.values.vaultId,
+        replacementSyncConfig: ctx.values.replacementSyncConfigInput,
+      }),
+    ).resolves.toMatchObject({
+      enrolledDeviceIds: [enrolledDeviceId],
+      revokedDeviceIds: [ctx.values.pendingDeviceId],
+      review: {
+        deviceProfileReviews: [],
+      },
+    });
+
+    await expect(
+      ctx.useCase.execute({
+        ...createCommand(ctx),
+        remoteSnapshotDescriptor: toVaultSnapshotDescriptor(
+          ctx.values.vaultId,
+          remoteSnapshot,
+        ),
+      }),
+    ).resolves.toMatchObject({
+      enrolledDeviceIds: [enrolledDeviceId],
+      revokedDeviceIds: [ctx.values.pendingDeviceId],
+      vaultKeyGeneration: 2,
+    });
+
+    expect(ctx.ports.saved.unlockedVaultSession?.unlockedVault.vault).toEqual(
+      remoteVault,
+    );
+  });
+
   it("applies normal sync resolution to changes after revocation", async () => {
     const ctx = createContext();
     const remoteVault = {
@@ -700,6 +968,56 @@ describe("ConsumeDeviceRevocationUseCase", () => {
     expect(
       ctx.ports.crypto.encryptDeviceSyncCredentialState,
     ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("rejects a tombstone invented for a locally pending identity", async () => {
+    const ctx = createContext();
+    const session = ctx.ports.saved.unlockedVaultSession;
+
+    if (session === undefined) {
+      throw new Error("Expected an unlocked test session.");
+    }
+
+    const pendingLocalVault = {
+      ...session.unlockedVault.vault,
+      deviceProfiles: session.unlockedVault.vault.deviceProfiles.filter(
+        (profile) => profile.id !== ctx.values.pendingDeviceId,
+      ),
+    };
+    ctx.ports.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: pendingLocalVault,
+      },
+    };
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
+      ...pendingLocalVault,
+      deletedDeviceProfiles: [
+        {
+          id: ctx.values.pendingDeviceId,
+          deletedAt: ctx.values.timestamp + 1,
+          versionVector: { [ctx.values.deviceId]: 3 },
+        },
+      ],
+    });
+    const prepareUseCase = new PrepareDeviceRevocationConsumptionUseCase(
+      ctx.ports.crypto,
+      ctx.ports.syncProvider,
+      ctx.ports.sessionServices.unlockedVaultSession,
+      ctx.snapshotService,
+    );
+
+    await expect(
+      prepareUseCase.execute({
+        vaultId: ctx.values.vaultId,
+        replacementSyncConfig: ctx.values.replacementSyncConfigInput,
+      }),
+    ).rejects.toBeInstanceOf(InvalidDeviceRevocationTransitionError);
+
     expect(
       ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();

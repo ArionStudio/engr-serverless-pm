@@ -32,6 +32,7 @@ import type { LocalVaultTrustCheckpoint } from "../../domain/device-trust";
 import type { EncryptedDeviceSyncCredentialState } from "../../domain/sync";
 import type { PendingDeviceEnrollment } from "../../domain/device-trust";
 import { LocalVaultSnapshotChangedError } from "../../errors/vault-snapshot.errors";
+import { LocalVaultAlreadyInitializedError } from "../../errors/vault-lifecycle.errors";
 
 export type SavedCoreRecords = {
   localVaultDescriptor?: LocalVaultDescriptor;
@@ -291,6 +292,16 @@ export function createCoreTestPorts(
         checkpoint,
         syncCredentialState,
       }) => {
+        if (
+          saved.localVaultDescriptor !== undefined ||
+          saved.deviceAccessMaterial !== undefined ||
+          saved.deviceAccessRecoveryBackup !== undefined ||
+          saved.vaultSnapshot !== undefined ||
+          saved.localVaultTrustCheckpoint !== undefined
+        ) {
+          throw new LocalVaultAlreadyInitializedError(descriptor.vaultId);
+        }
+
         saved.localVaultDescriptor = descriptor;
         saved.deviceAccessMaterial = deviceAccessMaterial;
         saved.deviceAccessRecoveryBackup = deviceAccessRecoveryBackup;
@@ -309,10 +320,35 @@ export function createCoreTestPorts(
       saved.localVaultTrustCheckpoint = undefined;
       saved.deviceSyncCredentialState = undefined;
     }),
+    removePersistedLocalVaultIfSnapshotMatches: vi.fn(
+      async (vaultId, expectedSnapshotDigest) => {
+        if (
+          saved.vaultSnapshot?.metadata.id !== vaultId ||
+          saved.vaultSnapshotDigest !== expectedSnapshotDigest
+        ) {
+          return false;
+        }
+
+        saved.localVaultDescriptor = undefined;
+        saved.deviceAccessMaterial = undefined;
+        saved.deviceAccessRecoveryBackup = undefined;
+        saved.vaultSnapshot = undefined;
+        saved.vaultSnapshotDigest = undefined;
+        saved.localVaultTrustCheckpoint = undefined;
+        saved.deviceSyncCredentialState = undefined;
+        return true;
+      },
+    ),
     saveLocalVaultDescriptor: vi.fn(async (descriptor) => {
       saved.localVaultDescriptor = descriptor;
     }),
-    getLocalVaultDescriptor: vi.fn(),
+    getLocalVaultDescriptor: vi.fn(async (vaultId) => {
+      const descriptor = saved.localVaultDescriptor;
+
+      return descriptor !== undefined && descriptor.vaultId === vaultId
+        ? descriptor
+        : null;
+    }),
     listLocalVaultDescriptors: vi.fn(),
     removeLocalVaultDescriptor: vi.fn(),
     saveDeviceAccessMaterial: vi.fn(async (deviceAccessMaterial) => {

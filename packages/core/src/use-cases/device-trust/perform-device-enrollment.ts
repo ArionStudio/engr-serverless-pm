@@ -23,6 +23,7 @@ import { addDeviceProfileToVault } from "../../domain/vault/vault-device.mutatio
 import { incrementVersionVector } from "../../domain/versioning";
 import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
 import {
+  DeviceEnrollmentRollbackIncompleteError,
   DeviceEnrollmentIntegrityError,
   DeviceEnrollmentRemoteSnapshotChangedError,
   DeviceEnrollmentSnapshotMismatchError,
@@ -35,6 +36,7 @@ import {
   RemoteVaultSnapshotChangedError,
   SyncRemovalPendingError,
 } from "../../errors/sync.errors";
+import { LocalVaultAlreadyInitializedError } from "../../errors/vault-lifecycle.errors";
 import type { Bip39Port } from "../../ports/crypto/bip39.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
@@ -106,6 +108,15 @@ export class PerformDeviceEnrollmentUseCase {
       pending.algorithmSuiteId !== this.crypto.algorithmSuite.id
     ) {
       throw new PendingDeviceEnrollmentMismatchError(response.requestId);
+    }
+
+    const [existingDescriptor, existingAccessMaterial] = await Promise.all([
+      this.vaultLocalRepository.getLocalVaultDescriptor(response.vaultId),
+      this.vaultLocalRepository.getDeviceAccessMaterial(response.vaultId),
+    ]);
+
+    if (existingDescriptor !== null || existingAccessMaterial !== null) {
+      throw new LocalVaultAlreadyInitializedError(response.vaultId);
     }
 
     const activationGeneration =
@@ -411,17 +422,32 @@ export class PerformDeviceEnrollmentUseCase {
         if (!(error instanceof RemoteVaultSnapshotChangedError)) {
           syncUpload = "pending";
         } else {
-          await this.unlockedVaultSession.discardIfSessionIsActive(
-            sessionId,
-            response.vaultId,
-            async () =>
-              this.vaultLocalRepository.removePersistedLocalVault(
-                response.vaultId,
-              ),
-          );
-          throw new DeviceEnrollmentRemoteSnapshotChangedError(
-            response.vaultId,
-          );
+          const remoteSnapshotChanged =
+            new DeviceEnrollmentRemoteSnapshotChangedError(response.vaultId, {
+              cause: error,
+            });
+          const rollbackResult =
+            await this.unlockedVaultSession.discardIfSessionIsActive(
+              sessionId,
+              response.vaultId,
+              snapshot.metadata.snapshotVersionVector,
+              async () =>
+                this.vaultLocalRepository.removePersistedLocalVaultIfSnapshotMatches(
+                  response.vaultId,
+                  snapshotDigest,
+                ),
+            );
+
+          if (rollbackResult === "session_advanced") {
+            syncUpload = "complete";
+          } else if (rollbackResult !== "discarded") {
+            throw new DeviceEnrollmentRollbackIncompleteError(
+              response.vaultId,
+              remoteSnapshotChanged,
+            );
+          } else {
+            throw remoteSnapshotChanged;
+          }
         }
       }
     }

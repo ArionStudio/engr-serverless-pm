@@ -9,6 +9,7 @@ import type {
 import type { VaultSnapshot } from "../../domain/snapshot";
 import { toVaultSnapshotDescriptor } from "../../domain/snapshot";
 import {
+  DeviceEnrollmentRollbackIncompleteError,
   DeviceEnrollmentIntegrityError,
   DeviceEnrollmentRemoteSnapshotChangedError,
   PendingDeviceEnrollmentMismatchError,
@@ -17,6 +18,7 @@ import {
   RemoteVaultSnapshotChangedError,
   SyncRemovalPendingError,
 } from "../../errors/sync.errors";
+import { LocalVaultAlreadyInitializedError } from "../../errors/vault-lifecycle.errors";
 import { PerformDeviceEnrollmentUseCase } from "./perform-device-enrollment";
 
 function createContext(synced = false) {
@@ -280,6 +282,110 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     ).rejects.toBe(activationError);
 
     expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
+
+    await expect(
+      ctx.useCase.execute({
+        enrollmentResponse: ctx.response,
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "New laptop",
+      }),
+    ).rejects.toBeInstanceOf(LocalVaultAlreadyInitializedError);
+
+    expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
+  });
+
+  it("preserves newer local state after enrollment upload is rejected", async () => {
+    const ctx = createContext(true);
+    let rejectUpload: (error: Error) => void = () => undefined;
+    let uploadStarted: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => {
+      uploadStarted = resolve;
+    });
+    vi.mocked(
+      ctx.ports.syncProvider.uploadVaultSnapshot,
+    ).mockImplementationOnce(
+      async () =>
+        new Promise<never>((_resolve, reject) => {
+          rejectUpload = reject;
+          uploadStarted();
+        }),
+    );
+
+    const execution = ctx.useCase.execute({
+      enrollmentResponse: ctx.response,
+      masterPassword: ctx.values.masterPassword,
+      deviceName: "New laptop",
+      syncConfig: ctx.values.syncConfigInput,
+    });
+
+    await started;
+    const activeSession = ctx.ports.saved.unlockedVaultSession;
+
+    if (activeSession === undefined) {
+      throw new Error("expected enrollment session to be active");
+    }
+
+    await ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot(
+      activeSession.sessionId,
+      activeSession.unlockedVault,
+      { [ctx.values.deviceId]: 3 },
+    );
+    rejectUpload(new RemoteVaultSnapshotChangedError(ctx.values.vaultId));
+
+    await expect(execution).resolves.toMatchObject({
+      recoveryMnemonicKey: ctx.values.recoveryMnemonicKey,
+      syncUpload: "complete",
+    });
+    expect(ctx.ports.saved.localVaultDescriptor).toBeDefined();
+    expect(ctx.ports.saved.unlockedVaultSession).toMatchObject({
+      sourceSnapshotVersionVector: { [ctx.values.deviceId]: 3 },
+    });
+    expect(
+      ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfSnapshotMatches,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.pendingDeviceEnrollment).toBeUndefined();
+  });
+
+  it("does not remove a locally replaced enrollment snapshot", async () => {
+    const ctx = createContext(true);
+    let rejectUpload: (error: Error) => void = () => undefined;
+    let uploadStarted: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => {
+      uploadStarted = resolve;
+    });
+    vi.mocked(
+      ctx.ports.syncProvider.uploadVaultSnapshot,
+    ).mockImplementationOnce(
+      async () =>
+        new Promise<never>((_resolve, reject) => {
+          rejectUpload = reject;
+          uploadStarted();
+        }),
+    );
+
+    const execution = ctx.useCase.execute({
+      enrollmentResponse: ctx.response,
+      masterPassword: ctx.values.masterPassword,
+      deviceName: "New laptop",
+      syncConfig: ctx.values.syncConfigInput,
+    });
+
+    await started;
+    ctx.ports.saved.vaultSnapshotDigest = "newer-local-snapshot-digest";
+    rejectUpload(new RemoteVaultSnapshotChangedError(ctx.values.vaultId));
+
+    await expect(execution).rejects.toBeInstanceOf(
+      DeviceEnrollmentRollbackIncompleteError,
+    );
+    expect(ctx.ports.saved.localVaultDescriptor).toBeDefined();
+    expect(ctx.ports.saved.vaultSnapshotDigest).toBe(
+      "newer-local-snapshot-digest",
+    );
+    expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
+    expect(
+      ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfSnapshotMatches,
+    ).toHaveBeenCalledOnce();
+    expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
   });
 
   it("returns recoverable local enrollment after an indeterminate upload failure", async () => {
@@ -322,12 +428,39 @@ describe("PerformDeviceEnrollmentUseCase", () => {
         deviceName: "New laptop",
         syncConfig: ctx.values.syncConfigInput,
       }),
-    ).rejects.toBeInstanceOf(DeviceEnrollmentRemoteSnapshotChangedError);
+    ).rejects.toBeInstanceOf(DeviceEnrollmentRollbackIncompleteError);
 
     expect(ctx.ports.saved.localVaultDescriptor).toBeDefined();
     expect(
       ctx.ports.vaultLocalRepository.removePersistedLocalVault,
     ).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
+  });
+
+  it("reports incomplete rollback when rejected-upload local cleanup fails", async () => {
+    const ctx = createContext(true);
+    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockRejectedValueOnce(
+      new RemoteVaultSnapshotChangedError(ctx.values.vaultId),
+    );
+    vi.mocked(
+      ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfSnapshotMatches,
+    ).mockRejectedValueOnce(new Error("local cleanup failed"));
+
+    const execution = ctx.useCase.execute({
+      enrollmentResponse: ctx.response,
+      masterPassword: ctx.values.masterPassword,
+      deviceName: "New laptop",
+      syncConfig: ctx.values.syncConfigInput,
+    });
+
+    await expect(execution).rejects.toMatchObject({
+      name: "DeviceEnrollmentRollbackIncompleteError",
+      cause: expect.objectContaining({
+        name: "DeviceEnrollmentRemoteSnapshotChangedError",
+      }),
+    });
+    expect(ctx.ports.saved.localVaultDescriptor).toBeDefined();
+    expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
     expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
   });
 
@@ -369,5 +502,44 @@ describe("PerformDeviceEnrollmentUseCase", () => {
 
     expect(ctx.ports.saved.localVaultDescriptor).toBeDefined();
     expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
+  });
+
+  it("rejects a retained enrollment response without replacing an initialized vault", async () => {
+    const ctx = createContext();
+    const descriptor = {
+      vaultId: ctx.values.vaultId,
+      displayName: "Existing vault",
+      createdAt: ctx.values.timestamp,
+    };
+    const existingAccessMaterial = {
+      vaultId: ctx.values.vaultId,
+      deviceId: ctx.values.deviceId,
+      algorithmSuiteId: ctx.ports.crypto.algorithmSuite.id,
+      masterPasswordSalt: ctx.values.masterPasswordSalt,
+      localKeysProtectionSalt: ctx.values.localKeysProtectionSalt,
+      devicePublicSignKey: ctx.values.devicePublicSignKey,
+      devicePublicVaultKey: ctx.values.devicePublicVaultKey,
+      protectedLocalKeys: ctx.values.protectedLocalKeys,
+    };
+    const existingSnapshot = ctx.response.snapshot;
+    ctx.ports.saved.localVaultDescriptor = descriptor;
+    ctx.ports.saved.deviceAccessMaterial = existingAccessMaterial;
+    ctx.ports.saved.vaultSnapshot = existingSnapshot;
+
+    await expect(
+      ctx.useCase.execute({
+        enrollmentResponse: ctx.response,
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "New laptop",
+      }),
+    ).rejects.toBeInstanceOf(LocalVaultAlreadyInitializedError);
+
+    expect(ctx.ports.saved.localVaultDescriptor).toBe(descriptor);
+    expect(ctx.ports.saved.deviceAccessMaterial).toBe(existingAccessMaterial);
+    expect(ctx.ports.saved.vaultSnapshot).toBe(existingSnapshot);
+    expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
+    expect(
+      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
+    ).not.toHaveBeenCalled();
   });
 });

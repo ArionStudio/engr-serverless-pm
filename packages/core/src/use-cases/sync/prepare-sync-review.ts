@@ -23,7 +23,10 @@ import { findChangedEntries } from "../../domain/sync/entry-review.utils";
 import type { EntryReviewItem } from "../../domain/sync/entry-review.type";
 import { findChangedTags } from "../../domain/sync/tag-review.utils";
 import type { TagReviewItem } from "../../domain/sync/tag-review.type";
-import { findChangedDeviceProfiles } from "../../domain/sync/device-profile-review.utils";
+import {
+  findChangedDeviceProfiles,
+  requireDeviceProfilesMatchTrust,
+} from "../../domain/sync/device-profile-review.utils";
 import type { DeviceProfileReviewItem } from "../../domain/sync/device-profile-review.type";
 import { findChangesInKeySlots } from "../../domain/sync/key-slot-review.utils";
 import type { KeySlotReviewItem } from "../../domain/sync/key-slot-review.type";
@@ -203,6 +206,30 @@ export class PrepareSyncReviewUseCase {
     ) {
       throw new RemoteVaultSnapshotChangedError(params.vaultId);
     }
+
+    const trustedDeviceIds = new Set(
+      unlockedVault.trustedSnapshotContext.trust.trustedDevices.map(
+        (device) => device.deviceId,
+      ),
+    );
+    requireDeviceProfilesMatchTrust(
+      unlockedVault.vault,
+      trustedDeviceIds,
+      new Set(
+        localSnapshot.trustChain.certificates.flatMap((certificate) =>
+          certificate.payload.trustedDevices.map((device) => device.deviceId),
+        ),
+      ),
+    );
+    requireDeviceProfilesMatchTrust(
+      remoteVault,
+      trustedDeviceIds,
+      new Set(
+        remoteTrust.chain.certificates.flatMap((certificate) =>
+          certificate.payload.trustedDevices.map((device) => device.deviceId),
+        ),
+      ),
+    );
 
     const deviceProfileReviews = findChangedDeviceProfiles(
       unlockedVault.vault,

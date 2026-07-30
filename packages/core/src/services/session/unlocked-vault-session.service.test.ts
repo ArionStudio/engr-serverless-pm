@@ -655,6 +655,35 @@ describe("UnlockedVaultSessionService", () => {
     ).toBeUndefined();
   });
 
+  it.each([
+    ["successful", vi.fn(async () => undefined)],
+    ["failed", vi.fn(async () => Promise.reject(new Error("restore failed")))],
+  ])(
+    "preserves another vault session after a %s restore",
+    async (_name, restore) => {
+      const ctx = createContext();
+      ctx.ports.saved.unlockedVaultSessionMaterial = createActiveMaterial(
+        ctx,
+        "other-vault-id",
+      );
+      ctx.ports.saved.encryptedUnlockedVaultSessionPayload =
+        createEncryptedPayload(ctx, { vaultId: "other-vault-id" });
+
+      await ctx.service.restorePersistedState(
+        ctx.values.sessionId,
+        ctx.values.vaultId,
+        restore,
+      );
+
+      expect(ctx.ports.saved.unlockedVaultSessionMaterial?.vaultId).toBe(
+        "other-vault-id",
+      );
+      expect(
+        ctx.ports.saved.encryptedUnlockedVaultSessionPayload?.vaultId,
+      ).toBe("other-vault-id");
+    },
+  );
+
   it("does not allow lock to interleave with active session work", async () => {
     const ctx = createContext();
     ctx.ports.saved.unlockedVaultSessionMaterial = createMaterial(ctx);
@@ -700,7 +729,7 @@ describe("UnlockedVaultSessionService", () => {
     ctx.ports.saved.encryptedUnlockedVaultSessionPayload =
       createEncryptedPayload(ctx);
     const removeError = new Error("material removal failed");
-    const discard = vi.fn(async () => undefined);
+    const discard = vi.fn(async () => true);
 
     vi.mocked(
       ctx.ports.unlockedVaultSessionMaterialRepository
@@ -711,9 +740,10 @@ describe("UnlockedVaultSessionService", () => {
       ctx.service.discardIfSessionIsActive(
         ctx.values.sessionId,
         ctx.values.vaultId,
+        ctx.sourceSnapshotVersionVector,
         discard,
       ),
-    ).resolves.toBe(false);
+    ).resolves.toBe("rollback_failed");
 
     expect(discard).not.toHaveBeenCalled();
     expect(ctx.ports.saved.unlockedVaultSessionMaterial).toEqual(
@@ -722,6 +752,34 @@ describe("UnlockedVaultSessionService", () => {
     expect(
       ctx.ports.saved.encryptedUnlockedVaultSessionPayload,
     ).toBeUndefined();
+  });
+
+  it("does not discard enrollment state after the active session advances", async () => {
+    const ctx = createContext();
+    ctx.ports.saved.unlockedVaultSessionMaterial = createMaterial(ctx);
+    ctx.ports.saved.encryptedUnlockedVaultSessionPayload =
+      createEncryptedPayload(ctx);
+    const discard = vi.fn(async () => true);
+
+    await ctx.service.commitPersistedSnapshot(
+      ctx.values.sessionId,
+      ctx.session.unlockedVault,
+      { [ctx.values.deviceId]: 8 },
+    );
+
+    await expect(
+      ctx.service.discardIfSessionIsActive(
+        ctx.values.sessionId,
+        ctx.values.vaultId,
+        ctx.sourceSnapshotVersionVector,
+        discard,
+      ),
+    ).resolves.toBe("session_advanced");
+
+    expect(discard).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.unlockedVaultSessionMaterial).toMatchObject({
+      sourceSnapshotVersionVector: { [ctx.values.deviceId]: 8 },
+    });
   });
 
   it("does not invalidate another active vault after persisted snapshot commit mismatch", async () => {

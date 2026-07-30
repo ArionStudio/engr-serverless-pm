@@ -188,9 +188,10 @@ revoking device first verifies that both credentials address the same current
 vault namespace.
 
 Survivor recovery uses the current object only. It validates the complete
-signed removal-only trust suffix and does not read or depend on retained S3
-object versions. Bucket versioning remains an operational recovery feature,
-not a device-revocation security requirement.
+signed chronological trust suffix, including any enrollments between
+revocations, and does not read or depend on retained S3 object versions. Bucket
+versioning remains an operational recovery feature, not a device-revocation
+security requirement.
 
 To revoke cloud sync completely, delete or deactivate the IAM access key, delete
 the IAM user, or delete the CloudFormation stack. Device revocation inside the

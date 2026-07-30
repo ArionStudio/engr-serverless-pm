@@ -5,4 +5,6 @@ export * from "./recover-device-access.errors";
 export * from "./revoke-device";
 export * from "./create-device-enrollment-request";
 export * from "./consume-device-revocation";
+export * from "./consume-device-enrollment";
+export * from "./prepare-device-enrollment-consumption";
 export * from "./prepare-device-revocation-consumption";

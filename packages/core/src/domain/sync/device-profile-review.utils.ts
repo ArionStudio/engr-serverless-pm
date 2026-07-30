@@ -47,12 +47,21 @@ function findDeviceProfile(
   vault: Vault,
   deviceId: string,
 ): ReviewableDeviceProfile {
-  const deviceProfile = vault.deviceProfiles.find(
+  const deviceProfiles = vault.deviceProfiles.filter(
     (deviceProfile) => deviceProfile.id === deviceId,
   );
-  const deletedDeviceProfile = vault.deletedDeviceProfiles.find(
+  const deletedDeviceProfiles = vault.deletedDeviceProfiles.filter(
     (deletedDeviceProfile) => deletedDeviceProfile.id === deviceId,
   );
+
+  if (deviceProfiles.length > 1 || deletedDeviceProfiles.length > 1) {
+    throw new InvalidVaultSyncReviewError(
+      `Device profile "${deviceId}" occurs more than once in the same vault.`,
+    );
+  }
+
+  const deviceProfile = deviceProfiles[0];
+  const deletedDeviceProfile = deletedDeviceProfiles[0];
 
   if (deviceProfile !== undefined && deletedDeviceProfile !== undefined) {
     throw new InvalidVaultSyncReviewError(
@@ -77,6 +86,31 @@ function findDeviceProfile(
   return {
     state: "missing",
   };
+}
+
+export function requireDeviceProfilesMatchTrust(
+  vault: Vault,
+  trustedDeviceIds: ReadonlySet<string>,
+  historicalDeviceIds: ReadonlySet<string>,
+): void {
+  const deviceIds = new Set([
+    ...vault.deviceProfiles.map((profile) => profile.id),
+    ...vault.deletedDeviceProfiles.map((profile) => profile.id),
+  ]);
+
+  for (const deviceId of deviceIds) {
+    const profile = findDeviceProfile(vault, deviceId);
+
+    if (
+      (profile.state === "device_profile" && !trustedDeviceIds.has(deviceId)) ||
+      (profile.state === "deleted" &&
+        (trustedDeviceIds.has(deviceId) || !historicalDeviceIds.has(deviceId)))
+    ) {
+      throw new InvalidVaultSyncReviewError(
+        `Device profile "${deviceId}" does not match the vault trust state.`,
+      );
+    }
+  }
 }
 
 function getDeviceProfileRelation(

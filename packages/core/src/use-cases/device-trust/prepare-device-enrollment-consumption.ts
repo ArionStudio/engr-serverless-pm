@@ -2,7 +2,6 @@ import type { DeviceProfileReviewItem } from "../../domain/sync/device-profile-r
 import { findChangedDeviceProfiles } from "../../domain/sync/device-profile-review.utils";
 import type { EntryReviewItem } from "../../domain/sync/entry-review.type";
 import { findChangedEntries } from "../../domain/sync/entry-review.utils";
-import type { SyncSetupInput } from "../../domain/sync";
 import type { TagReviewItem } from "../../domain/sync/tag-review.type";
 import { findChangedTags } from "../../domain/sync/tag-review.utils";
 import type { VaultSnapshotDescriptor } from "../../domain/snapshot";
@@ -10,16 +9,15 @@ import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
-import { DeviceRevocationConsumptionService } from "../../services/trust/device-revocation-consumption.service";
+import type { VaultSyncGuardService } from "../../services/sync";
+import { DeviceEnrollmentConsumptionService } from "../../services/trust/device-enrollment-consumption.service";
 
-export type PrepareDeviceRevocationConsumptionCommandParams = {
+export type PrepareDeviceEnrollmentConsumptionCommandParams = {
   readonly vaultId: string;
-  readonly replacementSyncConfig: SyncSetupInput;
 };
 
-export type PrepareDeviceRevocationConsumptionResult = {
+export type PrepareDeviceEnrollmentConsumptionResult = {
   readonly remoteSnapshotDescriptor: VaultSnapshotDescriptor;
-  readonly revokedDeviceIds: readonly string[];
   readonly enrolledDeviceIds: readonly string[];
   readonly vaultKeyGeneration: number;
   readonly review: {
@@ -29,59 +27,57 @@ export type PrepareDeviceRevocationConsumptionResult = {
   };
 };
 
-export class PrepareDeviceRevocationConsumptionUseCase {
+export class PrepareDeviceEnrollmentConsumptionUseCase {
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
-  private readonly revocationConsumption: DeviceRevocationConsumptionService;
+  private readonly enrollmentConsumption: DeviceEnrollmentConsumptionService;
 
   constructor(
     crypto: CryptoPort,
     syncProvider: SyncProviderPort,
     unlockedVaultSession: UnlockedVaultSessionService,
     vaultSnapshot: VaultSnapshotService,
+    vaultSyncGuard: VaultSyncGuardService,
   ) {
     this.unlockedVaultSession = unlockedVaultSession;
-    this.revocationConsumption = new DeviceRevocationConsumptionService(
+    this.enrollmentConsumption = new DeviceEnrollmentConsumptionService(
       crypto,
       syncProvider,
       vaultSnapshot,
+      vaultSyncGuard,
     );
   }
 
   async execute(
-    params: PrepareDeviceRevocationConsumptionCommandParams,
-  ): Promise<PrepareDeviceRevocationConsumptionResult> {
+    params: PrepareDeviceEnrollmentConsumptionCommandParams,
+  ): Promise<PrepareDeviceEnrollmentConsumptionResult> {
     const { sourceSnapshotVersionVector, unlockedVault } =
       await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
-        "prepare device revocation consumption",
+        "prepare device enrollment consumption",
       );
-    const candidate = await this.revocationConsumption.loadVerifiedCandidate({
+    const candidate = await this.enrollmentConsumption.loadVerifiedCandidate({
       vaultId: params.vaultId,
-      replacementSyncConfig: params.replacementSyncConfig,
       unlockedVault,
       sourceSnapshotVersionVector,
     });
 
     return {
       remoteSnapshotDescriptor: candidate.remoteSnapshotDescriptor,
-      revokedDeviceIds: candidate.revocations.map(
-        (transition) => transition.revokedDeviceId,
-      ),
-      enrolledDeviceIds: candidate.enrollments.map(
+      enrolledDeviceIds: candidate.transitions.map(
         (transition) => transition.enrolledDeviceId,
       ),
       vaultKeyGeneration: candidate.remoteSnapshot.metadata.vaultKeyGeneration,
       review: {
         entryReviews: findChangedEntries(
-          candidate.trustTransitionBaseline,
+          candidate.enrollmentBaseline,
           candidate.remoteVault,
         ),
         tagReviews: findChangedTags(
-          candidate.trustTransitionBaseline,
+          candidate.enrollmentBaseline,
           candidate.remoteVault,
         ),
         deviceProfileReviews: findChangedDeviceProfiles(
-          candidate.trustTransitionBaseline,
+          candidate.enrollmentBaseline,
           candidate.remoteVault,
         ),
       },

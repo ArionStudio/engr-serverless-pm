@@ -17,9 +17,10 @@ export class DeviceEnrollmentVaultNotSynchronizedError extends Error {
 }
 
 export class DeviceEnrollmentRemoteSnapshotChangedError extends Error {
-  constructor(vaultId: string) {
+  constructor(vaultId: string, options?: ErrorOptions) {
     super(
       `Vault "${vaultId}" enrollment snapshot changed before device enrollment. Start enrollment again.`,
+      options,
     );
     this.name = "DeviceEnrollmentRemoteSnapshotChangedError";
   }
@@ -57,6 +58,28 @@ export class DeviceEnrollmentSyncCredentialsRequiredError extends Error {
   constructor(vaultId: string) {
     super(
       `Local sync credentials are required to enroll a device into vault "${vaultId}".`,
+    );
+  }
+}
+
+export class InvalidDeviceEnrollmentTransitionError extends Error {
+  override readonly name = "InvalidDeviceEnrollmentTransitionError";
+
+  constructor(vaultId: string, reason: string, options?: ErrorOptions) {
+    super(
+      `Vault "${vaultId}" device enrollment transition is invalid: ${reason}.`,
+      options,
+    );
+  }
+}
+
+export class DeviceEnrollmentRollbackIncompleteError extends Error {
+  override readonly name = "DeviceEnrollmentRollbackIncompleteError";
+
+  constructor(vaultId: string, cause: unknown) {
+    super(
+      `Vault "${vaultId}" enrollment rollback did not remove all initialized local state.`,
+      { cause },
     );
   }
 }

@@ -103,7 +103,14 @@ export class UnlockedVaultSessionService {
       try {
         await restore();
       } catch {
-        await this.removeSessionRecordsPreservingRootCause();
+        const activeMaterial = this.getActiveMaterial(
+          await this.materialRepository.getUnlockedVaultSessionMaterial(),
+        );
+
+        if (activeMaterial?.vaultId === vaultId) {
+          await this.removeSessionRecordsPreservingRootCause();
+        }
+
         return false;
       }
 
@@ -113,6 +120,7 @@ export class UnlockedVaultSessionService {
 
       if (
         activeMaterial !== null &&
+        activeMaterial.vaultId === vaultId &&
         !this.isActiveSession(activeMaterial, sessionId, vaultId)
       ) {
         await this.removeSessionRecordsPreservingRootCause();
@@ -125,27 +133,41 @@ export class UnlockedVaultSessionService {
   async discardIfSessionIsActive(
     sessionId: string,
     vaultId: string,
-    discard: () => Promise<void>,
-  ): Promise<boolean> {
+    sourceSnapshotVersionVector: VersionVector,
+    discard: () => Promise<boolean>,
+  ): Promise<
+    "discarded" | "session_advanced" | "session_unavailable" | "rollback_failed"
+  > {
     return this.serializeSessionOperation(async () => {
       const activeMaterial =
         await this.materialRepository.getUnlockedVaultSessionMaterial();
 
-      if (!this.isActiveSession(activeMaterial, sessionId, vaultId)) {
-        return false;
+      if (
+        activeMaterial === null ||
+        !this.isActiveSession(activeMaterial, sessionId, vaultId)
+      ) {
+        return "session_unavailable";
+      }
+
+      if (
+        compareVersionVectors(
+          activeMaterial.sourceSnapshotVersionVector,
+          sourceSnapshotVersionVector,
+        ) !== "equal"
+      ) {
+        return "session_advanced";
       }
 
       try {
         await this.removeSessionRecords();
       } catch {
-        return false;
+        return "rollback_failed";
       }
 
       try {
-        await discard();
-        return true;
+        return (await discard()) ? "discarded" : "rollback_failed";
       } catch {
-        return false;
+        return "rollback_failed";
       }
     });
   }

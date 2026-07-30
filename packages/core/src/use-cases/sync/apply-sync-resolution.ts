@@ -1,6 +1,9 @@
 import type { VaultSnapshotDescriptor } from "../../domain/snapshot";
 import { areJsonEqual } from "../../domain/common";
-import { findChangedDeviceProfiles } from "../../domain/sync/device-profile-review.utils";
+import {
+  findChangedDeviceProfiles,
+  requireDeviceProfilesMatchTrust,
+} from "../../domain/sync/device-profile-review.utils";
 import { findChangedEntries } from "../../domain/sync/entry-review.utils";
 import { findChangesInKeySlots } from "../../domain/sync/key-slot-review.utils";
 import type { VaultSyncResolution } from "../../domain/sync/sync-resolution.type";
@@ -187,6 +190,31 @@ export class ApplySyncResolutionUseCase {
       throw new RemoteVaultSnapshotChangedError(params.vaultId);
     }
 
+    const trustedDeviceIds = new Set(
+      unlockedVault.trustedSnapshotContext.trust.trustedDevices.map(
+        (device) => device.deviceId,
+      ),
+    );
+    const historicalDeviceIds = new Set(
+      remoteTrust.chain.certificates.flatMap((certificate) =>
+        certificate.payload.trustedDevices.map((device) => device.deviceId),
+      ),
+    );
+    requireDeviceProfilesMatchTrust(
+      unlockedVault.vault,
+      trustedDeviceIds,
+      new Set(
+        localSnapshot.trustChain.certificates.flatMap((certificate) =>
+          certificate.payload.trustedDevices.map((device) => device.deviceId),
+        ),
+      ),
+    );
+    requireDeviceProfilesMatchTrust(
+      remoteVault,
+      trustedDeviceIds,
+      historicalDeviceIds,
+    );
+
     const entryReviews = findChangedEntries(unlockedVault.vault, remoteVault);
     const tagReviews = findChangedTags(unlockedVault.vault, remoteVault);
     const deviceProfileReviews = findChangedDeviceProfiles(
@@ -228,6 +256,12 @@ export class ApplySyncResolutionUseCase {
 
       throw error;
     }
+
+    requireDeviceProfilesMatchTrust(
+      resolvedVault,
+      trustedDeviceIds,
+      historicalDeviceIds,
+    );
 
     const updatedUnlockedVault = {
       ...unlockedVault,

@@ -50,6 +50,14 @@ Generic sync accepts ordinary vault-content changes but rejects trust-chain,
 vault-key-generation, or device-slot changes. Those changes must use a dedicated
 device-trust workflow.
 
+An existing survivor consumes enrollment additions through a dedicated
+prepare/apply workflow. It accepts only an authenticated addition-only trust
+suffix, an unchanged vault-key generation, unchanged existing device
+envelopes, and one new envelope for every added identity. A new identity's
+active profile is mandatory enrollment state and cannot be removed by a sync
+resolution. Other accompanying entry, tag, or device-profile changes use the
+normal review and resolution model.
+
 Remote and local writes use snapshot descriptors for compare-and-set checks.
 This prevents a reviewed snapshot from overwriting a newer remote or local
 snapshot.
@@ -100,12 +108,17 @@ replacement credential once, then prepares a revocation review. Preparation
 verifies:
 
 - the remote trust chain descends from its trusted local state;
-- every skipped certificate removes exactly one identity and adds none;
+- every skipped certificate either adds one identity without rotating the key
+  or removes one identity while rotating it exactly once;
 - survivor signing and wrapping public keys did not change;
-- every removal advances the signed vault-key generation exactly once;
 - every survivor has exactly one matching new-generation envelope;
 - all revoked profiles and slots were removed consistently;
 - the final snapshot is causally ahead and retains the vault creation time.
+
+When the suffix also contains enrollments, the review reports the added
+identities explicitly and treats their final active profiles as mandatory state.
+This lets an offline survivor process the current object without requiring
+historical S3 versions.
 
 The consumer applies those removals as a mandatory baseline. They are not
 user-selectable resolutions and cannot be undone. Entry, tag, or surviving

@@ -4,6 +4,7 @@ import type {
   EncryptedDeviceSyncCredentialState,
 } from "../../domain/sync";
 import type { SyncAccess, SyncSetupInput } from "../../domain/sync";
+import { requireDeviceProfilesMatchTrust } from "../../domain/sync/device-profile-review.utils";
 import {
   areVaultSnapshotDescriptorsEqual,
   toVaultSnapshotDescriptor,
@@ -91,12 +92,43 @@ export class RevokeDeviceUseCase {
       throw new CannotRevokeCurrentDeviceError(params.vaultId, params.deviceId);
     }
 
+    const targetIdentity =
+      unlockedVault.trustedSnapshotContext.trust.trustedDevices.find(
+        (device) => device.deviceId === params.deviceId,
+      );
+
+    if (targetIdentity === undefined) {
+      throw new DeviceToRevokeNotTrustedError(params.vaultId, params.deviceId);
+    }
+
     const syncState = await this.vaultSyncGuard.prepareLocalMutation(
       params.vaultId,
       unlockedVault,
       sourceSnapshotVersionVector,
     );
     const currentSnapshot = syncState.localSnapshot;
+
+    try {
+      requireDeviceProfilesMatchTrust(
+        unlockedVault.vault,
+        new Set(
+          unlockedVault.trustedSnapshotContext.trust.trustedDevices.map(
+            (device) => device.deviceId,
+          ),
+        ),
+        new Set(
+          currentSnapshot.trustChain.certificates.flatMap((certificate) =>
+            certificate.payload.trustedDevices.map((device) => device.deviceId),
+          ),
+        ),
+      );
+    } catch (error) {
+      throw new InvalidDeviceRevocationTransitionError(
+        params.vaultId,
+        "device profiles do not match the trusted identities",
+        { cause: error },
+      );
+    }
 
     if (
       syncState.remoteSnapshotDescriptor !== undefined &&
@@ -111,15 +143,11 @@ export class RevokeDeviceUseCase {
       );
     }
 
-    const targetIdentity =
-      unlockedVault.trustedSnapshotContext.trust.trustedDevices.find(
-        (device) => device.deviceId === params.deviceId,
-      );
     const targetSlots = currentSnapshot.keySlots.deviceSlots.filter(
       (slot) => slot.deviceId === params.deviceId,
     );
 
-    if (targetIdentity === undefined || targetSlots.length !== 1) {
+    if (targetSlots.length !== 1) {
       throw new DeviceToRevokeNotTrustedError(params.vaultId, params.deviceId);
     }
 

@@ -24,7 +24,10 @@ export class CurrentDeviceRevokedError extends Error {
 export class InvalidDeviceRevocationTransitionError extends Error {
   override readonly name = "InvalidDeviceRevocationTransitionError";
 
-  constructor(vaultId: string, reason: string) {
-    super(`Device revocation for vault "${vaultId}" is invalid: ${reason}.`);
+  constructor(vaultId: string, reason: string, options?: ErrorOptions) {
+    super(
+      `Device revocation for vault "${vaultId}" is invalid: ${reason}.`,
+      options,
+    );
   }
 }

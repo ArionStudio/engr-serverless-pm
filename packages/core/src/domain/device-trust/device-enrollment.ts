@@ -57,3 +57,11 @@ export type DeviceEnrollmentResponse = {
   readonly vaultTrustAnchor: LocalVaultTrustAnchor;
   readonly snapshot: VaultSnapshot;
 };
+
+export type DeviceEnrollmentTransition = {
+  readonly type: "enrollment";
+  readonly enrolledDeviceId: string;
+  readonly authorizedByDeviceId: string;
+  readonly trustGeneration: number;
+  readonly vaultKeyGeneration: number;
+};
