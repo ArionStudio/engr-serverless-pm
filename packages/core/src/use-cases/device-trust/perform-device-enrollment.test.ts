@@ -174,6 +174,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     );
     expect(result).not.toHaveProperty("credentials");
     expect(result).not.toHaveProperty("syncConfig");
+    expect(result.vault).not.toHaveProperty("syncCredentials");
   });
 
   it("rejects enrollment while remote sync removal is pending", async () => {
