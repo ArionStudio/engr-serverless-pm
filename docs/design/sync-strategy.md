@@ -53,10 +53,11 @@ device-trust workflow.
 An existing survivor consumes enrollment additions through a dedicated
 prepare/apply workflow. It accepts only an authenticated addition-only trust
 suffix, an unchanged vault-key generation, unchanged existing device
-envelopes, and one new envelope for every added identity. A new identity's
-active profile is mandatory enrollment state and cannot be removed by a sync
-resolution. Other accompanying entry, tag, or device-profile changes use the
-normal review and resolution model.
+envelopes, and one new envelope for every added identity. A completed
+enrollment's active profile is mandatory state and cannot be removed by a sync
+resolution. An enrollment that is still pending may remain profile-less until
+the target completes it. Other accompanying entry, tag, or device-profile
+changes use the normal review and resolution model.
 
 Remote and local writes use snapshot descriptors for compare-and-set checks.
 This prevents a reviewed snapshot from overwriting a newer remote or local

@@ -84,6 +84,7 @@ export class ConsumeDeviceEnrollmentUseCase {
       );
     const candidate = await this.enrollmentConsumption.loadVerifiedCandidate({
       vaultId: params.vaultId,
+      operation: "consume device enrollment",
       unlockedVault,
       sourceSnapshotVersionVector,
       expectedRemoteSnapshotDescriptor: params.remoteSnapshotDescriptor,

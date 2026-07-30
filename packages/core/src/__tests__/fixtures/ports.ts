@@ -442,8 +442,10 @@ export function createCoreTestPorts(
     saveDeviceSyncCredentialState: vi.fn(async (_vaultId, state) => {
       saved.deviceSyncCredentialState = state;
     }),
-    getDeviceSyncCredentialState: vi.fn(
-      async () => saved.deviceSyncCredentialState ?? null,
+    getDeviceSyncCredentialState: vi.fn(async (vaultId) =>
+      vaultId === values.vaultId
+        ? (saved.deviceSyncCredentialState ?? null)
+        : null,
     ),
     removeDeviceSyncCredentialState: vi.fn(async () => {
       saved.deviceSyncCredentialState = undefined;
@@ -458,8 +460,10 @@ export function createCoreTestPorts(
         ? enrollment
         : null;
     }),
-    removePendingDeviceEnrollment: vi.fn(async () => {
-      saved.pendingDeviceEnrollment = undefined;
+    removePendingDeviceEnrollment: vi.fn(async (requestId) => {
+      if (saved.pendingDeviceEnrollment?.requestId === requestId) {
+        saved.pendingDeviceEnrollment = undefined;
+      }
     }),
   };
 

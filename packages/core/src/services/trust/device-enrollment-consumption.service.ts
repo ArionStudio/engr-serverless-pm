@@ -44,22 +44,17 @@ export class DeviceEnrollmentConsumptionService {
 
   async loadVerifiedCandidate(params: {
     readonly vaultId: string;
+    readonly operation: string;
     readonly unlockedVault: UnlockedVault;
     readonly sourceSnapshotVersionVector: VersionVector;
     readonly expectedRemoteSnapshotDescriptor?: VaultSnapshotDescriptor;
   }) {
     if (params.unlockedVault.vault.syncTarget === undefined) {
-      throw new SyncNotConfiguredError(
-        params.vaultId,
-        "consume device enrollment",
-      );
+      throw new SyncNotConfiguredError(params.vaultId, params.operation);
     }
 
     if (params.unlockedVault.vault.syncRemovalPending === true) {
-      throw new SyncRemovalPendingError(
-        params.vaultId,
-        "consume device enrollment",
-      );
+      throw new SyncRemovalPendingError(params.vaultId, params.operation);
     }
 
     const localSnapshot =

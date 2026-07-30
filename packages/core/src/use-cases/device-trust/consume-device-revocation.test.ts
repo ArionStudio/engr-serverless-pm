@@ -1016,7 +1016,12 @@ describe("ConsumeDeviceRevocationUseCase", () => {
         vaultId: ctx.values.vaultId,
         replacementSyncConfig: ctx.values.replacementSyncConfigInput,
       }),
-    ).rejects.toBeInstanceOf(InvalidDeviceRevocationTransitionError);
+    ).rejects.toMatchObject({
+      name: "InvalidDeviceRevocationTransitionError",
+      message: expect.stringContaining(
+        "a locally pending revoked identity has a profile tombstone",
+      ),
+    });
 
     expect(
       ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,

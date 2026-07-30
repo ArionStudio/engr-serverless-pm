@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createCoreTestValues } from "../../__tests__/fixtures/values";
+import { b64, createCoreTestValues } from "../../__tests__/fixtures/values";
 import type { RandomBytes } from "../crypto/brand-keys";
 import type { DeviceVaultPublicKey } from "../device-trust";
 import { ChangedDeviceKeySlotsError } from "../../errors";
@@ -83,6 +83,16 @@ describe("findChangesInKeySlots", () => {
       changeEnvelope: (slot: DeviceKeySlot): DeviceKeySlot["envelope"] => ({
         ...slot.envelope,
         hkdfSalt: new Uint8Array([1]).buffer as RandomBytes,
+      }),
+    },
+    {
+      name: "encrypted vault master key",
+      changeEnvelope: (slot: DeviceKeySlot): DeviceKeySlot["envelope"] => ({
+        ...slot.envelope,
+        encryptedVaultMasterKey: {
+          ...slot.envelope.encryptedVaultMasterKey,
+          ciphertext: b64("changed-encrypted-vault-master-key"),
+        },
       }),
     },
   ])("rejects a changed $name", ({ changeEnvelope }) => {

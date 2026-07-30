@@ -57,6 +57,7 @@ export class PrepareDeviceEnrollmentConsumptionUseCase {
       );
     const candidate = await this.enrollmentConsumption.loadVerifiedCandidate({
       vaultId: params.vaultId,
+      operation: "prepare device enrollment consumption",
       unlockedVault,
       sourceSnapshotVersionVector,
     });

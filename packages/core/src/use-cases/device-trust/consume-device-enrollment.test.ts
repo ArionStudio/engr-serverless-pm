@@ -426,6 +426,30 @@ describe("device enrollment consumption", () => {
     ).not.toHaveBeenCalled();
   });
 
+  it("rejects an enrollment snapshot that changes the sync target", async () => {
+    const ctx = createContext();
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
+      ...ctx.localVault,
+      syncTarget: {
+        ...ctx.values.syncTarget,
+        targetConfig: { bucket: "another-bucket" },
+      },
+    });
+
+    await expect(
+      ctx.prepareUseCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toMatchObject({
+      name: "InvalidDeviceEnrollmentTransitionError",
+      message: expect.stringContaining(
+        "the enrollment snapshot changed the sync target or removal state",
+      ),
+    });
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
   it("advances an existing survivor to the authorized trust state", async () => {
     const ctx = createContext();
 
