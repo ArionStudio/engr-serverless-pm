@@ -8,6 +8,7 @@ import { findChangedTags } from "../../domain/sync/tag-review.utils";
 import type { VaultSnapshotDescriptor } from "../../domain/snapshot";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
+import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import { DeviceRevocationConsumptionService } from "../../services/trust/device-revocation-consumption.service";
@@ -38,12 +39,14 @@ export class PrepareDeviceRevocationConsumptionUseCase {
     syncProvider: SyncProviderPort,
     unlockedVaultSession: UnlockedVaultSessionService,
     vaultSnapshot: VaultSnapshotService,
+    vaultLocalRepository: VaultLocalRepositoryPort,
   ) {
     this.unlockedVaultSession = unlockedVaultSession;
     this.revocationConsumption = new DeviceRevocationConsumptionService(
       crypto,
       syncProvider,
       vaultSnapshot,
+      vaultLocalRepository,
     );
   }
 

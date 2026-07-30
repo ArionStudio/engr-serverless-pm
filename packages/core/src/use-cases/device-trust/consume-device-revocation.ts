@@ -1,4 +1,3 @@
-import { areJsonEqual } from "../../domain/common";
 import type {
   VerifiedVaultTrustState,
   VaultTrustChain,
@@ -25,13 +24,10 @@ import { mergeVersionVectors } from "../../domain/versioning";
 import {
   InvalidSyncResolutionError,
   InvalidVaultSyncResolutionError,
-  LocalSyncCredentialsMissingError,
   RemoteVaultSnapshotChangedError,
-  ReplacementSyncCredentialsUnchangedError,
   SyncConflictDetectedError,
   SyncResolutionIncompleteError,
 } from "../../errors/sync.errors";
-import { InvalidDeviceRevocationTransitionError } from "../../errors/device-revocation.errors";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
@@ -79,6 +75,7 @@ export class ConsumeDeviceRevocationUseCase {
       crypto,
       syncProvider,
       vaultSnapshot,
+      vaultLocalRepository,
     );
     this.vaultTrust = new VaultTrustService(crypto);
   }
@@ -105,52 +102,6 @@ export class ConsumeDeviceRevocationUseCase {
       sourceSnapshotVersionVector,
       expectedRemoteSnapshotDescriptor: params.remoteSnapshotDescriptor,
     });
-    const previousEncryptedState =
-      await this.vaultLocalRepository.getDeviceSyncCredentialState(
-        params.vaultId,
-      );
-
-    if (previousEncryptedState === null) {
-      throw new LocalSyncCredentialsMissingError(params.vaultId);
-    }
-
-    const syncTarget = unlockedVault.vault.syncTarget;
-
-    if (syncTarget === undefined) {
-      throw new InvalidDeviceRevocationTransitionError(
-        params.vaultId,
-        "the local vault has no sync target",
-      );
-    }
-
-    const credentialContext = {
-      vaultId: params.vaultId,
-      deviceId: unlockedVault.deviceId,
-      provider: syncTarget.provider,
-      target: syncTarget,
-    } as const;
-    const previousState = await this.crypto.decryptDeviceSyncCredentialState(
-      previousEncryptedState,
-      unlockedVault.deviceLocalProtectionKey,
-      credentialContext,
-    );
-
-    if (previousState.previousCredentials !== undefined) {
-      throw new InvalidDeviceRevocationTransitionError(
-        params.vaultId,
-        "provider credential revocation is already pending",
-      );
-    }
-
-    if (
-      areJsonEqual(
-        candidate.replacementAccess.credentials,
-        previousState.currentCredentials,
-      )
-    ) {
-      throw new ReplacementSyncCredentialsUnchangedError(params.vaultId);
-    }
-
     const entryReviews = findChangedEntries(
       candidate.trustTransitionBaseline,
       candidate.remoteVault,
@@ -184,14 +135,14 @@ export class ConsumeDeviceRevocationUseCase {
         {
           currentCredentials: candidate.replacementAccess.credentials,
           previousCredentials: {
-            credentials: previousState.currentCredentials,
+            credentials: candidate.previousState.currentCredentials,
             revokedDeviceIds,
             vaultKeyGeneration:
               candidate.remoteSnapshot.metadata.vaultKeyGeneration,
           },
         },
         unlockedVault.deviceLocalProtectionKey,
-        credentialContext,
+        candidate.credentialContext,
       );
     const hasContentChanges =
       entryReviews.length > 0 ||
@@ -239,7 +190,7 @@ export class ConsumeDeviceRevocationUseCase {
         replacementAccess: candidate.replacementAccess,
         vaultMasterKey: candidate.vaultMasterKey,
         resolvedVault,
-        previousEncryptedState,
+        previousEncryptedState: candidate.previousEncryptedState,
         encryptedCredentialState,
       });
     }

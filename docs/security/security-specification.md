@@ -358,6 +358,18 @@ Since JS Garbage Collection is unpredictable:
 7.  **External Completion:** The user disables the old AWS credential. Core
     reports completion only after the provider rejects it.
 
+The encrypted signed vault stores a non-secret pending marker with the revoked
+device IDs and vault-key generation. Provider credentials remain exclusively in
+encrypted device-local state. Enrollment, another revocation, and sync removal
+are blocked on every device until a matching local old credential is rejected
+and the signed marker removal is uploaded. Generic sync accepts marker removal
+only; it rejects marker creation or replacement outside the revocation flow.
+Verified revocation and enrollment consumption may replace or clear a stale
+local marker when the signed remote trust state has advanced. A locally retained
+previous credential blocks another revocation while it remains accepted by the
+provider, but provider rejection allows the verified newer revocation to
+replace it with the next credential-rotation state.
+
 An offline survivor validates the complete signed suffix after its local trust
 certificate. Every suffix certificate must either add exactly one identity
 while preserving the vault-key generation or remove exactly one identity while

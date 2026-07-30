@@ -174,6 +174,10 @@ export class VaultSyncGuardService {
     unlockedVault: UnlockedVault,
     operation: string,
   ): Promise<void> {
+    if (unlockedVault.vault.providerCredentialRevocationPending !== undefined) {
+      throw new ProviderCredentialRevocationPendingError(vaultId, operation);
+    }
+
     const syncTarget = unlockedVault.vault.syncTarget;
 
     if (syncTarget === undefined) {

@@ -1,4 +1,5 @@
 import type { VaultSnapshotDescriptor } from "../../domain/snapshot/vault-snapshot-descriptor.type";
+import { areJsonEqual } from "../../domain/common";
 import type { VersionVectorRelation } from "../../domain/versioning/version-vector.type";
 import {
   areVaultSnapshotDescriptorsEqual,
@@ -50,6 +51,7 @@ type VaultSyncReview = {
   };
   readonly readOnly: {
     readonly keySlotsChanges: KeySlotReviewItem;
+    readonly providerCredentialRevocationCompleted: boolean;
   };
 };
 
@@ -193,6 +195,23 @@ export class PrepareSyncReviewUseCase {
       remoteSnapshot,
       unlockedVault.vaultMasterKey,
     );
+    const providerCredentialRevocationCompleted =
+      unlockedVault.vault.providerCredentialRevocationPending !== undefined &&
+      remoteVault.providerCredentialRevocationPending === undefined;
+
+    if (
+      !areJsonEqual(remoteVault.syncTarget, unlockedVault.vault.syncTarget) ||
+      remoteVault.syncRemovalPending !==
+        unlockedVault.vault.syncRemovalPending ||
+      (!areJsonEqual(
+        remoteVault.providerCredentialRevocationPending,
+        unlockedVault.vault.providerCredentialRevocationPending,
+      ) &&
+        !providerCredentialRevocationCompleted)
+    ) {
+      throw new RemoteVaultSnapshotIntegrityError(params.vaultId);
+    }
+
     const downloadedDescriptor = toVaultSnapshotDescriptor(
       params.vaultId,
       remoteSnapshot,
@@ -247,6 +266,7 @@ export class PrepareSyncReviewUseCase {
         },
         readOnly: {
           keySlotsChanges,
+          providerCredentialRevocationCompleted,
         },
       },
     };

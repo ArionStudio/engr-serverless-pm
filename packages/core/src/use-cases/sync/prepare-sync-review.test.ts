@@ -5,6 +5,7 @@ import { toVaultSnapshotDescriptor } from "../../domain/snapshot";
 import { VaultTrustStateInvalidError } from "../../errors/vault-trust.errors";
 import {
   InvalidVaultSyncReviewError,
+  RemoteVaultSnapshotIntegrityError,
   SyncTrustChangeRequiresDeviceTrustFlowError,
 } from "../../errors/sync.errors";
 import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
@@ -44,6 +45,10 @@ function createContext() {
   vi.mocked(ctx.ports.syncProvider.downloadVaultSnapshot).mockResolvedValue(
     remoteSnapshot,
   );
+  vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
+    ...unlockedVault.vault,
+    syncTarget: ctx.values.syncTarget,
+  });
   const snapshotService = new VaultSnapshotService(
     ctx.ports.crypto,
     ctx.ports.clock,
@@ -79,6 +84,9 @@ describe("PrepareSyncReviewUseCase", () => {
           entryReviews: [],
           tagReviews: [],
           deviceProfileReviews: [],
+        },
+        readOnly: {
+          providerCredentialRevocationCompleted: false,
         },
       },
     });
@@ -229,6 +237,108 @@ describe("PrepareSyncReviewUseCase", () => {
     await expect(
       ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
     ).rejects.toBeInstanceOf(InvalidVaultSyncReviewError);
+  });
+
+  it("rejects a remote sync target change", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession;
+
+    if (session === undefined) {
+      throw new Error("Expected an unlocked test session.");
+    }
+
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
+      ...session.unlockedVault.vault,
+      syncTarget: {
+        ...ctx.values.syncTarget,
+        targetConfig: { bucket: "another-bucket" },
+      },
+    });
+
+    await expect(
+      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toBeInstanceOf(RemoteVaultSnapshotIntegrityError);
+  });
+
+  it("rejects a remote sync-removal state change", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession;
+
+    if (session === undefined) {
+      throw new Error("Expected an unlocked test session.");
+    }
+
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
+      ...session.unlockedVault.vault,
+      syncRemovalPending: true,
+    });
+
+    await expect(
+      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toBeInstanceOf(RemoteVaultSnapshotIntegrityError);
+  });
+
+  it("accepts signed completion of provider credential revocation", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession;
+
+    if (session === undefined) {
+      throw new Error("Expected an unlocked test session.");
+    }
+
+    ctx.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          providerCredentialRevocationPending: {
+            revokedDeviceIds: [ctx.values.pendingDeviceId],
+            vaultKeyGeneration: 1,
+          },
+        },
+      },
+    };
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
+      ...session.unlockedVault.vault,
+    });
+
+    await expect(
+      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+    ).resolves.toMatchObject({
+      relation: "remote_ahead",
+      review: {
+        actionable: {
+          entryReviews: [],
+          tagReviews: [],
+          deviceProfileReviews: [],
+        },
+        readOnly: {
+          providerCredentialRevocationCompleted: true,
+        },
+      },
+    });
+  });
+
+  it("rejects provider credential pending state added through generic sync", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession;
+
+    if (session === undefined) {
+      throw new Error("Expected an unlocked test session.");
+    }
+
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
+      ...session.unlockedVault.vault,
+      providerCredentialRevocationPending: {
+        revokedDeviceIds: [ctx.values.pendingDeviceId],
+        vaultKeyGeneration: 1,
+      },
+    });
+
+    await expect(
+      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toBeInstanceOf(RemoteVaultSnapshotIntegrityError);
   });
 
   it("rejects duplicate remote device profiles", async () => {

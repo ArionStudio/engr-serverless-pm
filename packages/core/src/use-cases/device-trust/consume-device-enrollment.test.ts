@@ -441,7 +441,7 @@ describe("device enrollment consumption", () => {
     ).rejects.toMatchObject({
       name: "InvalidDeviceEnrollmentTransitionError",
       message: expect.stringContaining(
-        "the enrollment snapshot changed the sync target or removal state",
+        "the enrollment snapshot changed protected sync state",
       ),
     });
     expect(
@@ -464,6 +464,37 @@ describe("device enrollment consumption", () => {
       ctx.ports.saved.unlockedVaultSession?.unlockedVault.trustedSnapshotContext
         .trust.generation,
     ).toBe(2);
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("imports signed provider credential revocation completion with enrollment", async () => {
+    const ctx = createContext();
+    const session = ctx.ports.saved.unlockedVaultSession;
+
+    if (session === undefined) {
+      throw new Error("Expected an unlocked test session.");
+    }
+
+    ctx.ports.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          providerCredentialRevocationPending: {
+            revokedDeviceIds: [ctx.values.pendingDeviceId],
+            vaultKeyGeneration: 1,
+          },
+        },
+      },
+    };
+
+    await ctx.consumeUseCase.execute(createCommand(ctx));
+
+    expect(
+      ctx.ports.saved.unlockedVaultSession?.unlockedVault.vault
+        .providerCredentialRevocationPending,
+    ).toBeUndefined();
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });
 
@@ -504,6 +535,73 @@ describe("device enrollment consumption", () => {
     expect(
       ctx.ports.saved.unlockedVaultSession?.unlockedVault.vault.tags,
     ).toEqual([expect.objectContaining({ id: 1, name: "Remote tag" })]);
+  });
+
+  it("does not re-upload a stale provider marker with resolved enrollment content", async () => {
+    const ctx = createContext();
+    const session = ctx.ports.saved.unlockedVaultSession;
+
+    if (session === undefined) {
+      throw new Error("Expected an unlocked test session.");
+    }
+
+    ctx.ports.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          providerCredentialRevocationPending: {
+            revokedDeviceIds: [ctx.values.pendingDeviceId],
+            vaultKeyGeneration: 1,
+          },
+        },
+      },
+    };
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
+      ...ctx.localVault,
+      versionVector: { [ctx.values.deviceId]: 3 },
+      tags: [
+        {
+          id: 1,
+          name: "Remote tag",
+          versionVector: { [ctx.values.deviceId]: 3 },
+        },
+      ],
+    });
+
+    await ctx.consumeUseCase.execute({
+      ...createCommand(ctx),
+      resolution: {
+        entryResolutions: [],
+        tagResolutions: [{ tagId: 1, action: "use_remote" }],
+        deviceProfileResolutions: [],
+      },
+    });
+
+    expect(
+      ctx.ports.saved.unlockedVaultSession?.unlockedVault.vault
+        .providerCredentialRevocationPending,
+    ).toBeUndefined();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).toHaveBeenCalled();
+  });
+
+  it("rejects a provider marker added through enrollment consumption", async () => {
+    const ctx = createContext();
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
+      ...ctx.localVault,
+      providerCredentialRevocationPending: {
+        revokedDeviceIds: [ctx.values.pendingDeviceId],
+        vaultKeyGeneration: 1,
+      },
+    });
+
+    await expect(
+      ctx.prepareUseCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toMatchObject({
+      name: "InvalidDeviceEnrollmentTransitionError",
+      message: expect.stringContaining("changed protected sync state"),
+    });
   });
 
   it("rejects a change to an existing survivor envelope", async () => {

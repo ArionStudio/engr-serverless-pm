@@ -108,8 +108,25 @@ describe("DisableSyncUseCase", () => {
 
   it("rejects removal while old provider credentials still await disabling", async () => {
     const ctx = createContext();
-    ctx.saved.deviceSyncCredentialState =
-      ctx.values.replacementEncryptedDeviceSyncCredentialState;
+    const session = ctx.saved.unlockedVaultSession;
+
+    if (session === undefined) {
+      throw new Error("Expected an unlocked test session.");
+    }
+
+    ctx.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          providerCredentialRevocationPending: {
+            revokedDeviceIds: [ctx.values.pendingDeviceId],
+            vaultKeyGeneration: 1,
+          },
+        },
+      },
+    };
 
     await expect(
       ctx.useCase.execute({ vaultId: ctx.values.vaultId }),

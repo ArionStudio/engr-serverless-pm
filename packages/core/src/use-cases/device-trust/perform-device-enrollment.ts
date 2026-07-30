@@ -490,8 +490,8 @@ export class PerformDeviceEnrollmentUseCase {
 
     try {
       syncAccess = await this.syncProvider.setup(syncConfig);
-    } catch (error) {
-      throw new InvalidSyncConfigError(error);
+    } catch {
+      throw new InvalidSyncConfigError();
     }
 
     if (!areJsonEqual(syncAccess.target, vault.syncTarget)) {

@@ -66,16 +66,21 @@ describe("SetupSyncUseCase", () => {
   it("does not mutate state when provider setup rejects input", async () => {
     const ctx = createContext();
     vi.mocked(ctx.ports.syncProvider.setup).mockRejectedValue(
-      new Error("invalid"),
+      new Error("Rejected local-test-secret-key"),
     );
+    let caught: unknown;
 
-    await expect(
-      ctx.useCase.execute({
+    try {
+      await ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
         syncConfig: ctx.values.syncConfigInput,
-      }),
-    ).rejects.toBeInstanceOf(InvalidSyncConfigError);
+      });
+    } catch (error) {
+      caught = error;
+    }
 
+    expect(caught).toBeInstanceOf(InvalidSyncConfigError);
+    expect((caught as Error).cause).toBeUndefined();
     expect(ctx.saved.deviceSyncCredentialState).toBeUndefined();
   });
 

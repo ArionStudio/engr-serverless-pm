@@ -9,6 +9,7 @@ import {
 } from "../../domain/snapshot";
 import type { VaultSnapshotDescriptor } from "../../domain/snapshot";
 import type { Vault } from "../../domain/vault";
+import { clearVaultProviderCredentialRevocationPending } from "../../domain/vault/vault-sync-config.mutations";
 import type { VersionVector } from "../../domain/versioning";
 import { compareVersionVectors } from "../../domain/versioning";
 import { InvalidDeviceEnrollmentTransitionError } from "../../errors/device-enrollment.errors";
@@ -166,6 +167,10 @@ export class DeviceEnrollmentConsumptionService {
       remoteSnapshot,
       params.unlockedVault.vaultMasterKey,
     );
+    const providerCredentialRevocationCompleted =
+      params.unlockedVault.vault.providerCredentialRevocationPending !==
+        undefined &&
+      remoteVault.providerCredentialRevocationPending === undefined;
 
     if (
       !areJsonEqual(
@@ -173,11 +178,16 @@ export class DeviceEnrollmentConsumptionService {
         params.unlockedVault.vault.syncTarget,
       ) ||
       remoteVault.syncRemovalPending !==
-        params.unlockedVault.vault.syncRemovalPending
+        params.unlockedVault.vault.syncRemovalPending ||
+      (!areJsonEqual(
+        remoteVault.providerCredentialRevocationPending,
+        params.unlockedVault.vault.providerCredentialRevocationPending,
+      ) &&
+        !providerCredentialRevocationCompleted)
     ) {
       throw new InvalidDeviceEnrollmentTransitionError(
         params.vaultId,
-        "the enrollment snapshot changed the sync target or removal state",
+        "the enrollment snapshot changed protected sync state",
       );
     }
 
@@ -214,12 +224,18 @@ export class DeviceEnrollmentConsumptionService {
       );
     }
 
-    const enrollmentBaseline = this.buildEnrollmentBaseline(
-      params.vaultId,
-      params.unlockedVault.vault,
-      remoteVault,
-      transitions,
-    );
+    const enrollmentBaselineWithLocalProviderState =
+      this.buildEnrollmentBaseline(
+        params.vaultId,
+        params.unlockedVault.vault,
+        remoteVault,
+        transitions,
+      );
+    const enrollmentBaseline = providerCredentialRevocationCompleted
+      ? clearVaultProviderCredentialRevocationPending(
+          enrollmentBaselineWithLocalProviderState,
+        )
+      : enrollmentBaselineWithLocalProviderState;
 
     return {
       localSnapshot,

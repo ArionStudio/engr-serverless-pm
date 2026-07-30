@@ -16,6 +16,7 @@ import {
 } from "../../domain/snapshot/vault-snapshot-descriptor.utils";
 import { mergeVersionVectors } from "../../domain/versioning/version-vector.utils";
 import type { Vault } from "../../domain/vault";
+import { clearVaultProviderCredentialRevocationPending } from "../../domain/vault/vault-sync-config.mutations";
 import {
   InvalidSyncResolutionError,
   InvalidVaultSyncResolutionError,
@@ -180,6 +181,22 @@ export class ApplySyncResolutionUseCase {
       remoteSnapshot,
       unlockedVault.vaultMasterKey,
     );
+    const providerCredentialRevocationCompleted =
+      unlockedVault.vault.providerCredentialRevocationPending !== undefined &&
+      remoteVault.providerCredentialRevocationPending === undefined;
+
+    if (
+      !areJsonEqual(remoteVault.syncTarget, unlockedVault.vault.syncTarget) ||
+      remoteVault.syncRemovalPending !==
+        unlockedVault.vault.syncRemovalPending ||
+      (!areJsonEqual(
+        remoteVault.providerCredentialRevocationPending,
+        unlockedVault.vault.providerCredentialRevocationPending,
+      ) &&
+        !providerCredentialRevocationCompleted)
+    ) {
+      throw new RemoteVaultSnapshotIntegrityError(params.vaultId);
+    }
 
     if (
       !areVaultSnapshotDescriptorsEqual(
@@ -225,7 +242,8 @@ export class ApplySyncResolutionUseCase {
     if (
       entryReviews.length === 0 &&
       tagReviews.length === 0 &&
-      deviceProfileReviews.length === 0
+      deviceProfileReviews.length === 0 &&
+      !providerCredentialRevocationCompleted
     ) {
       throw new SyncAlreadyResolvedError(params.vaultId);
     }
@@ -237,6 +255,40 @@ export class ApplySyncResolutionUseCase {
         params.resolution.deviceProfileResolutions.length
     ) {
       throw new SyncResolutionIncompleteError(params.vaultId);
+    }
+
+    if (
+      entryReviews.length === 0 &&
+      tagReviews.length === 0 &&
+      deviceProfileReviews.length === 0
+    ) {
+      const persistedSnapshot =
+        await this.unlockedVaultSession.persistForActiveSession(
+          sessionId,
+          params.vaultId,
+          async () =>
+            this.vaultSnapshot.persistVerifiedRemoteSnapshot(
+              params.vaultId,
+              remoteSnapshot,
+              remoteTrust.state,
+              unlockedVault,
+            ),
+        );
+
+      await this.unlockedVaultSession.commitPersistedSnapshot(
+        sessionId,
+        {
+          ...unlockedVault,
+          vault: remoteVault,
+          trustedSnapshotContext: persistedSnapshot.trustedSnapshotContext,
+        },
+        persistedSnapshot.snapshotVersionVector,
+      );
+
+      return {
+        snapshotVersionVector: persistedSnapshot.snapshotVersionVector,
+        revisionTimestamp: persistedSnapshot.revisionTimestamp,
+      };
     }
 
     let resolvedVault: Vault;
@@ -255,6 +307,11 @@ export class ApplySyncResolutionUseCase {
       }
 
       throw error;
+    }
+
+    if (providerCredentialRevocationCompleted) {
+      resolvedVault =
+        clearVaultProviderCredentialRevocationPending(resolvedVault);
     }
 
     requireDeviceProfilesMatchTrust(

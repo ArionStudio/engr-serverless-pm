@@ -10,6 +10,10 @@ import {
 import type { VaultSnapshotDescriptor } from "../../domain/snapshot";
 import type { Vault } from "../../domain/vault";
 import { revokeDeviceProfileFromVault } from "../../domain/vault/vault-device.mutations";
+import {
+  clearVaultProviderCredentialRevocationPending,
+  markVaultProviderCredentialRevocationPending,
+} from "../../domain/vault/vault-sync-config.mutations";
 import { compareVersionVectors } from "../../domain/versioning";
 import {
   CurrentDeviceRevokedError,
@@ -17,13 +21,17 @@ import {
 } from "../../errors/device-revocation.errors";
 import {
   InvalidSyncConfigError,
+  LocalSyncCredentialsMissingError,
+  PreviousSyncCredentialStillActiveError,
   RemoteVaultSnapshotChangedError,
   RemoteVaultSnapshotNotFoundError,
+  ReplacementSyncCredentialsUnchangedError,
   ReplacementSyncTargetMismatchError,
 } from "../../errors/sync.errors";
 import { DeviceKeySlotNotFoundError } from "../../errors/unlock-vault.errors";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
+import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import type { VersionVector } from "../../domain/versioning";
 import type { VaultSnapshotService } from "../snapshot/vault-snapshot.service";
 import { VaultTrustService } from "./vault-trust.service";
@@ -32,16 +40,19 @@ export class DeviceRevocationConsumptionService {
   private readonly crypto: CryptoPort;
   private readonly syncProvider: SyncProviderPort;
   private readonly vaultSnapshot: VaultSnapshotService;
+  private readonly vaultLocalRepository: VaultLocalRepositoryPort;
   private readonly vaultTrust: VaultTrustService;
 
   constructor(
     crypto: CryptoPort,
     syncProvider: SyncProviderPort,
     vaultSnapshot: VaultSnapshotService,
+    vaultLocalRepository: VaultLocalRepositoryPort,
   ) {
     this.crypto = crypto;
     this.syncProvider = syncProvider;
     this.vaultSnapshot = vaultSnapshot;
+    this.vaultLocalRepository = vaultLocalRepository;
     this.vaultTrust = new VaultTrustService(crypto);
   }
 
@@ -64,12 +75,56 @@ export class DeviceRevocationConsumptionService {
       replacementAccess = await this.syncProvider.setup(
         params.replacementSyncConfig,
       );
-    } catch (error) {
-      throw new InvalidSyncConfigError(error);
+    } catch {
+      throw new InvalidSyncConfigError();
     }
 
     if (!areJsonEqual(replacementAccess.target, syncTarget)) {
       throw new ReplacementSyncTargetMismatchError(params.vaultId);
+    }
+
+    const previousEncryptedState =
+      await this.vaultLocalRepository.getDeviceSyncCredentialState(
+        params.vaultId,
+      );
+
+    if (previousEncryptedState === null) {
+      throw new LocalSyncCredentialsMissingError(params.vaultId);
+    }
+
+    const credentialContext = {
+      vaultId: params.vaultId,
+      deviceId: params.unlockedVault.deviceId,
+      provider: syncTarget.provider,
+      target: syncTarget,
+    } as const;
+    const previousState = await this.crypto.decryptDeviceSyncCredentialState(
+      previousEncryptedState,
+      params.unlockedVault.deviceLocalProtectionKey,
+      credentialContext,
+    );
+
+    if (previousState.previousCredentials !== undefined) {
+      const previousAccess = await this.syncProvider.checkVaultAccess(
+        {
+          target: syncTarget,
+          credentials: previousState.previousCredentials.credentials,
+        },
+        params.vaultId,
+      );
+
+      if (previousAccess === "accessible") {
+        throw new PreviousSyncCredentialStillActiveError(params.vaultId);
+      }
+    }
+
+    if (
+      areJsonEqual(
+        replacementAccess.credentials,
+        previousState.currentCredentials,
+      )
+    ) {
+      throw new ReplacementSyncCredentialsUnchangedError(params.vaultId);
     }
 
     const localSnapshot =
@@ -200,6 +255,25 @@ export class DeviceRevocationConsumptionService {
       );
     }
 
+    const providerCredentialRevocationPending =
+      remoteVault.providerCredentialRevocationPending;
+    const finalTransition = transitions.at(-1);
+
+    if (
+      providerCredentialRevocationPending !== undefined &&
+      (finalTransition?.type !== "revocation" ||
+        providerCredentialRevocationPending.vaultKeyGeneration !==
+          remoteSnapshot.metadata.vaultKeyGeneration ||
+        providerCredentialRevocationPending.revokedDeviceIds.length !== 1 ||
+        providerCredentialRevocationPending.revokedDeviceIds[0] !==
+          finalTransition.revokedDeviceId)
+    ) {
+      throw new InvalidDeviceRevocationTransitionError(
+        params.vaultId,
+        "the provider credential revocation marker does not match the final trust transition",
+      );
+    }
+
     try {
       requireDeviceProfilesMatchTrust(
         params.unlockedVault.vault,
@@ -250,6 +324,9 @@ export class DeviceRevocationConsumptionService {
 
     return {
       replacementAccess,
+      previousEncryptedState,
+      previousState,
+      credentialContext,
       localSnapshot,
       remoteSnapshotDescriptor,
       remoteSnapshot,
@@ -271,7 +348,14 @@ export class DeviceRevocationConsumptionService {
     finalTrustedDeviceIds: ReadonlySet<string>,
     initialTrustedDeviceIds: ReadonlySet<string>,
   ): Vault {
-    let baseline = localVault;
+    let baseline =
+      remoteVault.providerCredentialRevocationPending === undefined
+        ? clearVaultProviderCredentialRevocationPending(localVault)
+        : markVaultProviderCredentialRevocationPending(
+            localVault,
+            remoteVault.providerCredentialRevocationPending.revokedDeviceIds,
+            remoteVault.providerCredentialRevocationPending.vaultKeyGeneration,
+          );
     const revokedDeviceIds = new Set<string>();
 
     for (const transition of transitions) {

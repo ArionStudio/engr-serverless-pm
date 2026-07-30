@@ -11,6 +11,7 @@ import {
 } from "../../domain/snapshot";
 import type { Vault } from "../../domain/vault/vault";
 import { revokeDeviceProfileFromVault } from "../../domain/vault/vault-device.mutations";
+import { markVaultProviderCredentialRevocationPending } from "../../domain/vault/vault-sync-config.mutations";
 import type { VersionVector } from "../../domain/versioning/version-vector.type";
 import {
   InvalidSyncConfigError,
@@ -101,6 +102,11 @@ export class RevokeDeviceUseCase {
       throw new DeviceToRevokeNotTrustedError(params.vaultId, params.deviceId);
     }
 
+    await this.vaultSyncGuard.requireProviderCredentialRevocationComplete(
+      params.vaultId,
+      unlockedVault,
+      "revoke another device",
+    );
     const syncState = await this.vaultSyncGuard.prepareLocalMutation(
       params.vaultId,
       unlockedVault,
@@ -196,8 +202,8 @@ export class RevokeDeviceUseCase {
         replacementAccess = await this.syncProvider.setup(
           params.replacementSyncConfig,
         );
-      } catch (error) {
-        throw new InvalidSyncConfigError(error);
+      } catch {
+        throw new InvalidSyncConfigError();
       }
 
       if (
@@ -244,12 +250,20 @@ export class RevokeDeviceUseCase {
       throw new ReplacementSyncTargetMismatchError(params.vaultId);
     }
 
-    const revokedVault = revokeDeviceProfileFromVault(
+    const revokedProfileVault = revokeDeviceProfileFromVault(
       unlockedVault.vault,
       unlockedVault.deviceId,
       params.deviceId,
       this.clock.now(),
     );
+    const revokedVault =
+      replacementAccess === undefined
+        ? revokedProfileVault
+        : markVaultProviderCredentialRevocationPending(
+            revokedProfileVault,
+            [params.deviceId],
+            vaultKeyGeneration,
+          );
     const survivors =
       unlockedVault.trustedSnapshotContext.trust.trustedDevices.filter(
         (device) => device.deviceId !== params.deviceId,

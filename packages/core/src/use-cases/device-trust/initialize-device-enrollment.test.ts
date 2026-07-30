@@ -530,11 +530,15 @@ describe("InitializeDeviceEnrollmentUseCase", () => {
         vault: {
           ...session.unlockedVault.vault,
           syncTarget: ctx.values.syncTarget,
+          providerCredentialRevocationPending: {
+            revokedDeviceIds: [ctx.values.pendingDeviceId],
+            vaultKeyGeneration: 1,
+          },
         },
       },
     };
     ctx.saved.deviceSyncCredentialState =
-      ctx.values.replacementEncryptedDeviceSyncCredentialState;
+      ctx.values.encryptedDeviceSyncCredentialState;
     vi.mocked(
       ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
     ).mockResolvedValue(

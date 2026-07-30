@@ -8,6 +8,7 @@ import { toVaultSnapshotDescriptor } from "../../domain/snapshot";
 import {
   InvalidVaultSyncReviewError,
   RemoteVaultSnapshotChangedError,
+  RemoteVaultSnapshotIntegrityError,
 } from "../../errors/sync.errors";
 import { VaultTrustStateInvalidError } from "../../errors/vault-trust.errors";
 import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
@@ -53,6 +54,7 @@ function createContext() {
     ...unlockedVault.vault,
     versionVector: { [ctx.values.deviceId]: 2 },
     entries: [singlePasswordEntry],
+    syncTarget: ctx.values.syncTarget,
   });
   const snapshotService = new VaultSnapshotService(
     ctx.ports.crypto,
@@ -164,6 +166,88 @@ describe("ApplySyncResolutionUseCase", () => {
         },
       }),
     ).rejects.toBeInstanceOf(RemoteVaultSnapshotChangedError);
+  });
+
+  it("rejects a remote sync target change before applying resolution", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession;
+
+    if (session === undefined) {
+      throw new Error("Expected an unlocked test session.");
+    }
+
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
+      ...session.unlockedVault.vault,
+      versionVector: { [ctx.values.deviceId]: 2 },
+      entries: [singlePasswordEntry],
+      syncTarget: {
+        ...ctx.values.syncTarget,
+        targetConfig: { bucket: "another-bucket" },
+      },
+    });
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        remoteSnapshotDescriptor: ctx.remoteDescriptor,
+        resolution: {
+          entryResolutions: [
+            { entryId: singlePasswordEntry.id, action: "use_remote" },
+          ],
+          tagResolutions: [],
+          deviceProfileResolutions: [],
+        },
+      }),
+    ).rejects.toBeInstanceOf(RemoteVaultSnapshotIntegrityError);
+
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("applies signed provider credential revocation completion without content resolutions", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession;
+
+    if (session === undefined) {
+      throw new Error("Expected an unlocked test session.");
+    }
+
+    ctx.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          providerCredentialRevocationPending: {
+            revokedDeviceIds: [ctx.values.pendingDeviceId],
+            vaultKeyGeneration: 1,
+          },
+        },
+      },
+    };
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
+      ...session.unlockedVault.vault,
+      versionVector: { [ctx.values.deviceId]: 2 },
+    });
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      remoteSnapshotDescriptor: ctx.remoteDescriptor,
+      resolution: {
+        entryResolutions: [],
+        tagResolutions: [],
+        deviceProfileResolutions: [],
+      },
+    });
+
+    expect(
+      ctx.ports.saved.unlockedVaultSession?.unlockedVault.vault
+        .providerCredentialRevocationPending,
+    ).toBeUndefined();
+    expect(ctx.ports.saved.vaultSnapshot).toEqual(ctx.remoteSnapshot);
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });
 
   it("rejects invalid profile trust state before persistence", async () => {

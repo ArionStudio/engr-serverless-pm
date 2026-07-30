@@ -18,6 +18,10 @@ export interface Vault {
   deletedDeviceProfiles: DeletedDeviceProfile[];
   syncTarget?: SyncTarget;
   syncRemovalPending?: true;
+  providerCredentialRevocationPending?: {
+    readonly revokedDeviceIds: readonly string[];
+    readonly vaultKeyGeneration: number;
+  };
   tags: Tag[];
   deletedTags: DeletedTag[];
 }

@@ -211,6 +211,39 @@ export class VaultSnapshotService {
     });
   }
 
+  async persistVerifiedRemoteSnapshot(
+    vaultId: string,
+    snapshot: VaultSnapshot,
+    trustState: VerifiedVaultTrustState,
+    unlockedVault: UnlockedVault,
+  ) {
+    await this.vaultTrust.verifySnapshot(vaultId, snapshot, trustState);
+
+    const snapshotDigest = await this.crypto.digestVaultSnapshot(snapshot);
+    const checkpoint = await this.vaultTrust.createCheckpoint(
+      snapshot,
+      trustState,
+      unlockedVault.deviceId,
+      unlockedVault.devicePrivateSignKey,
+    );
+
+    await this.vaultLocalRepository.saveVaultSnapshotWithCheckpoint({
+      expectedSnapshotDigest:
+        unlockedVault.trustedSnapshotContext.snapshotDigest,
+      snapshot,
+      checkpoint,
+    });
+
+    return {
+      snapshotVersionVector: snapshot.metadata.snapshotVersionVector,
+      revisionTimestamp: snapshot.metadata.revisionTimestamp,
+      trustedSnapshotContext: {
+        snapshotDigest,
+        trust: trustState,
+      },
+    };
+  }
+
   async openTrustedVaultSnapshot(
     vaultId: string,
     snapshot: VaultSnapshot,

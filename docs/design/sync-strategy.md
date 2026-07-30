@@ -102,6 +102,11 @@ recover the rotated snapshot.
 No other enrollment, revocation, or sync removal may bypass a pending provider
 credential revocation.
 
+The encrypted signed vault carries only a non-secret pending marker containing
+the revoked device IDs and vault-key generation. The old credential itself
+remains encrypted in device-local storage. Every device blocks further trust
+and sync-removal operations while the shared marker exists.
+
 ## Survivor consumption
 
 A survivor may miss one or more consecutive revocations. It enters the latest
@@ -149,9 +154,17 @@ Verification calls the provider with the encrypted previous credential:
 
 - `accessible` keeps revocation pending;
 - `authentication_rejected` removes the old local credential and completes the
-  workflow;
+  local verification. A device clears and uploads the shared marker only when
+  its local pending metadata matches that marker;
 - network, rate-limit, and indeterminate provider failures propagate and leave
   the workflow pending.
 
 Credential removal is idempotent. Core never reports provider revocation as
-complete until the provider rejects the old credential.
+complete while the shared marker remains. Normal sync may consume a signed
+marker removal but cannot add or replace the marker.
+
+If the remote vault advanced before a survivor completed its older local
+verification, the local old credential is retained until the newer signed
+remote state is reviewed. A later revocation-consumption flow may proceed after
+the provider rejects that old credential; it then retains the survivor's
+current credential as the previous credential for the newly consumed rotation.

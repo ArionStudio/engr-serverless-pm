@@ -60,8 +60,8 @@ export class SetupSyncUseCase {
 
     try {
       syncAccess = await this.syncProvider.setup(params.syncConfig);
-    } catch (error) {
-      throw new InvalidSyncConfigError(error);
+    } catch {
+      throw new InvalidSyncConfigError();
     }
 
     const encryptedCredentialState =

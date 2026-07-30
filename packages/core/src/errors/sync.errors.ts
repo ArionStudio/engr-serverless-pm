@@ -1,8 +1,8 @@
 import type { DeviceKeySlot } from "../domain/snapshot";
 
 export class InvalidSyncConfigError extends Error {
-  constructor(cause: unknown) {
-    super("Sync configuration is invalid.", { cause });
+  constructor() {
+    super("Sync configuration is invalid.");
     this.name = "InvalidSyncConfigError";
   }
 }

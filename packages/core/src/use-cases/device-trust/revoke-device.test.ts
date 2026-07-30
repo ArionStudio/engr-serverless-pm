@@ -10,6 +10,7 @@ import type { VaultSnapshot } from "../../domain/snapshot";
 import { toVaultSnapshotDescriptor } from "../../domain/snapshot";
 import { InvalidDeviceRevocationTransitionError } from "../../errors/device-revocation.errors";
 import {
+  ProviderCredentialRevocationPendingError,
   ReplacementSyncCredentialsRequiredError,
   ReplacementSyncCredentialsUnchangedError,
 } from "../../errors/sync.errors";
@@ -194,6 +195,43 @@ describe("RevokeDeviceUseCase", () => {
     expect(result.providerCredentialRevocation).toBe(
       "pending_external_disable",
     );
+    expect(result.vault.providerCredentialRevocationPending).toEqual({
+      revokedDeviceIds: [ctx.values.pendingDeviceId],
+      vaultKeyGeneration: 2,
+    });
+  });
+
+  it("rejects another revocation while the shared provider marker is pending", async () => {
+    const ctx = createContext();
+    const session = ctx.ports.saved.unlockedVaultSession;
+
+    if (session === undefined) {
+      throw new Error("test session missing");
+    }
+
+    ctx.ports.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          providerCredentialRevocationPending: {
+            revokedDeviceIds: ["previously-revoked-device"],
+            vaultKeyGeneration: 1,
+          },
+        },
+      },
+    };
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        deviceId: ctx.values.pendingDeviceId,
+        replacementSyncConfig: ctx.values.replacementSyncConfigInput,
+      }),
+    ).rejects.toBeInstanceOf(ProviderCredentialRevocationPendingError);
+
+    expect(ctx.ports.crypto.generateVaultMasterKey).not.toHaveBeenCalled();
   });
 
   it("requires replacement credentials for a synced vault", async () => {
