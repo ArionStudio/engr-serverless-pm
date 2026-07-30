@@ -250,6 +250,57 @@ describe("ApplySyncResolutionUseCase", () => {
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });
 
+  it("clears provider credential revocation while applying content resolution", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession;
+
+    if (session === undefined) {
+      throw new Error("Expected an unlocked test session.");
+    }
+
+    ctx.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          providerCredentialRevocationPending: {
+            revokedDeviceIds: [ctx.values.pendingDeviceId],
+            vaultKeyGeneration: 1,
+          },
+        },
+      },
+    };
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      remoteSnapshotDescriptor: ctx.remoteDescriptor,
+      resolution: {
+        entryResolutions: [
+          { entryId: singlePasswordEntry.id, action: "use_remote" },
+        ],
+        tagResolutions: [],
+        deviceProfileResolutions: [],
+      },
+    });
+
+    expect(
+      ctx.ports.saved.unlockedVaultSession?.unlockedVault.vault
+        .providerCredentialRevocationPending,
+    ).toBeUndefined();
+    expect(
+      ctx.ports.saved.unlockedVaultSession?.unlockedVault.vault.entries,
+    ).toContainEqual({
+      ...singlePasswordEntry,
+      versionVector: { [ctx.values.deviceId]: 2 },
+    });
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).toHaveBeenCalledWith(
+      ctx.values.syncAccess,
+      expect.anything(),
+      ctx.remoteDescriptor,
+    );
+  });
+
   it("rejects invalid profile trust state before persistence", async () => {
     const ctx = createContext();
     const session = ctx.saved.unlockedVaultSession;

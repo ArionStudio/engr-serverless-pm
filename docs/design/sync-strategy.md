@@ -105,7 +105,9 @@ credential revocation.
 The encrypted signed vault carries only a non-secret pending marker containing
 the revoked device IDs and vault-key generation. The old credential itself
 remains encrypted in device-local storage. Every device blocks further trust
-and sync-removal operations while the shared marker exists.
+and sync-removal operations while the shared marker exists in its trusted
+state, and independently while it retains an unverified previous credential
+locally.
 
 ## Survivor consumption
 
@@ -162,6 +164,14 @@ Verification calls the provider with the encrypted previous credential:
 Credential removal is idempotent. Core never reports provider revocation as
 complete while the shared marker remains. Normal sync may consume a signed
 marker removal but cannot add or replace the marker.
+
+The shared marker describes only the final still-pending credential rotation.
+Each earlier marker must be cleared before another device revocation can begin.
+An offline survivor that skips several rotations records every skipped revoked
+device with its own previous credential, but that credential can clear the
+shared marker only when both records describe the same final rotation. A
+survivor holding an older credential must not use its rejection to clear a
+marker for an intermediate credential it never possessed.
 
 If the remote vault advanced before a survivor completed its older local
 verification, the local old credential is retained until the newer signed

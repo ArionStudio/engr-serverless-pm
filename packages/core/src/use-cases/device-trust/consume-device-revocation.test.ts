@@ -439,6 +439,35 @@ describe("PrepareDeviceRevocationConsumptionUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
+  it("rejects preparation with the locally retained previous credentials", async () => {
+    const ctx = createContext();
+    ctx.ports.saved.deviceSyncCredentialState =
+      ctx.values.replacementEncryptedDeviceSyncCredentialState;
+    vi.mocked(ctx.ports.syncProvider.setup).mockResolvedValue({
+      target: ctx.values.syncTarget,
+      credentials: ctx.values.syncCredentials,
+    });
+    const useCase = new PrepareDeviceRevocationConsumptionUseCase(
+      ctx.ports.crypto,
+      ctx.ports.syncProvider,
+      ctx.ports.sessionServices.unlockedVaultSession,
+      ctx.snapshotService,
+      ctx.ports.vaultLocalRepository,
+    );
+
+    await expect(
+      useCase.execute({
+        vaultId: ctx.values.vaultId,
+        replacementSyncConfig: ctx.values.replacementSyncConfigInput,
+      }),
+    ).rejects.toBeInstanceOf(ReplacementSyncCredentialsUnchangedError);
+
+    expect(ctx.ports.syncProvider.checkVaultAccess).toHaveBeenCalled();
+    expect(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).not.toHaveBeenCalled();
+  });
+
   it("rejects duplicate local profiles for the revoked device", async () => {
     const ctx = createContext();
     const session = ctx.ports.saved.unlockedVaultSession;
@@ -517,6 +546,69 @@ describe("PrepareDeviceRevocationConsumptionUseCase", () => {
     ).rejects.toMatchObject({
       name: "InvalidDeviceRevocationTransitionError",
       message: expect.stringContaining("provider credential revocation marker"),
+    });
+
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("rejects a provider marker bound to another vault-key generation", async () => {
+    const ctx = createContext();
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
+      ...ctx.remoteVault,
+      providerCredentialRevocationPending: {
+        revokedDeviceIds: [ctx.values.pendingDeviceId],
+        vaultKeyGeneration: 1,
+      },
+    });
+    const useCase = new PrepareDeviceRevocationConsumptionUseCase(
+      ctx.ports.crypto,
+      ctx.ports.syncProvider,
+      ctx.ports.sessionServices.unlockedVaultSession,
+      ctx.snapshotService,
+      ctx.ports.vaultLocalRepository,
+    );
+
+    await expect(
+      useCase.execute({
+        vaultId: ctx.values.vaultId,
+        replacementSyncConfig: ctx.values.replacementSyncConfigInput,
+      }),
+    ).rejects.toMatchObject({
+      name: "InvalidDeviceRevocationTransitionError",
+      message: expect.stringContaining("provider credential revocation marker"),
+    });
+
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("accepts a revocation snapshot whose provider marker was already cleared", async () => {
+    const ctx = createContext();
+    const { providerCredentialRevocationPending, ...remoteVault } =
+      ctx.remoteVault;
+    void providerCredentialRevocationPending;
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue(
+      remoteVault,
+    );
+    const useCase = new PrepareDeviceRevocationConsumptionUseCase(
+      ctx.ports.crypto,
+      ctx.ports.syncProvider,
+      ctx.ports.sessionServices.unlockedVaultSession,
+      ctx.snapshotService,
+      ctx.ports.vaultLocalRepository,
+    );
+
+    await expect(
+      useCase.execute({
+        vaultId: ctx.values.vaultId,
+        replacementSyncConfig: ctx.values.replacementSyncConfigInput,
+      }),
+    ).resolves.toMatchObject({
+      revokedDeviceIds: [ctx.values.pendingDeviceId],
+      vaultKeyGeneration: 2,
     });
 
     expect(

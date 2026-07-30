@@ -122,7 +122,12 @@ export class DeviceRevocationConsumptionService {
       areJsonEqual(
         replacementAccess.credentials,
         previousState.currentCredentials,
-      )
+      ) ||
+      (previousState.previousCredentials !== undefined &&
+        areJsonEqual(
+          replacementAccess.credentials,
+          previousState.previousCredentials.credentials,
+        ))
     ) {
       throw new ReplacementSyncCredentialsUnchangedError(params.vaultId);
     }
