@@ -382,9 +382,10 @@ The survivor first prepares a normal sync review. Revoked profiles and final
 active profiles for newly enrolled survivors form a mandatory baseline and
 cannot be undone by a resolution. Later entry, tag, and surviving-profile
 changes use the ordinary review and resolution model.
-An identity already known locally as pending must remain profile-less when
-revoked; only an identity first enrolled within the skipped suffix may carry a
-final tombstone without a local active profile.
+An identity pending in the local vault may have no final profile state or one
+final tombstone when revoked. The tombstone represents a device that completed
+enrollment and was revoked between the survivor's observed snapshots; it is
+mandatory authenticated revocation state rather than a user-selectable change.
 Across the final vault, a trusted identity may have one active profile or no
 profile while pending, but never a tombstone. An untrusted identity may not
 remain active, duplicate active or deleted profile records are invalid, and a

@@ -1256,7 +1256,7 @@ describe("ConsumeDeviceRevocationUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("rejects a tombstone invented for a locally pending identity", async () => {
+  it("accepts a final tombstone for an identity pending in the local vault", async () => {
     const ctx = createContext();
     const session = ctx.ports.saved.unlockedVaultSession;
 
@@ -1300,11 +1300,11 @@ describe("ConsumeDeviceRevocationUseCase", () => {
         vaultId: ctx.values.vaultId,
         replacementSyncConfig: ctx.values.replacementSyncConfigInput,
       }),
-    ).rejects.toMatchObject({
-      name: "InvalidDeviceRevocationTransitionError",
-      message: expect.stringContaining(
-        "a locally pending revoked identity has a profile tombstone",
-      ),
+    ).resolves.toMatchObject({
+      revokedDeviceIds: [ctx.values.pendingDeviceId],
+      review: {
+        deviceProfileReviews: [],
+      },
     });
 
     expect(

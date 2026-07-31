@@ -320,11 +320,6 @@ export class DeviceRevocationConsumptionService {
       new Set(
         remoteTrust.state.trustedDevices.map((device) => device.deviceId),
       ),
-      new Set(
-        params.unlockedVault.trustedSnapshotContext.trust.trustedDevices.map(
-          (device) => device.deviceId,
-        ),
-      ),
     );
 
     return {
@@ -351,7 +346,6 @@ export class DeviceRevocationConsumptionService {
     remoteVault: Vault,
     transitions: readonly DeviceTrustTransition[],
     finalTrustedDeviceIds: ReadonlySet<string>,
-    initialTrustedDeviceIds: ReadonlySet<string>,
   ): Vault {
     let baseline =
       remoteVault.providerCredentialRevocationPending === undefined
@@ -467,13 +461,6 @@ export class DeviceRevocationConsumptionService {
         const remoteTombstone = remoteTombstones[0];
 
         if (remoteTombstone !== undefined) {
-          if (initialTrustedDeviceIds.has(transition.revokedDeviceId)) {
-            throw new InvalidDeviceRevocationTransitionError(
-              vaultId,
-              "a locally pending revoked identity has a profile tombstone",
-            );
-          }
-
           baseline = {
             ...baseline,
             deletedDeviceProfiles: [
