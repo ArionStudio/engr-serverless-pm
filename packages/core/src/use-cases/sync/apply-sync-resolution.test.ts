@@ -100,9 +100,21 @@ describe("ApplySyncResolutionUseCase", () => {
       ...singlePasswordEntry,
       versionVector: { [ctx.values.deviceId]: 2 },
     });
+    const encryptedVault = vi
+      .mocked(ctx.ports.crypto.encryptVaultSnapshotContent)
+      .mock.calls.at(-1)?.[0];
+    expect(encryptedVault?.providerCredentialRevocationPending).toBeUndefined();
+    expect(encryptedVault?.entries).toContainEqual({
+      ...singlePasswordEntry,
+      versionVector: { [ctx.values.deviceId]: 2 },
+    });
+    const uploadedSnapshot = vi
+      .mocked(ctx.ports.syncProvider.uploadVaultSnapshot)
+      .mock.calls.at(-1)?.[1];
+    expect(uploadedSnapshot).toEqual(ctx.ports.saved.vaultSnapshot);
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).toHaveBeenCalledWith(
       ctx.values.syncAccess,
-      expect.anything(),
+      uploadedSnapshot,
       ctx.remoteDescriptor,
     );
   });
