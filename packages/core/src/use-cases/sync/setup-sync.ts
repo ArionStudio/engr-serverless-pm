@@ -1,4 +1,8 @@
-import type { SyncConfig } from "../../domain/sync/sync-config.type";
+import type {
+  SyncAccess,
+  SyncSetupInput,
+} from "../../domain/sync/sync-config.type";
+import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import {
   InvalidSyncConfigError,
@@ -11,7 +15,7 @@ import type { VaultSyncGuardService } from "../../services/sync";
 
 export type SetupSyncCommandParams = {
   readonly vaultId: string;
-  readonly syncConfig: SyncConfig;
+  readonly syncConfig: SyncSetupInput;
 };
 
 export class SetupSyncUseCase {
@@ -19,17 +23,20 @@ export class SetupSyncUseCase {
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
   private readonly vaultSyncGuard: VaultSyncGuardService;
   private readonly vaultSnapshot: VaultSnapshotService;
+  private readonly crypto: CryptoPort;
 
   constructor(
     syncProvider: SyncProviderPort,
     unlockedVaultSession: UnlockedVaultSessionService,
     vaultSyncGuard: VaultSyncGuardService,
     vaultSnapshot: VaultSnapshotService,
+    crypto: CryptoPort,
   ) {
     this.syncProvider = syncProvider;
     this.unlockedVaultSession = unlockedVaultSession;
     this.vaultSyncGuard = vaultSyncGuard;
     this.vaultSnapshot = vaultSnapshot;
+    this.crypto = crypto;
   }
 
   async execute(params: SetupSyncCommandParams): Promise<void> {
@@ -39,7 +46,7 @@ export class SetupSyncUseCase {
         "setup sync",
       );
 
-    if (unlockedVault.vault.syncConfig !== undefined) {
+    if (unlockedVault.vault.syncTarget !== undefined) {
       throw new SyncAlreadyConfiguredError(params.vaultId);
     }
 
@@ -49,17 +56,31 @@ export class SetupSyncUseCase {
       sourceSnapshotVersionVector,
     );
 
-    let syncConfig: SyncConfig;
+    let syncAccess: SyncAccess;
 
     try {
-      syncConfig = await this.syncProvider.setup(params.syncConfig);
-    } catch (error) {
-      throw new InvalidSyncConfigError(error);
+      syncAccess = await this.syncProvider.setup(params.syncConfig);
+    } catch {
+      throw new InvalidSyncConfigError();
     }
+
+    const encryptedCredentialState =
+      await this.crypto.encryptDeviceSyncCredentialState(
+        {
+          currentCredentials: syncAccess.credentials,
+        },
+        unlockedVault.deviceLocalProtectionKey,
+        {
+          vaultId: params.vaultId,
+          deviceId: unlockedVault.deviceId,
+          provider: syncAccess.target.provider,
+          target: syncAccess.target,
+        },
+      );
 
     const remoteSnapshotDescriptor =
       await this.syncProvider.getLatestVaultSnapshotDescriptor(
-        syncConfig,
+        syncAccess,
         params.vaultId,
       );
 
@@ -71,7 +92,7 @@ export class SetupSyncUseCase {
       ...unlockedVault,
       vault: {
         ...unlockedVault.vault,
-        syncConfig,
+        syncTarget: syncAccess.target,
       },
     };
 
@@ -84,12 +105,13 @@ export class SetupSyncUseCase {
             params.vaultId,
             updatedUnlockedVault,
             sourceSnapshotVersionVector,
+            { syncCredentialState: encryptedCredentialState },
           ),
       );
 
     await this.vaultSyncGuard.uploadPersistedInitialSyncSnapshot(
       params.vaultId,
-      syncConfig,
+      syncAccess,
       syncState.localSnapshot,
       persistedSnapshot.snapshot,
       unlockedVault,

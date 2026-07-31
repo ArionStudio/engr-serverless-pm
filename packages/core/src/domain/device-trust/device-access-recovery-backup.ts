@@ -1,6 +1,6 @@
 import type { RandomBytes } from "../crypto/brand-keys";
 import type { SerializedWrapped } from "../crypto/protected-artifact";
-import type { DevicePublicSignKey } from "./brand-keys";
+import type { DevicePublicSignKey, DeviceVaultPublicKey } from "./brand-keys";
 import type { LocalKeysPayload } from "./local-protection.type";
 
 /**
@@ -16,5 +16,6 @@ export type DeviceAccessRecoveryBackup = {
   readonly algorithmSuiteId: string;
   readonly recoveryLocalKeysProtectionSalt: RandomBytes;
   readonly devicePublicSignKey: DevicePublicSignKey;
+  readonly devicePublicVaultKey: DeviceVaultPublicKey;
   readonly protectedLocalKeys: SerializedWrapped<LocalKeysPayload>;
 };

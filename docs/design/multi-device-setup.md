@@ -1,300 +1,176 @@
 # Multi-Device Setup
 
-> **Local-First:** The vault works fully offline using IndexedDB as primary storage. Multi-device sync is **optional** — you can use the extension on a single device without any cloud configuration.
+> The vault is local-first. Enrollment uses files or copied text and never
+> requires both devices to be online at the same time.
 
-## The Challenge
+## Device identity
 
-Browser extension context creates unique constraints:
+Every trusted device owns two unrelated asymmetric key pairs:
 
-- **No central server** — can't store connection configs server-side
-- **Devices at different locations** — home PC, work laptop, not always accessible together
-- **No simultaneous access** — can't easily "pair" devices in real-time
-- **Security-first** — transferring credentials must be safe
+- Ed25519 signs enrollment requests, trust transitions, and vault snapshots.
+- ECDH P-256 opens vault-master-key envelopes addressed to that device.
 
-## What Needs to Be Shared (for Multi-Device)
+The private keys are generated on their owning device and remain protected
+there. The signed trust chain authenticates the device ID and both public keys.
+Signing keys are never used for ECDH or encryption.
 
-| Data                       | How Shared                | Notes                                             |
-| -------------------------- | ------------------------- | ------------------------------------------------- |
-| Master password            | **User memorizes**        | Never transferred electronically                  |
-| Secret key                 | **User saves offline**    | 256-bit, needed for vault recovery on new device  |
-| Enrollment package         | Transfer mechanism        | Encrypted bootstrap payload from trusted device   |
-| One-time enrollment secret | Transfer mechanism        | High-entropy secret used only for package decrypt |
-| Encrypted vault snapshot   | Separate file/link        | Local-first starting copy for the new device      |
-| Encryption salt            | In vault envelope (cloud) | Also stored locally in IndexedDB                  |
-| Device ID                  | Generated locally         | Each device has unique ID                         |
+## Two-file enrollment exchange
 
-> **Single-device use:** None of the above is required. The vault is stored locally in IndexedDB with no cloud dependency.
+Enrollment has three user movements:
 
-## Setup Methods
+1. Copy the vault ID and genesis-certificate digest shown by the registered
+   device to the target, then create and export a public enrollment request.
+2. Move the request to a registered device, approve it there, and export the
+   enrollment response.
+3. Move the response back to the target device and complete enrollment.
 
-These methods transfer **enrollment bootstrap data** from an already trusted device. The actual vault unlock still uses master password + secret key on the new device.
+The devices do not connect to each other and need not be online simultaneously.
 
-New device enrollment: import enrollment package + obtain the encrypted vault snapshot from a separate file or short-lived link + enter one-time enrollment secret + enter master password + secret key → verify snapshot digest/signature against trusted data from package → unwrap VaultKey from secret key slot → decrypt local vault → read sync credentials from the vault if configured → self-register and sync.
+### 1. Target creates the request
 
-### Method 1: QR Code Transfer (Recommended for Same Location)
+The target device creates:
 
-When user has access to both devices simultaneously:
+- a device ID;
+- an Ed25519 signing pair;
+- an ECDH P-256 vault-wrapping pair;
+- a symmetric local-protection key;
+- a unique request ID.
 
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│                    DEVICE A (Source)                            │
-│                                                                 │
-│  Settings → Sync → "Add Another Device"                         │
-│                                                                 │
-│         ┌─────────────────────────┐                             │
-│         │  ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄  │                             │
-│         │  ██ ▄▄▄▄▄ █ ▄ █ ▄▄▄ ██  │                             │
-│         │  ██ █   █ █▄▄▄█▄█   ██  │  <- QR contains encrypted │
-│         │  ██ █▄▄▄█ █ ▄▄ █ ▄▄▄██  │     enrollment package:   │
-│         │  ██▄▄▄▄▄▄▄█▄█ █▄█▄█▄██  │     - snapshot reference  │
-│         │  ██ ▄▄ ▄▄▄ ▄▄▄█▄▄ ▄ ██  │     - vault id            │
-│         └─────────────────────────┘     - trusted device keys │
-│                                                                 │
-│  "Transfer this QR and one-time secret to your other device"    │
-│  Expires in: 5:00                                               │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+It self-signs a public request containing the request ID, vault ID, algorithm
+suite, expected genesis-certificate digest, device ID, and both public keys.
+Its private request state is encrypted locally with the master password and
+retained under the request ID. The vault ID and genesis digest must come from
+the registered device independently of the later response file. Together they
+pin the intended vault trust root.
 
-┌─────────────────────────────────────────────────────────────────┐
-│                    DEVICE B (Target)                            │
-│                                                                 │
-│  Settings → Sync → "Connect Existing Vault"                     │
-│                                                                 │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │                                                           │  │
-│  │              [ Scan QR Code ]                             │  │
-│  │                                                           │  │
-│  │                     - or -                                │  │
-│  │                                                           │  │
-│  │              [ Import File ]                              │  │
-│  │                                                           │  │
-│  └───────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-```
+Only the signed public request is exported. It contains no private key, vault
+master key, recovery material, or sync credential.
 
-**Security:**
+### 2. Registered device authorizes the request
 
-- QR code expires after 5 minutes
-- Contains encrypted enrollment package, not the full vault snapshot
-- One-time enrollment secret is transferred separately
-- Does NOT contain master password
-- Snapshot is transferred separately or fetched through a short-lived link, and
-  the package contains the expected snapshot digest
+The registered device:
 
-**User instructions shown on registered device:**
+1. verifies the request self-signature and algorithm suite;
+2. rejects a request whose expected genesis digest does not match the vault;
+3. shows fingerprints of both requested public keys for user confirmation;
+4. adds the target identity to the signed trust chain;
+5. creates a current-generation vault-key envelope for the target public
+   wrapping key;
+6. signs, persists, and—when sync is enabled—uploads the resulting snapshot.
 
-The "Add Another Device" screen must show handling guidance beside the QR/export
-controls:
+The response contains the request ID, trust anchor, and encrypted signed
+snapshot. It contains no target private key and no sync credential.
 
-- scan the QR or copy the enrollment text only on a device you control
-- do not paste the enrollment text, AWS keys, or enrollment secret into public
-  websites, chat rooms, shared documents, issue trackers, or AI tools
-- do not screenshot or save the enrollment secret unless the user intentionally
-  accepts the risk
-- transfer the enrollment secret separately from the enrollment package when
-  possible
-- delete temporary messages/files after the new device is enrolled
-- cancel enrollment if the QR, package, or secret may have been seen by someone
-  else
+Authorization is idempotently refreshable. If the same request is presented
+after its device is already trusted, the registered device compares both public
+keys and verifies the current-generation envelope. It then returns the current
+signed snapshot without another trust transition, local write, or upload. This
+lets a target finish an outstanding enrollment after unrelated revocations.
+A device ID or public key that appeared earlier but is now revoked cannot be
+refreshed or reused. The target must create a fresh request with two fresh key
+pairs and a fresh device ID. Trust-chain validation enforces this
+non-resurrection rule.
 
-### Method 2: Enrollment Export File
+### 3. Target completes enrollment
 
-For devices that can't be in same location:
+The target device decrypts its retained request state and verifies that the
+response trust anchor has the genesis digest pinned by its request. It then
+verifies the response identity, vault, trust chain, snapshot signer, and device
+envelope. It opens its envelope with the retained ECDH private key and then
+decrypts the vault. A trust anchor supplied only by the response is never
+trusted on its own.
 
-```text
-Device A: Settings → Sync → Export Enrollment Package
-          → Downloads "spm-enrollment.encrypted"
-          → Downloads "spm-vault-snapshot.enc" or creates short-lived snapshot link
-	      ↓
-	      (Transfer via secure channel: email to self, USB, cloud drive)
-	      ↓
-Device B: Settings → Sync → Connect Existing Vault
-          → Select enrollment package and snapshot file/link
-          → Enter one-time enrollment secret
-```
+If the vault has a sync target, the user must enter S3 credentials on this
+device. The provider adapter verifies that the credentials address the same
+target and current remote snapshot. Credentials are encrypted using the
+device-local protection key and are never copied from the registered device.
 
-**File contents (encrypted with one-time enrollment secret):**
+The target persists its access material, recovery backup, snapshot, trust
+checkpoint, and encrypted local credential state as one initialization step.
+Pending request state is removed only after that step succeeds.
+If session activation fails after initialization, those new local vault records
+are removed while the pending request remains available for a safe retry.
+Completion also rejects a retained response when that vault is already
+initialized locally, so retrying stale pending state cannot replace newer local
+vault records.
+After a definitive remote compare-and-set rejection, rollback removes the
+newly initialized records only if the active session version and persisted
+snapshot digest still match the enrollment snapshot. If either has advanced,
+or cleanup otherwise fails, completion preserves the local records and reports
+an incomplete rollback instead of claiming that the retained request is
+immediately retryable.
 
-```typescript
-// enrollment package shape
+If the provider cannot confirm whether the completed snapshot upload succeeded,
+local enrollment still completes and returns the recovery mnemonic with sync
+upload marked pending. The next normal sync reconciles the signed local
+snapshot. A definite remote compare-and-set rejection rolls local enrollment
+back instead.
 
-type SnapshotTransport =
-  | {
-      readonly type: "external-file";
-      readonly sha256: string;
-      readonly sizeBytes: number;
-    }
-  | {
-      readonly type: "presigned-url";
-      readonly url: string;
-      readonly sha256: string;
-      readonly sizeBytes: number;
-      readonly expiresAt: number;
-    };
+Existing devices learn about the new identity through a dedicated
+enrollment-consumption review. The workflow verifies an addition-only trust
+suffix, preserves the vault-key generation and every existing envelope, and
+requires the added identities and slots to match. A completed target's active
+profile is mandatory; a pending target may still have no profile. Later
+vault-content changes remain user-reviewable through the normal sync resolution
+model.
 
-interface EnrollmentPackage {
-  readonly version: 1;
-  readonly vaultId: string;
-  readonly snapshot: SnapshotTransport;
-  readonly trustedSigningKeys: readonly string[];
-  readonly trustedAgreementKeys: readonly string[];
-  readonly createdAt: number; // Unix ms
-  readonly expiresAt: number | null;
-  // Note: vault snapshot bytes, plaintext vault data, and plaintext sync credentials are NOT included
-}
-```
+## Trust and key slots
 
-The S3 credentials are user-provided storage credentials, not service-issued
-application credentials. In the local-first design there is no project backend
-that can issue temporary credentials or recover from provider misconfiguration.
-They are stored inside the encrypted vault payload together with the rest of the
-vault data. Unlocking the local vault snapshot makes the sync configuration
-available to the current trusted device.
+Every snapshot has one vault-master-key envelope for every trusted identity and
+no envelope for any untrusted identity. An envelope is bound to:
 
-Enrollment packages therefore do not need to expose plaintext S3 configuration
-or carry the full encrypted vault snapshot. The package only describes how the
-new device obtains the encrypted snapshot and what digest it must match. After
-the new device stores that snapshot locally and unlocks it with the user's normal
-vault unlock material, it can use the sync credentials already stored in the
-vault. Temporary S3 credentials would still need to live beside the unlocked
-vault state while the vault is in use. Without a separate trusted backend to
-refresh them, they do not materially improve the extension's local storage trust
-boundary.
+- vault ID;
+- recipient device ID;
+- vault-key generation;
+- algorithm suite.
 
-**Security:**
+The snapshot metadata, slot, and envelope must all name the same generation and
+recipient. Duplicate device IDs, signing keys, wrapping keys, or slot recipients
+are rejected.
 
-- Enrollment package encrypted — useless without one-time enrollment secret
-- Separate vault snapshot remains encrypted with the VaultKey
-- Snapshot digest from package must match before trusting the snapshot
-- User responsible for secure transfer
-- Can set expiration on exported package
-- S3 access keys should be rotated in AWS if the unlocked vault or sync
-  credentials are exposed
+## Revocation and surviving devices
 
-### Method 3: Manual Configuration
+Revocation creates a fresh vault master key, increments its generation once,
+and makes a fresh ECDH envelope for every survivor. The revoked identity and
+slot are absent from the new snapshot. A surviving device opens its new
+envelope with the private wrapping key it already owns; it is not re-enrolled.
 
-For security-conscious users who prefer explicit setup:
+For synchronized vaults, the user first creates a replacement S3 credential and
+enters it on the revoking device. After the rotated snapshot is uploaded, the
+user disables the old credential in AWS and verifies its rejection in the app.
+Each survivor enters the latest replacement credential once before consuming
+the complete signed suffix. It can skip multiple trust changes: each enrollment
+adds one identity without rotating the key, each revocation removes one identity
+and advances the vault-key generation once, and the final snapshot contains an
+envelope for every remaining identity. Added and removed identities are shown
+in the prepared review. Ordinary content changes use the normal sync review and
+resolution flow.
 
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│  Connect to Existing Vault                                      │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  Enrollment Data [paste armored payload____________________]    │
-│                                                                 │
-│  One-Time Secret [••••••••••••••••••••________________]         │
-│                                                                 │
-│  ─────────────────────────────────────────────────────────────  │
-│                                                                 │
-│  Master Password [••••••••••••••••••__________________]         │
-│  Secret Key      [••••••••••••••••••••________________]         │
-│                                                                 │
-├─────────────────────────────────────────────────────────────────┤
-│  [Verify Package]                    [Cancel]  [Connect]        │
-└─────────────────────────────────────────────────────────────────┘
-```
+A revoked device may retain old local data and keys. The design does not
+remotely wipe it. Security comes from withholding all current-generation
+envelopes and disabling its old provider access.
 
-## Device Management
+## Recovery
 
-Each device generates a unique ID on first setup:
+The recovery backup protects the complete local key payload, including the
+device's private signing key, private wrapping key, local-protection key, and
+vault trust anchor. Recovery therefore restores an existing surviving identity.
+It does not create a new trusted identity.
 
-```typescript
-// core/device/device.type.ts
+After revocation, a recovered copy of the revoked private key remains unable to
+open the current snapshot because no envelope is addressed to it.
 
-interface DeviceIdentity {
-  readonly deviceId: string; // UUID, generated once
-  deviceName: string; // User-editable ("Work Laptop", "Home PC")
-}
+## Transfer guidance
 
-interface DeviceDisplayInfo extends DeviceIdentity {
-  readonly browserInfo: string; // "Chrome 120 on Windows"
-  readonly firstSeen: number; // Unix ms
-  readonly lastSync: number | null;
-  readonly isCurrentDevice: boolean;
-}
-```
+Enrollment artifacts are public-key authenticated rather than bearer secrets,
+but users should still transport them only between devices they control:
 
-See also `DeviceEnvironment` in `core/device/device-environment.type.ts` for
-optional environment info (OS, device type, browser, location) captured at
-registration to help users recognize their devices.
-
-**Device List (in Settings):**
-
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│  Connected Devices                                              │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  📱 Home PC (this device)                                       │
-│     Chrome 120 • Windows 11 • Last sync: 2 min ago              │
-│                                                                 │
-│  💼 Work Laptop                                                 │
-│     Firefox 121 • macOS • Last sync: 3 days ago                 │
-│     [Rename] [Remove]                                           │
-│                                                                 │
-│  📱 Old Phone                                          ⚠️        │
-│     Chrome 118 • Android • Last sync: 45 days ago               │
-│     [Rename] [Remove]                                           │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Remove Device:**
-
-- Doesn't delete data from that device (can't remotely wipe)
-- Triggers key rotation: new VaultKey + new secret key (old secret key invalidated)
-- Re-creates key slots for remaining trusted devices only
-- User must save the new secret key (displayed once after rotation)
-
-## Offline-First Considerations
-
-Since devices may not have simultaneous internet access:
-
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│                     TYPICAL USAGE PATTERN                       │
-└─────────────────────────────────────────────────────────────────┘
-
-Morning (Home PC):
-  1. Unlock vault with master password
-  2. Add new password for work tool
-  3. Sync → uploads changes to cloud
-  4. Close browser, go to work
-
-Day (Work Laptop):
-  1. Unlock vault with master password
-  2. Sync → downloads changes from cloud (gets new password)
-  3. Use passwords throughout day
-  4. Add/modify some passwords
-  5. Sync before leaving → uploads changes
-
-Evening (Home PC):
-  1. Unlock vault
-  2. Sync → gets work changes
-  3. If conflict (both modified same entry) → resolve manually
-```
-
-**Key insight:** Sync is always user-initiated or on-unlock, never real-time. This matches the non-simultaneous access pattern.
-
-## Device Location History
-
-Each device records its location on every unlock/sync, appending to its `locationHistory` in the device registry (stored encrypted inside the vault).
-
-- **Detection:** Browser Geolocation API (with user consent) → IP geolocation fallback (`ipinfo.io/json`)
-- **Storage:** Unlimited entries (encrypted inside vault, no pruning)
-- **Purpose:** User recognition — verify "was this access from me?"
-- **New device detection:** On sync, diff local vs remote device registry. If new `deviceId`s appear → show notification with device name, environment info, and registration location.
-
-Users can view location history per device in the device list UI.
-
-## Security Considerations
-
-| Concern                | Mitigation                                                              |
-| ---------------------- | ----------------------------------------------------------------------- |
-| QR code intercepted    | Expires quickly, protected by one-time enrollment secret                |
-| Enrollment file stolen | Encrypted with one-time enrollment secret                               |
-| Device lost/stolen     | Revoke device key (triggers key rotation), data still encrypted locally |
-| Secret key compromised | Rotate VaultKey + generate new secret key from any trusted device       |
-| Unknown device added   | Notification shown on sync. User can revoke if unauthorized.            |
-| Man-in-the-middle      | Cloud providers use TLS, vault encrypted with device-specific key slots |
-| Credential exposure    | Cloud credentials are vault-encrypted and have minimal permissions      |
+- compare displayed public-key fingerprints before approval;
+- obtain the vault ID and genesis digest from the registered device separately
+  from the response file;
+- do not edit request or response files;
+- remove temporary copies after enrollment;
+- cancel the request if its retained local state or target device may be
+  compromised;
+- never include AWS secret keys, master passwords, recovery material, or
+  private device keys in transported enrollment files.

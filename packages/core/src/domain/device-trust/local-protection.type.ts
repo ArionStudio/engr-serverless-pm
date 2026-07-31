@@ -1,11 +1,16 @@
 import type { Brand } from "../common/brand-keys";
-import type { DevicePrivateSignKey, DeviceSlotKey } from "./brand-keys";
+import type {
+  DeviceLocalProtectionKey,
+  DevicePrivateSignKey,
+  DeviceVaultPrivateKey,
+} from "./brand-keys";
 import type { LocalVaultTrustAnchor } from "./vault-trust";
 
 export type LocalRootKey = Brand<ArrayBuffer, "LocalRootKey">;
 
 export type LocalKeysPayload = {
-  readonly deviceSlotKey: DeviceSlotKey;
   readonly devicePrivateSignKey: DevicePrivateSignKey;
+  readonly devicePrivateVaultKey: DeviceVaultPrivateKey;
+  readonly deviceLocalProtectionKey: DeviceLocalProtectionKey;
   readonly vaultTrustAnchor: LocalVaultTrustAnchor;
 };

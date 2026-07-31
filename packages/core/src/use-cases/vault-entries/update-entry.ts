@@ -104,7 +104,7 @@ export class UpdateEntryUseCase {
           ),
       );
 
-    if (syncState.syncConfig !== undefined) {
+    if (syncState.syncAccess !== undefined) {
       await this.vaultSyncGuard.uploadPersistedLocalMutation(
         params.vaultId,
         syncState,

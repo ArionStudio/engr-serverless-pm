@@ -4,7 +4,10 @@ import {
   type Base64URLString,
 } from "@lfspm/core/lib";
 import type {
+  DeviceLocalProtectionKey,
   DevicePublicSignKey,
+  DeviceVaultPrivateKey,
+  DeviceVaultPublicKey,
   UnlockedVaultSessionMaterial,
   VersionVector,
 } from "@lfspm/core";
@@ -16,15 +19,19 @@ type StoredUnlockedVaultSessionMaterial = {
   deviceId: string;
   vaultMasterKey: Base64URLString;
   devicePrivateSignKey: Base64URLString;
+  devicePrivateVaultKey: Base64URLString;
+  deviceLocalProtectionKey: Base64URLString;
   payloadKey: Base64URLString;
   trustedSnapshotContext: {
     snapshotDigest: string;
     trust: {
       generation: number;
+      vaultKeyGeneration: number;
       certificateDigest: string;
       trustedDevices: {
         deviceId: string;
         publicSignKey: Base64URLString;
+        publicVaultKey: Base64URLString;
       }[];
     };
   };
@@ -47,11 +54,19 @@ export function serializeUnlockedVaultSessionMaterial(
     deviceId: material.deviceId,
     vaultMasterKey: arrayBufferToBase64Url(material.vaultMasterKey),
     devicePrivateSignKey: arrayBufferToBase64Url(material.devicePrivateSignKey),
+    devicePrivateVaultKey: arrayBufferToBase64Url(
+      material.devicePrivateVaultKey,
+    ),
+    deviceLocalProtectionKey: arrayBufferToBase64Url(
+      material.deviceLocalProtectionKey,
+    ),
     payloadKey: arrayBufferToBase64Url(material.payloadKey),
     trustedSnapshotContext: {
       snapshotDigest: material.trustedSnapshotContext.snapshotDigest,
       trust: {
         generation: material.trustedSnapshotContext.trust.generation,
+        vaultKeyGeneration:
+          material.trustedSnapshotContext.trust.vaultKeyGeneration,
         certificateDigest:
           material.trustedSnapshotContext.trust.certificateDigest,
         trustedDevices:
@@ -59,6 +74,7 @@ export function serializeUnlockedVaultSessionMaterial(
             (device) => ({
               deviceId: device.deviceId,
               publicSignKey: arrayBufferToBase64Url(device.publicSignKey),
+              publicVaultKey: arrayBufferToBase64Url(device.publicVaultKey),
             }),
           ),
       },
@@ -88,6 +104,12 @@ export function deserializeUnlockedVaultSessionMaterial(
     devicePrivateSignKey: base64UrlToArrayBuffer(
       material.devicePrivateSignKey,
     ) as UnlockedVaultSessionMaterial["devicePrivateSignKey"],
+    devicePrivateVaultKey: base64UrlToArrayBuffer(
+      material.devicePrivateVaultKey,
+    ) as DeviceVaultPrivateKey,
+    deviceLocalProtectionKey: base64UrlToArrayBuffer(
+      material.deviceLocalProtectionKey,
+    ) as DeviceLocalProtectionKey,
     payloadKey: base64UrlToArrayBuffer(
       material.payloadKey,
     ) as UnlockedVaultSessionMaterial["payloadKey"],
@@ -102,6 +124,9 @@ export function deserializeUnlockedVaultSessionMaterial(
               publicSignKey: base64UrlToArrayBuffer(
                 device.publicSignKey,
               ) as DevicePublicSignKey,
+              publicVaultKey: base64UrlToArrayBuffer(
+                device.publicVaultKey,
+              ) as DeviceVaultPublicKey,
             }),
           ),
       },
@@ -137,6 +162,8 @@ function assertStoredMaterial(
   assertStringField(material, "deviceId");
   assertStringField(material, "vaultMasterKey");
   assertStringField(material, "devicePrivateSignKey");
+  assertStringField(material, "devicePrivateVaultKey");
+  assertStringField(material, "deviceLocalProtectionKey");
   assertStringField(material, "payloadKey");
   assertTrustedSnapshotContext(material.trustedSnapshotContext);
   assertVaultTrustAnchor(material.vaultTrustAnchor);
@@ -157,6 +184,7 @@ function assertTrustedSnapshotContext(
   }
 
   assertNumberField(trust, "generation");
+  assertNumberField(trust, "vaultKeyGeneration");
   assertStringField(trust, "certificateDigest");
 
   if (!Array.isArray(trust.trustedDevices)) {
@@ -170,6 +198,7 @@ function assertTrustedSnapshotContext(
 
     assertStringField(device, "deviceId");
     assertStringField(device, "publicSignKey");
+    assertStringField(device, "publicVaultKey");
   }
 }
 

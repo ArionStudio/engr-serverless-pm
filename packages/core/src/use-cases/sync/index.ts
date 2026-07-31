@@ -3,3 +3,4 @@ export * from "./disable-sync";
 export * from "./prepare-sync-review";
 export * from "./setup-sync";
 export * from "./sync-upload";
+export * from "./complete-provider-credential-revocation";

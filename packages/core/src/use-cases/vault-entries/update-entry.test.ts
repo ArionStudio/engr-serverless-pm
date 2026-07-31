@@ -24,6 +24,8 @@ function createContext() {
     ports.syncProvider,
     vaultSnapshot,
     ports.sessionServices.unlockedVaultSession,
+    ports.crypto,
+    ports.vaultLocalRepository,
   );
   saveUnlockedVaultWithEntries(ports, values, standardPasswordEntries);
 
@@ -125,7 +127,7 @@ describe("UpdateEntryUseCase", () => {
         ...session.unlockedVault,
         vault: {
           ...session.unlockedVault.vault,
-          syncConfig: ctx.values.syncConfig,
+          syncTarget: ctx.values.syncTarget,
         },
       },
     };
@@ -145,7 +147,7 @@ describe("UpdateEntryUseCase", () => {
     });
 
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).toHaveBeenCalledWith(
-      ctx.values.syncConfig,
+      ctx.values.syncAccess,
       expect.objectContaining({
         metadata: expect.objectContaining({
           snapshotVersionVector: {

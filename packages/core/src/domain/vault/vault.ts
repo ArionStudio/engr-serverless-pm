@@ -6,7 +6,7 @@ import type {
   DeletedPasswordEntry,
   PasswordEntry,
 } from "../entry/password-entry.type";
-import type { SyncConfig } from "../sync/sync-config.type";
+import type { SyncTarget } from "../sync/sync-config.type";
 import type { VersionVector } from "../versioning/version-vector.type";
 import type { DeletedTag, Tag } from "../entry/tag.type";
 
@@ -16,8 +16,12 @@ export interface Vault {
   deletedEntries: DeletedPasswordEntry[];
   deviceProfiles: DeviceProfile[];
   deletedDeviceProfiles: DeletedDeviceProfile[];
-  syncConfig?: SyncConfig;
+  syncTarget?: SyncTarget;
   syncRemovalPending?: true;
+  providerCredentialRevocationPending?: {
+    readonly revokedDeviceIds: readonly string[];
+    readonly vaultKeyGeneration: number;
+  };
   tags: Tag[];
   deletedTags: DeletedTag[];
 }

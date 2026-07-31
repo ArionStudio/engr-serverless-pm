@@ -8,6 +8,7 @@ import type {
   UnsignedVaultSnapshot,
   VaultSnapshot,
 } from "../../domain/snapshot/vault-snapshot";
+import type { DeviceVaultKeyEnvelopeContext } from "../../domain/snapshot";
 import type { LocalVaultDescriptor } from "../../domain/vault/local-vault-descriptor";
 import type { UnlockedVault } from "../../domain/session/unlocked-vault";
 import type { Vault } from "../../domain/vault/vault";
@@ -72,14 +73,19 @@ export class InitializeVaultUseCase {
       await this.vaultDisplayName.generateVaultDisplayName();
 
     const vaultMasterKey = await this.crypto.generateVaultMasterKey();
-    const deviceSlotKey = await this.crypto.generateDeviceSlotKey();
     const deviceSignKeyPair = await this.crypto.generateDeviceSignKeyPair();
+    const deviceVaultKeyPair = await this.crypto.generateDeviceVaultKeyPair();
+    const deviceLocalProtectionKey =
+      await this.crypto.generateDeviceLocalProtectionKey();
+    const vaultKeyGeneration = 1;
     const genesisTrust = await this.vaultTrust.createGenesis(
       vaultId,
       {
         deviceId,
         publicSignKey: deviceSignKeyPair.publicKey,
+        publicVaultKey: deviceVaultKeyPair.publicKey,
       },
+      vaultKeyGeneration,
       deviceSignKeyPair.privateKey,
     );
     const recoverySecretKey = await this.crypto.generateRecoveryKey();
@@ -102,8 +108,9 @@ export class InitializeVaultUseCase {
       );
 
     const localKeysPayload: LocalKeysPayload = {
-      deviceSlotKey: deviceSlotKey,
       devicePrivateSignKey: deviceSignKeyPair.privateKey,
+      devicePrivateVaultKey: deviceVaultKeyPair.privateKey,
+      deviceLocalProtectionKey,
       vaultTrustAnchor: genesisTrust.anchor,
     };
 
@@ -123,15 +130,18 @@ export class InitializeVaultUseCase {
       recoveryLocalKeysProtectionKey,
     );
 
-    const deviceSlotVaultMasterKeyProtectionKey =
-      await this.crypto.deriveDeviceSlotVaultMasterKeyProtectionKey(
-        deviceSlotKey,
+    const envelopeContext: DeviceVaultKeyEnvelopeContext = {
+      vaultId,
+      deviceId,
+      vaultKeyGeneration,
+      algorithmSuiteId: this.crypto.algorithmSuite.id,
+    };
+    const deviceVaultKeyEnvelope =
+      await this.crypto.createDeviceVaultKeyEnvelope(
+        vaultMasterKey,
+        deviceVaultKeyPair.publicKey,
+        envelopeContext,
       );
-
-    const protectedDeviceVaultMasterKey = await this.crypto.wrapVaultMasterKey(
-      vaultMasterKey,
-      deviceSlotVaultMasterKeyProtectionKey,
-    );
 
     const deviceProfile: DeviceProfile = {
       id: deviceId,
@@ -157,7 +167,7 @@ export class InitializeVaultUseCase {
     const unsignedVaultSnapshot: UnsignedVaultSnapshot = {
       metadata: {
         id: vaultId,
-        schemaVersion: 2,
+        schemaVersion: 1,
         vaultCreationTimestamp: timestamp,
         revisionTimestamp: timestamp,
         snapshotVersionVector: {
@@ -165,14 +175,15 @@ export class InitializeVaultUseCase {
         },
         algorithmSuiteId: this.crypto.algorithmSuite.id,
         createdByDeviceId: deviceId,
+        vaultKeyGeneration,
       },
       trustChain: genesisTrust.chain,
       keySlots: {
         deviceSlots: [
           {
             deviceId,
-            protectedVaultMasterKey: protectedDeviceVaultMasterKey,
-            publicSignKey: deviceSignKeyPair.publicKey,
+            vaultKeyGeneration,
+            envelope: deviceVaultKeyEnvelope,
           },
         ],
       },
@@ -197,6 +208,7 @@ export class InitializeVaultUseCase {
       masterPasswordSalt,
       localKeysProtectionSalt,
       devicePublicSignKey: deviceSignKeyPair.publicKey,
+      devicePublicVaultKey: deviceVaultKeyPair.publicKey,
       protectedLocalKeys,
     };
     const deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup = {
@@ -205,6 +217,7 @@ export class InitializeVaultUseCase {
       algorithmSuiteId: this.crypto.algorithmSuite.id,
       recoveryLocalKeysProtectionSalt,
       devicePublicSignKey: deviceSignKeyPair.publicKey,
+      devicePublicVaultKey: deviceVaultKeyPair.publicKey,
       protectedLocalKeys: recoveryProtectedLocalKeys,
     };
 
@@ -220,6 +233,8 @@ export class InitializeVaultUseCase {
       vault,
       vaultMasterKey,
       devicePrivateSignKey: deviceSignKeyPair.privateKey,
+      devicePrivateVaultKey: deviceVaultKeyPair.privateKey,
+      deviceLocalProtectionKey,
       trustedSnapshotContext: {
         snapshotDigest: await this.crypto.digestVaultSnapshot(vaultSnapshot),
         trust: genesisTrust.trust,

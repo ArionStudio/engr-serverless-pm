@@ -94,54 +94,80 @@ export class UnlockedVaultSessionService {
     });
   }
 
-  async restoreIfSessionIsActive(
+  async restorePersistedState(
     sessionId: string,
     vaultId: string,
     restore: () => Promise<void>,
   ): Promise<boolean> {
     return this.serializeSessionOperation(async () => {
-      const storedMaterial =
-        await this.materialRepository.getUnlockedVaultSessionMaterial();
-      const activeMaterial = this.getActiveMaterial(storedMaterial);
-
-      if (!this.isActiveSession(activeMaterial, sessionId, vaultId)) {
-        return false;
-      }
-
       try {
         await restore();
-        return true;
       } catch {
-        await this.removeSessionRecordsPreservingRootCause();
+        const activeMaterial = this.getActiveMaterial(
+          await this.materialRepository.getUnlockedVaultSessionMaterial(),
+        );
+
+        if (activeMaterial?.vaultId === vaultId) {
+          await this.removeSessionRecordsPreservingRootCause();
+        }
+
         return false;
       }
+
+      const activeMaterial = this.getActiveMaterial(
+        await this.materialRepository.getUnlockedVaultSessionMaterial(),
+      );
+
+      if (
+        activeMaterial !== null &&
+        activeMaterial.vaultId === vaultId &&
+        !this.isActiveSession(activeMaterial, sessionId, vaultId)
+      ) {
+        await this.removeSessionRecordsPreservingRootCause();
+      }
+
+      return true;
     });
   }
 
   async discardIfSessionIsActive(
     sessionId: string,
     vaultId: string,
-    discard: () => Promise<void>,
-  ): Promise<boolean> {
+    sourceSnapshotVersionVector: VersionVector,
+    discard: () => Promise<boolean>,
+  ): Promise<
+    "discarded" | "session_advanced" | "session_unavailable" | "rollback_failed"
+  > {
     return this.serializeSessionOperation(async () => {
       const activeMaterial =
         await this.materialRepository.getUnlockedVaultSessionMaterial();
 
-      if (!this.isActiveSession(activeMaterial, sessionId, vaultId)) {
-        return false;
+      if (
+        activeMaterial === null ||
+        !this.isActiveSession(activeMaterial, sessionId, vaultId)
+      ) {
+        return "session_unavailable";
+      }
+
+      if (
+        compareVersionVectors(
+          activeMaterial.sourceSnapshotVersionVector,
+          sourceSnapshotVersionVector,
+        ) !== "equal"
+      ) {
+        return "session_advanced";
       }
 
       try {
         await this.removeSessionRecords();
       } catch {
-        return false;
+        return "rollback_failed";
       }
 
       try {
-        await discard();
-        return true;
+        return (await discard()) ? "discarded" : "rollback_failed";
       } catch {
-        return false;
+        return "rollback_failed";
       }
     });
   }
@@ -321,6 +347,8 @@ export class UnlockedVaultSessionService {
         deviceId: unlockedVault.deviceId,
         vaultMasterKey: unlockedVault.vaultMasterKey,
         devicePrivateSignKey: unlockedVault.devicePrivateSignKey,
+        devicePrivateVaultKey: unlockedVault.devicePrivateVaultKey,
+        deviceLocalProtectionKey: unlockedVault.deviceLocalProtectionKey,
         trustedSnapshotContext: unlockedVault.trustedSnapshotContext,
         vaultTrustAnchor: unlockedVault.vaultTrustAnchor,
         payloadKey,
@@ -369,6 +397,8 @@ export class UnlockedVaultSessionService {
         vault: payload.vault,
         vaultMasterKey: material.vaultMasterKey,
         devicePrivateSignKey: material.devicePrivateSignKey,
+        devicePrivateVaultKey: material.devicePrivateVaultKey,
+        deviceLocalProtectionKey: material.deviceLocalProtectionKey,
         trustedSnapshotContext: material.trustedSnapshotContext,
         vaultTrustAnchor: material.vaultTrustAnchor,
       },

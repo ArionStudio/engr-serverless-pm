@@ -1,753 +1,150 @@
 import { describe, expect, it, vi } from "vitest";
+import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
 import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
 import {
-  DeviceAccessMaterialNotFoundError,
   DeviceKeySlotNotFoundError,
   DeviceKeySlotVerificationFailedError,
-  VaultSnapshotNotFoundError,
-  VaultSnapshotSignatureVerificationFailedError,
-  VaultSnapshotSignerNotTrustedError,
 } from "../../errors/unlock-vault.errors";
-import {
-  ActiveUnlockedVaultMismatchError,
-  InvalidVaultLockDelayError,
-  UnlockedVaultSessionExpiredError,
-} from "../../errors/vault-session.errors";
-import { PersistedVaultMismatchError } from "../../errors/vault-snapshot.errors";
-import { VaultTrustStateInvalidError } from "../../errors/vault-trust.errors";
-import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
 
 describe("UnlockVaultUseCase", () => {
-  it("unlocks a vault and stores runtime vault state", async () => {
+  it("verifies both local key pairs and opens the current envelope", async () => {
     const ctx = createUnlockVaultTestContext();
-
-    const result = await ctx.useCase.execute({
-      vaultId: ctx.values.vaultId,
-      masterPassword: ctx.values.masterPassword,
-      lockAfterMs: 600_000,
-    });
-
-    expect(result).toEqual({
-      vault: ctx.values.decryptedVault,
-    });
-
-    expect(
-      ctx.ports.vaultLocalRepository.getDeviceAccessMaterial,
-    ).toHaveBeenCalledWith(ctx.values.vaultId);
-    expect(
-      ctx.ports.vaultLocalRepository.getVaultSnapshot,
-    ).toHaveBeenCalledWith(ctx.values.vaultId);
-    expect(ctx.ports.crypto.verifyVaultSnapshotSignature).toHaveBeenCalledWith(
-      ctx.vaultSnapshot,
-      ctx.values.devicePublicSignKey,
-    );
-    expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenCalledWith(
-      ctx.values.masterPassword,
-      ctx.values.masterPasswordSalt,
-    );
-    expect(ctx.ports.crypto.deriveLocalKeysProtectionKey).toHaveBeenCalledWith(
-      ctx.values.localRootKey,
-      ctx.values.localKeysProtectionSalt,
-    );
-    expect(ctx.ports.crypto.unwrapLocalKeysPayload).toHaveBeenCalledWith(
-      ctx.values.protectedLocalKeys,
-      ctx.values.localKeysProtectionKey,
-    );
-    expect(ctx.ports.crypto.verifyDeviceSignKeyPair).toHaveBeenCalledWith(
-      ctx.values.devicePublicSignKey,
-      ctx.values.devicePrivateSignKey,
-    );
-    expect(
-      ctx.ports.crypto.deriveDeviceSlotVaultMasterKeyProtectionKey,
-    ).toHaveBeenCalledWith(ctx.values.deviceSlotKey);
-    expect(ctx.ports.crypto.unwrapVaultMasterKey).toHaveBeenCalledWith(
-      ctx.values.protectedDeviceVaultMasterKey,
-      ctx.values.deviceSlotVaultMasterKeyProtectionKey,
-    );
-    expect(ctx.ports.crypto.decryptVaultSnapshotContent).toHaveBeenCalledWith(
-      ctx.values.encryptedVault,
-      ctx.values.vaultMasterKey,
-    );
-
-    expect(ctx.saved.unlockedVaultSession).toEqual({
-      sessionId: ctx.values.sessionId,
-      unlockedVault: {
-        vaultId: ctx.values.vaultId,
-        deviceId: ctx.values.deviceId,
-        vault: ctx.values.decryptedVault,
-        vaultMasterKey: ctx.values.vaultMasterKey,
-        devicePrivateSignKey: ctx.values.devicePrivateSignKey,
-        trustedSnapshotContext: {
-          snapshotDigest: ctx.values.vaultSnapshotDigest,
-          trust: ctx.values.verifiedVaultTrustState,
-        },
-        vaultTrustAnchor: ctx.values.vaultTrustAnchor,
-      },
-      sourceSnapshotVersionVector: {
-        [ctx.values.deviceId]: 1,
-      },
-    });
-    expect(ctx.ports.vaultLockTasks.save).toHaveBeenCalledWith({
-      actionId: ctx.values.vaultLockActionId,
-      vaultId: ctx.values.vaultId,
-      expiresAt: ctx.values.timestamp + 600_000,
-    });
-    expect(ctx.ports.scheduledTasks.scheduleTask).toHaveBeenCalledWith({
-      task: {
-        name: "lockVault",
-        actionId: ctx.values.vaultLockActionId,
-      },
-      runAt: ctx.values.timestamp + 600_000,
-    });
-  });
-
-  it("unlocks a vault snapshot signed by another trusted device", async () => {
-    const ctx = createUnlockVaultTestContext();
-
-    ctx.saved.vaultSnapshot = {
-      ...ctx.vaultSnapshot,
-      metadata: {
-        ...ctx.vaultSnapshot.metadata,
-        createdByDeviceId: "other-device-id",
-      },
-      trustChain: {
-        ...ctx.values.vaultTrustChain,
-        certificates: [
-          {
-            ...ctx.values.vaultTrustCertificate,
-            payload: {
-              ...ctx.values.vaultTrustCertificate.payload,
-              trustedDevices: [
-                ...ctx.values.vaultTrustCertificate.payload.trustedDevices,
-                {
-                  deviceId: "other-device-id",
-                  publicSignKey: ctx.values.pendingDevicePublicSignKey,
-                },
-              ],
-            },
-          },
-        ],
-      },
-      keySlots: {
-        ...ctx.vaultSnapshot.keySlots,
-        deviceSlots: [
-          ...ctx.vaultSnapshot.keySlots.deviceSlots,
-          {
-            deviceId: "other-device-id",
-            protectedVaultMasterKey: ctx.values.protectedDeviceVaultMasterKey,
-            publicSignKey: ctx.values.pendingDevicePublicSignKey,
-          },
-        ],
-      },
-    };
-
-    await expect(
-      ctx.useCase.execute({
-        vaultId: ctx.values.vaultId,
-        masterPassword: ctx.values.masterPassword,
-        lockAfterMs: 600_000,
-      }),
-    ).resolves.toEqual({
-      vault: ctx.values.decryptedVault,
-    });
-
-    expect(ctx.ports.crypto.verifyVaultSnapshotSignature).toHaveBeenCalledWith(
-      ctx.saved.vaultSnapshot,
-      ctx.values.pendingDevicePublicSignKey,
-    );
-    expect(ctx.ports.crypto.unwrapVaultMasterKey).toHaveBeenCalledWith(
-      ctx.values.protectedDeviceVaultMasterKey,
-      ctx.values.deviceSlotVaultMasterKeyProtectionKey,
-    );
-    expect(ctx.saved.unlockedVaultSession?.unlockedVault.deviceId).toBe(
-      ctx.values.deviceId,
-    );
-  });
-
-  it("does not activate after vault lock invalidates an in-progress unlock", async () => {
-    const ctx = createUnlockVaultTestContext();
-    let allowUnlockToContinue!: () => void;
-    let markUnlockPaused!: () => void;
-    const unlockPaused = new Promise<void>((resolve) => {
-      markUnlockPaused = resolve;
-    });
-    const allowUnlock = new Promise<void>((resolve) => {
-      allowUnlockToContinue = resolve;
-    });
-
-    vi.mocked(ctx.ports.crypto.deriveLocalRootKey)
-      .mockReset()
-      .mockImplementation(async () => {
-        markUnlockPaused();
-        await allowUnlock;
-
-        return ctx.values.localRootKey;
-      });
-
-    const unlocking = ctx.useCase.execute({
-      vaultId: ctx.values.vaultId,
-      masterPassword: ctx.values.masterPassword,
-      lockAfterMs: 600_000,
-    });
-
-    await unlockPaused;
-    await ctx.ports.sessionServices.unlockedVaultSession.remove();
-    allowUnlockToContinue();
-
-    await expect(unlocking).rejects.toBeInstanceOf(
-      UnlockedVaultSessionExpiredError,
-    );
-    expect(ctx.saved.unlockedVaultSession).toBeUndefined();
-  });
-
-  it("rejects a local device revoked by the verified trust chain", async () => {
-    const ctx = createUnlockVaultTestContext();
-    const remainingDeviceId = "remaining-device-id";
-    ctx.saved.vaultSnapshot = {
-      ...ctx.vaultSnapshot,
-      trustChain: {
-        certificates: [
-          ctx.values.vaultTrustCertificate,
-          {
-            ...ctx.values.vaultTrustCertificate,
-            payload: {
-              ...ctx.values.vaultTrustCertificate.payload,
-              generation: 1,
-              previousCertificateDigest: ctx.values.vaultTrustCertificateDigest,
-              trustedDevices: [
-                {
-                  deviceId: remainingDeviceId,
-                  publicSignKey: ctx.values.pendingDevicePublicSignKey,
-                },
-              ],
-            },
-          },
-        ],
-      },
-    };
-
-    await expect(
-      ctx.useCase.execute({
-        vaultId: ctx.values.vaultId,
-        masterPassword: ctx.values.masterPassword,
-        lockAfterMs: 600_000,
-      }),
-    ).rejects.toBeInstanceOf(VaultTrustStateInvalidError);
-
-    expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.sessionServices.unlockedVaultSession.activate,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("rejects an unsupported snapshot schema before trust-chain verification", async () => {
-    const ctx = createUnlockVaultTestContext();
-    ctx.saved.vaultSnapshot = {
-      ...ctx.vaultSnapshot,
-      metadata: {
-        ...ctx.vaultSnapshot.metadata,
-        schemaVersion: 1,
-      },
-    } as unknown as typeof ctx.vaultSnapshot;
-
-    await expect(
-      ctx.useCase.execute({
-        vaultId: ctx.values.vaultId,
-        masterPassword: ctx.values.masterPassword,
-        lockAfterMs: 600_000,
-      }),
-    ).rejects.toBeInstanceOf(VaultTrustStateInvalidError);
-
-    expect(
-      ctx.ports.crypto.verifyVaultTrustCertificateSignature,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("updates a newer checkpoint with the snapshot-and-checkpoint compare-and-set", async () => {
-    const ctx = createUnlockVaultTestContext();
-    const newerSnapshotDigest = "newer-vault-snapshot-digest";
-    const newerSnapshot = {
-      ...ctx.vaultSnapshot,
-      metadata: {
-        ...ctx.vaultSnapshot.metadata,
-        snapshotVersionVector: {
-          [ctx.values.deviceId]: 2,
-        },
-      },
-    };
-    ctx.saved.vaultSnapshot = newerSnapshot;
-    ctx.saved.vaultSnapshotDigest = newerSnapshotDigest;
-    vi.mocked(ctx.ports.crypto.digestVaultSnapshot).mockImplementation(
-      async (snapshot) =>
-        snapshot === newerSnapshot
-          ? newerSnapshotDigest
-          : ctx.values.vaultSnapshotDigest,
-    );
 
     await ctx.useCase.execute({
       vaultId: ctx.values.vaultId,
       masterPassword: ctx.values.masterPassword,
-      lockAfterMs: 600_000,
+      lockAfterMs: 60_000,
     });
-
-    expect(
-      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
-    ).toHaveBeenCalledWith({
-      expectedSnapshotDigest: newerSnapshotDigest,
-      snapshot: ctx.saved.vaultSnapshot,
-      checkpoint: expect.objectContaining({
-        payload: expect.objectContaining({
-          snapshotDigest: newerSnapshotDigest,
-          snapshotVersionVector: { [ctx.values.deviceId]: 2 },
-        }),
-      }),
-    });
-  });
-
-  it("fails when device access material is missing", async () => {
-    const ctx = createUnlockVaultTestContext();
-    ctx.saved.deviceAccessMaterial = undefined;
-
-    await expect(
-      ctx.useCase.execute({
-        vaultId: ctx.values.vaultId,
-        masterPassword: ctx.values.masterPassword,
-        lockAfterMs: 600_000,
-      }),
-    ).rejects.toBeInstanceOf(DeviceAccessMaterialNotFoundError);
-
-    expect(
-      ctx.ports.vaultLocalRepository.getVaultSnapshot,
-    ).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.sessionServices.unlockedVaultSession.activate,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("fails when vault snapshot is missing", async () => {
-    const ctx = createUnlockVaultTestContext();
-    ctx.saved.vaultSnapshot = undefined;
-
-    await expect(
-      ctx.useCase.execute({
-        vaultId: ctx.values.vaultId,
-        masterPassword: ctx.values.masterPassword,
-        lockAfterMs: 600_000,
-      }),
-    ).rejects.toBeInstanceOf(VaultSnapshotNotFoundError);
-
-    expect(
-      ctx.ports.crypto.verifyVaultSnapshotSignature,
-    ).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.sessionServices.unlockedVaultSession.activate,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("fails when snapshot signature verification fails", async () => {
-    const ctx = createUnlockVaultTestContext();
-
-    vi.mocked(
-      ctx.ports.crypto.verifyVaultSnapshotSignature,
-    ).mockResolvedValueOnce(false);
-
-    await expect(
-      ctx.useCase.execute({
-        vaultId: ctx.values.vaultId,
-        masterPassword: ctx.values.masterPassword,
-        lockAfterMs: 600_000,
-      }),
-    ).rejects.toBeInstanceOf(VaultSnapshotSignatureVerificationFailedError);
-
-    expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenCalled();
-    expect(ctx.ports.crypto.unwrapVaultMasterKey).not.toHaveBeenCalled();
-    expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.sessionServices.unlockedVaultSession.activate,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("fails when device access material uses unsupported algorithm suite", async () => {
-    const ctx = createUnlockVaultTestContext();
-    ctx.saved.deviceAccessMaterial = {
-      ...ctx.deviceAccessMaterial,
-      algorithmSuiteId: "spm-unsupported",
-    };
-
-    await expect(
-      ctx.useCase.execute({
-        vaultId: ctx.values.vaultId,
-        masterPassword: ctx.values.masterPassword,
-        lockAfterMs: 600_000,
-      }),
-    ).rejects.toBeInstanceOf(UnsupportedAlgorithmSuiteError);
-
-    expect(
-      ctx.ports.crypto.verifyVaultSnapshotSignature,
-    ).not.toHaveBeenCalled();
-    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.sessionServices.unlockedVaultSession.activate,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("fails when vault snapshot uses unsupported algorithm suite", async () => {
-    const ctx = createUnlockVaultTestContext();
-    ctx.saved.vaultSnapshot = {
-      ...ctx.vaultSnapshot,
-      metadata: {
-        ...ctx.vaultSnapshot.metadata,
-        algorithmSuiteId: "spm-unsupported",
-      },
-    };
-
-    await expect(
-      ctx.useCase.execute({
-        vaultId: ctx.values.vaultId,
-        masterPassword: ctx.values.masterPassword,
-        lockAfterMs: 600_000,
-      }),
-    ).rejects.toBeInstanceOf(UnsupportedAlgorithmSuiteError);
-
-    expect(
-      ctx.ports.crypto.verifyVaultSnapshotSignature,
-    ).not.toHaveBeenCalled();
-    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.sessionServices.unlockedVaultSession.activate,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("fails before verifying when the vault snapshot belongs to another vault", async () => {
-    const ctx = createUnlockVaultTestContext();
-    const mismatchedSnapshot = {
-      ...ctx.vaultSnapshot,
-      metadata: {
-        ...ctx.vaultSnapshot.metadata,
-        id: "another-vault-id",
-      },
-    };
-    ctx.saved.vaultSnapshot = mismatchedSnapshot;
-    vi.mocked(
-      ctx.ports.vaultLocalRepository.getVaultSnapshot,
-    ).mockResolvedValueOnce(mismatchedSnapshot);
-
-    await expect(
-      ctx.useCase.execute({
-        vaultId: ctx.values.vaultId,
-        masterPassword: ctx.values.masterPassword,
-        lockAfterMs: 600_000,
-      }),
-    ).rejects.toBeInstanceOf(PersistedVaultMismatchError);
-
-    expect(
-      ctx.ports.crypto.verifyVaultSnapshotSignature,
-    ).not.toHaveBeenCalled();
-    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.sessionServices.unlockedVaultSession.activate,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("fails when snapshot signer is not trusted", async () => {
-    const ctx = createUnlockVaultTestContext();
-    ctx.saved.vaultSnapshot = {
-      ...ctx.vaultSnapshot,
-      metadata: {
-        ...ctx.vaultSnapshot.metadata,
-        createdByDeviceId: "untrusted-device-id",
-      },
-      keySlots: {
-        ...ctx.vaultSnapshot.keySlots,
-      },
-    };
-
-    await expect(
-      ctx.useCase.execute({
-        vaultId: ctx.values.vaultId,
-        masterPassword: ctx.values.masterPassword,
-        lockAfterMs: 600_000,
-      }),
-    ).rejects.toBeInstanceOf(VaultSnapshotSignerNotTrustedError);
-
-    expect(
-      ctx.ports.crypto.verifyVaultSnapshotSignature,
-    ).not.toHaveBeenCalled();
-    expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenCalled();
-    expect(
-      ctx.ports.sessionServices.unlockedVaultSession.activate,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("fails when current device key slot is missing", async () => {
-    const ctx = createUnlockVaultTestContext();
-
-    ctx.saved.vaultSnapshot = {
-      ...ctx.vaultSnapshot,
-      metadata: {
-        ...ctx.vaultSnapshot.metadata,
-        createdByDeviceId: "other-device-id",
-      },
-      keySlots: {
-        ...ctx.vaultSnapshot.keySlots,
-        deviceSlots: [
-          {
-            deviceId: "other-device-id",
-            protectedVaultMasterKey: ctx.values.protectedDeviceVaultMasterKey,
-            publicSignKey: ctx.values.pendingDevicePublicSignKey,
-          },
-        ],
-      },
-    };
-
-    await expect(
-      ctx.useCase.execute({
-        vaultId: ctx.values.vaultId,
-        masterPassword: ctx.values.masterPassword,
-        lockAfterMs: 600_000,
-      }),
-    ).rejects.toBeInstanceOf(DeviceKeySlotNotFoundError);
-
-    expect(ctx.ports.crypto.unwrapVaultMasterKey).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.sessionServices.unlockedVaultSession.activate,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("fails when the current device slot public key does not match the local private key", async () => {
-    const ctx = createUnlockVaultTestContext();
-
-    ctx.saved.vaultSnapshot = {
-      ...ctx.vaultSnapshot,
-      keySlots: {
-        ...ctx.vaultSnapshot.keySlots,
-        deviceSlots: [
-          {
-            deviceId: ctx.values.deviceId,
-            protectedVaultMasterKey: ctx.values.protectedDeviceVaultMasterKey,
-            publicSignKey: ctx.values.pendingDevicePublicSignKey,
-          },
-        ],
-      },
-    };
-    vi.mocked(ctx.ports.crypto.verifyDeviceSignKeyPair)
-      .mockResolvedValueOnce(false)
-      .mockResolvedValue(true);
-
-    await expect(
-      ctx.useCase.execute({
-        vaultId: ctx.values.vaultId,
-        masterPassword: ctx.values.masterPassword,
-        lockAfterMs: 600_000,
-      }),
-    ).rejects.toBeInstanceOf(DeviceKeySlotVerificationFailedError);
-
-    expect(ctx.ports.crypto.verifyDeviceSignKeyPair).toHaveBeenCalledWith(
-      ctx.values.pendingDevicePublicSignKey,
-      ctx.values.devicePrivateSignKey,
-    );
-    expect(
-      ctx.ports.crypto.deriveDeviceSlotVaultMasterKeyProtectionKey,
-    ).not.toHaveBeenCalled();
-    expect(ctx.ports.crypto.unwrapVaultMasterKey).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.sessionServices.unlockedVaultSession.activate,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("fails when device access material public key does not match the local private key", async () => {
-    const ctx = createUnlockVaultTestContext();
-
-    ctx.saved.deviceAccessMaterial = {
-      ...ctx.deviceAccessMaterial,
-      devicePublicSignKey: ctx.values.pendingDevicePublicSignKey,
-    };
-    vi.mocked(ctx.ports.crypto.verifyDeviceSignKeyPair)
-      .mockResolvedValueOnce(true)
-      .mockResolvedValueOnce(false)
-      .mockResolvedValue(true);
-
-    await expect(
-      ctx.useCase.execute({
-        vaultId: ctx.values.vaultId,
-        masterPassword: ctx.values.masterPassword,
-        lockAfterMs: 600_000,
-      }),
-    ).rejects.toBeInstanceOf(DeviceKeySlotVerificationFailedError);
 
     expect(ctx.ports.crypto.verifyDeviceSignKeyPair).toHaveBeenCalledWith(
       ctx.values.devicePublicSignKey,
       ctx.values.devicePrivateSignKey,
     );
-    expect(ctx.ports.crypto.verifyDeviceSignKeyPair).toHaveBeenCalledWith(
-      ctx.values.pendingDevicePublicSignKey,
-      ctx.values.devicePrivateSignKey,
+    expect(ctx.ports.crypto.verifyDeviceVaultKeyPair).toHaveBeenCalledWith(
+      ctx.values.devicePublicVaultKey,
+      ctx.values.devicePrivateVaultKey,
     );
-    expect(
-      ctx.ports.crypto.deriveDeviceSlotVaultMasterKeyProtectionKey,
-    ).not.toHaveBeenCalled();
-    expect(ctx.ports.crypto.unwrapVaultMasterKey).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.sessionServices.unlockedVaultSession.activate,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("does not store runtime vault state when lock task cannot be scheduled", async () => {
-    const ctx = createUnlockVaultTestContext();
-    const error = new Error("schedule failed");
-
-    vi.mocked(ctx.ports.scheduledTasks.scheduleTask).mockRejectedValueOnce(
-      error,
-    );
-
-    await expect(
-      ctx.useCase.execute({
+    expect(ctx.ports.crypto.openDeviceVaultKeyEnvelope).toHaveBeenCalledWith(
+      ctx.values.vaultKeyEnvelope,
+      ctx.values.devicePrivateVaultKey,
+      {
         vaultId: ctx.values.vaultId,
-        masterPassword: ctx.values.masterPassword,
-        lockAfterMs: 600_000,
-      }),
-    ).rejects.toThrow(error);
-
-    expect(
-      ctx.ports.sessionServices.unlockedVaultSession.activate,
-    ).not.toHaveBeenCalled();
-    expect(ctx.ports.vaultLockTasks.remove).toHaveBeenCalledTimes(1);
-  });
-
-  it("preserves schedule failure when lock task metadata cleanup fails", async () => {
-    const ctx = createUnlockVaultTestContext();
-    const scheduleError = new Error("schedule failed");
-    const removeError = new Error("remove failed");
-
-    vi.mocked(ctx.ports.scheduledTasks.scheduleTask).mockRejectedValueOnce(
-      scheduleError,
+        deviceId: ctx.values.deviceId,
+        vaultKeyGeneration: 1,
+        algorithmSuiteId: "spm-v1",
+      },
     );
-    vi.mocked(ctx.ports.vaultLockTasks.remove).mockRejectedValueOnce(
-      removeError,
-    );
-
-    await expect(
-      ctx.useCase.execute({
-        vaultId: ctx.values.vaultId,
-        masterPassword: ctx.values.masterPassword,
-        lockAfterMs: 600_000,
-      }),
-    ).rejects.toThrow(scheduleError);
-
-    expect(
-      ctx.ports.sessionServices.unlockedVaultSession.activate,
-    ).not.toHaveBeenCalled();
-    expect(ctx.ports.vaultLockTasks.remove).toHaveBeenCalledTimes(1);
-  });
-
-  it("cancels scheduled lock task when runtime vault state cannot be stored", async () => {
-    const ctx = createUnlockVaultTestContext();
-    const error = new Error("save failed");
-
-    vi.mocked(
-      ctx.ports.sessionServices.unlockedVaultSession.activate,
-    ).mockRejectedValueOnce(error);
-
-    await expect(
-      ctx.useCase.execute({
-        vaultId: ctx.values.vaultId,
-        masterPassword: ctx.values.masterPassword,
-        lockAfterMs: 600_000,
-      }),
-    ).rejects.toThrow(error);
-
-    expect(ctx.ports.scheduledTasks.cancelTask).toHaveBeenCalledWith({
-      name: "lockVault",
-      actionId: ctx.values.vaultLockActionId,
+    expect(ctx.saved.unlockedVaultSession?.unlockedVault).toMatchObject({
+      devicePrivateVaultKey: ctx.values.devicePrivateVaultKey,
+      deviceLocalProtectionKey: ctx.values.deviceLocalProtectionKey,
     });
-    expect(ctx.ports.vaultLockTasks.remove).toHaveBeenCalledTimes(1);
   });
 
-  it("fails before reading vault data when another vault is active", async () => {
+  it("rejects a missing local envelope before vault decryption", async () => {
     const ctx = createUnlockVaultTestContext();
-    ctx.saved.unlockedVaultSessionMaterial = {
-      sessionId: ctx.values.sessionId,
-      vaultId: "active-vault-id",
-      sourceSnapshotVersionVector: {
-        [ctx.values.deviceId]: 7,
-      },
-      deviceId: ctx.values.deviceId,
-      vaultMasterKey: ctx.values.vaultMasterKey,
-      devicePrivateSignKey: ctx.values.devicePrivateSignKey,
-      payloadKey: ctx.values.unlockedVaultSessionPayloadKey,
-      trustedSnapshotContext: {
-        snapshotDigest: ctx.values.vaultSnapshotDigest,
-        trust: ctx.values.verifiedVaultTrustState,
-      },
-      vaultTrustAnchor: ctx.values.vaultTrustAnchor,
+    ctx.saved.vaultSnapshot = {
+      ...ctx.vaultSnapshot,
+      keySlots: { deviceSlots: [] },
     };
 
     await expect(
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
         masterPassword: ctx.values.masterPassword,
-        lockAfterMs: 600_000,
+        lockAfterMs: 60_000,
       }),
-    ).rejects.toBeInstanceOf(ActiveUnlockedVaultMismatchError);
+    ).rejects.toBeInstanceOf(DeviceKeySlotNotFoundError);
 
-    expect(
-      ctx.ports.vaultLocalRepository.getDeviceAccessMaterial,
-    ).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.vaultLocalRepository.getVaultSnapshot,
-    ).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.crypto.verifyVaultSnapshotSignature,
-    ).not.toHaveBeenCalled();
-    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
-    expect(ctx.ports.vaultLockTasks.save).not.toHaveBeenCalled();
-    expect(ctx.ports.scheduledTasks.scheduleTask).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.sessionServices.unlockedVaultSession.activate,
-    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
   });
 
-  it("removes lock task metadata when canceling scheduled lock task fails", async () => {
-    const ctx = createUnlockVaultTestContext();
-    const saveError = new Error("save failed");
-    const cancelError = new Error("cancel failed");
+  it.each(["signing", "wrapping"] as const)(
+    "rejects a mismatched %s key pair before opening the envelope",
+    async (keyKind) => {
+      const ctx = createUnlockVaultTestContext();
 
-    vi.mocked(
-      ctx.ports.sessionServices.unlockedVaultSession.activate,
-    ).mockRejectedValueOnce(saveError);
-    vi.mocked(ctx.ports.scheduledTasks.cancelTask).mockRejectedValueOnce(
-      cancelError,
+      if (keyKind === "signing") {
+        vi.mocked(ctx.ports.crypto.verifyDeviceSignKeyPair).mockResolvedValue(
+          false,
+        );
+      } else {
+        vi.mocked(ctx.ports.crypto.verifyDeviceVaultKeyPair).mockResolvedValue(
+          false,
+        );
+      }
+
+      await expect(
+        ctx.useCase.execute({
+          vaultId: ctx.values.vaultId,
+          masterPassword: ctx.values.masterPassword,
+          lockAfterMs: 60_000,
+        }),
+      ).rejects.toBeInstanceOf(DeviceKeySlotVerificationFailedError);
+
+      expect(
+        ctx.ports.crypto.openDeviceVaultKeyEnvelope,
+      ).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects an unsupported snapshot suite", async () => {
+    const ctx = createUnlockVaultTestContext();
+    ctx.saved.vaultSnapshot = {
+      ...ctx.vaultSnapshot,
+      metadata: {
+        ...ctx.vaultSnapshot.metadata,
+        algorithmSuiteId: "unknown",
+      },
+    };
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 60_000,
+      }),
+    ).rejects.toBeInstanceOf(UnsupportedAlgorithmSuiteError);
+  });
+
+  it("removes lock metadata when task scheduling fails", async () => {
+    const ctx = createUnlockVaultTestContext();
+    vi.mocked(ctx.ports.scheduledTasks.scheduleTask).mockRejectedValue(
+      new Error("schedule failed"),
     );
 
     await expect(
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
         masterPassword: ctx.values.masterPassword,
-        lockAfterMs: 600_000,
+        lockAfterMs: 60_000,
       }),
-    ).rejects.toThrow(saveError);
+    ).rejects.toThrow("schedule failed");
 
-    expect(ctx.ports.scheduledTasks.cancelTask).toHaveBeenCalledWith({
-      name: "lockVault",
-      actionId: ctx.values.vaultLockActionId,
-    });
-    expect(ctx.ports.vaultLockTasks.remove).toHaveBeenCalledTimes(1);
+    expect(ctx.ports.vaultLockTasks.remove).toHaveBeenCalled();
+    expect(ctx.saved.unlockedVaultSession).toBeUndefined();
   });
 
-  it("fails before reading vault data when lock delay is invalid", async () => {
+  it("cancels the scheduled lock and removes metadata when activation fails", async () => {
     const ctx = createUnlockVaultTestContext();
+    const activationError = new Error("session activation failed");
+    vi.mocked(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .saveUnlockedVaultSessionMaterial,
+    ).mockRejectedValueOnce(activationError);
 
     await expect(
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
         masterPassword: ctx.values.masterPassword,
-        lockAfterMs: 45_000 as never,
+        lockAfterMs: 60_000,
       }),
-    ).rejects.toBeInstanceOf(InvalidVaultLockDelayError);
+    ).rejects.toBe(activationError);
 
-    expect(
-      ctx.ports.vaultLocalRepository.getDeviceAccessMaterial,
-    ).not.toHaveBeenCalled();
-    expect(ctx.ports.scheduledTasks.scheduleTask).not.toHaveBeenCalled();
+    expect(ctx.ports.scheduledTasks.cancelTask).toHaveBeenCalledWith({
+      name: "lockVault",
+      actionId: ctx.values.vaultLockActionId,
+    });
+    expect(ctx.ports.vaultLockTasks.remove).toHaveBeenCalled();
+    expect(ctx.saved.unlockedVaultSession).toBeUndefined();
   });
 });

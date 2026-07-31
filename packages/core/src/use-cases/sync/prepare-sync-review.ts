@@ -1,4 +1,5 @@
 import type { VaultSnapshotDescriptor } from "../../domain/snapshot/vault-snapshot-descriptor.type";
+import { areJsonEqual } from "../../domain/common";
 import type { VersionVectorRelation } from "../../domain/versioning/version-vector.type";
 import {
   areVaultSnapshotDescriptorsEqual,
@@ -7,12 +8,14 @@ import {
 } from "../../domain/snapshot/vault-snapshot-descriptor.utils";
 
 import {
+  ChangedDeviceKeySlotsError,
   LocalVaultSnapshotAheadError,
   RemoteVaultSnapshotChangedError,
   RemoteVaultSnapshotIntegrityError,
   RemoteVaultSnapshotNotFoundError,
   SyncNotConfiguredError,
   SyncRemovalPendingError,
+  SyncTrustChangeRequiresDeviceTrustFlowError,
 } from "../../errors/sync.errors";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
@@ -21,10 +24,14 @@ import { findChangedEntries } from "../../domain/sync/entry-review.utils";
 import type { EntryReviewItem } from "../../domain/sync/entry-review.type";
 import { findChangedTags } from "../../domain/sync/tag-review.utils";
 import type { TagReviewItem } from "../../domain/sync/tag-review.type";
-import { findChangedDeviceProfiles } from "../../domain/sync/device-profile-review.utils";
+import {
+  findChangedDeviceProfiles,
+  requireDeviceProfilesMatchTrust,
+} from "../../domain/sync/device-profile-review.utils";
 import type { DeviceProfileReviewItem } from "../../domain/sync/device-profile-review.type";
 import { findChangesInKeySlots } from "../../domain/sync/key-slot-review.utils";
 import type { KeySlotReviewItem } from "../../domain/sync/key-slot-review.type";
+import type { VaultSyncGuardService } from "../../services/sync";
 
 export type PrepareSyncReviewCommandParams = {
   readonly vaultId: string;
@@ -44,6 +51,7 @@ type VaultSyncReview = {
   };
   readonly readOnly: {
     readonly keySlotsChanges: KeySlotReviewItem;
+    readonly providerCredentialRevocationCompleted: boolean;
   };
 };
 
@@ -51,15 +59,18 @@ export class PrepareSyncReviewUseCase {
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
   private readonly syncProvider: SyncProviderPort;
   private readonly vaultSnapshot: VaultSnapshotService;
+  private readonly vaultSyncGuard: VaultSyncGuardService;
 
   constructor(
     unlockedVaultSession: UnlockedVaultSessionService,
     syncProvider: SyncProviderPort,
     vaultSnapshot: VaultSnapshotService,
+    vaultSyncGuard: VaultSyncGuardService,
   ) {
     this.unlockedVaultSession = unlockedVaultSession;
     this.syncProvider = syncProvider;
     this.vaultSnapshot = vaultSnapshot;
+    this.vaultSyncGuard = vaultSyncGuard;
   }
 
   async execute(
@@ -70,9 +81,9 @@ export class PrepareSyncReviewUseCase {
         params.vaultId,
         "prepare sync review",
       );
-    const syncConfig = unlockedVault.vault.syncConfig;
+    const syncTarget = unlockedVault.vault.syncTarget;
 
-    if (syncConfig === undefined) {
+    if (syncTarget === undefined) {
       throw new SyncNotConfiguredError(params.vaultId, "prepare sync review");
     }
 
@@ -86,9 +97,13 @@ export class PrepareSyncReviewUseCase {
         unlockedVault,
         sourceSnapshotVersionVector,
       );
+    const syncAccess = await this.vaultSyncGuard.requireSyncAccess(
+      params.vaultId,
+      unlockedVault,
+    );
     const remoteSnapshotDescriptor =
       await this.syncProvider.getLatestVaultSnapshotDescriptor(
-        syncConfig,
+        syncAccess,
         params.vaultId,
       );
 
@@ -131,20 +146,72 @@ export class PrepareSyncReviewUseCase {
     }
 
     const remoteSnapshot = await this.syncProvider.downloadVaultSnapshot(
-      syncConfig,
+      syncAccess,
       remoteSnapshotDescriptor,
     );
-    await this.vaultSnapshot.verifyCandidateSnapshotTrust(
+    const remoteTrust = await this.vaultSnapshot.verifyCandidateSnapshotTrust(
       params.vaultId,
       remoteSnapshot,
       unlockedVault,
     );
+
+    if (
+      remoteTrust.state.generation !==
+        unlockedVault.trustedSnapshotContext.trust.generation ||
+      remoteTrust.state.certificateDigest !==
+        unlockedVault.trustedSnapshotContext.trust.certificateDigest
+    ) {
+      throw new SyncTrustChangeRequiresDeviceTrustFlowError(params.vaultId);
+    }
+
+    let keySlotsChanges: KeySlotReviewItem;
+
+    try {
+      keySlotsChanges = findChangesInKeySlots(
+        localSnapshot.keySlots,
+        remoteSnapshot.keySlots,
+      );
+    } catch (error) {
+      if (error instanceof ChangedDeviceKeySlotsError) {
+        throw new SyncTrustChangeRequiresDeviceTrustFlowError(
+          params.vaultId,
+          error,
+        );
+      }
+
+      throw error;
+    }
+
+    if (
+      keySlotsChanges.hasChanges ||
+      remoteSnapshot.metadata.vaultKeyGeneration !==
+        localSnapshot.metadata.vaultKeyGeneration
+    ) {
+      throw new SyncTrustChangeRequiresDeviceTrustFlowError(params.vaultId);
+    }
+
     const remoteVault = await this.vaultSnapshot.openTrustedVaultSnapshot(
       params.vaultId,
       remoteSnapshot,
       unlockedVault.vaultMasterKey,
-      localSnapshot,
     );
+    const providerCredentialRevocationCompleted =
+      unlockedVault.vault.providerCredentialRevocationPending !== undefined &&
+      remoteVault.providerCredentialRevocationPending === undefined;
+
+    if (
+      !areJsonEqual(remoteVault.syncTarget, unlockedVault.vault.syncTarget) ||
+      remoteVault.syncRemovalPending !==
+        unlockedVault.vault.syncRemovalPending ||
+      (!areJsonEqual(
+        remoteVault.providerCredentialRevocationPending,
+        unlockedVault.vault.providerCredentialRevocationPending,
+      ) &&
+        !providerCredentialRevocationCompleted)
+    ) {
+      throw new RemoteVaultSnapshotIntegrityError(params.vaultId);
+    }
+
     const downloadedDescriptor = toVaultSnapshotDescriptor(
       params.vaultId,
       remoteSnapshot,
@@ -159,14 +226,33 @@ export class PrepareSyncReviewUseCase {
       throw new RemoteVaultSnapshotChangedError(params.vaultId);
     }
 
+    const trustedDeviceIds = new Set(
+      unlockedVault.trustedSnapshotContext.trust.trustedDevices.map(
+        (device) => device.deviceId,
+      ),
+    );
+    requireDeviceProfilesMatchTrust(
+      unlockedVault.vault,
+      trustedDeviceIds,
+      new Set(
+        localSnapshot.trustChain.certificates.flatMap((certificate) =>
+          certificate.payload.trustedDevices.map((device) => device.deviceId),
+        ),
+      ),
+    );
+    requireDeviceProfilesMatchTrust(
+      remoteVault,
+      trustedDeviceIds,
+      new Set(
+        remoteTrust.chain.certificates.flatMap((certificate) =>
+          certificate.payload.trustedDevices.map((device) => device.deviceId),
+        ),
+      ),
+    );
+
     const deviceProfileReviews = findChangedDeviceProfiles(
       unlockedVault.vault,
       remoteVault,
-    );
-
-    const keySlotsChanges = findChangesInKeySlots(
-      localSnapshot.keySlots,
-      remoteSnapshot.keySlots,
     );
 
     return {
@@ -180,6 +266,7 @@ export class PrepareSyncReviewUseCase {
         },
         readOnly: {
           keySlotsChanges,
+          providerCredentialRevocationCompleted,
         },
       },
     };

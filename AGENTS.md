@@ -54,6 +54,10 @@ Run project commands from repo root unless a task explicitly requires a subdirec
 
 <!-- Add mistakes here as they occur -->
 
+- **Pre-release data model**: Until the first public release exists, correct the
+  current data model in place. Do not add legacy compatibility branches,
+  migration layers, parallel schema versions, or new version identifiers unless
+  the user explicitly approves them.
 - **Type imports**: Use `import type { X }` for type-only imports (verbatimModuleSyntax)
 - **Base UI migration**: Some shadcn remnants exist. Use Base UI patterns for new code.
 - **Theme context**: Components using `useTheme()` need `ThemeProvider` wrapper.

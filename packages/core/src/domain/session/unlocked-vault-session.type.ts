@@ -17,6 +17,8 @@ export type UnlockedVaultSessionMaterial = {
   readonly deviceId: string;
   readonly vaultMasterKey: UnlockedVault["vaultMasterKey"];
   readonly devicePrivateSignKey: UnlockedVault["devicePrivateSignKey"];
+  readonly devicePrivateVaultKey: UnlockedVault["devicePrivateVaultKey"];
+  readonly deviceLocalProtectionKey: UnlockedVault["deviceLocalProtectionKey"];
   readonly payloadKey: UnlockedVaultSessionPayloadKey;
   readonly trustedSnapshotContext: UnlockedVault["trustedSnapshotContext"];
   readonly vaultTrustAnchor: UnlockedVault["vaultTrustAnchor"];

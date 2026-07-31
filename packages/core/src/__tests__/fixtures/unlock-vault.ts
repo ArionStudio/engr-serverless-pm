@@ -20,13 +20,14 @@ export function createUnlockVaultTestContext() {
     masterPasswordSalt: values.masterPasswordSalt,
     localKeysProtectionSalt: values.localKeysProtectionSalt,
     devicePublicSignKey: values.devicePublicSignKey,
+    devicePublicVaultKey: values.devicePublicVaultKey,
     protectedLocalKeys: values.protectedLocalKeys,
   };
 
   const vaultSnapshot: VaultSnapshot = {
     metadata: {
       id: values.vaultId,
-      schemaVersion: 2,
+      schemaVersion: 1,
       vaultCreationTimestamp: values.timestamp,
       revisionTimestamp: values.timestamp,
       snapshotVersionVector: {
@@ -34,14 +35,15 @@ export function createUnlockVaultTestContext() {
       },
       algorithmSuiteId: ports.crypto.algorithmSuite.id,
       createdByDeviceId: values.deviceId,
+      vaultKeyGeneration: values.vaultKeyGeneration,
     },
     trustChain: values.vaultTrustChain,
     keySlots: {
       deviceSlots: [
         {
           deviceId: values.deviceId,
-          protectedVaultMasterKey: values.protectedDeviceVaultMasterKey,
-          publicSignKey: values.devicePublicSignKey,
+          vaultKeyGeneration: values.vaultKeyGeneration,
+          envelope: values.vaultKeyEnvelope,
         },
       ],
     },

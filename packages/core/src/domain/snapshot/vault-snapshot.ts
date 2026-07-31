@@ -2,13 +2,12 @@ import type {
   SerializedEncrypted,
   SerializedSignatureOf,
 } from "../crypto/protected-artifact";
-import type { CompletedDeviceEnrollmentProof } from "../device-trust";
 import type { Vault } from "../vault/vault";
 import type { VersionVector } from "../versioning/version-vector.type";
-import type { DeviceKeySlot, EnrollmentKeySlot } from "./key-slot";
+import type { DeviceKeySlot } from "./key-slot";
 import type { VaultTrustChain } from "../device-trust/vault-trust";
 
-export type VaultSnapshotSchemaVersion = 2;
+export type VaultSnapshotSchemaVersion = 1;
 
 export type VaultSnapshotMetadata = {
   id: string; // random identifier
@@ -18,6 +17,7 @@ export type VaultSnapshotMetadata = {
   snapshotVersionVector: VersionVector;
   algorithmSuiteId: string;
   createdByDeviceId: string;
+  vaultKeyGeneration: number;
 };
 
 export type UnsignedVaultSnapshot = {
@@ -25,8 +25,6 @@ export type UnsignedVaultSnapshot = {
   trustChain: VaultTrustChain;
   keySlots: {
     deviceSlots: DeviceKeySlot[];
-    enrollmentKeySlot?: EnrollmentKeySlot;
-    completedEnrollments?: CompletedDeviceEnrollmentProof[];
   };
   content: SerializedEncrypted<Vault>;
 };

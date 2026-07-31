@@ -8,6 +8,7 @@ import {
 import {
   RemoteVaultSnapshotAheadError,
   RemoteVaultSnapshotChangedError,
+  SyncRemovalPendingError,
   SyncConflictDetectedError,
 } from "../../errors/sync.errors";
 import { InvalidPasswordEntryError } from "../../errors/vault-entry.errors";
@@ -23,6 +24,8 @@ function createContext() {
     ports.syncProvider,
     vaultSnapshot,
     ports.sessionServices.unlockedVaultSession,
+    ports.crypto,
+    ports.vaultLocalRepository,
   );
   vi.mocked(ports.ids.generateId).mockReset().mockResolvedValue("entry-id");
 
@@ -156,7 +159,7 @@ describe("AddEntryUseCase", () => {
     expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
   });
 
-  it("persists local changes without reading remote state while cleanup is pending", async () => {
+  it("rejects local changes while sync removal is pending", async () => {
     const ctx = createContext();
     const session = ctx.saved.unlockedVaultSession!;
     ctx.saved.unlockedVaultSession = {
@@ -165,29 +168,29 @@ describe("AddEntryUseCase", () => {
         ...session.unlockedVault,
         vault: {
           ...session.unlockedVault.vault,
-          syncConfig: ctx.values.syncConfig,
+          syncTarget: ctx.values.syncTarget,
           syncRemovalPending: true,
         },
       },
     };
 
-    await ctx.useCase.execute({
-      vaultId: ctx.values.vaultId,
-      entry: {
-        password: "secret-password",
-        login: "user@example.com",
-        tags: [],
-        url: "https://example.com/login",
-      },
-    });
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        entry: {
+          password: "secret-password",
+          login: "user@example.com",
+          tags: [],
+          url: "https://example.com/login",
+        },
+      }),
+    ).rejects.toBeInstanceOf(SyncRemovalPendingError);
 
     expect(
       ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
-    expect(
-      ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncRemovalPending,
-    ).toBe(true);
+    expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
   });
 
   it("does not add an entry when synced remote changes must be downloaded first", async () => {
@@ -200,7 +203,7 @@ describe("AddEntryUseCase", () => {
         ...session.unlockedVault,
         vault: {
           ...session.unlockedVault.vault,
-          syncConfig: ctx.values.syncConfig,
+          syncTarget: ctx.values.syncTarget,
         },
       },
     };
@@ -254,7 +257,7 @@ describe("AddEntryUseCase", () => {
         ...session.unlockedVault,
         vault: {
           ...session.unlockedVault.vault,
-          syncConfig: ctx.values.syncConfig,
+          syncTarget: ctx.values.syncTarget,
         },
       },
     };
@@ -273,7 +276,7 @@ describe("AddEntryUseCase", () => {
     });
 
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).toHaveBeenCalledWith(
-      ctx.values.syncConfig,
+      ctx.values.syncAccess,
       expect.objectContaining({
         metadata: expect.objectContaining({
           snapshotVersionVector: {
@@ -317,7 +320,7 @@ describe("AddEntryUseCase", () => {
         ...session.unlockedVault,
         vault: {
           ...session.unlockedVault.vault,
-          syncConfig: ctx.values.syncConfig,
+          syncTarget: ctx.values.syncTarget,
         },
       },
     };
@@ -362,7 +365,7 @@ describe("AddEntryUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("does not restore or lock a newer session after a stale upload fails", async () => {
+  it("restores persisted state and invalidates a session opened during upload", async () => {
     const ctx = createContext();
     const remoteSnapshotDescriptor = {
       vaultId: ctx.values.vaultId,
@@ -379,7 +382,7 @@ describe("AddEntryUseCase", () => {
         ...originalSession.unlockedVault,
         vault: {
           ...originalSession.unlockedVault.vault,
-          syncConfig: ctx.values.syncConfig,
+          syncTarget: ctx.values.syncTarget,
         },
       },
     };
@@ -418,8 +421,8 @@ describe("AddEntryUseCase", () => {
       }),
     ).rejects.toBeInstanceOf(SyncConflictDetectedError);
 
-    expect(ctx.vaultSnapshot.restoreLocalVaultSnapshot).not.toHaveBeenCalled();
-    expect(ctx.saved.unlockedVaultSession?.sessionId).toBe("new-session-id");
+    expect(ctx.vaultSnapshot.restoreLocalVaultSnapshot).toHaveBeenCalledOnce();
+    expect(ctx.saved.unlockedVaultSession).toBeUndefined();
   });
 
   it("invalidates the session when synced upload restoration fails", async () => {
@@ -439,7 +442,7 @@ describe("AddEntryUseCase", () => {
         ...session.unlockedVault,
         vault: {
           ...session.unlockedVault.vault,
-          syncConfig: ctx.values.syncConfig,
+          syncTarget: ctx.values.syncTarget,
         },
       },
     };

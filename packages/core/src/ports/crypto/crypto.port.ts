@@ -7,14 +7,19 @@ import type {
   SerializedWrapped,
 } from "../../domain/crypto/protected-artifact";
 import type {
-  DeviceEnrollmentSecret,
+  DeviceLocalProtectionKey,
   DevicePrivateSignKey,
   DevicePublicSignKey,
   DeviceSignKeyPair,
-  DeviceSlotKey,
+  DeviceVaultKeyPair,
+  DeviceVaultPrivateKey,
+  DeviceVaultPublicKey,
 } from "../../domain/device-trust/brand-keys";
-import type { DeviceEnrollmentAuthorizationPayload } from "../../domain/device-trust/device-enrollment-authorization";
 import type {
+  DeviceEnrollmentPrivateState,
+  DeviceEnrollmentPrivateStateProtectionKey,
+  DeviceEnrollmentRequest,
+  DeviceEnrollmentRequestPayload,
   LocalVaultTrustCheckpoint,
   LocalVaultTrustCheckpointPayload,
   VaultTrustCertificate,
@@ -27,6 +32,15 @@ import type {
 import type { RawMasterPassword } from "../../domain/master-password";
 import type { RecoverySecretKey } from "../../domain/recovery/brand-keys";
 import type { VaultMasterKey } from "../../domain/snapshot/brand-keys";
+import type {
+  DeviceVaultKeyEnvelope,
+  DeviceVaultKeyEnvelopeContext,
+} from "../../domain/snapshot/key-slot";
+import type {
+  DeviceSyncCredentialEncryptionContext,
+  DeviceSyncCredentialState,
+  EncryptedDeviceSyncCredentialState,
+} from "../../domain/sync/device-sync-credential-state";
 import type { UnlockedVaultSessionPayloadKey } from "../../domain/session/unlocked-vault-session-payload-key";
 import type {
   UnsignedVaultSnapshot,
@@ -48,9 +62,9 @@ export interface CryptoPort {
 
   // Key generation
   generateDeviceSignKeyPair: () => Promise<DeviceSignKeyPair>;
+  generateDeviceVaultKeyPair: () => Promise<DeviceVaultKeyPair>;
+  generateDeviceLocalProtectionKey: () => Promise<DeviceLocalProtectionKey>;
   generateVaultMasterKey: () => Promise<VaultMasterKey>;
-  generateDeviceSlotKey: () => Promise<DeviceSlotKey>;
-  generateDeviceEnrollmentSecret: () => Promise<DeviceEnrollmentSecret>;
   generateRecoveryKey: () => Promise<RecoverySecretKey>;
   generateUnlockedVaultSessionPayloadKey: () => Promise<UnlockedVaultSessionPayloadKey>;
 
@@ -72,14 +86,10 @@ export interface CryptoPort {
     recoveryKey: RecoverySecretKey,
     salt: RandomBytes,
   ) => Promise<ProtectionKeyFor<LocalKeysPayload>>;
-
-  // Vault master key slot protection
-  deriveDeviceSlotVaultMasterKeyProtectionKey: (
-    deviceSlotKey: DeviceSlotKey,
-  ) => Promise<ProtectionKeyFor<VaultMasterKey>>;
-  deriveEnrollmentVaultMasterKeyProtectionKey: (
-    enrollmentSecret: DeviceEnrollmentSecret,
-  ) => Promise<ProtectionKeyFor<VaultMasterKey>>;
+  deriveDeviceEnrollmentPrivateStateProtectionKey: (
+    localRootKey: LocalRootKey,
+    salt: RandomBytes,
+  ) => Promise<DeviceEnrollmentPrivateStateProtectionKey>;
 
   // Key wrapping
   wrapLocalKeysPayload: (
@@ -90,19 +100,31 @@ export interface CryptoPort {
     protectedLocalKeys: SerializedWrapped<LocalKeysPayload>,
     protectionKey: ProtectionKeyFor<LocalKeysPayload>,
   ) => Promise<LocalKeysPayload>;
-  wrapVaultMasterKey: (
+  wrapDeviceEnrollmentPrivateState: (
+    privateState: DeviceEnrollmentPrivateState,
+    protectionKey: DeviceEnrollmentPrivateStateProtectionKey,
+  ) => Promise<SerializedWrapped<DeviceEnrollmentPrivateState>>;
+  unwrapDeviceEnrollmentPrivateState: (
+    protectedPrivateState: SerializedWrapped<DeviceEnrollmentPrivateState>,
+    protectionKey: DeviceEnrollmentPrivateStateProtectionKey,
+  ) => Promise<DeviceEnrollmentPrivateState>;
+
+  // Recipient-specific vault key envelopes
+  createDeviceVaultKeyEnvelope: (
     vaultMasterKey: VaultMasterKey,
-    protectionKey: ProtectionKeyFor<VaultMasterKey>,
-  ) => Promise<SerializedWrapped<VaultMasterKey>>;
-  unwrapVaultMasterKey: (
-    protectedVaultMasterKey: SerializedWrapped<VaultMasterKey>,
-    protectionKey: ProtectionKeyFor<VaultMasterKey>,
+    recipientPublicKey: DeviceVaultPublicKey,
+    context: DeviceVaultKeyEnvelopeContext,
+  ) => Promise<DeviceVaultKeyEnvelope>;
+  openDeviceVaultKeyEnvelope: (
+    envelope: DeviceVaultKeyEnvelope,
+    recipientPrivateKey: DeviceVaultPrivateKey,
+    context: DeviceVaultKeyEnvelopeContext,
   ) => Promise<VaultMasterKey>;
-  digestProtectedVaultMasterKey: (
-    protectedVaultMasterKey: SerializedWrapped<VaultMasterKey>,
-  ) => Promise<string>;
   digestDevicePublicSignKey: (
     publicSignKey: DevicePublicSignKey,
+  ) => Promise<string>;
+  digestDevicePublicVaultKey: (
+    publicVaultKey: DeviceVaultPublicKey,
   ) => Promise<string>;
 
   // Vault snapshot content protection
@@ -158,6 +180,10 @@ export interface CryptoPort {
     publicKey: DevicePublicSignKey,
     privateKey: DevicePrivateSignKey,
   ) => Promise<boolean>;
+  verifyDeviceVaultKeyPair: (
+    publicKey: DeviceVaultPublicKey,
+    privateKey: DeviceVaultPrivateKey,
+  ) => Promise<boolean>;
 
   // Vault trust
   digestVaultTrustCertificate: (
@@ -181,14 +207,24 @@ export interface CryptoPort {
     publicKey: DevicePublicSignKey,
   ) => Promise<boolean>;
 
-  // Device enrollment authorization
-  signDeviceEnrollmentAuthorization: (
-    authorization: DeviceEnrollmentAuthorizationPayload,
+  // Device enrollment
+  signDeviceEnrollmentRequest: (
+    request: DeviceEnrollmentRequestPayload,
     privateKey: DevicePrivateSignKey,
-  ) => Promise<SerializedSignatureOf<DeviceEnrollmentAuthorizationPayload>>;
-  verifyDeviceEnrollmentAuthorizationSignature: (
-    authorization: DeviceEnrollmentAuthorizationPayload,
-    signature: SerializedSignatureOf<DeviceEnrollmentAuthorizationPayload>,
-    publicKey: DevicePublicSignKey,
+  ) => Promise<SerializedSignatureOf<DeviceEnrollmentRequestPayload>>;
+  verifyDeviceEnrollmentRequestSignature: (
+    request: DeviceEnrollmentRequest,
   ) => Promise<boolean>;
+
+  // Local sync credential protection
+  encryptDeviceSyncCredentialState: (
+    state: DeviceSyncCredentialState,
+    protectionKey: DeviceLocalProtectionKey,
+    context: DeviceSyncCredentialEncryptionContext,
+  ) => Promise<EncryptedDeviceSyncCredentialState>;
+  decryptDeviceSyncCredentialState: (
+    encryptedState: EncryptedDeviceSyncCredentialState,
+    protectionKey: DeviceLocalProtectionKey,
+    context: DeviceSyncCredentialEncryptionContext,
+  ) => Promise<DeviceSyncCredentialState>;
 }

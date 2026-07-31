@@ -60,8 +60,9 @@ describe("ChangeMasterPasswordUseCase", () => {
     );
     expect(ctx.ports.crypto.wrapLocalKeysPayload).toHaveBeenCalledWith(
       {
-        deviceSlotKey: ctx.values.deviceSlotKey,
         devicePrivateSignKey: ctx.values.devicePrivateSignKey,
+        devicePrivateVaultKey: ctx.values.devicePrivateVaultKey,
+        deviceLocalProtectionKey: ctx.values.deviceLocalProtectionKey,
         vaultTrustAnchor: ctx.values.vaultTrustAnchor,
       },
       ctx.values.newLocalKeysProtectionKey,

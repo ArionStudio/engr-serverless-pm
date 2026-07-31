@@ -6,7 +6,7 @@ import {
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import type { VaultSnapshotDescriptor } from "../../domain/snapshot/vault-snapshot-descriptor.type";
 import type { UnlockedVault } from "../../domain/session/unlocked-vault";
-import type { SyncConfig } from "../../domain/sync/sync-config.type";
+import type { SyncAccess } from "../../domain/sync/sync-config.type";
 import type { VersionVector } from "../../domain/versioning/version-vector.type";
 import {
   RemoteVaultSnapshotAheadError,
@@ -14,8 +14,13 @@ import {
   RemoteVaultSnapshotIntegrityError,
   RemoteVaultSnapshotNotFoundError,
   SyncConflictDetectedError,
+  LocalSyncCredentialsMissingError,
+  ProviderCredentialRevocationPendingError,
+  SyncRemovalPendingError,
 } from "../../errors/sync.errors";
+import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
+import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import type { UnlockedVaultSessionService } from "../session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../snapshot/vault-snapshot.service";
 
@@ -23,15 +28,21 @@ export class VaultSyncGuardService {
   private readonly syncProvider: SyncProviderPort;
   private readonly vaultSnapshot: VaultSnapshotService;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
+  private readonly crypto: CryptoPort;
+  private readonly vaultLocalRepository: VaultLocalRepositoryPort;
 
   constructor(
     syncProvider: SyncProviderPort,
     vaultSnapshot: VaultSnapshotService,
     unlockedVaultSession: UnlockedVaultSessionService,
+    crypto: CryptoPort,
+    vaultLocalRepository: VaultLocalRepositoryPort,
   ) {
     this.syncProvider = syncProvider;
     this.vaultSnapshot = vaultSnapshot;
     this.unlockedVaultSession = unlockedVaultSession;
+    this.crypto = crypto;
+    this.vaultLocalRepository = vaultLocalRepository;
   }
 
   async requireReadyForLocalMutation(
@@ -54,7 +65,7 @@ export class VaultSyncGuardService {
     sourceSnapshotVersionVector: VersionVector,
   ): Promise<{
     readonly localSnapshot: VaultSnapshot;
-    readonly syncConfig?: SyncConfig;
+    readonly syncAccess?: SyncAccess;
     readonly remoteSnapshotDescriptor?: VaultSnapshotDescriptor;
   }> {
     const localSnapshot =
@@ -63,20 +74,22 @@ export class VaultSyncGuardService {
         unlockedVault,
         sourceSnapshotVersionVector,
       );
-    const syncConfig = unlockedVault.vault.syncConfig;
+    const syncTarget = unlockedVault.vault.syncTarget;
 
-    if (
-      syncConfig === undefined ||
-      unlockedVault.vault.syncRemovalPending === true
-    ) {
+    if (syncTarget === undefined) {
       return {
         localSnapshot,
       };
     }
 
+    if (unlockedVault.vault.syncRemovalPending === true) {
+      throw new SyncRemovalPendingError(vaultId, "modify vault data");
+    }
+
+    const syncAccess = await this.requireSyncAccess(vaultId, unlockedVault);
     const remoteSnapshotDescriptor =
       await this.syncProvider.getLatestVaultSnapshotDescriptor(
-        syncConfig,
+        syncAccess,
         vaultId,
       );
 
@@ -113,16 +126,92 @@ export class VaultSyncGuardService {
 
     return {
       localSnapshot,
-      syncConfig,
+      syncAccess,
       remoteSnapshotDescriptor,
     };
+  }
+
+  async requireSyncAccess(
+    vaultId: string,
+    unlockedVault: UnlockedVault,
+  ): Promise<SyncAccess> {
+    const syncTarget = unlockedVault.vault.syncTarget;
+
+    if (syncTarget === undefined) {
+      throw new LocalSyncCredentialsMissingError(vaultId);
+    }
+
+    const encryptedState =
+      await this.vaultLocalRepository.getDeviceSyncCredentialState(vaultId);
+
+    if (encryptedState === null) {
+      throw new LocalSyncCredentialsMissingError(vaultId);
+    }
+
+    const state = await this.crypto.decryptDeviceSyncCredentialState(
+      encryptedState,
+      unlockedVault.deviceLocalProtectionKey,
+      {
+        vaultId,
+        deviceId: unlockedVault.deviceId,
+        provider: syncTarget.provider,
+        target: syncTarget,
+      },
+    );
+
+    if (state.currentCredentials.provider !== syncTarget.provider) {
+      throw new LocalSyncCredentialsMissingError(vaultId);
+    }
+
+    return {
+      target: syncTarget,
+      credentials: state.currentCredentials,
+    };
+  }
+
+  async requireProviderCredentialRevocationComplete(
+    vaultId: string,
+    unlockedVault: UnlockedVault,
+    operation: string,
+  ): Promise<void> {
+    if (unlockedVault.vault.providerCredentialRevocationPending !== undefined) {
+      throw new ProviderCredentialRevocationPendingError(vaultId, operation);
+    }
+
+    const syncTarget = unlockedVault.vault.syncTarget;
+
+    if (syncTarget === undefined) {
+      return;
+    }
+
+    const encryptedState =
+      await this.vaultLocalRepository.getDeviceSyncCredentialState(vaultId);
+
+    if (encryptedState === null) {
+      throw new LocalSyncCredentialsMissingError(vaultId);
+    }
+
+    const state = await this.crypto.decryptDeviceSyncCredentialState(
+      encryptedState,
+      unlockedVault.deviceLocalProtectionKey,
+      {
+        vaultId,
+        deviceId: unlockedVault.deviceId,
+        provider: syncTarget.provider,
+        target: syncTarget,
+      },
+    );
+
+    if (state.previousCredentials !== undefined) {
+      throw new ProviderCredentialRevocationPendingError(vaultId, operation);
+    }
   }
 
   async uploadPersistedLocalMutation(
     vaultId: string,
     syncState: {
       readonly localSnapshot: VaultSnapshot;
-      readonly syncConfig?: SyncConfig;
+      readonly syncAccess?: SyncAccess;
       readonly remoteSnapshotDescriptor?: VaultSnapshotDescriptor;
     },
     persistedSnapshot: VaultSnapshot,
@@ -130,7 +219,7 @@ export class VaultSyncGuardService {
     sessionId: string,
   ): Promise<void> {
     if (
-      syncState.syncConfig === undefined ||
+      syncState.syncAccess === undefined ||
       syncState.remoteSnapshotDescriptor === undefined
     ) {
       return;
@@ -138,12 +227,12 @@ export class VaultSyncGuardService {
 
     try {
       await this.syncProvider.uploadVaultSnapshot(
-        syncState.syncConfig,
+        syncState.syncAccess,
         persistedSnapshot,
         syncState.remoteSnapshotDescriptor,
       );
     } catch (error) {
-      await this.unlockedVaultSession.restoreIfSessionIsActive(
+      await this.unlockedVaultSession.restorePersistedState(
         sessionId,
         vaultId,
         async () => {
@@ -165,7 +254,7 @@ export class VaultSyncGuardService {
 
   async uploadPersistedInitialSyncSnapshot(
     vaultId: string,
-    syncConfig: SyncConfig,
+    syncAccess: SyncAccess,
     localSnapshot: VaultSnapshot,
     persistedSnapshot: VaultSnapshot,
     unlockedVault: UnlockedVault,
@@ -173,12 +262,12 @@ export class VaultSyncGuardService {
   ): Promise<void> {
     try {
       await this.syncProvider.uploadVaultSnapshot(
-        syncConfig,
+        syncAccess,
         persistedSnapshot,
         null,
       );
     } catch (error) {
-      await this.unlockedVaultSession.restoreIfSessionIsActive(
+      await this.unlockedVaultSession.restorePersistedState(
         sessionId,
         vaultId,
         async () => {
@@ -186,6 +275,7 @@ export class VaultSyncGuardService {
             localSnapshot,
             persistedSnapshot,
             unlockedVault,
+            null,
           );
         },
       );

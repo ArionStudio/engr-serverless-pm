@@ -1,7 +1,10 @@
 import { vi } from "vitest";
 import { CURRENT_ALGORITHM_SUITE } from "../../domain/crypto/algorithm-suite.const";
 import type { RandomBytes } from "../../domain/crypto/brand-keys";
-import type { DeviceSignKeyPair } from "../../domain/device-trust/brand-keys";
+import type {
+  DeviceSignKeyPair,
+  DeviceVaultKeyPair,
+} from "../../domain/device-trust/brand-keys";
 import type { DeviceAccessMaterial } from "../../domain/device-trust/device-access-material";
 import type { DeviceAccessRecoveryBackup } from "../../domain/device-trust/device-access-recovery-backup";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
@@ -26,7 +29,10 @@ import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-rep
 import { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import { createCoreTestValues, type CoreTestValues } from "./values";
 import type { LocalVaultTrustCheckpoint } from "../../domain/device-trust";
+import type { EncryptedDeviceSyncCredentialState } from "../../domain/sync";
+import type { PendingDeviceEnrollment } from "../../domain/device-trust";
 import { LocalVaultSnapshotChangedError } from "../../errors/vault-snapshot.errors";
+import { LocalVaultAlreadyInitializedError } from "../../errors/vault-lifecycle.errors";
 
 export type SavedCoreRecords = {
   localVaultDescriptor?: LocalVaultDescriptor;
@@ -35,6 +41,8 @@ export type SavedCoreRecords = {
   vaultSnapshot?: VaultSnapshot;
   vaultSnapshotDigest?: string;
   localVaultTrustCheckpoint?: LocalVaultTrustCheckpoint;
+  deviceSyncCredentialState?: EncryptedDeviceSyncCredentialState;
+  pendingDeviceEnrollment?: PendingDeviceEnrollment;
   unlockedVaultSession?: UnlockedVaultSession;
   unlockedVaultSessionMaterial?: UnlockedVaultSessionMaterial;
   encryptedUnlockedVaultSessionPayload?: EncryptedUnlockedVaultSessionPayload;
@@ -50,6 +58,7 @@ export function createCoreTestPorts(
 ) {
   const saved: SavedCoreRecords = {
     vaultSnapshotDigest: values.vaultSnapshotDigest,
+    deviceSyncCredentialState: values.encryptedDeviceSyncCredentialState,
   };
   let unlockedVaultSessionMirror: UnlockedVaultSession | undefined;
 
@@ -67,6 +76,8 @@ export function createCoreTestPorts(
       deviceId: session.unlockedVault.deviceId,
       vaultMasterKey: session.unlockedVault.vaultMasterKey,
       devicePrivateSignKey: session.unlockedVault.devicePrivateSignKey,
+      devicePrivateVaultKey: session.unlockedVault.devicePrivateVaultKey,
+      deviceLocalProtectionKey: session.unlockedVault.deviceLocalProtectionKey,
       trustedSnapshotContext: session.unlockedVault.trustedSnapshotContext,
       vaultTrustAnchor: session.unlockedVault.vaultTrustAnchor,
       payloadKey: values.unlockedVaultSessionPayloadKey,
@@ -104,6 +115,10 @@ export function createCoreTestPorts(
     publicKey: values.devicePublicSignKey,
     privateKey: values.devicePrivateSignKey,
   };
+  const deviceVaultKeyPair: DeviceVaultKeyPair = {
+    publicKey: values.devicePublicVaultKey,
+    privateKey: values.devicePrivateVaultKey,
+  };
 
   const crypto: CryptoPort = {
     algorithmSuite: CURRENT_ALGORITHM_SUITE,
@@ -113,11 +128,11 @@ export function createCoreTestPorts(
     hashSecretValue: vi.fn(async (value) => `hash:${value}`),
     compareSecretValueHash: vi.fn(async (left, right) => left === right),
     generateDeviceSignKeyPair: vi.fn(async () => deviceSignKeyPair),
-    generateVaultMasterKey: vi.fn(async () => values.vaultMasterKey),
-    generateDeviceSlotKey: vi.fn(async () => values.deviceSlotKey),
-    generateDeviceEnrollmentSecret: vi.fn(
-      async () => values.deviceEnrollmentSecret,
+    generateDeviceVaultKeyPair: vi.fn(async () => deviceVaultKeyPair),
+    generateDeviceLocalProtectionKey: vi.fn(
+      async () => values.deviceLocalProtectionKey,
     ),
+    generateVaultMasterKey: vi.fn(async () => values.vaultMasterKey),
     generateRecoveryKey: vi.fn(async () => values.recoverySecretKey),
     generateUnlockedVaultSessionPayloadKey: vi.fn(
       async () => values.unlockedVaultSessionPayloadKey,
@@ -147,11 +162,8 @@ export function createCoreTestPorts(
         ? values.rotatedRecoveryLocalKeysProtectionKey
         : values.recoveryLocalKeysProtectionKey,
     ),
-    deriveDeviceSlotVaultMasterKeyProtectionKey: vi.fn(
-      async () => values.deviceSlotVaultMasterKeyProtectionKey,
-    ),
-    deriveEnrollmentVaultMasterKeyProtectionKey: vi.fn(
-      async () => values.enrollmentVaultMasterKeyProtectionKey,
+    deriveDeviceEnrollmentPrivateStateProtectionKey: vi.fn(
+      async () => values.pendingEnrollmentProtectionKey,
     ),
     wrapLocalKeysPayload: vi.fn(async (_localKeysPayload, protectionKey) => {
       if (protectionKey === values.newLocalKeysProtectionKey) {
@@ -169,25 +181,41 @@ export function createCoreTestPorts(
       return values.protectedLocalKeys;
     }),
     unwrapLocalKeysPayload: vi.fn(async () => ({
-      deviceSlotKey: values.deviceSlotKey,
       devicePrivateSignKey: values.devicePrivateSignKey,
+      devicePrivateVaultKey: values.devicePrivateVaultKey,
+      deviceLocalProtectionKey: values.deviceLocalProtectionKey,
       vaultTrustAnchor: values.vaultTrustAnchor,
     })),
-    wrapVaultMasterKey: vi.fn(async (_vaultMasterKey, protectionKey) => {
-      if (protectionKey === values.enrollmentVaultMasterKeyProtectionKey) {
-        return values.protectedEnrollmentVaultMasterKey;
-      }
-
-      return values.protectedDeviceVaultMasterKey;
-    }),
-    unwrapVaultMasterKey: vi.fn(async () => values.vaultMasterKey),
-    digestProtectedVaultMasterKey: vi.fn(
-      async () => values.protectedEnrollmentVaultMasterKeyDigest,
+    wrapDeviceEnrollmentPrivateState: vi.fn(
+      async () => values.protectedPendingDeviceEnrollment,
     ),
+    unwrapDeviceEnrollmentPrivateState: vi.fn(
+      async () => values.pendingDeviceEnrollmentPrivateState,
+    ),
+    createDeviceVaultKeyEnvelope: vi.fn(
+      async (_vaultMasterKey, recipientPublicKey, context) =>
+        recipientPublicKey === values.pendingDevicePublicVaultKey
+          ? {
+              ...values.pendingDeviceVaultKeyEnvelope,
+              recipientDeviceId: context.deviceId,
+              vaultKeyGeneration: context.vaultKeyGeneration,
+            }
+          : {
+              ...values.vaultKeyEnvelope,
+              recipientDeviceId: context.deviceId,
+              vaultKeyGeneration: context.vaultKeyGeneration,
+            },
+    ),
+    openDeviceVaultKeyEnvelope: vi.fn(async () => values.vaultMasterKey),
     digestDevicePublicSignKey: vi.fn(async (publicKey) =>
       publicKey === values.pendingDevicePublicSignKey
         ? values.pendingDevicePublicSignKeyDigest
         : values.devicePublicSignKeyDigest,
+    ),
+    digestDevicePublicVaultKey: vi.fn(async (publicKey) =>
+      publicKey === values.pendingDevicePublicVaultKey
+        ? "pending-device-public-vault-key-digest"
+        : "device-public-vault-key-digest",
     ),
     encryptVaultSnapshotContent: vi.fn(async () => values.encryptedVault),
     decryptVaultSnapshotContent: vi.fn(async () => values.decryptedVault),
@@ -205,6 +233,7 @@ export function createCoreTestPorts(
     signVaultSnapshot: vi.fn(async () => values.snapshotSignature),
     verifyVaultSnapshotSignature: vi.fn(async () => true),
     verifyDeviceSignKeyPair: vi.fn(async () => true),
+    verifyDeviceVaultKeyPair: vi.fn(async () => true),
     digestVaultTrustCertificate: vi.fn(
       async () => values.vaultTrustCertificateDigest,
     ),
@@ -217,10 +246,27 @@ export function createCoreTestPorts(
       async () => values.localVaultTrustCheckpoint.signature,
     ),
     verifyLocalVaultTrustCheckpointSignature: vi.fn(async () => true),
-    signDeviceEnrollmentAuthorization: vi.fn(
-      async () => values.deviceEnrollmentAuthorizationSignature,
+    signDeviceEnrollmentRequest: vi.fn(
+      async () => values.enrollmentRequestSignature,
     ),
-    verifyDeviceEnrollmentAuthorizationSignature: vi.fn(async () => true),
+    verifyDeviceEnrollmentRequestSignature: vi.fn(async () => true),
+    encryptDeviceSyncCredentialState: vi.fn(async (state) => {
+      return state.previousCredentials === undefined
+        ? values.encryptedDeviceSyncCredentialState
+        : values.replacementEncryptedDeviceSyncCredentialState;
+    }),
+    decryptDeviceSyncCredentialState: vi.fn(async (encryptedState) =>
+      encryptedState === values.replacementEncryptedDeviceSyncCredentialState
+        ? {
+            currentCredentials: values.replacementSyncCredentials,
+            previousCredentials: {
+              credentials: values.syncCredentials,
+              revokedDeviceIds: [values.pendingDeviceId],
+              vaultKeyGeneration: 2,
+            },
+          }
+        : values.deviceSyncCredentialState,
+    ),
   };
 
   const bip39: Bip39Port = {
@@ -244,13 +290,25 @@ export function createCoreTestPorts(
         deviceAccessRecoveryBackup,
         snapshot,
         checkpoint,
+        syncCredentialState,
       }) => {
+        if (
+          saved.localVaultDescriptor !== undefined ||
+          saved.deviceAccessMaterial !== undefined ||
+          saved.deviceAccessRecoveryBackup !== undefined ||
+          saved.vaultSnapshot !== undefined ||
+          saved.localVaultTrustCheckpoint !== undefined
+        ) {
+          throw new LocalVaultAlreadyInitializedError(descriptor.vaultId);
+        }
+
         saved.localVaultDescriptor = descriptor;
         saved.deviceAccessMaterial = deviceAccessMaterial;
         saved.deviceAccessRecoveryBackup = deviceAccessRecoveryBackup;
         saved.vaultSnapshot = snapshot;
         saved.vaultSnapshotDigest = checkpoint.payload.snapshotDigest;
         saved.localVaultTrustCheckpoint = checkpoint;
+        saved.deviceSyncCredentialState = syncCredentialState;
       },
     ),
     removePersistedLocalVault: vi.fn(async () => {
@@ -260,11 +318,37 @@ export function createCoreTestPorts(
       saved.vaultSnapshot = undefined;
       saved.vaultSnapshotDigest = undefined;
       saved.localVaultTrustCheckpoint = undefined;
+      saved.deviceSyncCredentialState = undefined;
     }),
+    removePersistedLocalVaultIfSnapshotMatches: vi.fn(
+      async (vaultId, expectedSnapshotDigest) => {
+        if (
+          saved.vaultSnapshot?.metadata.id !== vaultId ||
+          saved.vaultSnapshotDigest !== expectedSnapshotDigest
+        ) {
+          return false;
+        }
+
+        saved.localVaultDescriptor = undefined;
+        saved.deviceAccessMaterial = undefined;
+        saved.deviceAccessRecoveryBackup = undefined;
+        saved.vaultSnapshot = undefined;
+        saved.vaultSnapshotDigest = undefined;
+        saved.localVaultTrustCheckpoint = undefined;
+        saved.deviceSyncCredentialState = undefined;
+        return true;
+      },
+    ),
     saveLocalVaultDescriptor: vi.fn(async (descriptor) => {
       saved.localVaultDescriptor = descriptor;
     }),
-    getLocalVaultDescriptor: vi.fn(),
+    getLocalVaultDescriptor: vi.fn(async (vaultId) => {
+      const descriptor = saved.localVaultDescriptor;
+
+      return descriptor !== undefined && descriptor.vaultId === vaultId
+        ? descriptor
+        : null;
+    }),
     listLocalVaultDescriptors: vi.fn(),
     removeLocalVaultDescriptor: vi.fn(),
     saveDeviceAccessMaterial: vi.fn(async (deviceAccessMaterial) => {
@@ -320,7 +404,12 @@ export function createCoreTestPorts(
     }),
     removeVaultSnapshot: vi.fn(),
     saveVaultSnapshotWithCheckpoint: vi.fn(
-      async ({ expectedSnapshotDigest, snapshot, checkpoint }) => {
+      async ({
+        expectedSnapshotDigest,
+        snapshot,
+        checkpoint,
+        syncCredentialState,
+      }) => {
         const currentSnapshot = saved.vaultSnapshot;
 
         if (
@@ -334,6 +423,10 @@ export function createCoreTestPorts(
         saved.vaultSnapshot = snapshot;
         saved.vaultSnapshotDigest = checkpoint.payload.snapshotDigest;
         saved.localVaultTrustCheckpoint = checkpoint;
+
+        if (syncCredentialState !== undefined) {
+          saved.deviceSyncCredentialState = syncCredentialState ?? undefined;
+        }
       },
     ),
     getLocalVaultTrustCheckpoint: vi.fn(async (vaultId) => {
@@ -345,6 +438,32 @@ export function createCoreTestPorts(
     }),
     removeLocalVaultTrustCheckpoint: vi.fn(async () => {
       saved.localVaultTrustCheckpoint = undefined;
+    }),
+    saveDeviceSyncCredentialState: vi.fn(async (_vaultId, state) => {
+      saved.deviceSyncCredentialState = state;
+    }),
+    getDeviceSyncCredentialState: vi.fn(async (vaultId) =>
+      vaultId === values.vaultId
+        ? (saved.deviceSyncCredentialState ?? null)
+        : null,
+    ),
+    removeDeviceSyncCredentialState: vi.fn(async () => {
+      saved.deviceSyncCredentialState = undefined;
+    }),
+    savePendingDeviceEnrollment: vi.fn(async (enrollment) => {
+      saved.pendingDeviceEnrollment = enrollment;
+    }),
+    getPendingDeviceEnrollment: vi.fn(async (requestId) => {
+      const enrollment = saved.pendingDeviceEnrollment;
+
+      return enrollment !== undefined && enrollment.requestId === requestId
+        ? enrollment
+        : null;
+    }),
+    removePendingDeviceEnrollment: vi.fn(async (requestId) => {
+      if (saved.pendingDeviceEnrollment?.requestId === requestId) {
+        saved.pendingDeviceEnrollment = undefined;
+      }
     }),
   };
 
@@ -474,11 +593,16 @@ export function createCoreTestPorts(
   };
 
   const syncProvider: SyncProviderPort = {
-    setup: vi.fn(async () => values.syncConfig),
+    setup: vi.fn(async (input) =>
+      input === values.replacementSyncConfigInput
+        ? values.replacementSyncAccess
+        : values.syncAccess,
+    ),
     getLatestVaultSnapshotDescriptor: vi.fn(async () => null),
     downloadVaultSnapshot: vi.fn(),
     uploadVaultSnapshot: vi.fn(async () => undefined),
     removeVaultSnapshots: vi.fn(async () => undefined),
+    checkVaultAccess: vi.fn(async () => "authentication_rejected" as const),
   };
 
   const vaultLockTasks: VaultLockTaskRepositoryPort = {

@@ -14,6 +14,7 @@ import {
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
+import type { VaultSyncGuardService } from "../../services/sync";
 
 export type SyncUploadCommandParams = {
   readonly vaultId: string;
@@ -23,15 +24,18 @@ export class SyncUploadUseCase {
   private readonly syncProvider: SyncProviderPort;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
   private readonly vaultSnapshot: VaultSnapshotService;
+  private readonly vaultSyncGuard: VaultSyncGuardService;
 
   constructor(
     syncProvider: SyncProviderPort,
     unlockedVaultSession: UnlockedVaultSessionService,
     vaultSnapshot: VaultSnapshotService,
+    vaultSyncGuard: VaultSyncGuardService,
   ) {
     this.syncProvider = syncProvider;
     this.unlockedVaultSession = unlockedVaultSession;
     this.vaultSnapshot = vaultSnapshot;
+    this.vaultSyncGuard = vaultSyncGuard;
   }
 
   async execute(params: SyncUploadCommandParams): Promise<void> {
@@ -40,9 +44,9 @@ export class SyncUploadUseCase {
         params.vaultId,
         "sync upload",
       );
-    const syncConfig = unlockedVault.vault.syncConfig;
+    const syncTarget = unlockedVault.vault.syncTarget;
 
-    if (syncConfig === undefined) {
+    if (syncTarget === undefined) {
       throw new SyncNotConfiguredError(params.vaultId, "sync upload");
     }
 
@@ -56,9 +60,13 @@ export class SyncUploadUseCase {
         unlockedVault,
         sourceSnapshotVersionVector,
       );
+    const syncAccess = await this.vaultSyncGuard.requireSyncAccess(
+      params.vaultId,
+      unlockedVault,
+    );
     const remoteSnapshotDescriptor =
       await this.syncProvider.getLatestVaultSnapshotDescriptor(
-        syncConfig,
+        syncAccess,
         params.vaultId,
       );
 
@@ -96,7 +104,7 @@ export class SyncUploadUseCase {
 
     try {
       await this.syncProvider.uploadVaultSnapshot(
-        syncConfig,
+        syncAccess,
         localSnapshot,
         remoteSnapshotDescriptor,
       );

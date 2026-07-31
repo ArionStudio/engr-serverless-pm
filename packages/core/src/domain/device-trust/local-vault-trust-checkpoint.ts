@@ -7,6 +7,7 @@ export type LocalVaultTrustCheckpointPayload = {
   readonly deviceId: string;
   readonly trustGeneration: number;
   readonly trustCertificateDigest: string;
+  readonly vaultKeyGeneration: number;
   readonly snapshotVersionVector: VersionVector;
   readonly snapshotDigest: string;
 };

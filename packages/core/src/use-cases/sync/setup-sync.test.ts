@@ -1,55 +1,48 @@
 import { describe, expect, it, vi } from "vitest";
-import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
-import { createCoreTestValues } from "../../__tests__/fixtures/values";
-import {
-  createVaultSnapshotServiceMock,
-  createUnlockedVaultWithEntries,
-} from "../../__tests__/fixtures/vault-entries";
+import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
+import { createUnlockedVaultWithEntries } from "../../__tests__/fixtures/vault-entries";
 import {
   InvalidSyncConfigError,
   RemoteVaultSnapshotAheadError,
-  SyncAlreadyConfiguredError,
 } from "../../errors/sync.errors";
-import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
+import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import { VaultSyncGuardService } from "../../services/sync";
 import { SetupSyncUseCase } from "./setup-sync";
 
 function createContext() {
-  const values = createCoreTestValues();
-  const ports = createCoreTestPorts(values);
-  const vaultSnapshot = createVaultSnapshotServiceMock(values);
-  const vaultSyncGuard = new VaultSyncGuardService(
-    ports.syncProvider,
-    vaultSnapshot,
-    ports.sessionServices.unlockedVaultSession,
+  const ctx = createUnlockVaultTestContext();
+  ctx.saved.deviceSyncCredentialState = undefined;
+  ctx.saved.unlockedVaultSession = {
+    sessionId: ctx.values.sessionId,
+    unlockedVault: createUnlockedVaultWithEntries(ctx.values, []),
+    sourceSnapshotVersionVector:
+      ctx.vaultSnapshot.metadata.snapshotVersionVector,
+  };
+  const snapshotService = new VaultSnapshotService(
+    ctx.ports.crypto,
+    ctx.ports.clock,
+    ctx.ports.vaultLocalRepository,
   );
-  const unlockedVault = createUnlockedVaultWithEntries(values, []);
+  const guard = new VaultSyncGuardService(
+    ctx.ports.syncProvider,
+    snapshotService,
+    ctx.ports.sessionServices.unlockedVaultSession,
+    ctx.ports.crypto,
+    ctx.ports.vaultLocalRepository,
+  );
+  const useCase = new SetupSyncUseCase(
+    ctx.ports.syncProvider,
+    ctx.ports.sessionServices.unlockedVaultSession,
+    guard,
+    snapshotService,
+    ctx.ports.crypto,
+  );
 
-  ports.saved.unlockedVaultSession = {
-    sessionId: values.sessionId,
-    unlockedVault,
-    sourceSnapshotVersionVector: {
-      [values.deviceId]: 1,
-    },
-  };
-
-  return {
-    values,
-    ports,
-    saved: ports.saved,
-    vaultSnapshot,
-    unlockedVault,
-    useCase: new SetupSyncUseCase(
-      ports.syncProvider,
-      ports.sessionServices.unlockedVaultSession,
-      vaultSyncGuard,
-      vaultSnapshot,
-    ),
-  };
+  return { ...ctx, useCase };
 }
 
 describe("SetupSyncUseCase", () => {
-  it("stores normalized sync config in the unlocked vault and persists a new snapshot", async () => {
+  it("stores only the target in the vault and encrypts credentials locally", async () => {
     const ctx = createContext();
 
     await ctx.useCase.execute({
@@ -57,144 +50,47 @@ describe("SetupSyncUseCase", () => {
       syncConfig: ctx.values.syncConfigInput,
     });
 
-    expect(ctx.ports.syncProvider.setup).toHaveBeenCalledWith(
-      ctx.values.syncConfigInput,
-    );
     expect(
-      ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncConfig,
-    ).toEqual(ctx.values.syncConfig);
-    expect(ctx.saved.unlockedVaultSession?.sourceSnapshotVersionVector).toEqual(
-      {
-        [ctx.values.deviceId]: 2,
-      },
-    );
-    expect(ctx.vaultSnapshot.persistUnlockedVault).toHaveBeenCalledWith(
-      ctx.values.vaultId,
-      expect.objectContaining({
-        vault: expect.objectContaining({
-          syncConfig: ctx.values.syncConfig,
-        }),
-      }),
-      {
-        [ctx.values.deviceId]: 1,
-      },
+      ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncTarget,
+    ).toEqual(ctx.values.syncTarget);
+    expect(ctx.saved.deviceSyncCredentialState).toBe(
+      ctx.values.encryptedDeviceSyncCredentialState,
     );
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).toHaveBeenCalledWith(
-      ctx.values.syncConfig,
-      expect.objectContaining({
-        metadata: expect.objectContaining({
-          snapshotVersionVector: {
-            [ctx.values.deviceId]: 2,
-          },
-        }),
-      }),
+      ctx.values.syncAccess,
+      expect.anything(),
       null,
     );
-    expect(
-      vi.mocked(ctx.ports.syncProvider.setup).mock.invocationCallOrder[0],
-    ).toBeLessThan(
-      vi.mocked(ctx.vaultSnapshot.persistUnlockedVault).mock
-        .invocationCallOrder[0],
-    );
-    expect(
-      vi.mocked(ctx.vaultSnapshot.persistUnlockedVault).mock
-        .invocationCallOrder[0],
-    ).toBeLessThan(
-      vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mock
-        .invocationCallOrder[0],
-    );
-    expect(
-      vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mock
-        .invocationCallOrder[0],
-    ).toBeLessThan(
-      vi.mocked(
-        ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
-      ).mock.invocationCallOrder[0],
-    );
   });
 
-  it("fails when the target vault is not unlocked", async () => {
+  it("does not mutate state when provider setup rejects input", async () => {
     const ctx = createContext();
-    ctx.saved.unlockedVaultSession = undefined;
+    vi.mocked(ctx.ports.syncProvider.setup).mockRejectedValue(
+      new Error("Rejected local-test-secret-key"),
+    );
+    let caught: unknown;
 
-    await expect(
-      ctx.useCase.execute({
+    try {
+      await ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
         syncConfig: ctx.values.syncConfigInput,
-      }),
-    ).rejects.toBeInstanceOf(VaultMustBeUnlockedError);
+      });
+    } catch (error) {
+      caught = error;
+    }
 
-    expect(ctx.ports.syncProvider.setup).not.toHaveBeenCalled();
-    expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
+    expect(caught).toBeInstanceOf(InvalidSyncConfigError);
+    expect((caught as Error).cause).toBeUndefined();
+    expect(ctx.saved.deviceSyncCredentialState).toBeUndefined();
   });
 
-  it("fails when sync provider setup fails", async () => {
+  it("rejects a namespace that already contains a vault snapshot", async () => {
     const ctx = createContext();
-    vi.mocked(ctx.ports.syncProvider.setup).mockRejectedValueOnce(
-      new Error("invalid provider config"),
-    );
-
-    await expect(
-      ctx.useCase.execute({
-        vaultId: ctx.values.vaultId,
-        syncConfig: ctx.values.syncConfigInput,
-      }),
-    ).rejects.toBeInstanceOf(InvalidSyncConfigError);
-
-    expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
-    ).not.toHaveBeenCalled();
-    expect(
-      ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncConfig,
-    ).toBeUndefined();
-  });
-
-  it("does not update sync config when sync is already configured", async () => {
-    const ctx = createContext();
-    const session = ctx.saved.unlockedVaultSession!;
-
-    ctx.saved.unlockedVaultSession = {
-      ...session,
-      unlockedVault: {
-        ...session.unlockedVault,
-        vault: {
-          ...session.unlockedVault.vault,
-          syncConfig: ctx.values.syncConfig,
-        },
-      },
-    };
-
-    await expect(
-      ctx.useCase.execute({
-        vaultId: ctx.values.vaultId,
-        syncConfig: ctx.values.syncConfigInput,
-      }),
-    ).rejects.toBeInstanceOf(SyncAlreadyConfiguredError);
-
-    expect(ctx.ports.syncProvider.setup).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
-    ).not.toHaveBeenCalled();
-    expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
-    ).not.toHaveBeenCalled();
-    expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncConfig).toBe(
-      ctx.values.syncConfig,
-    );
-  });
-
-  it("does not enable sync when first-time setup target already has a remote snapshot", async () => {
-    const ctx = createContext();
-
     vi.mocked(
       ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
-    ).mockResolvedValueOnce({
+    ).mockResolvedValue({
       vaultId: ctx.values.vaultId,
-      snapshotVersionVector: {
-        [ctx.values.deviceId]: 1,
-      },
+      snapshotVersionVector: { [ctx.values.deviceId]: 1 },
       revisionTimestamp: ctx.values.timestamp,
     });
 
@@ -205,48 +101,14 @@ describe("SetupSyncUseCase", () => {
       }),
     ).rejects.toBeInstanceOf(RemoteVaultSnapshotAheadError);
 
-    expect(ctx.ports.syncProvider.setup).toHaveBeenCalledWith(
-      ctx.values.syncConfigInput,
-    );
-    expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
-    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
-    ).not.toHaveBeenCalled();
-    expect(
-      ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncConfig,
-    ).toBeUndefined();
+    expect(ctx.saved.deviceSyncCredentialState).toBeUndefined();
   });
 
-  it("does not save the session vault when snapshot persistence fails", async () => {
+  it("restores the target and credentials together when initial upload fails", async () => {
     const ctx = createContext();
-    vi.mocked(ctx.vaultSnapshot.persistUnlockedVault).mockRejectedValueOnce(
-      new Error("persist failed"),
-    );
-
-    await expect(
-      ctx.useCase.execute({
-        vaultId: ctx.values.vaultId,
-        syncConfig: ctx.values.syncConfigInput,
-      }),
-    ).rejects.toThrow("persist failed");
-
-    expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
-    ).not.toHaveBeenCalled();
-    expect(
-      ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncConfig,
-    ).toBeUndefined();
-  });
-
-  it("invalidates the session when first sync upload restoration fails", async () => {
-    const ctx = createContext();
-    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockRejectedValueOnce(
+    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockRejectedValue(
       new Error("upload failed"),
     );
-    vi.mocked(
-      ctx.vaultSnapshot.restoreLocalVaultSnapshot,
-    ).mockRejectedValueOnce(new Error("restore failed"));
 
     await expect(
       ctx.useCase.execute({
@@ -255,39 +117,10 @@ describe("SetupSyncUseCase", () => {
       }),
     ).rejects.toThrow("upload failed");
 
-    expect(ctx.saved.unlockedVaultSession).toBeUndefined();
+    expect(ctx.saved.deviceSyncCredentialState).toBeUndefined();
+    expect(ctx.saved.vaultSnapshot).toEqual(ctx.vaultSnapshot);
     expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("bubbles the session commit failure after snapshot persistence", async () => {
-    const ctx = createContext();
-    vi.mocked(
-      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
-    ).mockRejectedValueOnce(new Error("session save failed"));
-
-    await expect(
-      ctx.useCase.execute({
-        vaultId: ctx.values.vaultId,
-        syncConfig: ctx.values.syncConfigInput,
-      }),
-    ).rejects.toThrow("session save failed");
-
-    expect(ctx.vaultSnapshot.persistUnlockedVault).toHaveBeenCalled();
-  });
-
-  it("preserves the session commit error", async () => {
-    const ctx = createContext();
-    vi.mocked(
-      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
-    ).mockRejectedValueOnce(new Error("session save failed"));
-
-    await expect(
-      ctx.useCase.execute({
-        vaultId: ctx.values.vaultId,
-        syncConfig: ctx.values.syncConfigInput,
-      }),
-    ).rejects.toThrow("session save failed");
+      ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncTarget,
+    ).toBeUndefined();
   });
 });

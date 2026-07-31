@@ -2,11 +2,22 @@ import type { JsonValue } from "../common/json.type";
 
 export type SyncProvider = "aws-s3-v1";
 
-export type SyncConfig = {
+export type SyncTarget = {
   readonly provider: SyncProvider;
-  // Provider config is persisted inside the encrypted vault, so core requires it
-  // to be JSON-serializable. The provider-specific shape is intentionally owned
-  // by the adapter selected by `provider`; core must not model AWS/S3 fields or
-  // validate their semantics.
+  readonly targetConfig: JsonValue;
+};
+
+export type SyncCredentials = {
+  readonly provider: SyncProvider;
+  readonly credentialsConfig: JsonValue;
+};
+
+export type SyncAccess = {
+  readonly target: SyncTarget;
+  readonly credentials: SyncCredentials;
+};
+
+export type SyncSetupInput = {
+  readonly provider: SyncProvider;
   readonly providerConfig: JsonValue;
 };
