@@ -1,7 +1,33 @@
 # Sync Strategy
 
-> Sync is optional, local-first, and user-controlled. The project operates no
-> credential or coordination server.
+> Vault data is locally owned and sync is optional and user-controlled. The
+> project operates no credential or coordination server.
+
+## Operating modes
+
+A vault without sync configured operates locally and permits offline mutations.
+Once sync is configured, every mutation requires network access and an exact
+match between the verified local snapshot and the current remote descriptor.
+This synchronized mode assumes one user operates one device at a time.
+
+The remote object coordinates synchronized state but remains hostile storage.
+Remote content is authenticated and is never accepted silently. Local unlock
+and read behavior is unchanged by the mutation gate.
+
+Before a synchronized mutation, descriptor relations are handled as follows:
+
+| Relation                    | Behavior                                                         |
+| --------------------------- | ---------------------------------------------------------------- |
+| Exact descriptor equality   | Permit the mutation                                              |
+| `remote_ahead`              | Block and require explicit verified download and review          |
+| `local_ahead`               | Block and require explicit upload of the existing local snapshot |
+| `broken` or crossed vectors | Reject as an integrity failure or unsupported concurrency        |
+| Remote snapshot missing     | Reject because synchronized state cannot be confirmed            |
+
+A local-ahead snapshot is a recovery state, not a valid base for another
+mutation. The normal upload workflow must synchronize it before the mutation is
+retried. Concurrent or offline edits from multiple synchronized devices are not
+supported.
 
 ## Shared target and local credentials
 

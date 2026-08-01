@@ -2,15 +2,8 @@ import type {
   DeviceEnrollmentRequest,
   DeviceEnrollmentResponse,
 } from "../../domain/device-trust";
-import {
-  areVaultSnapshotDescriptorsEqual,
-  toVaultSnapshotDescriptor,
-} from "../../domain/snapshot";
 import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
-import {
-  DeviceEnrollmentIntegrityError,
-  DeviceEnrollmentVaultNotSynchronizedError,
-} from "../../errors/device-enrollment.errors";
+import { DeviceEnrollmentIntegrityError } from "../../errors/device-enrollment.errors";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
@@ -93,16 +86,6 @@ export class InitializeDeviceEnrollmentUseCase {
         params.vaultId,
         "request trust anchor does not match the vault",
       );
-    }
-
-    if (
-      syncState.remoteSnapshotDescriptor !== undefined &&
-      !areVaultSnapshotDescriptorsEqual(
-        syncState.remoteSnapshotDescriptor,
-        toVaultSnapshotDescriptor(params.vaultId, currentSnapshot),
-      )
-    ) {
-      throw new DeviceEnrollmentVaultNotSynchronizedError(params.vaultId);
     }
 
     const currentIdentity =

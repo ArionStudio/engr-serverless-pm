@@ -7,11 +7,11 @@ import type {
 } from "../../domain/device-trust";
 import { toVaultSnapshotDescriptor } from "../../domain/snapshot";
 import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
+import { DeviceEnrollmentIntegrityError } from "../../errors/device-enrollment.errors";
 import {
-  DeviceEnrollmentIntegrityError,
-  DeviceEnrollmentVaultNotSynchronizedError,
-} from "../../errors/device-enrollment.errors";
-import { ProviderCredentialRevocationPendingError } from "../../errors/sync.errors";
+  LocalVaultSnapshotAheadError,
+  ProviderCredentialRevocationPendingError,
+} from "../../errors/sync.errors";
 import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import { VaultSyncGuardService } from "../../services/sync";
 import { InitializeDeviceEnrollmentUseCase } from "./initialize-device-enrollment";
@@ -141,7 +141,7 @@ describe("InitializeDeviceEnrollmentUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("rejects authorization when the remote snapshot differs from local state", async () => {
+  it("rejects authorization when the local snapshot is ahead", async () => {
     const ctx = createContext();
     const session = ctx.saved.unlockedVaultSession;
 
@@ -173,7 +173,7 @@ describe("InitializeDeviceEnrollmentUseCase", () => {
         vaultId: ctx.values.vaultId,
         request: ctx.values.enrollmentRequest,
       }),
-    ).rejects.toBeInstanceOf(DeviceEnrollmentVaultNotSynchronizedError);
+    ).rejects.toBeInstanceOf(LocalVaultSnapshotAheadError);
 
     expect(
       ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
