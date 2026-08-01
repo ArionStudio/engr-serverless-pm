@@ -12,9 +12,9 @@ this report is the only created file.
 ### Blocking
 
 1. **The device-enrollment bundle is a complete, unprotected bearer credential.**
-   [packages/core/src/domain/device-trust/device-enrollment-bundle.ts:10](/home/arion/dev/engr-serverless-pm/packages/core/src/domain/device-trust/device-enrollment-bundle.ts:10),
-   [packages/core/src/use-cases/device-trust/initialize-device-enrollment.ts:260](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/device-trust/initialize-device-enrollment.ts:260),
-   [packages/core/src/use-cases/device-trust/perform-device-enrollment.ts:252](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/device-trust/perform-device-enrollment.ts:252)
+   [packages/core/src/domain/device-trust/device-enrollment-bundle.ts:10](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/domain/device-trust/device-enrollment-bundle.ts#L10),
+   [packages/core/src/use-cases/device-trust/initialize-device-enrollment.ts:260](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/device-trust/initialize-device-enrollment.ts#L260),
+   [packages/core/src/use-cases/device-trust/perform-device-enrollment.ts:252](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/device-trust/perform-device-enrollment.ts#L252)
 
    The one returned object contains normalized `syncConfig`, the secret that
    unwraps the vault master key, and the pending device's raw private signing
@@ -30,9 +30,9 @@ this report is the only created file.
 
 2. **Snapshot authenticity and freshness are anchored in attacker-controlled
    snapshots.**
-   [packages/core/src/use-cases/vault-lifecycle/unlock-vault.ts:119](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/vault-lifecycle/unlock-vault.ts:119),
-   [packages/core/src/use-cases/device-trust/recover-device-access.ts:107](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/device-trust/recover-device-access.ts:107),
-   [packages/core/src/services/snapshot/vault-snapshot.service.ts:212](/home/arion/dev/engr-serverless-pm/packages/core/src/services/snapshot/vault-snapshot.service.ts:212)
+   [packages/core/src/use-cases/vault-lifecycle/unlock-vault.ts:119](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/vault-lifecycle/unlock-vault.ts#L119),
+   [packages/core/src/use-cases/device-trust/recover-device-access.ts:107](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/device-trust/recover-device-access.ts#L107),
+   [packages/core/src/services/snapshot/vault-snapshot.service.ts:212](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/services/snapshot/vault-snapshot.service.ts#L212)
 
    Unlock and recovery select the signer key from the candidate snapshot.
    `requireCurrentSnapshotForUnlockedVault` goes further and passes the candidate
@@ -55,9 +55,9 @@ this report is the only created file.
 
 3. **Session commits are not generation-bound and can resurrect a vault after
    lock.**
-   [packages/core/src/services/session/unlocked-vault-session.service.ts:72](/home/arion/dev/engr-serverless-pm/packages/core/src/services/session/unlocked-vault-session.service.ts:72),
-   [packages/core/src/services/session/unlocked-vault-session.service.ts:105](/home/arion/dev/engr-serverless-pm/packages/core/src/services/session/unlocked-vault-session.service.ts:105),
-   [packages/core/src/services/session/unlocked-vault-session.service.ts:142](/home/arion/dev/engr-serverless-pm/packages/core/src/services/session/unlocked-vault-session.service.ts:142)
+   [packages/core/src/services/session/unlocked-vault-session.service.ts:72](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/services/session/unlocked-vault-session.service.ts#L72),
+   [packages/core/src/services/session/unlocked-vault-session.service.ts:105](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/services/session/unlocked-vault-session.service.ts#L105),
+   [packages/core/src/services/session/unlocked-vault-session.service.ts:142](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/services/session/unlocked-vault-session.service.ts#L142)
 
    `requireUnlockedVaultContext` returns no session ID/generation, and
    `commitPersistedSnapshot` eventually calls the same `save` path used for a new
@@ -74,9 +74,9 @@ this report is the only created file.
 
 4. **Snapshot check-and-save is non-atomic, allowing silent lost password
    updates.**
-   [packages/core/src/services/snapshot/vault-snapshot.service.ts:65](/home/arion/dev/engr-serverless-pm/packages/core/src/services/snapshot/vault-snapshot.service.ts:65),
-   [packages/core/src/services/snapshot/vault-snapshot.service.ts:112](/home/arion/dev/engr-serverless-pm/packages/core/src/services/snapshot/vault-snapshot.service.ts:112),
-   [packages/core/src/ports/vault/vault-local-repository.port.ts:51](/home/arion/dev/engr-serverless-pm/packages/core/src/ports/vault/vault-local-repository.port.ts:51)
+   [packages/core/src/services/snapshot/vault-snapshot.service.ts:65](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/services/snapshot/vault-snapshot.service.ts#L65),
+   [packages/core/src/services/snapshot/vault-snapshot.service.ts:112](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/services/snapshot/vault-snapshot.service.ts#L112),
+   [packages/core/src/ports/vault/vault-local-repository.port.ts:51](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/ports/vault/vault-local-repository.port.ts#L51)
 
    Two concurrent mutations can both read and validate snapshot v1, produce
    different v2 snapshots, overwrite one another through unconditional
@@ -91,8 +91,8 @@ this report is the only created file.
 
 5. **Device revocation does not rotate the vault master key or provider
    credentials.**
-   [packages/core/src/use-cases/device-trust/revoke-device.ts:152](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/device-trust/revoke-device.ts:152),
-   [packages/core/src/use-cases/device-trust/revoke-device.ts:161](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/device-trust/revoke-device.ts:161)
+   [packages/core/src/use-cases/device-trust/revoke-device.ts:152](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/device-trust/revoke-device.ts#L152),
+   [packages/core/src/use-cases/device-trust/revoke-device.ts:161](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/device-trust/revoke-device.ts#L161)
 
    The code removes one slot but encrypts the next snapshot with the existing
    `unlockedVault.vaultMasterKey`. A revoked device that cached that key can
@@ -106,8 +106,8 @@ this report is the only created file.
    not a local filter change.
 
 6. **Surviving devices cannot consume a remote revocation.**
-   [packages/core/src/use-cases/sync/apply-sync-resolution.ts:227](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/sync/apply-sync-resolution.ts:227),
-   [packages/core/src/use-cases/device-trust/index.ts:1](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/device-trust/index.ts:1)
+   [packages/core/src/use-cases/sync/apply-sync-resolution.ts:227](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/sync/apply-sync-resolution.ts#L227),
+   [packages/core/src/use-cases/device-trust/index.ts:1](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/device-trust/index.ts#L1)
 
    Generic resolution rejects every key-slot delta except one exact completed
    enrollment transition. There is no accept/reconcile-revocation use case. After
@@ -120,8 +120,8 @@ this report is the only created file.
 
 7. **Strict synchronized mode permits another mutation while the local snapshot
    is not confirmed on the remote.**
-   [packages/core/src/services/sync/vault-sync-guard.service.ts:104](/home/arion/dev/engr-serverless-pm/packages/core/src/services/sync/vault-sync-guard.service.ts:104),
-   [packages/core/src/use-cases/vault-entries/add-entry.ts:71](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/vault-entries/add-entry.ts:71)
+   [packages/core/src/services/sync/vault-sync-guard.service.ts:104](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/services/sync/vault-sync-guard.service.ts#L104),
+   [packages/core/src/use-cases/vault-entries/add-entry.ts:71](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/vault-entries/add-entry.ts#L71)
 
    The original finding treated the absence of offline writes and divergent
    branch merging as defects. That conclusion is rejected after clarification
@@ -146,9 +146,9 @@ this report is the only created file.
    upload reconciliation remains finding 17.
 
 8. **Choosing local absence for a remote-only item discards deletion causality.**
-   [packages/core/src/domain/sync/entry-resolution.utils.ts:124](/home/arion/dev/engr-serverless-pm/packages/core/src/domain/sync/entry-resolution.utils.ts:124),
-   [packages/core/src/domain/sync/tag-resolution.utils.ts:119](/home/arion/dev/engr-serverless-pm/packages/core/src/domain/sync/tag-resolution.utils.ts:119),
-   [packages/core/src/domain/sync/device-profile-resolution.utils.ts:136](/home/arion/dev/engr-serverless-pm/packages/core/src/domain/sync/device-profile-resolution.utils.ts:136)
+   [packages/core/src/domain/sync/entry-resolution.utils.ts:124](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/domain/sync/entry-resolution.utils.ts#L124),
+   [packages/core/src/domain/sync/tag-resolution.utils.ts:119](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/domain/sync/tag-resolution.utils.ts#L119),
+   [packages/core/src/domain/sync/device-profile-resolution.utils.ts:136](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/domain/sync/device-profile-resolution.utils.ts#L136)
 
    `use_local` is accepted for `remote_only`. Because the selected local state is
    `missing`, resolution emits neither the remote value nor a tombstone. The item
@@ -161,10 +161,10 @@ this report is the only created file.
 
 9. **Disabling sync can delete concurrent remote work and leave local/cloud state
    partially committed.**
-   [packages/core/src/use-cases/sync/disable-sync.ts:70](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/sync/disable-sync.ts:70),
-   [packages/core/src/use-cases/sync/disable-sync.ts:102](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/sync/disable-sync.ts:102),
-   [packages/core/src/use-cases/sync/disable-sync.ts:107](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/sync/disable-sync.ts:107),
-   [packages/core/src/ports/sync/sync-provider.port.ts:26](/home/arion/dev/engr-serverless-pm/packages/core/src/ports/sync/sync-provider.port.ts:26)
+   [packages/core/src/use-cases/sync/disable-sync.ts:70](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/sync/disable-sync.ts#L70),
+   [packages/core/src/use-cases/sync/disable-sync.ts:102](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/sync/disable-sync.ts#L102),
+   [packages/core/src/use-cases/sync/disable-sync.ts:107](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/sync/disable-sync.ts#L107),
+   [packages/core/src/ports/sync/sync-provider.port.ts:26](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/ports/sync/sync-provider.port.ts#L26)
 
    The use case reads a descriptor and later calls an unconditional remote delete;
    the port has no expected-descriptor/CAS parameter. A concurrent upload after
@@ -179,11 +179,11 @@ this report is the only created file.
 
 10. **Non-password use cases return stored plaintext passwords and sync
     credentials.**
-    [packages/core/src/use-cases/vault-lifecycle/unlock-vault.ts:33](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/vault-lifecycle/unlock-vault.ts:33),
-    [packages/core/src/use-cases/device-trust/perform-device-enrollment.ts:53](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/device-trust/perform-device-enrollment.ts:53),
-    [packages/core/src/use-cases/device-trust/revoke-device.ts:29](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/device-trust/revoke-device.ts:29),
-    [packages/core/src/use-cases/sync/prepare-sync-review.ts:38](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/sync/prepare-sync-review.ts:38),
-    [packages/core/src/domain/sync/entry-review.type.ts:10](/home/arion/dev/engr-serverless-pm/packages/core/src/domain/sync/entry-review.type.ts:10)
+    [packages/core/src/use-cases/vault-lifecycle/unlock-vault.ts:33](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/vault-lifecycle/unlock-vault.ts#L33),
+    [packages/core/src/use-cases/device-trust/perform-device-enrollment.ts:53](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/device-trust/perform-device-enrollment.ts#L53),
+    [packages/core/src/use-cases/device-trust/revoke-device.ts:29](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/device-trust/revoke-device.ts#L29),
+    [packages/core/src/use-cases/sync/prepare-sync-review.ts:38](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/sync/prepare-sync-review.ts#L38),
+    [packages/core/src/domain/sync/entry-review.type.ts:10](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/domain/sync/entry-review.type.ts#L10)
 
     Unlock, completed enrollment, and revocation return the full decrypted
     `Vault`. Sync review returns full local and remote `PasswordEntry` objects.
@@ -195,8 +195,8 @@ this report is the only created file.
     separate explicit reveal flow if remote-password inspection is required.
 
 11. **Initialization and enrollment activate hot sessions without auto-lock.**
-    [packages/core/src/use-cases/vault-lifecycle/initialize-vault.ts:217](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/vault-lifecycle/initialize-vault.ts:217),
-    [packages/core/src/use-cases/device-trust/perform-device-enrollment.ts:417](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/device-trust/perform-device-enrollment.ts:417)
+    [packages/core/src/use-cases/vault-lifecycle/initialize-vault.ts:217](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/vault-lifecycle/initialize-vault.ts#L217),
+    [packages/core/src/use-cases/device-trust/perform-device-enrollment.ts:417](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/device-trust/perform-device-enrollment.ts#L417)
 
     Both workflows commit an active encrypted session payload and raw session
     material but have no lock-task repository or scheduler dependency. Only the
@@ -208,10 +208,10 @@ this report is the only created file.
     the session, and rolls all three back consistently.
 
 12. **The documented minimum master-password policy is not enforced at runtime.**
-    [packages/core/src/domain/master-password.ts:3](/home/arion/dev/engr-serverless-pm/packages/core/src/domain/master-password.ts:3),
-    [packages/core/src/use-cases/vault-lifecycle/initialize-vault.ts:59](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/vault-lifecycle/initialize-vault.ts:59),
-    [packages/core/src/use-cases/vault-lifecycle/change-master-password.ts:77](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/vault-lifecycle/change-master-password.ts:77),
-    [packages/core/src/use-cases/device-trust/recover-device-access.ts:193](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/device-trust/recover-device-access.ts:193)
+    [packages/core/src/domain/master-password.ts:3](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/domain/master-password.ts#L3),
+    [packages/core/src/use-cases/vault-lifecycle/initialize-vault.ts:59](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/vault-lifecycle/initialize-vault.ts#L59),
+    [packages/core/src/use-cases/vault-lifecycle/change-master-password.ts:77](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/vault-lifecycle/change-master-password.ts#L77),
+    [packages/core/src/use-cases/device-trust/recover-device-access.ts:193](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/device-trust/recover-device-access.ts#L193)
 
     `RawMasterPassword` is only a compile-time brand. JavaScript callers or a cast
     can initialize or re-protect a vault with an empty/one-character password,
@@ -223,10 +223,10 @@ this report is the only created file.
     Unlock should retain compatibility with already-created weak vaults.
 
 13. **Concurrent clipboard operations can leave a password indefinitely.**
-    [packages/core/src/use-cases/clipboard/copy-entry-password.ts:80](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/clipboard/copy-entry-password.ts:80),
-    [packages/core/src/use-cases/clipboard/copy-entry-password.ts:113](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/clipboard/copy-entry-password.ts:113),
-    [packages/core/src/use-cases/clipboard/copy-entry-password.ts:138](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/clipboard/copy-entry-password.ts:138),
-    [packages/core/src/services/clipboard/clipboard-clear.service.ts:70](/home/arion/dev/engr-serverless-pm/packages/core/src/services/clipboard/clipboard-clear.service.ts:70)
+    [packages/core/src/use-cases/clipboard/copy-entry-password.ts:80](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/clipboard/copy-entry-password.ts#L80),
+    [packages/core/src/use-cases/clipboard/copy-entry-password.ts:113](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/clipboard/copy-entry-password.ts#L113),
+    [packages/core/src/use-cases/clipboard/copy-entry-password.ts:138](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/clipboard/copy-entry-password.ts#L138),
+    [packages/core/src/services/clipboard/clipboard-clear.service.ts:70](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/services/clipboard/clipboard-clear.service.ts#L70)
 
     Two copy calls can both observe no task, overwrite task metadata, and race
     clipboard writes. The clipboard can end with password A while task B is
@@ -239,14 +239,14 @@ this report is the only created file.
     interleaving tests.
 
 14. **A lock-metadata read failure prevents clipboard cleanup.**
-    [packages/core/src/use-cases/vault-lifecycle/lock-vault.ts:37](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/vault-lifecycle/lock-vault.ts:37),
-    [packages/core/src/use-cases/vault-lifecycle/lock-vault.ts:49](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/vault-lifecycle/lock-vault.ts:49),
-    [packages/core/src/use-cases/vault-lifecycle/lock-vault.ts:82](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/vault-lifecycle/lock-vault.ts:82)
+    [packages/core/src/use-cases/vault-lifecycle/lock-vault.ts:37](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/vault-lifecycle/lock-vault.ts#L37),
+    [packages/core/src/use-cases/vault-lifecycle/lock-vault.ts:49](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/vault-lifecycle/lock-vault.ts#L49),
+    [packages/core/src/use-cases/vault-lifecycle/lock-vault.ts:82](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/vault-lifecycle/lock-vault.ts#L82)
 
     If reading the unrelated vault-lock task fails, execution jumps past
     clipboard lookup/clear and then removes the session. A copied password remains
     in the OS clipboard after the user locks. The current test at
-    [packages/core/src/use-cases/vault-lifecycle/lock-vault.test.ts:208](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/vault-lifecycle/lock-vault.test.ts:208)
+    [packages/core/src/use-cases/vault-lifecycle/lock-vault.test.ts:208](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/vault-lifecycle/lock-vault.test.ts#L208)
     codifies that clipboard lookup is skipped.
 
     Run cleanup phases independently, always attempting clipboard clear,
@@ -254,12 +254,12 @@ this report is the only created file.
     removals while preserving the first error.
 
 15. **Freshly signed snapshots are re-read from hostile storage before upload.**
-    [packages/core/src/use-cases/vault-entries/add-entry.ts:95](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/vault-entries/add-entry.ts:95),
-    [packages/core/src/use-cases/vault-entries/update-entry.ts:101](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/vault-entries/update-entry.ts:101),
-    [packages/core/src/use-cases/vault-entries/remove-entry.ts:75](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/vault-entries/remove-entry.ts:75),
-    [packages/core/src/use-cases/sync/setup-sync.ts:84](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/sync/setup-sync.ts:84),
-    [packages/core/src/use-cases/sync/apply-sync-resolution.ts:326](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/sync/apply-sync-resolution.ts:326),
-    [packages/core/src/services/snapshot/vault-snapshot.service.ts:120](/home/arion/dev/engr-serverless-pm/packages/core/src/services/snapshot/vault-snapshot.service.ts:120)
+    [packages/core/src/use-cases/vault-entries/add-entry.ts:95](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/vault-entries/add-entry.ts#L95),
+    [packages/core/src/use-cases/vault-entries/update-entry.ts:101](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/vault-entries/update-entry.ts#L101),
+    [packages/core/src/use-cases/vault-entries/remove-entry.ts:75](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/vault-entries/remove-entry.ts#L75),
+    [packages/core/src/use-cases/sync/setup-sync.ts:84](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/sync/setup-sync.ts#L84),
+    [packages/core/src/use-cases/sync/apply-sync-resolution.ts:326](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/sync/apply-sync-resolution.ts#L326),
+    [packages/core/src/services/snapshot/vault-snapshot.service.ts:120](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/services/snapshot/vault-snapshot.service.ts#L120)
 
     These flows create a trusted in-memory signed snapshot, discard the object,
     then use `requireLocalVaultSnapshot`, which only reads and returns the current
@@ -271,8 +271,8 @@ this report is the only created file.
     suite, signer, and signature again before upload.
 
 16. **Most exported use cases cannot be constructed through the package API.**
-    [packages/core/package.json:6](/home/arion/dev/engr-serverless-pm/packages/core/package.json:6), [packages/core/src/index.ts:1](/home/arion/dev/engr-serverless-pm/packages/core/src/index.ts:1),
-    [packages/core/src/services/index.ts:1](/home/arion/dev/engr-serverless-pm/packages/core/src/services/index.ts:1)
+    [packages/core/package.json:6](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/package.json#L6), [packages/core/src/index.ts:1](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/index.ts#L1),
+    [packages/core/src/services/index.ts:1](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/services/index.ts#L1)
 
     The package exports only `.` and `./lib`, while the root barrel omits
     `services`. Twenty-four exported use-case implementations require concrete
@@ -290,10 +290,10 @@ this report is the only created file.
 ### Important
 
 17. **All upload exceptions are treated as definite non-commits.**
-    [packages/core/src/services/sync/vault-sync-guard.service.ts:128](/home/arion/dev/engr-serverless-pm/packages/core/src/services/sync/vault-sync-guard.service.ts:128),
-    [packages/core/src/services/sync/vault-sync-guard.service.ts:157](/home/arion/dev/engr-serverless-pm/packages/core/src/services/sync/vault-sync-guard.service.ts:157),
-    [packages/core/src/use-cases/device-trust/perform-device-enrollment.ts:441](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/device-trust/perform-device-enrollment.ts:441),
-    [packages/core/src/use-cases/sync/apply-sync-resolution.ts:330](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/sync/apply-sync-resolution.ts:330)
+    [packages/core/src/services/sync/vault-sync-guard.service.ts:128](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/services/sync/vault-sync-guard.service.ts#L128),
+    [packages/core/src/services/sync/vault-sync-guard.service.ts:157](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/services/sync/vault-sync-guard.service.ts#L157),
+    [packages/core/src/use-cases/device-trust/perform-device-enrollment.ts:441](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/device-trust/perform-device-enrollment.ts#L441),
+    [packages/core/src/use-cases/sync/apply-sync-resolution.ts:330](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/sync/apply-sync-resolution.ts#L330)
 
     A network timeout can occur after S3 committed the write. Core nevertheless
     restores old local state on every error. Enrollment completion additionally
@@ -307,9 +307,9 @@ this report is the only created file.
 
 18. **Completed-enrollment proof history is not compared or preserved as an
     append-only trust ledger.**
-    [packages/core/src/domain/sync/key-slot-review.utils.ts:14](/home/arion/dev/engr-serverless-pm/packages/core/src/domain/sync/key-slot-review.utils.ts:14),
-    [packages/core/src/use-cases/sync/apply-sync-resolution.ts:220](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/sync/apply-sync-resolution.ts:220),
-    [packages/core/src/use-cases/sync/apply-sync-resolution.ts:310](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/sync/apply-sync-resolution.ts:310)
+    [packages/core/src/domain/sync/key-slot-review.utils.ts:14](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/domain/sync/key-slot-review.utils.ts#L14),
+    [packages/core/src/use-cases/sync/apply-sync-resolution.ts:220](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/sync/apply-sync-resolution.ts#L220),
+    [packages/core/src/use-cases/sync/apply-sync-resolution.ts:310](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/sync/apply-sync-resolution.ts#L310)
 
     Key-slot review ignores `completedEnrollments`. The special completion path
     validates one new proof but adopts the entire remote key-slot object without
@@ -322,9 +322,9 @@ this report is the only created file.
     mutations, duplicates, and unrelated additions.
 
 19. **Snapshot descriptor comparison ignores vault identity.**
-    [packages/core/src/domain/snapshot/vault-snapshot-descriptor.utils.ts:6](/home/arion/dev/engr-serverless-pm/packages/core/src/domain/snapshot/vault-snapshot-descriptor.utils.ts:6),
-    [packages/core/src/use-cases/sync/sync-upload.ts:60](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/sync/sync-upload.ts:60),
-    [packages/core/src/services/sync/vault-sync-guard.service.ts:82](/home/arion/dev/engr-serverless-pm/packages/core/src/services/sync/vault-sync-guard.service.ts:82)
+    [packages/core/src/domain/snapshot/vault-snapshot-descriptor.utils.ts:6](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/domain/snapshot/vault-snapshot-descriptor.utils.ts#L6),
+    [packages/core/src/use-cases/sync/sync-upload.ts:60](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/sync/sync-upload.ts#L60),
+    [packages/core/src/services/sync/vault-sync-guard.service.ts:82](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/services/sync/vault-sync-guard.service.ts#L82)
 
     `compareVaultSnapshotDescriptors` compares only version vectors. Callers do a
     full descriptor equality check only in the `equal` branch, so a descriptor
@@ -336,8 +336,8 @@ this report is the only created file.
     relation branches with a wrong-vault descriptor.
 
 20. **Schema versions are compile-time literals, not hostile-boundary checks.**
-    [packages/core/src/domain/snapshot/vault-snapshot.ts:10](/home/arion/dev/engr-serverless-pm/packages/core/src/domain/snapshot/vault-snapshot.ts:10),
-    [packages/core/src/domain/device-trust/device-enrollment-bundle.ts:10](/home/arion/dev/engr-serverless-pm/packages/core/src/domain/device-trust/device-enrollment-bundle.ts:10)
+    [packages/core/src/domain/snapshot/vault-snapshot.ts:10](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/domain/snapshot/vault-snapshot.ts#L10),
+    [packages/core/src/domain/device-trust/device-enrollment-bundle.ts:10](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/domain/device-trust/device-enrollment-bundle.ts#L10)
 
     No runtime path checks snapshot `schemaVersion` or enrollment-bundle
     `version`. An old client can accept a legitimately signed future-schema
@@ -349,8 +349,8 @@ this report is the only created file.
     or mutating.
 
 21. **Local vault deletion bypasses the lock cleanup workflow.**
-    [packages/core/src/use-cases/vault-lifecycle/delete-local-vault.ts:29](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/vault-lifecycle/delete-local-vault.ts:29),
-    [packages/core/src/use-cases/vault-lifecycle/lock-vault.ts:38](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/vault-lifecycle/lock-vault.ts:38)
+    [packages/core/src/use-cases/vault-lifecycle/delete-local-vault.ts:29](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/vault-lifecycle/delete-local-vault.ts#L29),
+    [packages/core/src/use-cases/vault-lifecycle/lock-vault.ts:38](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/vault-lifecycle/lock-vault.ts#L38)
 
     Deletion calls raw session removal and then deletes persistence. It does not
     clear a copied password or cancel/remove clipboard and lock tasks.
@@ -362,8 +362,8 @@ this report is the only created file.
     execution to action ID plus active vault/session generation.
 
 22. **Device access material is not identity-bound before use or overwrite.**
-    [packages/core/src/use-cases/vault-lifecycle/unlock-vault.ts:75](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/vault-lifecycle/unlock-vault.ts:75),
-    [packages/core/src/use-cases/vault-lifecycle/change-master-password.ts:41](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/vault-lifecycle/change-master-password.ts:41)
+    [packages/core/src/use-cases/vault-lifecycle/unlock-vault.ts:75](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/vault-lifecycle/unlock-vault.ts#L75),
+    [packages/core/src/use-cases/vault-lifecycle/change-master-password.ts:41](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/vault-lifecycle/change-master-password.ts#L41)
 
     Neither path checks `DeviceAccessMaterial.vaultId` against the target.
     Password change also does not verify that the material's device ID/public key
@@ -376,11 +376,11 @@ this report is the only created file.
     backup-vault check.
 
 23. **Raw key buffers and ephemeral derivation material are never wiped.**
-    [packages/core/src/services/session/unlocked-vault-session.service.ts:120](/home/arion/dev/engr-serverless-pm/packages/core/src/services/session/unlocked-vault-session.service.ts:120),
-    [packages/core/src/lib/secure-wipe.utils.ts:15](/home/arion/dev/engr-serverless-pm/packages/core/src/lib/secure-wipe.utils.ts:15),
-    [packages/core/src/use-cases/vault-lifecycle/initialize-vault.ts:70](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/vault-lifecycle/initialize-vault.ts:70),
-    [packages/core/src/use-cases/vault-lifecycle/unlock-vault.ts:151](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/vault-lifecycle/unlock-vault.ts:151),
-    [packages/core/src/use-cases/vault-lifecycle/change-master-password.ts:61](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/vault-lifecycle/change-master-password.ts:61)
+    [packages/core/src/services/session/unlocked-vault-session.service.ts:120](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/services/session/unlocked-vault-session.service.ts#L120),
+    [packages/core/src/lib/secure-wipe.utils.ts:15](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/lib/secure-wipe.utils.ts#L15),
+    [packages/core/src/use-cases/vault-lifecycle/initialize-vault.ts:70](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/vault-lifecycle/initialize-vault.ts#L70),
+    [packages/core/src/use-cases/vault-lifecycle/unlock-vault.ts:151](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/vault-lifecycle/unlock-vault.ts#L151),
+    [packages/core/src/use-cases/vault-lifecycle/change-master-password.ts:61](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/vault-lifecycle/change-master-password.ts#L61)
 
     `secureWipe` has no production caller. Lock/removal drops repository records
     without zeroing the raw ArrayBuffer VMK, private signing key, or session
@@ -394,9 +394,9 @@ this report is the only created file.
 
 24. **Recovery-word "rotation" cannot revoke the old words under rollbackable
     storage.**
-    [packages/core/src/use-cases/device-trust/recover-device-access.ts:147](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/device-trust/recover-device-access.ts:147),
-    [packages/core/src/use-cases/device-trust/recover-device-access.ts:205](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/device-trust/recover-device-access.ts:205),
-    [packages/core/src/domain/device-trust/device-access-recovery-backup.ts:7](/home/arion/dev/engr-serverless-pm/packages/core/src/domain/device-trust/device-access-recovery-backup.ts:7)
+    [packages/core/src/use-cases/device-trust/recover-device-access.ts:147](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/device-trust/recover-device-access.ts#L147),
+    [packages/core/src/use-cases/device-trust/recover-device-access.ts:205](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/device-trust/recover-device-access.ts#L205),
+    [packages/core/src/domain/device-trust/device-access-recovery-backup.ts:7](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/domain/device-trust/device-access-recovery-backup.ts#L7)
 
     Recovery unwraps the old local device slot/private signing keys and wraps
     those same keys under a new mnemonic. An attacker retaining the old backup
@@ -408,9 +408,9 @@ this report is the only created file.
     trust transition, or a trustworthy monotonic anti-rollback mechanism.
 
 25. **Malformed URL errors retain secret-bearing raw input in their cause.**
-    [packages/core/src/domain/entry/sanitized-entry-url.utils.ts:5](/home/arion/dev/engr-serverless-pm/packages/core/src/domain/entry/sanitized-entry-url.utils.ts:5),
-    [packages/core/src/use-cases/vault-entries/add-entry.ts:54](/home/arion/dev/engr-serverless-pm/packages/core/src/use-cases/vault-entries/add-entry.ts:54),
-    [packages/core/src/errors/vault-entry.errors.ts:12](/home/arion/dev/engr-serverless-pm/packages/core/src/errors/vault-entry.errors.ts:12)
+    [packages/core/src/domain/entry/sanitized-entry-url.utils.ts:5](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/domain/entry/sanitized-entry-url.utils.ts#L5),
+    [packages/core/src/use-cases/vault-entries/add-entry.ts:54](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/vault-entries/add-entry.ts#L54),
+    [packages/core/src/errors/vault-entry.errors.ts:12](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/errors/vault-entry.errors.ts#L12)
 
     Native `new URL(rawUrl)` failures retain an `input` field. For malformed
     input containing `user:password@...` or sensitive query data, Add/Update wrap
@@ -424,14 +424,14 @@ this report is the only created file.
 ### Nits
 
 26. **Eight type-only modules use runtime imports.**
-    [packages/core/src/domain/entry/password-entry.type.ts:1](/home/arion/dev/engr-serverless-pm/packages/core/src/domain/entry/password-entry.type.ts:1),
-    [packages/core/src/domain/entry/search-entry-query.type.ts:1](/home/arion/dev/engr-serverless-pm/packages/core/src/domain/entry/search-entry-query.type.ts:1),
-    [packages/core/src/domain/entry/tag.type.ts:1](/home/arion/dev/engr-serverless-pm/packages/core/src/domain/entry/tag.type.ts:1),
-    [packages/core/src/domain/scheduled-task/scheduled-task-delay.type.ts:1](/home/arion/dev/engr-serverless-pm/packages/core/src/domain/scheduled-task/scheduled-task-delay.type.ts:1),
-    [packages/core/src/lib/generate-password/generated-password.type.ts:2](/home/arion/dev/engr-serverless-pm/packages/core/src/lib/generate-password/generated-password.type.ts:2),
-    [packages/core/src/lib/generate-username/generated-username.type.ts:1](/home/arion/dev/engr-serverless-pm/packages/core/src/lib/generate-username/generated-username.type.ts:1),
-    [packages/core/src/errors/generate-password.errors.ts:1](/home/arion/dev/engr-serverless-pm/packages/core/src/errors/generate-password.errors.ts:1),
-    [packages/core/src/errors/generate-username.errors.ts:1](/home/arion/dev/engr-serverless-pm/packages/core/src/errors/generate-username.errors.ts:1)
+    [packages/core/src/domain/entry/password-entry.type.ts:1](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/domain/entry/password-entry.type.ts#L1),
+    [packages/core/src/domain/entry/search-entry-query.type.ts:1](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/domain/entry/search-entry-query.type.ts#L1),
+    [packages/core/src/domain/entry/tag.type.ts:1](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/domain/entry/tag.type.ts#L1),
+    [packages/core/src/domain/scheduled-task/scheduled-task-delay.type.ts:1](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/domain/scheduled-task/scheduled-task-delay.type.ts#L1),
+    [packages/core/src/lib/generate-password/generated-password.type.ts:2](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/lib/generate-password/generated-password.type.ts#L2),
+    [packages/core/src/lib/generate-username/generated-username.type.ts:1](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/lib/generate-username/generated-username.type.ts#L1),
+    [packages/core/src/errors/generate-password.errors.ts:1](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/errors/generate-password.errors.ts#L1),
+    [packages/core/src/errors/generate-username.errors.ts:1](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/errors/generate-username.errors.ts#L1)
 
     These imports are used only in type positions (`z.infer`, `typeof`, or a
     constructor annotation), so normal imports violate the repository's
@@ -440,9 +440,9 @@ this report is the only created file.
     `typeof` to type imports.
 
 27. **Username normalization gives one word twice the intended probability.**
-    [packages/core/src/lib/generate-username/generated-username.utils.ts:55](/home/arion/dev/engr-serverless-pm/packages/core/src/lib/generate-username/generated-username.utils.ts:55),
-    [packages/core/src/lib/generate-username/generated-username.const.ts:7750](/home/arion/dev/engr-serverless-pm/packages/core/src/lib/generate-username/generated-username.const.ts:7750),
-    [packages/core/src/lib/generate-username/generated-username.const.ts:7755](/home/arion/dev/engr-serverless-pm/packages/core/src/lib/generate-username/generated-username.const.ts:7755)
+    [packages/core/src/lib/generate-username/generated-username.utils.ts:55](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/lib/generate-username/generated-username.utils.ts#L55),
+    [packages/core/src/lib/generate-username/generated-username.const.ts:7750](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/lib/generate-username/generated-username.const.ts#L7750),
+    [packages/core/src/lib/generate-username/generated-username.const.ts:7755](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/lib/generate-username/generated-username.const.ts#L7755)
 
     The 7,776 raw words are unique, but `yo-yo` and `yoyo` both normalize to
     `yoyo`, leaving 7,775 unique outputs and making that value twice as likely.
