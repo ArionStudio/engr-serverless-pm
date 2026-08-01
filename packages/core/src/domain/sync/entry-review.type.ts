@@ -1,6 +1,6 @@
 import type {
   DeletedPasswordEntry,
-  PasswordEntry,
+  VisiblePasswordEntryFields,
 } from "../entry/password-entry.type";
 import type {
   ReviewableVaultSyncItemRelation,
@@ -9,11 +9,11 @@ import type {
 
 export type ReviewableEntry =
   | {
-      entry: PasswordEntry;
+      entry: VisiblePasswordEntryFields;
       state: "entry";
     }
   | {
-      deletedEntry: DeletedPasswordEntry;
+      deletedEntry: Pick<DeletedPasswordEntry, "id" | "deletedAt">;
       state: "deleted";
     }
   | {
@@ -25,5 +25,6 @@ export type EntryReviewItem = {
   relation: ReviewableVaultSyncItemRelation;
   readonly localEntry: ReviewableEntry;
   readonly remoteEntry: ReviewableEntry;
+  readonly passwordChanged: boolean;
   readonly preselectedAction: VaultSyncReviewAction;
 };

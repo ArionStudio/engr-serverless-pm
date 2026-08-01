@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
+import { singlePasswordEntry } from "../../__tests__/fixtures/vault-entries";
 import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
 import {
   DeviceKeySlotNotFoundError,
@@ -7,6 +8,41 @@ import {
 } from "../../errors/unlock-vault.errors";
 
 describe("UnlockVaultUseCase", () => {
+  it("returns status and visible vault fields without stored secrets", async () => {
+    const ctx = createUnlockVaultTestContext();
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
+      ...ctx.values.decryptedVault,
+      entries: [singlePasswordEntry],
+      syncTarget: ctx.values.syncTarget,
+    });
+
+    const result = await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      masterPassword: ctx.values.masterPassword,
+      lockAfterMs: 60_000,
+    });
+
+    expect(result).toMatchObject({
+      vaultId: ctx.values.vaultId,
+      deviceId: ctx.values.deviceId,
+      snapshotVersionVector: { [ctx.values.deviceId]: 1 },
+      revisionTimestamp: ctx.values.timestamp,
+      vault: {
+        entries: [
+          {
+            id: singlePasswordEntry.id,
+            login: singlePasswordEntry.login,
+            tags: singlePasswordEntry.tags,
+            sanitizedUrl: singlePasswordEntry.sanitizedUrl,
+          },
+        ],
+        syncConfigured: true,
+      },
+    });
+    expect(result.vault.entries[0]).not.toHaveProperty("password");
+    expect(result.vault).not.toHaveProperty("syncTarget");
+  });
+
   it("verifies both local key pairs and opens the current envelope", async () => {
     const ctx = createUnlockVaultTestContext();
 

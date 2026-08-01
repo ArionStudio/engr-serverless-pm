@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
 import { createUnlockedVaultWithEntries } from "../../__tests__/fixtures/vault-entries";
+import { singlePasswordEntry } from "../../__tests__/fixtures/vault-entries";
 import { toVaultSnapshotDescriptor } from "../../domain/snapshot";
 import { VaultTrustStateInvalidError } from "../../errors/vault-trust.errors";
 import {
@@ -72,6 +73,69 @@ function createContext() {
 }
 
 describe("PrepareSyncReviewUseCase", () => {
+  it("reports hidden password changes without returning either password", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession;
+
+    if (session === undefined) {
+      throw new Error("Expected an unlocked test session.");
+    }
+
+    const localEntry = {
+      ...singlePasswordEntry,
+      versionVector: { [ctx.values.deviceId]: 1 },
+    };
+    const remoteEntry = {
+      ...localEntry,
+      password: "remote-password",
+      versionVector: { [ctx.values.deviceId]: 2 },
+    };
+    ctx.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          entries: [localEntry],
+        },
+      },
+    };
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
+      ...session.unlockedVault.vault,
+      entries: [remoteEntry],
+    });
+
+    const result = await ctx.useCase.execute({ vaultId: ctx.values.vaultId });
+    const entryReview = result.review?.actionable.entryReviews[0];
+
+    expect(entryReview).toEqual({
+      entryId: singlePasswordEntry.id,
+      relation: "remote_ahead",
+      preselectedAction: "use_remote",
+      passwordChanged: true,
+      localEntry: {
+        state: "entry",
+        entry: {
+          id: singlePasswordEntry.id,
+          login: singlePasswordEntry.login,
+          tags: singlePasswordEntry.tags,
+          sanitizedUrl: singlePasswordEntry.sanitizedUrl,
+        },
+      },
+      remoteEntry: {
+        state: "entry",
+        entry: {
+          id: singlePasswordEntry.id,
+          login: singlePasswordEntry.login,
+          tags: singlePasswordEntry.tags,
+          sanitizedUrl: singlePasswordEntry.sanitizedUrl,
+        },
+      },
+    });
+    expect(entryReview?.localEntry).not.toHaveProperty("entry.password");
+    expect(entryReview?.remoteEntry).not.toHaveProperty("entry.password");
+  });
+
   it("returns an ordinary remote-ahead content review", async () => {
     const ctx = createContext();
 

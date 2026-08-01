@@ -18,9 +18,12 @@ import {
 } from "../../domain/snapshot";
 import type { UnlockedVault } from "../../domain/session";
 import type { Vault } from "../../domain/vault";
+import { toVisibleVaultFields } from "../../domain/vault";
+import type { VisibleVaultFields } from "../../domain/vault";
 import type { LocalVaultDescriptor } from "../../domain/vault";
 import { addDeviceProfileToVault } from "../../domain/vault/vault-device.mutations";
 import { incrementVersionVector } from "../../domain/versioning";
+import type { VersionVector } from "../../domain/versioning";
 import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
 import {
   DeviceEnrollmentRollbackIncompleteError,
@@ -54,9 +57,11 @@ export type PerformDeviceEnrollmentCommandParams = {
 };
 
 export type PerformDeviceEnrollmentResult = {
-  readonly vault: Vault;
+  readonly vault: VisibleVaultFields;
   readonly deviceId: string;
   readonly recoveryMnemonicKey: RecoveryKeyMnemonic;
+  readonly snapshotVersionVector: VersionVector;
+  readonly revisionTimestamp: number;
   readonly syncUpload: "complete" | "pending";
 };
 
@@ -461,9 +466,11 @@ export class PerformDeviceEnrollmentUseCase {
     }
 
     return {
-      vault,
+      vault: toVisibleVaultFields(vault),
       deviceId: request.payload.deviceId,
       recoveryMnemonicKey,
+      snapshotVersionVector: snapshot.metadata.snapshotVersionVector,
+      revisionTimestamp: snapshot.metadata.revisionTimestamp,
       syncUpload,
     };
   }

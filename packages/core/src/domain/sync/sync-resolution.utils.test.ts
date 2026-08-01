@@ -6,6 +6,7 @@ import type { Vault } from "../vault";
 import { InvalidVaultSyncResolutionError } from "../../errors/sync.errors";
 import type { DeviceProfileReviewItem } from "./device-profile-review.type";
 import type { EntryReviewItem } from "./entry-review.type";
+import { findChangedEntries } from "./entry-review.utils";
 import type { VaultSyncResolution } from "./sync-resolution.type";
 import { applyVaultSyncResolution } from "./sync-resolution.utils";
 import type { TagReviewItem } from "./tag-review.type";
@@ -62,15 +63,7 @@ describe("applyVaultSyncResolution", () => {
         localVault,
         remoteVault,
         {
-          entryReviews: [
-            {
-              entryId: remoteEntry.id,
-              relation: "remote_only",
-              preselectedAction: "use_remote",
-              localEntry: { state: "missing" },
-              remoteEntry: { state: "entry", entry: remoteEntry },
-            },
-          ],
+          entryReviews: findChangedEntries(localVault, remoteVault),
           tagReviews: [],
           deviceProfileReviews: [],
         },
@@ -83,6 +76,44 @@ describe("applyVaultSyncResolution", () => {
         },
       ),
     ).toThrow(InvalidVaultSyncResolutionError);
+  });
+
+  it("applies a selected password without exposing it in the review", () => {
+    const localEntry = {
+      id: "changed-entry",
+      password: "local-password",
+      login: "user@example.com",
+      tags: [],
+      sanitizedUrl: "https://example.com",
+      versionVector: { "remote-device": 1 },
+    } satisfies PasswordEntry;
+    const remoteEntry = {
+      ...localEntry,
+      password: "remote-password",
+      versionVector: { "remote-device": 2 },
+    } satisfies PasswordEntry;
+    const localVault = createVault({ entries: [localEntry] });
+    const remoteVault = createVault({ entries: [remoteEntry] });
+    const entryReviews = findChangedEntries(localVault, remoteVault);
+
+    expect(entryReviews[0]?.passwordChanged).toBe(true);
+    expect(entryReviews[0]?.localEntry).not.toHaveProperty("entry.password");
+    expect(entryReviews[0]?.remoteEntry).not.toHaveProperty("entry.password");
+
+    const resolvedVault = applyResolution(
+      localVault,
+      remoteVault,
+      { entryReviews, tagReviews: [], deviceProfileReviews: [] },
+      {
+        entryResolutions: [
+          { entryId: remoteEntry.id, action: "use_remote" },
+        ],
+        tagResolutions: [],
+        deviceProfileResolutions: [],
+      },
+    );
+
+    expect(resolvedVault.entries[0]?.password).toBe("remote-password");
   });
 
   it("rejects local absence for a remote-only tag", () => {

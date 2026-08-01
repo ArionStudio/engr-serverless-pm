@@ -32,6 +32,8 @@ export function applyVaultSyncResolution(
   deviceId: string,
 ): Vault {
   const resolvedEntryStateById = resolveEntryStates(
+    localVault,
+    remoteVault,
     review.entryReviews,
     resolution.entryResolutions,
     deviceId,
