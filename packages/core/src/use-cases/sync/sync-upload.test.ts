@@ -75,6 +75,44 @@ describe("SyncUploadUseCase", () => {
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });
 
+  it("uploads a local-ahead snapshot using the remote descriptor as the expected state", async () => {
+    const ctx = createContext();
+    const localSnapshot = {
+      ...ctx.vaultSnapshot,
+      metadata: {
+        ...ctx.vaultSnapshot.metadata,
+        revisionTimestamp: ctx.values.timestamp + 1,
+        snapshotVersionVector: {
+          [ctx.values.deviceId]: 2,
+        },
+      },
+    };
+    const remoteSnapshotDescriptor = {
+      vaultId: ctx.values.vaultId,
+      snapshotVersionVector: {
+        [ctx.values.deviceId]: 1,
+      },
+      revisionTimestamp: ctx.values.timestamp,
+    };
+    const session = ctx.saved.unlockedVaultSession!;
+    ctx.saved.vaultSnapshot = localSnapshot;
+    ctx.saved.unlockedVaultSession = {
+      ...session,
+      sourceSnapshotVersionVector: localSnapshot.metadata.snapshotVersionVector,
+    };
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValue(remoteSnapshotDescriptor);
+
+    await ctx.useCase.execute({ vaultId: ctx.values.vaultId });
+
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).toHaveBeenCalledWith(
+      ctx.values.syncAccess,
+      localSnapshot,
+      remoteSnapshotDescriptor,
+    );
+  });
+
   it("blocks upload when remote is ahead", async () => {
     const ctx = createContext();
     vi.mocked(

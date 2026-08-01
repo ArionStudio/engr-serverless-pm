@@ -14,6 +14,7 @@ import {
   RemoteVaultSnapshotIntegrityError,
   RemoteVaultSnapshotNotFoundError,
   SyncConflictDetectedError,
+  LocalVaultSnapshotAheadError,
   LocalSyncCredentialsMissingError,
   ProviderCredentialRevocationPendingError,
   SyncRemovalPendingError,
@@ -108,6 +109,10 @@ export class VaultSyncGuardService {
 
     if (relation === "remote_ahead") {
       throw new RemoteVaultSnapshotAheadError(vaultId);
+    }
+
+    if (relation === "local_ahead") {
+      throw new LocalVaultSnapshotAheadError(vaultId);
     }
 
     if (relation === "broken") {

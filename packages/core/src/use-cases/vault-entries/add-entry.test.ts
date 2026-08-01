@@ -6,6 +6,7 @@ import {
   saveUnlockedVaultWithEntries,
 } from "../../__tests__/fixtures/vault-entries";
 import {
+  LocalVaultSnapshotAheadError,
   RemoteVaultSnapshotAheadError,
   RemoteVaultSnapshotChangedError,
   SyncRemovalPendingError,
@@ -232,6 +233,73 @@ describe("AddEntryUseCase", () => {
 
     expect(ctx.ports.ids.generateId).not.toHaveBeenCalled();
     expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
+    ).not.toHaveBeenCalled();
+    expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries).toEqual(
+      [],
+    );
+  });
+
+  it("does not extend a local-ahead synchronized snapshot", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession!;
+    const localSnapshot =
+      await ctx.vaultSnapshot.requireCurrentSnapshotForUnlockedVault(
+        ctx.values.vaultId,
+        session.unlockedVault,
+        session.sourceSnapshotVersionVector,
+      );
+    const localSnapshotVersionVector = {
+      [ctx.values.deviceId]: 2,
+    };
+    vi.mocked(ctx.vaultSnapshot.requireCurrentSnapshotForUnlockedVault)
+      .mockClear()
+      .mockResolvedValue({
+        ...localSnapshot,
+        metadata: {
+          ...localSnapshot.metadata,
+          revisionTimestamp: ctx.values.timestamp + 1,
+          snapshotVersionVector: localSnapshotVersionVector,
+        },
+      });
+    ctx.saved.unlockedVaultSession = {
+      ...session,
+      sourceSnapshotVersionVector: localSnapshotVersionVector,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          syncTarget: ctx.values.syncTarget,
+          versionVector: localSnapshotVersionVector,
+        },
+      },
+    };
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValueOnce({
+      vaultId: ctx.values.vaultId,
+      snapshotVersionVector: {
+        [ctx.values.deviceId]: 1,
+      },
+      revisionTimestamp: ctx.values.timestamp,
+    });
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        entry: {
+          password: "secret-password",
+          login: "user@example.com",
+          tags: [],
+          url: "https://example.com/login",
+        },
+      }),
+    ).rejects.toBeInstanceOf(LocalVaultSnapshotAheadError);
+
+    expect(ctx.ports.ids.generateId).not.toHaveBeenCalled();
+    expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
     expect(
       ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
     ).not.toHaveBeenCalled();

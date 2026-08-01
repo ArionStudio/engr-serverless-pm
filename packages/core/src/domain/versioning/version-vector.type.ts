@@ -4,8 +4,8 @@ export type VersionVector = Record<string, number>;
  * Snapshot-level relation between local and remote version vectors.
  *
  * equal: local and remote describe the same snapshot version.
- * local_ahead: local has newer local-device snapshot changes and may be
- * uploaded or extended with more local changes.
+ * local_ahead: local has newer snapshot changes and must be uploaded before
+ * another synchronized mutation can continue.
  * remote_ahead: remote has newer snapshot changes and local writes must wait
  * for sync/review.
  * remote_missing: remote descriptor is absent even though sync is configured;

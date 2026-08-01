@@ -5,10 +5,7 @@ import type {
 } from "../../domain/sync";
 import type { SyncAccess, SyncSetupInput } from "../../domain/sync";
 import { requireDeviceProfilesMatchTrust } from "../../domain/sync/device-profile-review.utils";
-import {
-  areVaultSnapshotDescriptorsEqual,
-  toVaultSnapshotDescriptor,
-} from "../../domain/snapshot";
+import { areVaultSnapshotDescriptorsEqual } from "../../domain/snapshot";
 import type { Vault } from "../../domain/vault/vault";
 import { revokeDeviceProfileFromVault } from "../../domain/vault/vault-device.mutations";
 import { markVaultProviderCredentialRevocationPending } from "../../domain/vault/vault-sync-config.mutations";
@@ -133,19 +130,6 @@ export class RevokeDeviceUseCase {
         params.vaultId,
         "device profiles do not match the trusted identities",
         { cause: error },
-      );
-    }
-
-    if (
-      syncState.remoteSnapshotDescriptor !== undefined &&
-      !areVaultSnapshotDescriptorsEqual(
-        syncState.remoteSnapshotDescriptor,
-        toVaultSnapshotDescriptor(params.vaultId, currentSnapshot),
-      )
-    ) {
-      throw new InvalidDeviceRevocationTransitionError(
-        params.vaultId,
-        "local and remote snapshots must match",
       );
     }
 

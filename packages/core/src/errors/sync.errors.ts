@@ -121,7 +121,7 @@ export class LocalVaultSnapshotNotAheadError extends Error {
 export class LocalVaultSnapshotAheadError extends Error {
   constructor(vaultId: string) {
     super(
-      `Local vault snapshot for vault "${vaultId}" must be uploaded before preparing sync review.`,
+      `Local vault snapshot for vault "${vaultId}" must be uploaded before another synchronized operation can continue.`,
     );
     this.name = "LocalVaultSnapshotAheadError";
   }
