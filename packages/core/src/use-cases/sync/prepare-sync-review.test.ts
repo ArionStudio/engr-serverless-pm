@@ -270,7 +270,10 @@ describe("PrepareSyncReviewUseCase", () => {
 
     vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
       ...session.unlockedVault.vault,
-      syncRemovalPending: true,
+      syncRemovalPending: {
+        expectedRemoteSnapshotDescriptor: null,
+        rollbackSnapshot: ctx.vaultSnapshot,
+      },
     });
 
     await expect(

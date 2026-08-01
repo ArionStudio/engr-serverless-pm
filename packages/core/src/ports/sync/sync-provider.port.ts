@@ -27,12 +27,16 @@ export interface SyncProviderPort {
     expectedRemoteSnapshotDescriptor: VaultSnapshotDescriptor | null,
   ) => Promise<void>;
   /**
-   * Removes all remote state for a vault. This operation must be idempotent:
-   * attempting to remove an already-absent vault is successful.
+   * Removes all remote state for a vault only when the latest snapshot still
+   * matches the expected descriptor. A different current descriptor must fail
+   * with RemoteVaultSnapshotChangedError without removing remote state. This
+   * operation must be idempotent: attempting to remove an already-absent vault
+   * is successful.
    */
   removeVaultSnapshots: (
     syncAccess: SyncAccess,
     vaultId: string,
+    expectedRemoteSnapshotDescriptor: VaultSnapshotDescriptor | null,
   ) => Promise<void>;
   /**
    * Returns authentication rejection only when the provider definitively

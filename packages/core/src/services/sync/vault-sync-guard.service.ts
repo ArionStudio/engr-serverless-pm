@@ -83,7 +83,7 @@ export class VaultSyncGuardService {
       };
     }
 
-    if (unlockedVault.vault.syncRemovalPending === true) {
+    if (unlockedVault.vault.syncRemovalPending !== undefined) {
       throw new SyncRemovalPendingError(vaultId, "modify vault data");
     }
 

@@ -474,7 +474,7 @@ export class PerformDeviceEnrollmentUseCase {
     syncConfig: SyncSetupInput | undefined,
     authorizedSnapshot: VaultSnapshot,
   ): Promise<SyncAccess | undefined> {
-    if (vault.syncRemovalPending === true) {
+    if (vault.syncRemovalPending !== undefined) {
       throw new SyncRemovalPendingError(vaultId, "complete device enrollment");
     }
 

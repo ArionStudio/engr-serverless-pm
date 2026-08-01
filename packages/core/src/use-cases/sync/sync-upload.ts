@@ -50,7 +50,7 @@ export class SyncUploadUseCase {
       throw new SyncNotConfiguredError(params.vaultId, "sync upload");
     }
 
-    if (unlockedVault.vault.syncRemovalPending === true) {
+    if (unlockedVault.vault.syncRemovalPending !== undefined) {
       throw new SyncRemovalPendingError(params.vaultId, "sync upload");
     }
 
