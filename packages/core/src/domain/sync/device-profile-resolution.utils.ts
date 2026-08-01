@@ -122,6 +122,15 @@ function selectDeviceProfileState(
   deviceProfileReview: DeviceProfileReviewItem,
   deviceProfileResolution: DeviceProfileReviewResolution,
 ): ReviewableDeviceProfile {
+  if (
+    deviceProfileReview.relation === "remote_only" &&
+    deviceProfileResolution.action === "use_local"
+  ) {
+    throw new InvalidVaultSyncResolutionError(
+      `Device profile "${deviceProfileReview.deviceId}" cannot use local absence to resolve remote-only state.`,
+    );
+  }
+
   return deviceProfileResolution.action === "use_local"
     ? deviceProfileReview.localDeviceProfile
     : deviceProfileReview.remoteDeviceProfile;
