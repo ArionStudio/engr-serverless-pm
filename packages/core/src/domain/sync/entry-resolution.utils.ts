@@ -110,6 +110,15 @@ function selectEntryState(
   entryReview: EntryReviewItem,
   entryResolution: EntryReviewResolution,
 ): ReviewableEntry {
+  if (
+    entryReview.relation === "remote_only" &&
+    entryResolution.action === "use_local"
+  ) {
+    throw new InvalidVaultSyncResolutionError(
+      `Entry "${entryReview.entryId}" cannot use local absence to resolve remote-only state.`,
+    );
+  }
+
   return entryResolution.action === "use_local"
     ? entryReview.localEntry
     : entryReview.remoteEntry;

@@ -105,6 +105,15 @@ function selectTagState(
   tagReview: TagReviewItem,
   tagResolution: TagReviewResolution,
 ): ReviewableTag {
+  if (
+    tagReview.relation === "remote_only" &&
+    tagResolution.action === "use_local"
+  ) {
+    throw new InvalidVaultSyncResolutionError(
+      `Tag "${tagReview.tagId}" cannot use local absence to resolve remote-only state.`,
+    );
+  }
+
   return tagResolution.action === "use_local"
     ? tagReview.localTag
     : tagReview.remoteTag;
