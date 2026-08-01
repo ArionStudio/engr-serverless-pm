@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
+import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import {
   createVaultSnapshotServiceMock,
@@ -163,6 +164,8 @@ describe("AddEntryUseCase", () => {
   it("rejects local changes while sync removal is pending", async () => {
     const ctx = createContext();
     const session = ctx.saved.unlockedVaultSession!;
+    const rollbackSnapshot = createUnlockVaultTestContext().vaultSnapshot;
+
     ctx.saved.unlockedVaultSession = {
       ...session,
       unlockedVault: {
@@ -170,7 +173,10 @@ describe("AddEntryUseCase", () => {
         vault: {
           ...session.unlockedVault.vault,
           syncTarget: ctx.values.syncTarget,
-          syncRemovalPending: true,
+          syncRemovalPending: {
+            expectedRemoteSnapshotDescriptor: null,
+            rollbackSnapshot,
+          },
         },
       },
     };

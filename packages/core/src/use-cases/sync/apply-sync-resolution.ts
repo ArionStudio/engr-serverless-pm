@@ -77,7 +77,7 @@ export class ApplySyncResolutionUseCase {
       throw new SyncNotConfiguredError(params.vaultId, "apply sync resolution");
     }
 
-    if (unlockedVault.vault.syncRemovalPending === true) {
+    if (unlockedVault.vault.syncRemovalPending !== undefined) {
       throw new SyncRemovalPendingError(
         params.vaultId,
         "apply sync resolution",
@@ -187,8 +187,10 @@ export class ApplySyncResolutionUseCase {
 
     if (
       !areJsonEqual(remoteVault.syncTarget, unlockedVault.vault.syncTarget) ||
-      remoteVault.syncRemovalPending !==
-        unlockedVault.vault.syncRemovalPending ||
+      !areJsonEqual(
+        remoteVault.syncRemovalPending,
+        unlockedVault.vault.syncRemovalPending,
+      ) ||
       (!areJsonEqual(
         remoteVault.providerCredentialRevocationPending,
         unlockedVault.vault.providerCredentialRevocationPending,

@@ -87,7 +87,7 @@ export class PrepareSyncReviewUseCase {
       throw new SyncNotConfiguredError(params.vaultId, "prepare sync review");
     }
 
-    if (unlockedVault.vault.syncRemovalPending === true) {
+    if (unlockedVault.vault.syncRemovalPending !== undefined) {
       throw new SyncRemovalPendingError(params.vaultId, "prepare sync review");
     }
 
@@ -201,8 +201,10 @@ export class PrepareSyncReviewUseCase {
 
     if (
       !areJsonEqual(remoteVault.syncTarget, unlockedVault.vault.syncTarget) ||
-      remoteVault.syncRemovalPending !==
-        unlockedVault.vault.syncRemovalPending ||
+      !areJsonEqual(
+        remoteVault.syncRemovalPending,
+        unlockedVault.vault.syncRemovalPending,
+      ) ||
       (!areJsonEqual(
         remoteVault.providerCredentialRevocationPending,
         unlockedVault.vault.providerCredentialRevocationPending,

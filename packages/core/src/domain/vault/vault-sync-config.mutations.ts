@@ -1,10 +1,26 @@
+import type { VaultSnapshotDescriptor } from "../snapshot/vault-snapshot-descriptor.type";
+import type { VaultSnapshot } from "../snapshot/vault-snapshot";
 import type { Vault } from "./vault";
 
-export function markVaultSyncRemovalPending(vault: Vault): Vault {
+export function markVaultSyncRemovalPending(
+  vault: Vault,
+  expectedRemoteSnapshotDescriptor: VaultSnapshotDescriptor | null,
+  rollbackSnapshot: VaultSnapshot,
+): Vault {
   return {
     ...vault,
-    syncRemovalPending: true,
+    syncRemovalPending: {
+      expectedRemoteSnapshotDescriptor,
+      rollbackSnapshot,
+    },
   };
+}
+
+export function clearVaultSyncRemovalPending(vault: Vault): Vault {
+  const { syncRemovalPending, ...vaultWithoutSyncRemovalPending } = vault;
+  void syncRemovalPending;
+
+  return vaultWithoutSyncRemovalPending;
 }
 
 export function markVaultProviderCredentialRevocationPending(

@@ -251,8 +251,10 @@ export class DeviceRevocationConsumptionService {
 
     if (
       !areJsonEqual(remoteVault.syncTarget, syncTarget) ||
-      remoteVault.syncRemovalPending !==
-        params.unlockedVault.vault.syncRemovalPending
+      !areJsonEqual(
+        remoteVault.syncRemovalPending,
+        params.unlockedVault.vault.syncRemovalPending,
+      )
     ) {
       throw new InvalidDeviceRevocationTransitionError(
         params.vaultId,

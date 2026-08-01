@@ -54,7 +54,7 @@ export class DeviceEnrollmentConsumptionService {
       throw new SyncNotConfiguredError(params.vaultId, params.operation);
     }
 
-    if (params.unlockedVault.vault.syncRemovalPending === true) {
+    if (params.unlockedVault.vault.syncRemovalPending !== undefined) {
       throw new SyncRemovalPendingError(params.vaultId, params.operation);
     }
 
@@ -177,8 +177,10 @@ export class DeviceEnrollmentConsumptionService {
         remoteVault.syncTarget,
         params.unlockedVault.vault.syncTarget,
       ) ||
-      remoteVault.syncRemovalPending !==
-        params.unlockedVault.vault.syncRemovalPending ||
+      !areJsonEqual(
+        remoteVault.syncRemovalPending,
+        params.unlockedVault.vault.syncRemovalPending,
+      ) ||
       (!areJsonEqual(
         remoteVault.providerCredentialRevocationPending,
         params.unlockedVault.vault.providerCredentialRevocationPending,

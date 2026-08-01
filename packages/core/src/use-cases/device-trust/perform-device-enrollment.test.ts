@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
+import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import type {
   DeviceEnrollmentResponse,
@@ -181,10 +182,15 @@ describe("PerformDeviceEnrollmentUseCase", () => {
 
   it("rejects enrollment while remote sync removal is pending", async () => {
     const ctx = createContext(true);
+    const rollbackSnapshot = createUnlockVaultTestContext().vaultSnapshot;
+
     vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
       ...ctx.values.decryptedVault,
       syncTarget: ctx.values.syncTarget,
-      syncRemovalPending: true,
+      syncRemovalPending: {
+        expectedRemoteSnapshotDescriptor: null,
+        rollbackSnapshot,
+      },
     });
 
     await expect(

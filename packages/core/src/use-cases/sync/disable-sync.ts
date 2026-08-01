@@ -7,12 +7,14 @@ import {
   toVaultSnapshotDescriptor,
 } from "../../domain/snapshot/vault-snapshot-descriptor.utils";
 import {
+  clearVaultSyncRemovalPending,
   markVaultSyncRemovalPending,
   removeVaultSyncTarget,
 } from "../../domain/vault/vault-sync-config.mutations";
 import { removeOtherDeviceProfilesFromVault } from "../../domain/vault/vault-device.mutations";
 import {
   RemoteVaultSnapshotAheadError,
+  RemoteVaultSnapshotChangedError,
   RemoteVaultSnapshotIntegrityError,
   SyncNotConfiguredError,
 } from "../../errors/sync.errors";
@@ -82,21 +84,25 @@ export class DisableSyncUseCase {
         currentSnapshotVersionVector,
       );
 
-    if (currentUnlockedVault.vault.syncRemovalPending !== true) {
-      const remoteSnapshotDescriptor =
+    let expectedRemoteSnapshotDescriptor =
+      currentUnlockedVault.vault.syncRemovalPending
+        ?.expectedRemoteSnapshotDescriptor;
+
+    if (expectedRemoteSnapshotDescriptor === undefined) {
+      expectedRemoteSnapshotDescriptor =
         await this.syncProvider.getLatestVaultSnapshotDescriptor(
           syncAccess,
           params.vaultId,
         );
 
-      if (remoteSnapshotDescriptor !== null) {
+      if (expectedRemoteSnapshotDescriptor !== null) {
         const localSnapshotDescriptor = toVaultSnapshotDescriptor(
           params.vaultId,
           currentSnapshot,
         );
         const relation = compareVaultSnapshotDescriptors(
           localSnapshotDescriptor,
-          remoteSnapshotDescriptor,
+          expectedRemoteSnapshotDescriptor,
         );
 
         if (relation === "remote_ahead") {
@@ -107,7 +113,7 @@ export class DisableSyncUseCase {
           relation === "broken" ||
           (relation === "equal" &&
             !areVaultSnapshotDescriptorsEqual(
-              remoteSnapshotDescriptor,
+              expectedRemoteSnapshotDescriptor,
               localSnapshotDescriptor,
             ))
         ) {
@@ -117,7 +123,11 @@ export class DisableSyncUseCase {
 
       const pendingUnlockedVault = {
         ...unlockedVault,
-        vault: markVaultSyncRemovalPending(unlockedVault.vault),
+        vault: markVaultSyncRemovalPending(
+          unlockedVault.vault,
+          expectedRemoteSnapshotDescriptor,
+          currentSnapshot,
+        ),
       };
       const pendingSnapshot =
         await this.unlockedVaultSession.persistForActiveSession(
@@ -145,7 +155,54 @@ export class DisableSyncUseCase {
       );
     }
 
-    await this.syncProvider.removeVaultSnapshots(syncAccess, params.vaultId);
+    try {
+      await this.syncProvider.removeVaultSnapshots(
+        syncAccess,
+        params.vaultId,
+        expectedRemoteSnapshotDescriptor,
+      );
+    } catch (error) {
+      if (!(error instanceof RemoteVaultSnapshotChangedError)) {
+        throw error;
+      }
+
+      const rollbackSnapshot =
+        currentUnlockedVault.vault.syncRemovalPending?.rollbackSnapshot;
+
+      if (rollbackSnapshot === undefined) {
+        throw new RemoteVaultSnapshotIntegrityError(params.vaultId);
+      }
+
+      const rollbackSnapshotDigest =
+        await this.crypto.digestVaultSnapshot(rollbackSnapshot);
+      const rolledBackUnlockedVault = {
+        ...currentUnlockedVault,
+        vault: clearVaultSyncRemovalPending(currentUnlockedVault.vault),
+        trustedSnapshotContext: {
+          snapshotDigest: rollbackSnapshotDigest,
+          trust: currentUnlockedVault.trustedSnapshotContext.trust,
+        },
+      };
+
+      await this.unlockedVaultSession.persistForActiveSession(
+        sessionId,
+        params.vaultId,
+        async () =>
+          this.vaultSnapshot.restoreLocalVaultSnapshot(
+            rollbackSnapshot,
+            currentSnapshot,
+            currentUnlockedVault,
+          ),
+      );
+
+      await this.unlockedVaultSession.commitPersistedSnapshot(
+        sessionId,
+        rolledBackUnlockedVault,
+        rollbackSnapshot.metadata.snapshotVersionVector,
+      );
+
+      throw error;
+    }
 
     const revisionTimestamp = this.clock.now();
     const updatedVault = removeVaultSyncTarget(
