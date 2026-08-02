@@ -51,7 +51,7 @@ else committed
     UC -> LocalRepo : removePersistedLocalVault(vaultId)
     UC --> Caller : throw conflict or upload failure
   else uploaded
-    UC --> Caller : vault, vector, timestamp, deviceId, recoveryMnemonicKey
+    UC --> Caller : visible vault projection, vector, timestamp, deviceId, recoveryMnemonicKey
   end
 end
 

@@ -10,7 +10,7 @@ skinparam activity {
 }
 
 start
-:Input:\nvaultId, remoteSnapshotDescriptor, resolution;
+:Input:\nvaultId, localSnapshotDescriptor,\nremoteSnapshotDescriptor, resolution;
 :Source:\npackages/core/src/use-cases/sync/apply-sync-resolution.ts;
 :Require unlocked vault context for "apply sync resolution";
 if (syncConfig missing?) then (yes)
@@ -23,6 +23,10 @@ if (descriptor vaultId differs?) then (yes)
 endif
 
 :Require current local snapshot for unlocked vault and source vector;
+if (current local descriptor differs from reviewed descriptor?) then (yes)
+  :Throw LocalVaultSnapshotChangedError;
+  stop
+endif
 :Read current remote snapshot descriptor;
 if (current remote descriptor missing or changed?) then (yes)
   :Throw RemoteVaultSnapshotChangedError;

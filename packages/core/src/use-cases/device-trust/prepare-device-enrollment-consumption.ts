@@ -4,7 +4,11 @@ import type { EntryReviewItem } from "../../domain/sync/entry-review.type";
 import { findChangedEntries } from "../../domain/sync/entry-review.utils";
 import type { TagReviewItem } from "../../domain/sync/tag-review.type";
 import { findChangedTags } from "../../domain/sync/tag-review.utils";
-import type { VaultSnapshotDescriptor } from "../../domain/snapshot";
+import {
+  cloneVaultSnapshotDescriptor,
+  toVaultSnapshotDescriptor,
+  type VaultSnapshotDescriptor,
+} from "../../domain/snapshot";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
@@ -17,6 +21,7 @@ export type PrepareDeviceEnrollmentConsumptionCommandParams = {
 };
 
 export type PrepareDeviceEnrollmentConsumptionResult = {
+  readonly localSnapshotDescriptor: VaultSnapshotDescriptor;
   readonly remoteSnapshotDescriptor: VaultSnapshotDescriptor;
   readonly enrolledDeviceIds: readonly string[];
   readonly vaultKeyGeneration: number;
@@ -63,7 +68,13 @@ export class PrepareDeviceEnrollmentConsumptionUseCase {
     });
 
     return {
-      remoteSnapshotDescriptor: candidate.remoteSnapshotDescriptor,
+      localSnapshotDescriptor: toVaultSnapshotDescriptor(
+        params.vaultId,
+        candidate.localSnapshot,
+      ),
+      remoteSnapshotDescriptor: cloneVaultSnapshotDescriptor(
+        candidate.remoteSnapshotDescriptor,
+      ),
       enrolledDeviceIds: candidate.transitions.map(
         (transition) => transition.enrolledDeviceId,
       ),

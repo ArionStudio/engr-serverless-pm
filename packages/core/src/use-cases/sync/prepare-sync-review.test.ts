@@ -139,9 +139,15 @@ describe("PrepareSyncReviewUseCase", () => {
   it("returns an ordinary remote-ahead content review", async () => {
     const ctx = createContext();
 
-    await expect(
-      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
-    ).resolves.toMatchObject({
+    const result = await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+    });
+
+    expect(result).toMatchObject({
+      localSnapshotDescriptor: toVaultSnapshotDescriptor(
+        ctx.values.vaultId,
+        ctx.vaultSnapshot,
+      ),
       relation: "remote_ahead",
       review: {
         actionable: {
@@ -153,6 +159,40 @@ describe("PrepareSyncReviewUseCase", () => {
           providerCredentialRevocationCompleted: false,
         },
       },
+    });
+
+    result.localSnapshotDescriptor.snapshotVersionVector[ctx.values.deviceId] =
+      99;
+
+    expect(ctx.saved.vaultSnapshot?.metadata.snapshotVersionVector).toEqual({
+      [ctx.values.deviceId]: 1,
+    });
+  });
+
+  it("returns a remote descriptor detached from the sync provider", async () => {
+    const ctx = createContext();
+    const providerDescriptor = toVaultSnapshotDescriptor(
+      ctx.values.vaultId,
+      ctx.remoteSnapshot,
+    );
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValue(providerDescriptor);
+
+    const result = await ctx.useCase.execute({ vaultId: ctx.values.vaultId });
+    const downloadDescriptor = vi
+      .mocked(ctx.ports.syncProvider.downloadVaultSnapshot)
+      .mock.calls.at(-1)?.[1];
+
+    if (downloadDescriptor === undefined) {
+      throw new Error("Expected a remote snapshot download.");
+    }
+
+    providerDescriptor.snapshotVersionVector[ctx.values.deviceId] = 99;
+    downloadDescriptor.snapshotVersionVector[ctx.values.deviceId] = 98;
+
+    expect(result.remoteSnapshotDescriptor.snapshotVersionVector).toEqual({
+      [ctx.values.deviceId]: 2,
     });
   });
 

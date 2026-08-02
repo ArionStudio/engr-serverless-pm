@@ -231,11 +231,16 @@ function createContext() {
 
 function createCommand(ctx: {
   readonly values: CoreTestValues;
+  readonly localSnapshot: VaultSnapshot;
   readonly remoteSnapshot: VaultSnapshot;
 }) {
   return {
     vaultId: ctx.values.vaultId,
     replacementSyncConfig: ctx.values.replacementSyncConfigInput,
+    localSnapshotDescriptor: toVaultSnapshotDescriptor(
+      ctx.values.vaultId,
+      ctx.localSnapshot,
+    ),
     remoteSnapshotDescriptor: toVaultSnapshotDescriptor(
       ctx.values.vaultId,
       ctx.remoteSnapshot,
@@ -278,6 +283,10 @@ describe("PrepareDeviceRevocationConsumptionUseCase", () => {
     });
 
     expect(result).toMatchObject({
+      localSnapshotDescriptor: toVaultSnapshotDescriptor(
+        ctx.values.vaultId,
+        ctx.localSnapshot,
+      ),
       revokedDeviceIds: [ctx.values.pendingDeviceId],
       vaultKeyGeneration: 2,
       review: {
@@ -895,6 +904,10 @@ describe("ConsumeDeviceRevocationUseCase", () => {
     await expect(
       ctx.useCase.execute({
         ...createCommand(ctx),
+        localSnapshotDescriptor: toVaultSnapshotDescriptor(
+          ctx.values.vaultId,
+          localSnapshot,
+        ),
         remoteSnapshotDescriptor: toVaultSnapshotDescriptor(
           ctx.values.vaultId,
           remoteSnapshot,
@@ -1172,6 +1185,29 @@ describe("ConsumeDeviceRevocationUseCase", () => {
     ).rejects.toBeInstanceOf(RemoteVaultSnapshotChangedError);
 
     expect(ctx.ports.syncProvider.downloadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("rejects when the local descriptor changed after review", async () => {
+    const ctx = createContext();
+    const command = createCommand(ctx);
+
+    await expect(
+      ctx.useCase.execute({
+        ...command,
+        localSnapshotDescriptor: {
+          ...command.localSnapshotDescriptor,
+          revisionTimestamp:
+            command.localSnapshotDescriptor.revisionTimestamp - 1,
+        },
+      }),
+    ).rejects.toBeInstanceOf(LocalVaultSnapshotChangedError);
+
+    expect(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.crypto.encryptDeviceSyncCredentialState,
+    ).not.toHaveBeenCalled();
   });
 
   it("restores local state when resolved-snapshot remote compare-and-set fails", async () => {

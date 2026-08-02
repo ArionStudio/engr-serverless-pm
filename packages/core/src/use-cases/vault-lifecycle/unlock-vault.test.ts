@@ -41,6 +41,22 @@ describe("UnlockVaultUseCase", () => {
     });
     expect(result.vault.entries[0]).not.toHaveProperty("password");
     expect(result.vault).not.toHaveProperty("syncTarget");
+
+    const visibleEntry = result.vault.entries[0];
+
+    if (visibleEntry === undefined) {
+      throw new Error("Expected a visible vault entry.");
+    }
+
+    visibleEntry.tags.push(2);
+    result.snapshotVersionVector[ctx.values.deviceId] = 99;
+
+    expect(
+      ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries[0]?.tags,
+    ).toEqual(singlePasswordEntry.tags);
+    expect(ctx.saved.unlockedVaultSession?.sourceSnapshotVersionVector).toEqual(
+      { [ctx.values.deviceId]: 1 },
+    );
   });
 
   it("verifies both local key pairs and opens the current envelope", async () => {

@@ -289,7 +289,7 @@ this report is the only created file.
 
 ### Important
 
-17. **All upload exceptions are treated as definite non-commits.**
+- **17. All upload exceptions are treated as definite non-commits.**
     [packages/core/src/services/sync/vault-sync-guard.service.ts:128](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/services/sync/vault-sync-guard.service.ts#L128),
     [packages/core/src/services/sync/vault-sync-guard.service.ts:157](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/services/sync/vault-sync-guard.service.ts#L157),
     [packages/core/src/use-cases/device-trust/perform-device-enrollment.ts:441](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/device-trust/perform-device-enrollment.ts#L441),
@@ -305,7 +305,7 @@ this report is the only created file.
     transport failures. For unknown outcomes, re-read the remote descriptor and
     reconcile or retain an explicit pending state before rollback.
 
-18. **Completed-enrollment proof history is not compared or preserved as an
+- **18. Completed-enrollment proof history is not compared or preserved as an
     append-only trust ledger.**
     [packages/core/src/domain/sync/key-slot-review.utils.ts:14](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/domain/sync/key-slot-review.utils.ts#L14),
     [packages/core/src/use-cases/sync/apply-sync-resolution.ts:220](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/sync/apply-sync-resolution.ts#L220),
@@ -321,7 +321,7 @@ this report is the only created file.
     local history plus exactly one newly verified proof; reject removals,
     mutations, duplicates, and unrelated additions.
 
-19. **Snapshot descriptor comparison ignores vault identity.**
+- **19. Snapshot descriptor comparison ignores vault identity.**
     [packages/core/src/domain/snapshot/vault-snapshot-descriptor.utils.ts:6](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/domain/snapshot/vault-snapshot-descriptor.utils.ts#L6),
     [packages/core/src/use-cases/sync/sync-upload.ts:60](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/sync/sync-upload.ts#L60),
     [packages/core/src/services/sync/vault-sync-guard.service.ts:82](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/services/sync/vault-sync-guard.service.ts#L82)
@@ -335,7 +335,7 @@ this report is the only created file.
     Reject differing `vaultId`s before calculating a relation and test all
     relation branches with a wrong-vault descriptor.
 
-20. **Schema versions are compile-time literals, not hostile-boundary checks.**
+- **20. Schema versions are compile-time literals, not hostile-boundary checks.**
     [packages/core/src/domain/snapshot/vault-snapshot.ts:10](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/domain/snapshot/vault-snapshot.ts#L10),
     [packages/core/src/domain/device-trust/device-enrollment-bundle.ts:10](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/domain/device-trust/device-enrollment-bundle.ts#L10)
 
@@ -348,7 +348,7 @@ this report is the only created file.
     enrollment import boundaries. Reject unsupported versions before decrypting
     or mutating.
 
-21. **Local vault deletion bypasses the lock cleanup workflow.**
+- **21. Local vault deletion bypasses the lock cleanup workflow.**
     [packages/core/src/use-cases/vault-lifecycle/delete-local-vault.ts:29](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/vault-lifecycle/delete-local-vault.ts#L29),
     [packages/core/src/use-cases/vault-lifecycle/lock-vault.ts:38](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/vault-lifecycle/lock-vault.ts#L38)
 
@@ -361,7 +361,7 @@ this report is the only created file.
     Centralize lifecycle cleanup, use it before deletion, and bind scheduled
     execution to action ID plus active vault/session generation.
 
-22. **Device access material is not identity-bound before use or overwrite.**
+- **22. Device access material is not identity-bound before use or overwrite.**
     [packages/core/src/use-cases/vault-lifecycle/unlock-vault.ts:75](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/vault-lifecycle/unlock-vault.ts#L75),
     [packages/core/src/use-cases/vault-lifecycle/change-master-password.ts:41](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/vault-lifecycle/change-master-password.ts#L41)
 
@@ -375,7 +375,7 @@ this report is the only created file.
     active device before any write. Recovery already performs the analogous
     backup-vault check.
 
-23. **Raw key buffers and ephemeral derivation material are never wiped.**
+- **23. Raw key buffers and ephemeral derivation material are never wiped.**
     [packages/core/src/services/session/unlocked-vault-session.service.ts:120](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/services/session/unlocked-vault-session.service.ts#L120),
     [packages/core/src/lib/secure-wipe.utils.ts:15](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/lib/secure-wipe.utils.ts#L15),
     [packages/core/src/use-cases/vault-lifecycle/initialize-vault.ts:70](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/vault-lifecycle/initialize-vault.ts#L70),
@@ -392,7 +392,7 @@ this report is the only created file.
     buffers in `finally`, and wipe retrieved hot material before/while removing
     records without preventing the remaining cleanup attempts.
 
-24. **Recovery-word "rotation" cannot revoke the old words under rollbackable
+- **24. Recovery-word "rotation" cannot revoke the old words under rollbackable
     storage.**
     [packages/core/src/use-cases/device-trust/recover-device-access.ts:147](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/device-trust/recover-device-access.ts#L147),
     [packages/core/src/use-cases/device-trust/recover-device-access.ts:205](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/device-trust/recover-device-access.ts#L205),
@@ -407,7 +407,7 @@ this report is the only created file.
     True revocation requires a fresh device identity/key slot plus an authorized
     trust transition, or a trustworthy monotonic anti-rollback mechanism.
 
-25. **Malformed URL errors retain secret-bearing raw input in their cause.**
+- **25. Malformed URL errors retain secret-bearing raw input in their cause.**
     [packages/core/src/domain/entry/sanitized-entry-url.utils.ts:5](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/domain/entry/sanitized-entry-url.utils.ts#L5),
     [packages/core/src/use-cases/vault-entries/add-entry.ts:54](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/use-cases/vault-entries/add-entry.ts#L54),
     [packages/core/src/errors/vault-entry.errors.ts:12](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/errors/vault-entry.errors.ts#L12)
@@ -423,7 +423,7 @@ this report is the only created file.
 
 ### Nits
 
-26. **Eight type-only modules use runtime imports.**
+- **26. Eight type-only modules use runtime imports.**
     [packages/core/src/domain/entry/password-entry.type.ts:1](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/domain/entry/password-entry.type.ts#L1),
     [packages/core/src/domain/entry/search-entry-query.type.ts:1](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/domain/entry/search-entry-query.type.ts#L1),
     [packages/core/src/domain/entry/tag.type.ts:1](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/domain/entry/tag.type.ts#L1),
@@ -439,7 +439,7 @@ this report is the only created file.
     `verbatimModuleSyntax`. Convert both Zod types and schema symbols used only by
     `typeof` to type imports.
 
-27. **Username normalization gives one word twice the intended probability.**
+- **27. Username normalization gives one word twice the intended probability.**
     [packages/core/src/lib/generate-username/generated-username.utils.ts:55](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/lib/generate-username/generated-username.utils.ts#L55),
     [packages/core/src/lib/generate-username/generated-username.const.ts:7750](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/lib/generate-username/generated-username.const.ts#L7750),
     [packages/core/src/lib/generate-username/generated-username.const.ts:7755](https://github.com/ArionStudio/engr-serverless-pm/blob/50e60bb8c8006d1445121e19e1144d7690ad4eb2/packages/core/src/lib/generate-username/generated-username.const.ts#L7755)
@@ -450,11 +450,11 @@ this report is the only created file.
 
 ### Cross-Cutting Research Follow-Up
 
-28. **Core contracts may duplicate authoritative state and derived views across
+- **28. Core contracts may duplicate authoritative state and derived views across
     parameter graphs.**
     [packages/core/src/domain/sync/sync-resolution.utils.ts:23](packages/core/src/domain/sync/sync-resolution.utils.ts#L23),
     [packages/core/src/domain/sync/entry-resolution.utils.ts:16](packages/core/src/domain/sync/entry-resolution.utils.ts#L16),
-    [packages/core/src/use-cases/sync/apply-sync-resolution.ts:299](packages/core/src/use-cases/sync/apply-sync-resolution.ts#L299)
+    [packages/core/src/use-cases/sync/apply-sync-resolution.ts:324](packages/core/src/use-cases/sync/apply-sync-resolution.ts#L324)
 
     This is a whole-core research finding recorded on 2026-08-02 after the
     original review. It is not limited to Finding 10 or to sync resolution, and

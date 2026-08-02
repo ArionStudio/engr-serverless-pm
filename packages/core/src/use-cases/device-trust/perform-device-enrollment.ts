@@ -469,7 +469,9 @@ export class PerformDeviceEnrollmentUseCase {
       vault: toVisibleVaultFields(vault),
       deviceId: request.payload.deviceId,
       recoveryMnemonicKey,
-      snapshotVersionVector: snapshot.metadata.snapshotVersionVector,
+      snapshotVersionVector: {
+        ...snapshot.metadata.snapshotVersionVector,
+      },
       revisionTimestamp: snapshot.metadata.revisionTimestamp,
       syncUpload,
     };

@@ -92,7 +92,7 @@ else (no)
 endif
 
 if (commit unlocked session succeeds?) then (yes)
-  :Return decrypted vault;
+  :Return visible vault projection, vaultId, deviceId,\nsnapshotVersionVector, revisionTimestamp;
   stop
 else (no)
   :Best effort cancel scheduled lock task;

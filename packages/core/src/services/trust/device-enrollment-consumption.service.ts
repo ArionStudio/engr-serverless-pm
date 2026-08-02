@@ -5,13 +5,14 @@ import { requireDeviceProfilesMatchTrust } from "../../domain/sync/device-profil
 import { findChangesInKeySlots } from "../../domain/sync/key-slot-review.utils";
 import {
   areVaultSnapshotDescriptorsEqual,
+  cloneVaultSnapshotDescriptor,
   toVaultSnapshotDescriptor,
 } from "../../domain/snapshot";
 import type { VaultSnapshotDescriptor } from "../../domain/snapshot";
 import type { Vault } from "../../domain/vault";
 import { clearVaultProviderCredentialRevocationPending } from "../../domain/vault/vault-sync-config.mutations";
-import type { VersionVector } from "../../domain/versioning";
 import { compareVersionVectors } from "../../domain/versioning";
+import type { VersionVector } from "../../domain/versioning";
 import { InvalidDeviceEnrollmentTransitionError } from "../../errors/device-enrollment.errors";
 import {
   RemoteVaultSnapshotChangedError,
@@ -19,6 +20,7 @@ import {
   SyncNotConfiguredError,
   SyncRemovalPendingError,
 } from "../../errors/sync.errors";
+import { LocalVaultSnapshotChangedError } from "../../errors/vault-snapshot.errors";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { VaultSnapshotService } from "../snapshot/vault-snapshot.service";
@@ -48,6 +50,7 @@ export class DeviceEnrollmentConsumptionService {
     readonly operation: string;
     readonly unlockedVault: UnlockedVault;
     readonly sourceSnapshotVersionVector: VersionVector;
+    readonly expectedLocalSnapshotDescriptor?: VaultSnapshotDescriptor;
     readonly expectedRemoteSnapshotDescriptor?: VaultSnapshotDescriptor;
   }) {
     if (params.unlockedVault.vault.syncTarget === undefined) {
@@ -64,19 +67,32 @@ export class DeviceEnrollmentConsumptionService {
         params.unlockedVault,
         params.sourceSnapshotVersionVector,
       );
+
+    if (
+      params.expectedLocalSnapshotDescriptor !== undefined &&
+      !areVaultSnapshotDescriptorsEqual(
+        toVaultSnapshotDescriptor(params.vaultId, localSnapshot),
+        params.expectedLocalSnapshotDescriptor,
+      )
+    ) {
+      throw new LocalVaultSnapshotChangedError(params.vaultId);
+    }
     const syncAccess = await this.vaultSyncGuard.requireSyncAccess(
       params.vaultId,
       params.unlockedVault,
     );
-    const remoteSnapshotDescriptor =
+    const providerRemoteSnapshotDescriptor =
       await this.syncProvider.getLatestVaultSnapshotDescriptor(
         syncAccess,
         params.vaultId,
       );
 
-    if (remoteSnapshotDescriptor === null) {
+    if (providerRemoteSnapshotDescriptor === null) {
       throw new RemoteVaultSnapshotNotFoundError(params.vaultId);
     }
+    const remoteSnapshotDescriptor = cloneVaultSnapshotDescriptor(
+      providerRemoteSnapshotDescriptor,
+    );
 
     if (
       params.expectedRemoteSnapshotDescriptor !== undefined &&
@@ -90,7 +106,7 @@ export class DeviceEnrollmentConsumptionService {
 
     const remoteSnapshot = await this.syncProvider.downloadVaultSnapshot(
       syncAccess,
-      remoteSnapshotDescriptor,
+      cloneVaultSnapshotDescriptor(remoteSnapshotDescriptor),
     );
 
     if (

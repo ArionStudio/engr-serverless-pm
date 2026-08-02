@@ -3,6 +3,16 @@ import type { VaultSnapshotDescriptor } from "./vault-snapshot-descriptor.type";
 import { compareVersionVectors } from "../versioning/version-vector.utils";
 import type { VersionVectorRelation } from "../versioning/version-vector.type";
 
+export function cloneVaultSnapshotDescriptor(
+  descriptor: VaultSnapshotDescriptor,
+): VaultSnapshotDescriptor {
+  return {
+    vaultId: descriptor.vaultId,
+    snapshotVersionVector: { ...descriptor.snapshotVersionVector },
+    revisionTimestamp: descriptor.revisionTimestamp,
+  };
+}
+
 export function compareVaultSnapshotDescriptors(
   local: VaultSnapshotDescriptor,
   remote: VaultSnapshotDescriptor,
@@ -31,9 +41,9 @@ export function toVaultSnapshotDescriptor(
   vaultId: string,
   vaultSnapshot: VaultSnapshot,
 ): VaultSnapshotDescriptor {
-  return {
+  return cloneVaultSnapshotDescriptor({
     vaultId,
     snapshotVersionVector: vaultSnapshot.metadata.snapshotVersionVector,
     revisionTimestamp: vaultSnapshot.metadata.revisionTimestamp,
-  };
+  });
 }

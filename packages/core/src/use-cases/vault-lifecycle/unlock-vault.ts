@@ -332,7 +332,9 @@ export class UnlockVaultUseCase {
     return {
       vaultId: params.vaultId,
       deviceId: deviceAccessMaterial.deviceId,
-      snapshotVersionVector: vaultSnapshot.metadata.snapshotVersionVector,
+      snapshotVersionVector: {
+        ...vaultSnapshot.metadata.snapshotVersionVector,
+      },
       revisionTimestamp: vaultSnapshot.metadata.revisionTimestamp,
       vault: toVisibleVaultFields(vault),
     };

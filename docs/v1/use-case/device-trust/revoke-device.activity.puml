@@ -51,6 +51,6 @@ endif
 :Build updated unlocked vault;
 :Upload persisted local mutation through sync guard;
 :Commit revoked snapshot vector to unlocked session;
-:Return vault, snapshotVersionVector, revisionTimestamp;
+:Return visible vault projection, snapshotVersionVector,\nrevisionTimestamp, providerCredentialRevocation;
 stop
 @enduml

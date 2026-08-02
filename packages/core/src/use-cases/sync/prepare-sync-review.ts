@@ -3,6 +3,7 @@ import { areJsonEqual } from "../../domain/common";
 import type { VersionVectorRelation } from "../../domain/versioning/version-vector.type";
 import {
   areVaultSnapshotDescriptorsEqual,
+  cloneVaultSnapshotDescriptor,
   compareVaultSnapshotDescriptors,
   toVaultSnapshotDescriptor,
 } from "../../domain/snapshot/vault-snapshot-descriptor.utils";
@@ -38,6 +39,7 @@ export type PrepareSyncReviewCommandParams = {
 };
 
 export type PrepareSyncReviewResult = {
+  readonly localSnapshotDescriptor: VaultSnapshotDescriptor;
   readonly remoteSnapshotDescriptor: VaultSnapshotDescriptor;
   readonly relation: VersionVectorRelation;
   readonly review: VaultSyncReview | null;
@@ -101,15 +103,18 @@ export class PrepareSyncReviewUseCase {
       params.vaultId,
       unlockedVault,
     );
-    const remoteSnapshotDescriptor =
+    const providerRemoteSnapshotDescriptor =
       await this.syncProvider.getLatestVaultSnapshotDescriptor(
         syncAccess,
         params.vaultId,
       );
 
-    if (remoteSnapshotDescriptor === null) {
+    if (providerRemoteSnapshotDescriptor === null) {
       throw new RemoteVaultSnapshotNotFoundError(params.vaultId);
     }
+    const remoteSnapshotDescriptor = cloneVaultSnapshotDescriptor(
+      providerRemoteSnapshotDescriptor,
+    );
 
     const localSnapshotDescriptor = toVaultSnapshotDescriptor(
       params.vaultId,
@@ -139,7 +144,10 @@ export class PrepareSyncReviewUseCase {
       }
 
       return {
-        remoteSnapshotDescriptor,
+        localSnapshotDescriptor,
+        remoteSnapshotDescriptor: cloneVaultSnapshotDescriptor(
+          remoteSnapshotDescriptor,
+        ),
         relation,
         review: null,
       };
@@ -147,7 +155,7 @@ export class PrepareSyncReviewUseCase {
 
     const remoteSnapshot = await this.syncProvider.downloadVaultSnapshot(
       syncAccess,
-      remoteSnapshotDescriptor,
+      cloneVaultSnapshotDescriptor(remoteSnapshotDescriptor),
     );
     const remoteTrust = await this.vaultSnapshot.verifyCandidateSnapshotTrust(
       params.vaultId,
@@ -258,7 +266,10 @@ export class PrepareSyncReviewUseCase {
     );
 
     return {
-      remoteSnapshotDescriptor,
+      localSnapshotDescriptor,
+      remoteSnapshotDescriptor: cloneVaultSnapshotDescriptor(
+        remoteSnapshotDescriptor,
+      ),
       relation,
       review: {
         actionable: {

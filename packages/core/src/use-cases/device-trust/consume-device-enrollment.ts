@@ -9,6 +9,7 @@ import type {
   VaultSnapshot,
   VaultSnapshotDescriptor,
 } from "../../domain/snapshot";
+import { cloneVaultSnapshotDescriptor } from "../../domain/snapshot";
 import type { Vault } from "../../domain/vault";
 import { mergeVersionVectors } from "../../domain/versioning";
 import {
@@ -27,6 +28,7 @@ import { VaultTrustService } from "../../services/trust/vault-trust.service";
 
 export type ConsumeDeviceEnrollmentCommandParams = {
   readonly vaultId: string;
+  readonly localSnapshotDescriptor: VaultSnapshotDescriptor;
   readonly remoteSnapshotDescriptor: VaultSnapshotDescriptor;
   readonly resolution: VaultSyncResolution;
 };
@@ -70,10 +72,19 @@ export class ConsumeDeviceEnrollmentUseCase {
   async execute(
     params: ConsumeDeviceEnrollmentCommandParams,
   ): Promise<ConsumeDeviceEnrollmentResult> {
-    if (params.remoteSnapshotDescriptor.vaultId !== params.vaultId) {
+    const localSnapshotDescriptor = cloneVaultSnapshotDescriptor(
+      params.localSnapshotDescriptor,
+    );
+    const remoteSnapshotDescriptor = cloneVaultSnapshotDescriptor(
+      params.remoteSnapshotDescriptor,
+    );
+    if (
+      localSnapshotDescriptor.vaultId !== params.vaultId ||
+      remoteSnapshotDescriptor.vaultId !== params.vaultId
+    ) {
       throw new InvalidSyncResolutionError(
         params.vaultId,
-        new Error("Remote snapshot descriptor belongs to another vault."),
+        new Error("Snapshot descriptor belongs to another vault."),
       );
     }
 
@@ -87,7 +98,8 @@ export class ConsumeDeviceEnrollmentUseCase {
       operation: "consume device enrollment",
       unlockedVault,
       sourceSnapshotVersionVector,
-      expectedRemoteSnapshotDescriptor: params.remoteSnapshotDescriptor,
+      expectedLocalSnapshotDescriptor: localSnapshotDescriptor,
+      expectedRemoteSnapshotDescriptor: remoteSnapshotDescriptor,
     });
     const entryReviews = findChangedEntries(
       candidate.enrollmentBaseline,
@@ -174,7 +186,9 @@ export class ConsumeDeviceEnrollmentUseCase {
         {
           localSnapshot: candidate.localSnapshot,
           syncAccess: candidate.syncAccess,
-          remoteSnapshotDescriptor: candidate.remoteSnapshotDescriptor,
+          remoteSnapshotDescriptor: cloneVaultSnapshotDescriptor(
+            candidate.remoteSnapshotDescriptor,
+          ),
         },
         persistedSnapshot.snapshot,
         unlockedVault,

@@ -18,6 +18,7 @@ import type {
   VaultSnapshot,
   VaultSnapshotDescriptor,
 } from "../../domain/snapshot";
+import { cloneVaultSnapshotDescriptor } from "../../domain/snapshot";
 import type { Vault } from "../../domain/vault";
 import type { VersionVector } from "../../domain/versioning";
 import { mergeVersionVectors } from "../../domain/versioning";
@@ -39,6 +40,7 @@ import { VaultTrustService } from "../../services/trust/vault-trust.service";
 export type ConsumeDeviceRevocationCommandParams = {
   readonly vaultId: string;
   readonly replacementSyncConfig: SyncSetupInput;
+  readonly localSnapshotDescriptor: VaultSnapshotDescriptor;
   readonly remoteSnapshotDescriptor: VaultSnapshotDescriptor;
   readonly resolution: VaultSyncResolution;
 };
@@ -83,10 +85,19 @@ export class ConsumeDeviceRevocationUseCase {
   async execute(
     params: ConsumeDeviceRevocationCommandParams,
   ): Promise<ConsumeDeviceRevocationResult> {
-    if (params.remoteSnapshotDescriptor.vaultId !== params.vaultId) {
+    const localSnapshotDescriptor = cloneVaultSnapshotDescriptor(
+      params.localSnapshotDescriptor,
+    );
+    const remoteSnapshotDescriptor = cloneVaultSnapshotDescriptor(
+      params.remoteSnapshotDescriptor,
+    );
+    if (
+      localSnapshotDescriptor.vaultId !== params.vaultId ||
+      remoteSnapshotDescriptor.vaultId !== params.vaultId
+    ) {
       throw new InvalidSyncResolutionError(
         params.vaultId,
-        new Error("Remote snapshot descriptor belongs to another vault."),
+        new Error("Snapshot descriptor belongs to another vault."),
       );
     }
 
@@ -100,7 +111,8 @@ export class ConsumeDeviceRevocationUseCase {
       replacementSyncConfig: params.replacementSyncConfig,
       unlockedVault,
       sourceSnapshotVersionVector,
-      expectedRemoteSnapshotDescriptor: params.remoteSnapshotDescriptor,
+      expectedLocalSnapshotDescriptor: localSnapshotDescriptor,
+      expectedRemoteSnapshotDescriptor: remoteSnapshotDescriptor,
     });
     const entryReviews = findChangedEntries(
       candidate.trustTransitionBaseline,
@@ -299,7 +311,7 @@ export class ConsumeDeviceRevocationUseCase {
       await this.syncProvider.uploadVaultSnapshot(
         params.replacementAccess,
         persistedSnapshot.snapshot,
-        params.remoteSnapshotDescriptor,
+        cloneVaultSnapshotDescriptor(params.remoteSnapshotDescriptor),
       );
     } catch (error) {
       await this.unlockedVaultSession.restorePersistedState(

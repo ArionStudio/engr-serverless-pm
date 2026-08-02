@@ -113,7 +113,7 @@ else (no)
 endif
 
 if (upload registered snapshot succeeds?) then (yes)
-  :Return vault, snapshotVersionVector,\nrevisionTimestamp, deviceId,\nrecoveryMnemonicKey;
+  :Return visible vault projection, snapshotVersionVector,\nrevisionTimestamp, deviceId,\nrecoveryMnemonicKey;
   stop
 else (no)
   :Best effort remove unlocked session;

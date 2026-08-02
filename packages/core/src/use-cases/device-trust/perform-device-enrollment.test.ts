@@ -163,6 +163,15 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     });
     expect(result.revisionTimestamp).toBe(ctx.values.timestamp);
     expect(result.syncUpload).toBe("complete");
+
+    result.snapshotVersionVector[ctx.values.pendingDeviceId] = 99;
+
+    expect(
+      ctx.ports.saved.unlockedVaultSession?.sourceSnapshotVersionVector,
+    ).toEqual({
+      [ctx.values.deviceId]: 2,
+      [ctx.values.pendingDeviceId]: 1,
+    });
   });
 
   it("encrypts manually supplied sync credentials only in local storage", async () => {

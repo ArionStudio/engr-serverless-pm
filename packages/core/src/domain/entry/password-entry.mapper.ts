@@ -9,7 +9,7 @@ export function toVisiblePasswordEntryFields(
   return {
     id: entry.id,
     login: entry.login,
-    tags: entry.tags,
+    tags: [...entry.tags],
     sanitizedUrl: entry.sanitizedUrl,
   };
 }

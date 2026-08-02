@@ -16,6 +16,7 @@ import {
   SyncConflictDetectedError,
   SyncResolutionIncompleteError,
 } from "../../errors/sync.errors";
+import { LocalVaultSnapshotChangedError } from "../../errors/vault-snapshot.errors";
 import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import { VaultSyncGuardService } from "../../services/sync";
 import { ConsumeDeviceEnrollmentUseCase } from "./consume-device-enrollment";
@@ -261,6 +262,10 @@ function createContext() {
 function createCommand(ctx: ReturnType<typeof createContext>) {
   return {
     vaultId: ctx.values.vaultId,
+    localSnapshotDescriptor: toVaultSnapshotDescriptor(
+      ctx.values.vaultId,
+      ctx.localSnapshot,
+    ),
     remoteSnapshotDescriptor: toVaultSnapshotDescriptor(
       ctx.values.vaultId,
       ctx.remoteSnapshot,
@@ -302,6 +307,9 @@ describe("device enrollment consumption", () => {
 
     expect(result.enrolledDeviceIds).toEqual([ctx.enrolledDevice.deviceId]);
     expect(result.vaultKeyGeneration).toBe(1);
+    expect(result.localSnapshotDescriptor).toEqual(
+      toVaultSnapshotDescriptor(ctx.values.vaultId, ctx.localSnapshot),
+    );
     expect(result.review.deviceProfileReviews).toEqual([]);
     expect(
       ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
@@ -687,6 +695,29 @@ describe("device enrollment consumption", () => {
       ctx.consumeUseCase.execute(createCommand(ctx)),
     ).rejects.toBeInstanceOf(RemoteVaultSnapshotChangedError);
 
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("rejects when the reviewed local snapshot changes before apply", async () => {
+    const ctx = createContext();
+    const command = createCommand(ctx);
+
+    await expect(
+      ctx.consumeUseCase.execute({
+        ...command,
+        localSnapshotDescriptor: {
+          ...command.localSnapshotDescriptor,
+          revisionTimestamp:
+            command.localSnapshotDescriptor.revisionTimestamp - 1,
+        },
+      }),
+    ).rejects.toBeInstanceOf(LocalVaultSnapshotChangedError);
+
+    expect(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).not.toHaveBeenCalled();
     expect(
       ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();

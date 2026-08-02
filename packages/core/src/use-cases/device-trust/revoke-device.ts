@@ -367,7 +367,9 @@ export class RevokeDeviceUseCase {
 
     return {
       vault: toVisibleVaultFields(revokedVault),
-      snapshotVersionVector: persistedSnapshot.snapshotVersionVector,
+      snapshotVersionVector: {
+        ...persistedSnapshot.snapshotVersionVector,
+      },
       revisionTimestamp: persistedSnapshot.revisionTimestamp,
       providerCredentialRevocation:
         replacementAccess === undefined

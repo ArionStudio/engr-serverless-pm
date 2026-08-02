@@ -46,7 +46,7 @@ else scheduled
     UC -> LockRepo : remove()
     UC --> Caller : throw commit failure
   else committed
-    UC --> Caller : { vault }
+    UC --> Caller : visible vault projection, vaultId, deviceId,\nsnapshotVersionVector, revisionTimestamp
   end
 end
 

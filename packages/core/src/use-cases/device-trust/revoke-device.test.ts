@@ -215,6 +215,23 @@ describe("RevokeDeviceUseCase", () => {
       revokedDeviceIds: [ctx.values.pendingDeviceId],
       vaultKeyGeneration: 2,
     });
+
+    const persistedVersionVector =
+      ctx.ports.saved.vaultSnapshot?.metadata.snapshotVersionVector;
+
+    if (persistedVersionVector === undefined) {
+      throw new Error("Expected a persisted revocation snapshot.");
+    }
+
+    const expectedVersionVector = { ...persistedVersionVector };
+    result.snapshotVersionVector[ctx.values.deviceId] = 99;
+
+    expect(
+      ctx.ports.saved.vaultSnapshot?.metadata.snapshotVersionVector,
+    ).toEqual(expectedVersionVector);
+    expect(
+      ctx.ports.saved.unlockedVaultSession?.sourceSnapshotVersionVector,
+    ).toEqual(expectedVersionVector);
   });
 
   it("rejects another revocation while the shared provider marker is pending", async () => {
