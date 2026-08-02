@@ -11,12 +11,20 @@ import type {
   SyncSetupInput,
 } from "../../domain/sync";
 import type { VaultSyncResolution } from "../../domain/sync/sync-resolution.type";
-import { applyVaultSyncResolution } from "../../domain/sync/sync-resolution.utils";
+import {
+  applyVaultSyncResolution,
+  cloneVaultSyncResolution,
+} from "../../domain/sync/sync-resolution.utils";
 import { findChangedTags } from "../../domain/sync/tag-review.utils";
 import type {
+  ReviewedVaultSnapshotDescriptors,
   VaultMasterKey,
   VaultSnapshot,
   VaultSnapshotDescriptor,
+} from "../../domain/snapshot";
+import {
+  cloneReviewedVaultSnapshotDescriptors,
+  cloneVaultSnapshotDescriptor,
 } from "../../domain/snapshot";
 import type { Vault } from "../../domain/vault";
 import type { VersionVector } from "../../domain/versioning";
@@ -39,7 +47,7 @@ import { VaultTrustService } from "../../services/trust/vault-trust.service";
 export type ConsumeDeviceRevocationCommandParams = {
   readonly vaultId: string;
   readonly replacementSyncConfig: SyncSetupInput;
-  readonly remoteSnapshotDescriptor: VaultSnapshotDescriptor;
+  readonly reviewedSnapshotDescriptors: ReviewedVaultSnapshotDescriptors;
   readonly resolution: VaultSyncResolution;
 };
 
@@ -83,10 +91,17 @@ export class ConsumeDeviceRevocationUseCase {
   async execute(
     params: ConsumeDeviceRevocationCommandParams,
   ): Promise<ConsumeDeviceRevocationResult> {
-    if (params.remoteSnapshotDescriptor.vaultId !== params.vaultId) {
+    const reviewedSnapshotDescriptors = cloneReviewedVaultSnapshotDescriptors(
+      params.reviewedSnapshotDescriptors,
+    );
+    const resolution = cloneVaultSyncResolution(params.resolution);
+    if (
+      reviewedSnapshotDescriptors.local.vaultId !== params.vaultId ||
+      reviewedSnapshotDescriptors.remote.vaultId !== params.vaultId
+    ) {
       throw new InvalidSyncResolutionError(
         params.vaultId,
-        new Error("Remote snapshot descriptor belongs to another vault."),
+        new Error("Snapshot descriptor belongs to another vault."),
       );
     }
 
@@ -100,7 +115,7 @@ export class ConsumeDeviceRevocationUseCase {
       replacementSyncConfig: params.replacementSyncConfig,
       unlockedVault,
       sourceSnapshotVersionVector,
-      expectedRemoteSnapshotDescriptor: params.remoteSnapshotDescriptor,
+      reviewedSnapshotDescriptors,
     });
     const entryReviews = findChangedEntries(
       candidate.trustTransitionBaseline,
@@ -116,10 +131,9 @@ export class ConsumeDeviceRevocationUseCase {
     );
 
     if (
-      entryReviews.length !== params.resolution.entryResolutions.length ||
-      tagReviews.length !== params.resolution.tagResolutions.length ||
-      deviceProfileReviews.length !==
-        params.resolution.deviceProfileResolutions.length
+      entryReviews.length !== resolution.entryResolutions.length ||
+      tagReviews.length !== resolution.tagResolutions.length ||
+      deviceProfileReviews.length !== resolution.deviceProfileResolutions.length
     ) {
       throw new SyncResolutionIncompleteError(params.vaultId);
     }
@@ -167,7 +181,7 @@ export class ConsumeDeviceRevocationUseCase {
           candidate.trustTransitionBaseline,
           candidate.remoteVault,
           { entryReviews, tagReviews, deviceProfileReviews },
-          params.resolution,
+          resolution,
           unlockedVault.deviceId,
         );
       } catch (error) {
@@ -299,7 +313,7 @@ export class ConsumeDeviceRevocationUseCase {
       await this.syncProvider.uploadVaultSnapshot(
         params.replacementAccess,
         persistedSnapshot.snapshot,
-        params.remoteSnapshotDescriptor,
+        cloneVaultSnapshotDescriptor(params.remoteSnapshotDescriptor),
       );
     } catch (error) {
       await this.unlockedVaultSession.restorePersistedState(

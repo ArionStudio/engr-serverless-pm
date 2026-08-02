@@ -231,15 +231,16 @@ function createContext() {
 
 function createCommand(ctx: {
   readonly values: CoreTestValues;
+  readonly localSnapshot: VaultSnapshot;
   readonly remoteSnapshot: VaultSnapshot;
 }) {
   return {
     vaultId: ctx.values.vaultId,
     replacementSyncConfig: ctx.values.replacementSyncConfigInput,
-    remoteSnapshotDescriptor: toVaultSnapshotDescriptor(
-      ctx.values.vaultId,
-      ctx.remoteSnapshot,
-    ),
+    reviewedSnapshotDescriptors: {
+      local: toVaultSnapshotDescriptor(ctx.values.vaultId, ctx.localSnapshot),
+      remote: toVaultSnapshotDescriptor(ctx.values.vaultId, ctx.remoteSnapshot),
+    },
     resolution: {
       entryResolutions: [],
       tagResolutions: [],
@@ -278,6 +279,9 @@ describe("PrepareDeviceRevocationConsumptionUseCase", () => {
     });
 
     expect(result).toMatchObject({
+      reviewedSnapshotDescriptors: {
+        local: toVaultSnapshotDescriptor(ctx.values.vaultId, ctx.localSnapshot),
+      },
       revokedDeviceIds: [ctx.values.pendingDeviceId],
       vaultKeyGeneration: 2,
       review: {
@@ -895,10 +899,10 @@ describe("ConsumeDeviceRevocationUseCase", () => {
     await expect(
       ctx.useCase.execute({
         ...createCommand(ctx),
-        remoteSnapshotDescriptor: toVaultSnapshotDescriptor(
-          ctx.values.vaultId,
-          remoteSnapshot,
-        ),
+        reviewedSnapshotDescriptors: {
+          local: toVaultSnapshotDescriptor(ctx.values.vaultId, localSnapshot),
+          remote: toVaultSnapshotDescriptor(ctx.values.vaultId, remoteSnapshot),
+        },
       }),
     ).resolves.toMatchObject({
       revokedDeviceIds: [ctx.values.pendingDeviceId, thirdDeviceId],
@@ -1083,10 +1087,10 @@ describe("ConsumeDeviceRevocationUseCase", () => {
     await expect(
       ctx.useCase.execute({
         ...createCommand(ctx),
-        remoteSnapshotDescriptor: toVaultSnapshotDescriptor(
-          ctx.values.vaultId,
-          remoteSnapshot,
-        ),
+        reviewedSnapshotDescriptors: {
+          ...createCommand(ctx).reviewedSnapshotDescriptors,
+          remote: toVaultSnapshotDescriptor(ctx.values.vaultId, remoteSnapshot),
+        },
       }),
     ).resolves.toMatchObject({
       enrolledDeviceIds: [enrolledDeviceId],
@@ -1099,7 +1103,7 @@ describe("ConsumeDeviceRevocationUseCase", () => {
     );
   });
 
-  it("applies normal sync resolution to changes after revocation", async () => {
+  it("captures and applies normal sync resolution after revocation", async () => {
     const ctx = createContext();
     const remoteVault = {
       ...ctx.remoteVault,
@@ -1111,20 +1115,23 @@ describe("ConsumeDeviceRevocationUseCase", () => {
         },
       ],
     };
-    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
-      ...remoteVault,
+    const command = {
+      ...createCommand(ctx),
+      resolution: {
+        entryResolutions: [],
+        tagResolutions: [{ tagId: 1, action: "use_remote" as const }],
+        deviceProfileResolutions: [],
+      },
+    };
+    vi.mocked(
+      ctx.ports.crypto.decryptVaultSnapshotContent,
+    ).mockImplementationOnce(async () => {
+      command.resolution.tagResolutions.length = 0;
+
+      return { ...remoteVault };
     });
 
-    await expect(
-      ctx.useCase.execute({
-        ...createCommand(ctx),
-        resolution: {
-          entryResolutions: [],
-          tagResolutions: [{ tagId: 1, action: "use_remote" }],
-          deviceProfileResolutions: [],
-        },
-      }),
-    ).resolves.toMatchObject({
+    await expect(ctx.useCase.execute(command)).resolves.toMatchObject({
       revokedDeviceIds: [ctx.values.pendingDeviceId],
     });
 
@@ -1172,6 +1179,33 @@ describe("ConsumeDeviceRevocationUseCase", () => {
     ).rejects.toBeInstanceOf(RemoteVaultSnapshotChangedError);
 
     expect(ctx.ports.syncProvider.downloadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("rejects when the local descriptor changed after review", async () => {
+    const ctx = createContext();
+    const command = createCommand(ctx);
+
+    await expect(
+      ctx.useCase.execute({
+        ...command,
+        reviewedSnapshotDescriptors: {
+          ...command.reviewedSnapshotDescriptors,
+          local: {
+            ...command.reviewedSnapshotDescriptors.local,
+            revisionTimestamp:
+              command.reviewedSnapshotDescriptors.local.revisionTimestamp - 1,
+          },
+        },
+      }),
+    ).rejects.toBeInstanceOf(LocalVaultSnapshotChangedError);
+
+    expect(ctx.ports.syncProvider.setup).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.crypto.encryptDeviceSyncCredentialState,
+    ).not.toHaveBeenCalled();
   });
 
   it("restores local state when resolved-snapshot remote compare-and-set fails", async () => {
@@ -1355,10 +1389,13 @@ describe("ConsumeDeviceRevocationUseCase", () => {
       await expect(
         ctx.useCase.execute({
           ...createCommand(ctx),
-          remoteSnapshotDescriptor: toVaultSnapshotDescriptor(
-            ctx.values.vaultId,
-            remoteSnapshot,
-          ),
+          reviewedSnapshotDescriptors: {
+            ...createCommand(ctx).reviewedSnapshotDescriptors,
+            remote: toVaultSnapshotDescriptor(
+              ctx.values.vaultId,
+              remoteSnapshot,
+            ),
+          },
         }),
       ).rejects.toBeInstanceOf(Error);
 
@@ -1426,10 +1463,10 @@ describe("ConsumeDeviceRevocationUseCase", () => {
     await expect(
       ctx.useCase.execute({
         ...createCommand(ctx),
-        remoteSnapshotDescriptor: toVaultSnapshotDescriptor(
-          ctx.values.vaultId,
-          remoteSnapshot,
-        ),
+        reviewedSnapshotDescriptors: {
+          ...createCommand(ctx).reviewedSnapshotDescriptors,
+          remote: toVaultSnapshotDescriptor(ctx.values.vaultId, remoteSnapshot),
+        },
       }),
     ).rejects.toBeInstanceOf(Error);
 
@@ -1536,10 +1573,10 @@ describe("ConsumeDeviceRevocationUseCase", () => {
     await expect(
       ctx.useCase.execute({
         ...createCommand(ctx),
-        remoteSnapshotDescriptor: toVaultSnapshotDescriptor(
-          ctx.values.vaultId,
-          remoteSnapshot,
-        ),
+        reviewedSnapshotDescriptors: {
+          ...createCommand(ctx).reviewedSnapshotDescriptors,
+          remote: toVaultSnapshotDescriptor(ctx.values.vaultId, remoteSnapshot),
+        },
       }),
     ).rejects.toBeInstanceOf(CurrentDeviceRevokedError);
 

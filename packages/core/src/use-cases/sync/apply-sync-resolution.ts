@@ -1,4 +1,4 @@
-import type { VaultSnapshotDescriptor } from "../../domain/snapshot";
+import type { ReviewedVaultSnapshotDescriptors } from "../../domain/snapshot";
 import { areJsonEqual } from "../../domain/common";
 import {
   findChangedDeviceProfiles,
@@ -7,10 +7,15 @@ import {
 import { findChangedEntries } from "../../domain/sync/entry-review.utils";
 import { findChangesInKeySlots } from "../../domain/sync/key-slot-review.utils";
 import type { VaultSyncResolution } from "../../domain/sync/sync-resolution.type";
-import { applyVaultSyncResolution } from "../../domain/sync/sync-resolution.utils";
+import {
+  applyVaultSyncResolution,
+  cloneVaultSyncResolution,
+} from "../../domain/sync/sync-resolution.utils";
 import { findChangedTags } from "../../domain/sync/tag-review.utils";
 import {
   areVaultSnapshotDescriptorsEqual,
+  cloneReviewedVaultSnapshotDescriptors,
+  cloneVaultSnapshotDescriptor,
   compareVaultSnapshotDescriptors,
   toVaultSnapshotDescriptor,
 } from "../../domain/snapshot/vault-snapshot-descriptor.utils";
@@ -30,6 +35,7 @@ import {
   SyncResolutionIncompleteError,
   SyncTrustChangeRequiresDeviceTrustFlowError,
 } from "../../errors/sync.errors";
+import { LocalVaultSnapshotChangedError } from "../../errors/vault-snapshot.errors";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
@@ -44,7 +50,7 @@ export type {
 
 export type ApplySyncResolutionCommandParams = {
   readonly vaultId: string;
-  readonly remoteSnapshotDescriptor: VaultSnapshotDescriptor;
+  readonly reviewedSnapshotDescriptors: ReviewedVaultSnapshotDescriptors;
   readonly resolution: VaultSyncResolution;
 };
 
@@ -67,6 +73,9 @@ export class ApplySyncResolutionUseCase {
   }
 
   async execute(params: ApplySyncResolutionCommandParams) {
+    const { local: localSnapshotDescriptor, remote: remoteSnapshotDescriptor } =
+      cloneReviewedVaultSnapshotDescriptors(params.reviewedSnapshotDescriptors);
+    const resolution = cloneVaultSyncResolution(params.resolution);
     const { sessionId, sourceSnapshotVersionVector, unlockedVault } =
       await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
@@ -84,10 +93,13 @@ export class ApplySyncResolutionUseCase {
       );
     }
 
-    if (params.remoteSnapshotDescriptor.vaultId !== params.vaultId) {
+    if (
+      localSnapshotDescriptor.vaultId !== params.vaultId ||
+      remoteSnapshotDescriptor.vaultId !== params.vaultId
+    ) {
       throw new InvalidSyncResolutionError(
         params.vaultId,
-        new Error("Remote snapshot descriptor belongs to another vault."),
+        new Error("Snapshot descriptor belongs to another vault."),
       );
     }
 
@@ -97,6 +109,19 @@ export class ApplySyncResolutionUseCase {
         unlockedVault,
         sourceSnapshotVersionVector,
       );
+    const currentLocalSnapshotDescriptor = toVaultSnapshotDescriptor(
+      params.vaultId,
+      localSnapshot,
+    );
+
+    if (
+      !areVaultSnapshotDescriptorsEqual(
+        currentLocalSnapshotDescriptor,
+        localSnapshotDescriptor,
+      )
+    ) {
+      throw new LocalVaultSnapshotChangedError(params.vaultId);
+    }
     const syncAccess = await this.vaultSyncGuard.requireSyncAccess(
       params.vaultId,
       unlockedVault,
@@ -111,15 +136,15 @@ export class ApplySyncResolutionUseCase {
       currentRemoteDescriptor === null ||
       !areVaultSnapshotDescriptorsEqual(
         currentRemoteDescriptor,
-        params.remoteSnapshotDescriptor,
+        remoteSnapshotDescriptor,
       )
     ) {
       throw new RemoteVaultSnapshotChangedError(params.vaultId);
     }
 
     const relation = compareVaultSnapshotDescriptors(
-      toVaultSnapshotDescriptor(params.vaultId, localSnapshot),
-      params.remoteSnapshotDescriptor,
+      currentLocalSnapshotDescriptor,
+      remoteSnapshotDescriptor,
     );
 
     if (relation === "broken") {
@@ -136,7 +161,7 @@ export class ApplySyncResolutionUseCase {
 
     const remoteSnapshot = await this.syncProvider.downloadVaultSnapshot(
       syncAccess,
-      params.remoteSnapshotDescriptor,
+      cloneVaultSnapshotDescriptor(remoteSnapshotDescriptor),
     );
     const remoteTrust = await this.vaultSnapshot.verifyCandidateSnapshotTrust(
       params.vaultId,
@@ -203,7 +228,7 @@ export class ApplySyncResolutionUseCase {
     if (
       !areVaultSnapshotDescriptorsEqual(
         toVaultSnapshotDescriptor(params.vaultId, remoteSnapshot),
-        params.remoteSnapshotDescriptor,
+        remoteSnapshotDescriptor,
       )
     ) {
       throw new RemoteVaultSnapshotChangedError(params.vaultId);
@@ -251,10 +276,9 @@ export class ApplySyncResolutionUseCase {
     }
 
     if (
-      entryReviews.length !== params.resolution.entryResolutions.length ||
-      tagReviews.length !== params.resolution.tagResolutions.length ||
-      deviceProfileReviews.length !==
-        params.resolution.deviceProfileResolutions.length
+      entryReviews.length !== resolution.entryResolutions.length ||
+      tagReviews.length !== resolution.tagResolutions.length ||
+      deviceProfileReviews.length !== resolution.deviceProfileResolutions.length
     ) {
       throw new SyncResolutionIncompleteError(params.vaultId);
     }
@@ -288,7 +312,9 @@ export class ApplySyncResolutionUseCase {
       );
 
       return {
-        snapshotVersionVector: persistedSnapshot.snapshotVersionVector,
+        snapshotVersionVector: {
+          ...persistedSnapshot.snapshotVersionVector,
+        },
         revisionTimestamp: persistedSnapshot.revisionTimestamp,
       };
     }
@@ -300,7 +326,7 @@ export class ApplySyncResolutionUseCase {
         unlockedVault.vault,
         remoteVault,
         { entryReviews, tagReviews, deviceProfileReviews },
-        params.resolution,
+        resolution,
         unlockedVault.deviceId,
       );
     } catch (error) {
@@ -338,7 +364,7 @@ export class ApplySyncResolutionUseCase {
             {
               baseSnapshotVersionVector: mergeVersionVectors(
                 localSnapshot.metadata.snapshotVersionVector,
-                params.remoteSnapshotDescriptor.snapshotVersionVector,
+                remoteSnapshotDescriptor.snapshotVersionVector,
               ),
             },
           ),
@@ -348,7 +374,7 @@ export class ApplySyncResolutionUseCase {
       await this.syncProvider.uploadVaultSnapshot(
         syncAccess,
         persistedSnapshot.snapshot,
-        params.remoteSnapshotDescriptor,
+        cloneVaultSnapshotDescriptor(remoteSnapshotDescriptor),
       );
     } catch (error) {
       await this.unlockedVaultSession.restorePersistedState(
@@ -380,7 +406,9 @@ export class ApplySyncResolutionUseCase {
     );
 
     return {
-      snapshotVersionVector: persistedSnapshot.snapshotVersionVector,
+      snapshotVersionVector: {
+        ...persistedSnapshot.snapshotVersionVector,
+      },
       revisionTimestamp: persistedSnapshot.revisionTimestamp,
     };
   }

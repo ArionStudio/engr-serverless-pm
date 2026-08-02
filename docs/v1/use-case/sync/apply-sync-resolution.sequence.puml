@@ -18,9 +18,10 @@ participant "VaultSnapshotService" as Snapshot
 participant "SyncProviderPort" as Sync
 participant "Domain review/resolution utilities" as Domain
 
-Caller -> UC : execute(vaultId, remoteDescriptor, resolution)
+Caller -> UC : execute(vaultId, reviewedSnapshotDescriptors { local, remote }, resolution)
 UC -> Session : requireUnlockedVaultContext(vaultId, "apply sync resolution")
 UC -> Snapshot : requireCurrentSnapshotForUnlockedVault(...)
+UC -> UC : verify local descriptor has not changed since review
 UC -> Sync : getLatestVaultSnapshotDescriptor(syncConfig, vaultId)
 UC -> UC : verify descriptor belongs to vault and has not changed
 UC -> Sync : downloadVaultSnapshot(syncConfig, remoteDescriptor)

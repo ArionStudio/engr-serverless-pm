@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
+import { singlePasswordEntry } from "../../__tests__/fixtures/vault-entries";
 import type {
   VaultTrustChain,
   VerifiedVaultTrustState,
@@ -57,6 +58,7 @@ function createContext() {
   };
   const vault = {
     ...values.decryptedVault,
+    entries: [singlePasswordEntry],
     versionVector: { [values.deviceId]: 2 },
     syncTarget: values.syncTarget,
     deviceProfiles: [
@@ -195,10 +197,41 @@ describe("RevokeDeviceUseCase", () => {
     expect(result.providerCredentialRevocation).toBe(
       "pending_external_disable",
     );
-    expect(result.vault.providerCredentialRevocationPending).toEqual({
+    expect(result.vault.entries[0]).toEqual({
+      id: singlePasswordEntry.id,
+      login: singlePasswordEntry.login,
+      tags: singlePasswordEntry.tags,
+      sanitizedUrl: singlePasswordEntry.sanitizedUrl,
+    });
+    expect(result.vault.entries[0]).not.toHaveProperty("password");
+    expect(result.vault).not.toHaveProperty("syncTarget");
+    expect(result.vault).not.toHaveProperty(
+      "providerCredentialRevocationPending",
+    );
+    expect(
+      ctx.ports.saved.unlockedVaultSession?.unlockedVault.vault
+        .providerCredentialRevocationPending,
+    ).toEqual({
       revokedDeviceIds: [ctx.values.pendingDeviceId],
       vaultKeyGeneration: 2,
     });
+
+    const persistedVersionVector =
+      ctx.ports.saved.vaultSnapshot?.metadata.snapshotVersionVector;
+
+    if (persistedVersionVector === undefined) {
+      throw new Error("Expected a persisted revocation snapshot.");
+    }
+
+    const expectedVersionVector = { ...persistedVersionVector };
+    result.snapshotVersionVector[ctx.values.deviceId] = 99;
+
+    expect(
+      ctx.ports.saved.vaultSnapshot?.metadata.snapshotVersionVector,
+    ).toEqual(expectedVersionVector);
+    expect(
+      ctx.ports.saved.unlockedVaultSession?.sourceSnapshotVersionVector,
+    ).toEqual(expectedVersionVector);
   });
 
   it("rejects another revocation while the shared provider marker is pending", async () => {

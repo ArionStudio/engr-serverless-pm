@@ -46,12 +46,22 @@ alt commit fails
   UC --> Caller : throw commit failure
 else committed
   UC -> Sync : uploadVaultSnapshot(syncConfig, registeredSnapshot, remoteDescriptor)
-  alt upload fails
-    UC -> Session : remove()
-    UC -> LocalRepo : removePersistedLocalVault(vaultId)
-    UC --> Caller : throw conflict or upload failure
+  alt remote snapshot changed
+    UC -> Session : discardIfSessionIsActive(...)
+    alt session advanced
+      UC --> Caller : visible vault projection, vector, timestamp, deviceId, recoveryMnemonicKey, syncUpload=complete
+    else session current
+      UC -> LocalRepo : removePersistedLocalVaultIfSnapshotMatches(...)
+      alt rollback completed
+        UC --> Caller : throw remote-changed error
+      else rollback incomplete
+        UC --> Caller : throw rollback-incomplete error
+      end
+    end
+  else other upload failure
+    UC --> Caller : visible vault projection, vector, timestamp, deviceId, recoveryMnemonicKey, syncUpload=pending
   else uploaded
-    UC --> Caller : vault, vector, timestamp, deviceId, recoveryMnemonicKey
+    UC --> Caller : visible vault projection, vector, timestamp, deviceId, recoveryMnemonicKey, syncUpload=complete
   end
 end
 

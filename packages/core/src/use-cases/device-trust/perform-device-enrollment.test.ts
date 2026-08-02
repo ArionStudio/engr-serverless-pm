@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
+import { singlePasswordEntry } from "../../__tests__/fixtures/vault-entries";
 import type {
   DeviceEnrollmentResponse,
   PendingDeviceEnrollment,
@@ -98,6 +99,7 @@ function createContext(synced = false) {
   ports.saved.pendingDeviceEnrollment = pending;
   vi.mocked(ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
     ...values.decryptedVault,
+    entries: [singlePasswordEntry],
     ...(synced ? { syncTarget: values.syncTarget } : {}),
   });
   vi.mocked(
@@ -147,7 +149,29 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     expect(result.vault.deviceProfiles).toContainEqual(
       expect.objectContaining({ id: ctx.values.pendingDeviceId }),
     );
+    expect(result.vault.entries).toContainEqual({
+      id: singlePasswordEntry.id,
+      login: singlePasswordEntry.login,
+      tags: singlePasswordEntry.tags,
+      sanitizedUrl: singlePasswordEntry.sanitizedUrl,
+    });
+    expect(result.vault.entries[0]).not.toHaveProperty("password");
+    expect(result.vault).not.toHaveProperty("syncTarget");
+    expect(result.snapshotVersionVector).toEqual({
+      [ctx.values.deviceId]: 2,
+      [ctx.values.pendingDeviceId]: 1,
+    });
+    expect(result.revisionTimestamp).toBe(ctx.values.timestamp);
     expect(result.syncUpload).toBe("complete");
+
+    result.snapshotVersionVector[ctx.values.pendingDeviceId] = 99;
+
+    expect(
+      ctx.ports.saved.unlockedVaultSession?.sourceSnapshotVersionVector,
+    ).toEqual({
+      [ctx.values.deviceId]: 2,
+      [ctx.values.pendingDeviceId]: 1,
+    });
   });
 
   it("encrypts manually supplied sync credentials only in local storage", async () => {
@@ -177,7 +201,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     );
     expect(result).not.toHaveProperty("credentials");
     expect(result).not.toHaveProperty("syncConfig");
-    expect(result.vault).not.toHaveProperty("syncCredentials");
+    expect(result.vault).not.toHaveProperty("syncTarget");
   });
 
   it("rejects enrollment while remote sync removal is pending", async () => {

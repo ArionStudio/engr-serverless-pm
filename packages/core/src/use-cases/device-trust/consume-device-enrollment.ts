@@ -3,11 +3,18 @@ import type { UnlockedVault } from "../../domain/session";
 import { findChangedDeviceProfiles } from "../../domain/sync/device-profile-review.utils";
 import { findChangedEntries } from "../../domain/sync/entry-review.utils";
 import type { VaultSyncResolution } from "../../domain/sync/sync-resolution.type";
-import { applyVaultSyncResolution } from "../../domain/sync/sync-resolution.utils";
+import {
+  applyVaultSyncResolution,
+  cloneVaultSyncResolution,
+} from "../../domain/sync/sync-resolution.utils";
 import { findChangedTags } from "../../domain/sync/tag-review.utils";
 import type {
+  ReviewedVaultSnapshotDescriptors,
   VaultSnapshot,
-  VaultSnapshotDescriptor,
+} from "../../domain/snapshot";
+import {
+  cloneReviewedVaultSnapshotDescriptors,
+  cloneVaultSnapshotDescriptor,
 } from "../../domain/snapshot";
 import type { Vault } from "../../domain/vault";
 import { mergeVersionVectors } from "../../domain/versioning";
@@ -27,7 +34,7 @@ import { VaultTrustService } from "../../services/trust/vault-trust.service";
 
 export type ConsumeDeviceEnrollmentCommandParams = {
   readonly vaultId: string;
-  readonly remoteSnapshotDescriptor: VaultSnapshotDescriptor;
+  readonly reviewedSnapshotDescriptors: ReviewedVaultSnapshotDescriptors;
   readonly resolution: VaultSyncResolution;
 };
 
@@ -70,10 +77,17 @@ export class ConsumeDeviceEnrollmentUseCase {
   async execute(
     params: ConsumeDeviceEnrollmentCommandParams,
   ): Promise<ConsumeDeviceEnrollmentResult> {
-    if (params.remoteSnapshotDescriptor.vaultId !== params.vaultId) {
+    const reviewedSnapshotDescriptors = cloneReviewedVaultSnapshotDescriptors(
+      params.reviewedSnapshotDescriptors,
+    );
+    const resolution = cloneVaultSyncResolution(params.resolution);
+    if (
+      reviewedSnapshotDescriptors.local.vaultId !== params.vaultId ||
+      reviewedSnapshotDescriptors.remote.vaultId !== params.vaultId
+    ) {
       throw new InvalidSyncResolutionError(
         params.vaultId,
-        new Error("Remote snapshot descriptor belongs to another vault."),
+        new Error("Snapshot descriptor belongs to another vault."),
       );
     }
 
@@ -87,7 +101,7 @@ export class ConsumeDeviceEnrollmentUseCase {
       operation: "consume device enrollment",
       unlockedVault,
       sourceSnapshotVersionVector,
-      expectedRemoteSnapshotDescriptor: params.remoteSnapshotDescriptor,
+      reviewedSnapshotDescriptors,
     });
     const entryReviews = findChangedEntries(
       candidate.enrollmentBaseline,
@@ -103,10 +117,9 @@ export class ConsumeDeviceEnrollmentUseCase {
     );
 
     if (
-      entryReviews.length !== params.resolution.entryResolutions.length ||
-      tagReviews.length !== params.resolution.tagResolutions.length ||
-      deviceProfileReviews.length !==
-        params.resolution.deviceProfileResolutions.length
+      entryReviews.length !== resolution.entryResolutions.length ||
+      tagReviews.length !== resolution.tagResolutions.length ||
+      deviceProfileReviews.length !== resolution.deviceProfileResolutions.length
     ) {
       throw new SyncResolutionIncompleteError(params.vaultId);
     }
@@ -132,7 +145,7 @@ export class ConsumeDeviceEnrollmentUseCase {
           candidate.enrollmentBaseline,
           candidate.remoteVault,
           { entryReviews, tagReviews, deviceProfileReviews },
-          params.resolution,
+          resolution,
           unlockedVault.deviceId,
         );
       } catch (error) {
@@ -174,7 +187,9 @@ export class ConsumeDeviceEnrollmentUseCase {
         {
           localSnapshot: candidate.localSnapshot,
           syncAccess: candidate.syncAccess,
-          remoteSnapshotDescriptor: candidate.remoteSnapshotDescriptor,
+          remoteSnapshotDescriptor: cloneVaultSnapshotDescriptor(
+            candidate.remoteSnapshotDescriptor,
+          ),
         },
         persistedSnapshot.snapshot,
         unlockedVault,

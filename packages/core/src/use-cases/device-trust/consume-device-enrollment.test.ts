@@ -16,6 +16,7 @@ import {
   SyncConflictDetectedError,
   SyncResolutionIncompleteError,
 } from "../../errors/sync.errors";
+import { LocalVaultSnapshotChangedError } from "../../errors/vault-snapshot.errors";
 import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import { VaultSyncGuardService } from "../../services/sync";
 import { ConsumeDeviceEnrollmentUseCase } from "./consume-device-enrollment";
@@ -261,10 +262,10 @@ function createContext() {
 function createCommand(ctx: ReturnType<typeof createContext>) {
   return {
     vaultId: ctx.values.vaultId,
-    remoteSnapshotDescriptor: toVaultSnapshotDescriptor(
-      ctx.values.vaultId,
-      ctx.remoteSnapshot,
-    ),
+    reviewedSnapshotDescriptors: {
+      local: toVaultSnapshotDescriptor(ctx.values.vaultId, ctx.localSnapshot),
+      remote: toVaultSnapshotDescriptor(ctx.values.vaultId, ctx.remoteSnapshot),
+    },
     resolution: {
       entryResolutions: [],
       tagResolutions: [],
@@ -302,6 +303,9 @@ describe("device enrollment consumption", () => {
 
     expect(result.enrolledDeviceIds).toEqual([ctx.enrolledDevice.deviceId]);
     expect(result.vaultKeyGeneration).toBe(1);
+    expect(result.reviewedSnapshotDescriptors.local).toEqual(
+      toVaultSnapshotDescriptor(ctx.values.vaultId, ctx.localSnapshot),
+    );
     expect(result.review.deviceProfileReviews).toEqual([]);
     expect(
       ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
@@ -498,7 +502,7 @@ describe("device enrollment consumption", () => {
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });
 
-  it("reviews, resolves, and uploads later ordinary content changes", async () => {
+  it("captures, resolves, and uploads later ordinary content changes", async () => {
     const ctx = createContext();
     const remoteVault = {
       ...ctx.localVault,
@@ -511,18 +515,23 @@ describe("device enrollment consumption", () => {
         },
       ],
     };
-    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue(
-      remoteVault,
-    );
-
-    await ctx.consumeUseCase.execute({
+    const command = {
       ...createCommand(ctx),
       resolution: {
         entryResolutions: [],
-        tagResolutions: [{ tagId: 1, action: "use_remote" }],
+        tagResolutions: [{ tagId: 1, action: "use_remote" as const }],
         deviceProfileResolutions: [],
       },
+    };
+    vi.mocked(
+      ctx.ports.crypto.decryptVaultSnapshotContent,
+    ).mockImplementationOnce(async () => {
+      command.resolution.tagResolutions.length = 0;
+
+      return remoteVault;
     });
+
+    await ctx.consumeUseCase.execute(command);
 
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).toHaveBeenCalledWith(
       ctx.values.syncAccess,
@@ -687,6 +696,32 @@ describe("device enrollment consumption", () => {
       ctx.consumeUseCase.execute(createCommand(ctx)),
     ).rejects.toBeInstanceOf(RemoteVaultSnapshotChangedError);
 
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("rejects when the reviewed local snapshot changes before apply", async () => {
+    const ctx = createContext();
+    const command = createCommand(ctx);
+
+    await expect(
+      ctx.consumeUseCase.execute({
+        ...command,
+        reviewedSnapshotDescriptors: {
+          ...command.reviewedSnapshotDescriptors,
+          local: {
+            ...command.reviewedSnapshotDescriptors.local,
+            revisionTimestamp:
+              command.reviewedSnapshotDescriptors.local.revisionTimestamp - 1,
+          },
+        },
+      }),
+    ).rejects.toBeInstanceOf(LocalVaultSnapshotChangedError);
+
+    expect(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).not.toHaveBeenCalled();
     expect(
       ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();

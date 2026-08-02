@@ -37,7 +37,7 @@ if (relation is local_ahead?) then (yes)
 endif
 if (relation is equal?) then (yes)
   if (descriptor fields exactly equal?) then (yes)
-    :Return remoteSnapshotDescriptor,\nrelation, review = null;
+    :Return reviewedSnapshotDescriptors { local, remote },\nrelation, review = null;
     stop
   else (no)
     :Throw RemoteVaultSnapshotIntegrityError;
@@ -57,6 +57,6 @@ endif
 :Find changed tags;
 :Find changed device profiles;
 :Find read-only key slot changes;
-:Return remoteSnapshotDescriptor, relation,\nreview { actionable changes, readOnly keySlotsChanges };
+:Return reviewedSnapshotDescriptors { local, remote }, relation,\nreview { actionable changes, readOnly keySlotsChanges };
 stop
 @enduml

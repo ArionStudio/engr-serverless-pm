@@ -5,13 +5,14 @@ import { requireDeviceProfilesMatchTrust } from "../../domain/sync/device-profil
 import { findChangesInKeySlots } from "../../domain/sync/key-slot-review.utils";
 import {
   areVaultSnapshotDescriptorsEqual,
+  cloneVaultSnapshotDescriptor,
   toVaultSnapshotDescriptor,
 } from "../../domain/snapshot";
-import type { VaultSnapshotDescriptor } from "../../domain/snapshot";
+import type { ReviewedVaultSnapshotDescriptors } from "../../domain/snapshot";
 import type { Vault } from "../../domain/vault";
 import { clearVaultProviderCredentialRevocationPending } from "../../domain/vault/vault-sync-config.mutations";
-import type { VersionVector } from "../../domain/versioning";
 import { compareVersionVectors } from "../../domain/versioning";
+import type { VersionVector } from "../../domain/versioning";
 import { InvalidDeviceEnrollmentTransitionError } from "../../errors/device-enrollment.errors";
 import {
   RemoteVaultSnapshotChangedError,
@@ -19,6 +20,7 @@ import {
   SyncNotConfiguredError,
   SyncRemovalPendingError,
 } from "../../errors/sync.errors";
+import { LocalVaultSnapshotChangedError } from "../../errors/vault-snapshot.errors";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { VaultSnapshotService } from "../snapshot/vault-snapshot.service";
@@ -48,7 +50,7 @@ export class DeviceEnrollmentConsumptionService {
     readonly operation: string;
     readonly unlockedVault: UnlockedVault;
     readonly sourceSnapshotVersionVector: VersionVector;
-    readonly expectedRemoteSnapshotDescriptor?: VaultSnapshotDescriptor;
+    readonly reviewedSnapshotDescriptors?: ReviewedVaultSnapshotDescriptors;
   }) {
     if (params.unlockedVault.vault.syncTarget === undefined) {
       throw new SyncNotConfiguredError(params.vaultId, params.operation);
@@ -64,25 +66,38 @@ export class DeviceEnrollmentConsumptionService {
         params.unlockedVault,
         params.sourceSnapshotVersionVector,
       );
+
+    if (
+      params.reviewedSnapshotDescriptors !== undefined &&
+      !areVaultSnapshotDescriptorsEqual(
+        toVaultSnapshotDescriptor(params.vaultId, localSnapshot),
+        params.reviewedSnapshotDescriptors.local,
+      )
+    ) {
+      throw new LocalVaultSnapshotChangedError(params.vaultId);
+    }
     const syncAccess = await this.vaultSyncGuard.requireSyncAccess(
       params.vaultId,
       params.unlockedVault,
     );
-    const remoteSnapshotDescriptor =
+    const providerRemoteSnapshotDescriptor =
       await this.syncProvider.getLatestVaultSnapshotDescriptor(
         syncAccess,
         params.vaultId,
       );
 
-    if (remoteSnapshotDescriptor === null) {
+    if (providerRemoteSnapshotDescriptor === null) {
       throw new RemoteVaultSnapshotNotFoundError(params.vaultId);
     }
+    const remoteSnapshotDescriptor = cloneVaultSnapshotDescriptor(
+      providerRemoteSnapshotDescriptor,
+    );
 
     if (
-      params.expectedRemoteSnapshotDescriptor !== undefined &&
+      params.reviewedSnapshotDescriptors !== undefined &&
       !areVaultSnapshotDescriptorsEqual(
         remoteSnapshotDescriptor,
-        params.expectedRemoteSnapshotDescriptor,
+        params.reviewedSnapshotDescriptors.remote,
       )
     ) {
       throw new RemoteVaultSnapshotChangedError(params.vaultId);
@@ -90,7 +105,7 @@ export class DeviceEnrollmentConsumptionService {
 
     const remoteSnapshot = await this.syncProvider.downloadVaultSnapshot(
       syncAccess,
-      remoteSnapshotDescriptor,
+      cloneVaultSnapshotDescriptor(remoteSnapshotDescriptor),
     );
 
     if (

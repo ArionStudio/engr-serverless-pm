@@ -6,7 +6,8 @@ import type {
 import type { SyncAccess, SyncSetupInput } from "../../domain/sync";
 import { requireDeviceProfilesMatchTrust } from "../../domain/sync/device-profile-review.utils";
 import { areVaultSnapshotDescriptorsEqual } from "../../domain/snapshot";
-import type { Vault } from "../../domain/vault/vault";
+import type { VisibleVaultFields } from "../../domain/vault";
+import { toVisibleVaultFields } from "../../domain/vault/visible-vault.mapper";
 import { revokeDeviceProfileFromVault } from "../../domain/vault/vault-device.mutations";
 import { markVaultProviderCredentialRevocationPending } from "../../domain/vault/vault-sync-config.mutations";
 import type { VersionVector } from "../../domain/versioning/version-vector.type";
@@ -40,7 +41,7 @@ export type RevokeDeviceCommandParams = {
 };
 
 export type RevokeDeviceResult = {
-  readonly vault: Vault;
+  readonly vault: VisibleVaultFields;
   readonly snapshotVersionVector: VersionVector;
   readonly revisionTimestamp: number;
   readonly providerCredentialRevocation:
@@ -365,8 +366,10 @@ export class RevokeDeviceUseCase {
     );
 
     return {
-      vault: revokedVault,
-      snapshotVersionVector: persistedSnapshot.snapshotVersionVector,
+      vault: toVisibleVaultFields(revokedVault),
+      snapshotVersionVector: {
+        ...persistedSnapshot.snapshotVersionVector,
+      },
       revisionTimestamp: persistedSnapshot.revisionTimestamp,
       providerCredentialRevocation:
         replacementAccess === undefined

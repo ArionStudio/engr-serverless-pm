@@ -4,7 +4,9 @@ import { vaultLockDelayMsSchema } from "../../domain/scheduled-task/scheduled-ta
 import type { VaultLockDelayMs } from "../../domain/scheduled-task/scheduled-task-delay.type";
 import type { DeviceKeySlot } from "../../domain/snapshot/key-slot";
 import type { UnlockedVault } from "../../domain/session/unlocked-vault";
-import type { Vault } from "../../domain/vault/vault";
+import type { VisibleVaultFields } from "../../domain/vault";
+import { toVisibleVaultFields } from "../../domain/vault/visible-vault.mapper";
+import type { VersionVector } from "../../domain/versioning/version-vector.type";
 import type { ClockPort } from "../../ports/system/clock.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { IdPort } from "../../ports/system/id.port";
@@ -33,7 +35,11 @@ export type UnlockVaultCommandParams = {
 };
 
 export type UnlockVaultResult = {
-  vault: Vault;
+  readonly vaultId: string;
+  readonly deviceId: string;
+  readonly snapshotVersionVector: VersionVector;
+  readonly revisionTimestamp: number;
+  readonly vault: VisibleVaultFields;
 };
 
 export class UnlockVaultUseCase {
@@ -324,7 +330,13 @@ export class UnlockVaultUseCase {
     }
 
     return {
-      vault,
+      vaultId: params.vaultId,
+      deviceId: deviceAccessMaterial.deviceId,
+      snapshotVersionVector: {
+        ...vaultSnapshot.metadata.snapshotVersionVector,
+      },
+      revisionTimestamp: vaultSnapshot.metadata.revisionTimestamp,
+      vault: toVisibleVaultFields(vault),
     };
   }
 
