@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
+import { replaceVaultSnapshotAfterNextSave } from "../../__tests__/fixtures/ports";
 import { createUnlockedVaultWithEntries } from "../../__tests__/fixtures/vault-entries";
 import { toVaultSnapshotDescriptor } from "../../domain/snapshot";
 import { InvalidDeviceRevocationTransitionError } from "../../errors/device-revocation.errors";
@@ -94,6 +95,29 @@ function createContext() {
 }
 
 describe("CompleteProviderCredentialRevocationUseCase", () => {
+  it("uploads the signed completion even when local storage replaces it after save", async () => {
+    const ctx = createContext();
+    const replacedSnapshot = ctx.saved.vaultSnapshot;
+
+    if (replacedSnapshot === undefined) {
+      throw new Error("Expected an existing local snapshot.");
+    }
+
+    const getPersistedSnapshot = replaceVaultSnapshotAfterNextSave(
+      ctx.ports,
+      replacedSnapshot,
+    );
+
+    await ctx.useCase.execute({ vaultId: ctx.values.vaultId });
+
+    const uploadedSnapshot = vi.mocked(
+      ctx.ports.syncProvider.uploadVaultSnapshot,
+    ).mock.calls[0]?.[1];
+    expect(uploadedSnapshot).toBe(getPersistedSnapshot());
+    expect(uploadedSnapshot).not.toBe(ctx.saved.vaultSnapshot);
+    expect(ctx.saved.vaultSnapshot).toBe(replacedSnapshot);
+  });
+
   it("removes previous credentials only after provider authentication rejects them", async () => {
     const ctx = createContext();
 

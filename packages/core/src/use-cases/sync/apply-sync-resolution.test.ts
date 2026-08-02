@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
+import { replaceVaultSnapshotAfterNextSave } from "../../__tests__/fixtures/ports";
 import {
   createUnlockedVaultWithEntries,
   singlePasswordEntry,
@@ -94,6 +95,36 @@ function createContext() {
 }
 
 describe("ApplySyncResolutionUseCase", () => {
+  it("uploads the signed resolution even when local storage replaces it after save", async () => {
+    const ctx = createContext();
+    const getPersistedSnapshot = replaceVaultSnapshotAfterNextSave(
+      ctx.ports,
+      ctx.vaultSnapshot,
+    );
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      reviewedSnapshotDescriptors: {
+        local: ctx.localDescriptor,
+        remote: ctx.remoteDescriptor,
+      },
+      resolution: {
+        entryResolutions: [
+          { entryId: singlePasswordEntry.id, action: "use_remote" },
+        ],
+        tagResolutions: [],
+        deviceProfileResolutions: [],
+      },
+    });
+
+    const uploadedSnapshot = vi.mocked(
+      ctx.ports.syncProvider.uploadVaultSnapshot,
+    ).mock.calls[0]?.[1];
+    expect(uploadedSnapshot).toBe(getPersistedSnapshot());
+    expect(uploadedSnapshot).not.toBe(ctx.ports.saved.vaultSnapshot);
+    expect(ctx.ports.saved.vaultSnapshot).toBe(ctx.vaultSnapshot);
+  });
+
   it("applies ordinary content resolution with local credentials", async () => {
     const ctx = createContext();
 
