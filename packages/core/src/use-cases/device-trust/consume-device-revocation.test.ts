@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  createDivergedTrustBaselineFixture,
+} from "../../__tests__/fixtures/device-trust";
+import {
   createCoreTestPorts,
   replaceVaultSnapshotAfterNextSave,
 } from "../../__tests__/fixtures/ports";
@@ -317,27 +320,17 @@ describe("PrepareDeviceRevocationConsumptionUseCase", () => {
       throw new Error("Expected local and remote trust transitions.");
     }
 
-    const divergedBaseline = {
-      ...localBaseline,
-      signature: ctx.values.enrollmentRequestSignature,
-    };
-    const divergedBaselineDigest = "diverged-trust-baseline-digest";
-    const forgedRemoteSnapshot = {
-      ...ctx.remoteSnapshot,
-      trustChain: {
-        certificates: [
-          ...ctx.remoteSnapshot.trustChain.certificates.slice(0, 1),
-          divergedBaseline,
-          {
-            ...remoteTransition,
-            payload: {
-              ...remoteTransition.payload,
-              previousCertificateDigest: divergedBaselineDigest,
-            },
-          },
-        ],
-      },
-    };
+    const {
+      divergedBaseline,
+      divergedBaselineDigest,
+      forgedRemoteSnapshot,
+    } = createDivergedTrustBaselineFixture({
+      remoteSnapshot: ctx.remoteSnapshot,
+      remotePrefix: ctx.remoteSnapshot.trustChain.certificates.slice(0, 1),
+      localBaseline,
+      remoteTransition,
+      replacementSignature: ctx.values.enrollmentRequestSignature,
+    });
     vi.mocked(
       ctx.ports.crypto.digestVaultTrustCertificate,
     ).mockImplementation(async (certificate) =>

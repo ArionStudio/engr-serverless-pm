@@ -45,6 +45,25 @@ function createContext() {
   return { values, ports, service, snapshot };
 }
 
+async function createEnrollmentFixture(ctx: ReturnType<typeof createContext>) {
+  const targetIdentity = {
+    deviceId: ctx.values.pendingDeviceId,
+    publicSignKey: ctx.values.pendingDevicePublicSignKey,
+    publicVaultKey: ctx.values.pendingDevicePublicVaultKey,
+  };
+  const enrollment = await ctx.service.appendTrustTransition(
+    ctx.values.vaultId,
+    ctx.values.vaultTrustChain,
+    ctx.values.verifiedVaultTrustState,
+    [...ctx.values.verifiedVaultTrustState.trustedDevices, targetIdentity],
+    1,
+    ctx.values.deviceId,
+    ctx.values.devicePrivateSignKey,
+  );
+
+  return { targetIdentity, enrollment };
+}
+
 describe("VaultTrustService", () => {
   it("creates genesis that authenticates both device public keys", async () => {
     const ctx = createContext();
@@ -71,20 +90,7 @@ describe("VaultTrustService", () => {
 
   it("preserves the key generation for enrollment and increments it for revocation", async () => {
     const ctx = createContext();
-    const targetIdentity = {
-      deviceId: ctx.values.pendingDeviceId,
-      publicSignKey: ctx.values.pendingDevicePublicSignKey,
-      publicVaultKey: ctx.values.pendingDevicePublicVaultKey,
-    };
-    const enrollment = await ctx.service.appendTrustTransition(
-      ctx.values.vaultId,
-      ctx.values.vaultTrustChain,
-      ctx.values.verifiedVaultTrustState,
-      [...ctx.values.verifiedVaultTrustState.trustedDevices, targetIdentity],
-      1,
-      ctx.values.deviceId,
-      ctx.values.devicePrivateSignKey,
-    );
+    const { enrollment } = await createEnrollmentFixture(ctx);
     const revocation = await ctx.service.appendTrustTransition(
       ctx.values.vaultId,
       enrollment.chain,
@@ -101,20 +107,8 @@ describe("VaultTrustService", () => {
 
   it("rejects empty, generation-breaking, and self-removing transitions", async () => {
     const ctx = createContext();
-    const targetIdentity = {
-      deviceId: ctx.values.pendingDeviceId,
-      publicSignKey: ctx.values.pendingDevicePublicSignKey,
-      publicVaultKey: ctx.values.pendingDevicePublicVaultKey,
-    };
-    const enrollment = await ctx.service.appendTrustTransition(
-      ctx.values.vaultId,
-      ctx.values.vaultTrustChain,
-      ctx.values.verifiedVaultTrustState,
-      [...ctx.values.verifiedVaultTrustState.trustedDevices, targetIdentity],
-      1,
-      ctx.values.deviceId,
-      ctx.values.devicePrivateSignKey,
-    );
+    const { targetIdentity, enrollment } =
+      await createEnrollmentFixture(ctx);
 
     await expect(
       ctx.service.appendTrustTransition(
@@ -153,20 +147,7 @@ describe("VaultTrustService", () => {
 
   it("rejects removed or mutated certificates in the trusted prefix", async () => {
     const ctx = createContext();
-    const targetIdentity = {
-      deviceId: ctx.values.pendingDeviceId,
-      publicSignKey: ctx.values.pendingDevicePublicSignKey,
-      publicVaultKey: ctx.values.pendingDevicePublicVaultKey,
-    };
-    const enrollment = await ctx.service.appendTrustTransition(
-      ctx.values.vaultId,
-      ctx.values.vaultTrustChain,
-      ctx.values.verifiedVaultTrustState,
-      [...ctx.values.verifiedVaultTrustState.trustedDevices, targetIdentity],
-      1,
-      ctx.values.deviceId,
-      ctx.values.devicePrivateSignKey,
-    );
+    const { enrollment } = await createEnrollmentFixture(ctx);
     const trustedCertificate = enrollment.chain.certificates[1];
 
     if (trustedCertificate === undefined) {
@@ -210,20 +191,7 @@ describe("VaultTrustService", () => {
 
   it("rejects disconnected or unauthorized trust certificates", async () => {
     const ctx = createContext();
-    const targetIdentity = {
-      deviceId: ctx.values.pendingDeviceId,
-      publicSignKey: ctx.values.pendingDevicePublicSignKey,
-      publicVaultKey: ctx.values.pendingDevicePublicVaultKey,
-    };
-    const enrollment = await ctx.service.appendTrustTransition(
-      ctx.values.vaultId,
-      ctx.values.vaultTrustChain,
-      ctx.values.verifiedVaultTrustState,
-      [...ctx.values.verifiedVaultTrustState.trustedDevices, targetIdentity],
-      1,
-      ctx.values.deviceId,
-      ctx.values.devicePrivateSignKey,
-    );
+    const { enrollment } = await createEnrollmentFixture(ctx);
     const certificate = enrollment.chain.certificates[1];
 
     if (certificate === undefined) {
@@ -288,20 +256,8 @@ describe("VaultTrustService", () => {
 
   it("rejects a certificate signed by a trusted device other than its declared authorizer", async () => {
     const ctx = createContext();
-    const targetIdentity = {
-      deviceId: ctx.values.pendingDeviceId,
-      publicSignKey: ctx.values.pendingDevicePublicSignKey,
-      publicVaultKey: ctx.values.pendingDevicePublicVaultKey,
-    };
-    const enrollment = await ctx.service.appendTrustTransition(
-      ctx.values.vaultId,
-      ctx.values.vaultTrustChain,
-      ctx.values.verifiedVaultTrustState,
-      [...ctx.values.verifiedVaultTrustState.trustedDevices, targetIdentity],
-      1,
-      ctx.values.deviceId,
-      ctx.values.devicePrivateSignKey,
-    );
+    const { targetIdentity, enrollment } =
+      await createEnrollmentFixture(ctx);
     const revocation = await ctx.service.appendTrustTransition(
       ctx.values.vaultId,
       enrollment.chain,
@@ -520,20 +476,8 @@ describe("VaultTrustService", () => {
 
   it("validates an enrollment-only suffix without rotating the vault key", async () => {
     const ctx = createContext();
-    const targetIdentity = {
-      deviceId: ctx.values.pendingDeviceId,
-      publicSignKey: ctx.values.pendingDevicePublicSignKey,
-      publicVaultKey: ctx.values.pendingDevicePublicVaultKey,
-    };
-    const enrollment = await ctx.service.appendTrustTransition(
-      ctx.values.vaultId,
-      ctx.values.vaultTrustChain,
-      ctx.values.verifiedVaultTrustState,
-      [...ctx.values.verifiedVaultTrustState.trustedDevices, targetIdentity],
-      1,
-      ctx.values.deviceId,
-      ctx.values.devicePrivateSignKey,
-    );
+    const { targetIdentity, enrollment } =
+      await createEnrollmentFixture(ctx);
 
     await expect(
       ctx.service.verifyDeviceEnrollmentSuffix(
@@ -555,20 +499,7 @@ describe("VaultTrustService", () => {
 
   it("rejects a revocation inside an enrollment-consumption suffix", async () => {
     const ctx = createContext();
-    const targetIdentity = {
-      deviceId: ctx.values.pendingDeviceId,
-      publicSignKey: ctx.values.pendingDevicePublicSignKey,
-      publicVaultKey: ctx.values.pendingDevicePublicVaultKey,
-    };
-    const enrollment = await ctx.service.appendTrustTransition(
-      ctx.values.vaultId,
-      ctx.values.vaultTrustChain,
-      ctx.values.verifiedVaultTrustState,
-      [...ctx.values.verifiedVaultTrustState.trustedDevices, targetIdentity],
-      1,
-      ctx.values.deviceId,
-      ctx.values.devicePrivateSignKey,
-    );
+    const { enrollment } = await createEnrollmentFixture(ctx);
     const revocation = await ctx.service.appendTrustTransition(
       ctx.values.vaultId,
       enrollment.chain,
