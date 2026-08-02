@@ -3,9 +3,9 @@ import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import {
   GENERATED_USERNAME_NUMBER_DIGITS,
-  GENERATED_USERNAME_WORD_COUNT,
   GENERATED_USERNAME_WORDS,
 } from "../../lib/generate-username/generated-username.const";
+import { generateUsernameValue } from "../../lib/generate-username/generated-username.utils";
 import { RandomSamplerService } from "../../services/randomness/random-sampler.service";
 import type { RandomBytes } from "../../domain/crypto/brand-keys";
 import { InvalidGeneratedUsernameSettingsError } from "../../errors/generate-username.errors";
@@ -68,21 +68,25 @@ describe("GenerateUsernameUseCase", () => {
     ).toBe(true);
   });
 
-  it("keeps every normalized source word unique and within login storage", () => {
-    const normalizedWords = GENERATED_USERNAME_WORDS.map((word) =>
-      word.toLowerCase().replaceAll(/[^a-z0-9]/g, ""),
+  it("keeps every normalized source word unique and within login storage", async () => {
+    const generatedUsernames = await Promise.all(
+      GENERATED_USERNAME_WORDS.map((_, wordIndex) =>
+        generateUsernameValue(
+          { capitalize: false, includeNumber: false },
+          async () => wordIndex,
+        ),
+      ),
     );
-    const maximumGeneratedUsernameLength =
-      Math.max(...normalizedWords.map((word) => word.length)) *
-        GENERATED_USERNAME_WORD_COUNT +
-      GENERATED_USERNAME_NUMBER_DIGITS;
 
     expect(GENERATED_USERNAME_WORDS).toHaveLength(7_775);
-    expect(new Set(normalizedWords).size).toBe(normalizedWords.length);
-    expect(normalizedWords.every((word) => /^[a-z0-9]+$/.test(word))).toBe(
-      true,
-    );
-    expect(maximumGeneratedUsernameLength).toBeLessThanOrEqual(128);
+    expect(new Set(generatedUsernames).size).toBe(generatedUsernames.length);
+    expect(
+      generatedUsernames.every((username) => /^[a-z0-9]+$/.test(username)),
+    ).toBe(true);
+    expect(
+      Math.max(...generatedUsernames.map((username) => username.length)) +
+        GENERATED_USERNAME_NUMBER_DIGITS,
+    ).toBeLessThanOrEqual(128);
   });
 
   it("can generate a capitalized username without a number suffix", async () => {
