@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
 import { singlePasswordEntry } from "../../__tests__/fixtures/vault-entries";
+import type { RawMasterPassword } from "../../domain/master-password";
 import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
 import {
   DeviceKeySlotNotFoundError,
@@ -8,6 +9,22 @@ import {
 } from "../../errors/unlock-vault.errors";
 
 describe("UnlockVaultUseCase", () => {
+  it("continues to attempt a legacy password below the new minimum", async () => {
+    const ctx = createUnlockVaultTestContext();
+    const masterPassword = "12345678901" as RawMasterPassword;
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      masterPassword,
+      lockAfterMs: 60_000,
+    });
+
+    expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenCalledWith(
+      masterPassword,
+      ctx.values.masterPasswordSalt,
+    );
+  });
+
   it("returns status and visible vault fields without stored secrets", async () => {
     const ctx = createUnlockVaultTestContext();
     vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({

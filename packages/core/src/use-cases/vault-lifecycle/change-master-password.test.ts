@@ -1,12 +1,57 @@
 import { describe, expect, it, vi } from "vitest";
 import { createChangeMasterPasswordTestContext } from "../../__tests__/fixtures/change-master-password";
+import type { RawMasterPassword } from "../../domain/master-password";
 import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
 import {
   DeviceAccessMaterialNotFoundForMasterPasswordChangeError,
   VaultMustBeUnlockedForMasterPasswordChangeError,
 } from "../../errors/change-master-password.errors";
+import { InvalidNewMasterPasswordError } from "../../errors/master-password.errors";
 
 describe("ChangeMasterPasswordUseCase", () => {
+  it("rejects a short new password before reading the session", async () => {
+    const ctx = createChangeMasterPasswordTestContext();
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        currentMasterPassword: "12345678901" as RawMasterPassword,
+        newMasterPassword: "abcdefghijk" as RawMasterPassword,
+      }),
+    ).rejects.toBeInstanceOf(InvalidNewMasterPasswordError);
+
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.get,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveDeviceAccessMaterial,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("accepts the minimum new password while verifying a short current password", async () => {
+    const ctx = createChangeMasterPasswordTestContext();
+    const currentMasterPassword = "12345678901" as RawMasterPassword;
+    const newMasterPassword = "abcdefghijkl" as RawMasterPassword;
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      currentMasterPassword,
+      newMasterPassword,
+    });
+
+    expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenNthCalledWith(
+      1,
+      currentMasterPassword,
+      ctx.values.masterPasswordSalt,
+    );
+    expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenNthCalledWith(
+      2,
+      newMasterPassword,
+      ctx.values.newMasterPasswordSalt,
+    );
+  });
+
   it("re-protects local device access material with the new master password", async () => {
     const ctx = createChangeMasterPasswordTestContext();
 

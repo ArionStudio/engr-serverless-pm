@@ -8,6 +8,7 @@ import type {
   PendingDeviceEnrollment,
   VaultTrustChain,
 } from "../../domain/device-trust";
+import type { RawMasterPassword } from "../../domain/master-password";
 import type { VaultSnapshot } from "../../domain/snapshot";
 import { toVaultSnapshotDescriptor } from "../../domain/snapshot";
 import {
@@ -16,6 +17,7 @@ import {
   DeviceEnrollmentRemoteSnapshotChangedError,
   PendingDeviceEnrollmentMismatchError,
 } from "../../errors/device-enrollment.errors";
+import { InvalidNewMasterPasswordError } from "../../errors/master-password.errors";
 import {
   RemoteVaultSnapshotChangedError,
   SyncRemovalPendingError,
@@ -121,6 +123,40 @@ function createContext(synced = false) {
 }
 
 describe("PerformDeviceEnrollmentUseCase", () => {
+  it("rejects a short password before reading pending enrollment", async () => {
+    const ctx = createContext();
+
+    await expect(
+      ctx.useCase.execute({
+        enrollmentResponse: ctx.response,
+        masterPassword: "12345678901" as RawMasterPassword,
+        deviceName: "New laptop",
+      }),
+    ).rejects.toBeInstanceOf(InvalidNewMasterPasswordError);
+
+    expect(
+      ctx.ports.vaultLocalRepository.getPendingDeviceEnrollment,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+  });
+
+  it("accepts a password at the minimum length", async () => {
+    const ctx = createContext();
+    const masterPassword = "123456789012" as RawMasterPassword;
+
+    await ctx.useCase.execute({
+      enrollmentResponse: ctx.response,
+      masterPassword,
+      deviceName: "New laptop",
+    });
+
+    expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenNthCalledWith(
+      1,
+      masterPassword,
+      ctx.values.masterPasswordSalt,
+    );
+  });
+
   it("uses retained target keys and removes pending state only after completion", async () => {
     const ctx = createContext();
 

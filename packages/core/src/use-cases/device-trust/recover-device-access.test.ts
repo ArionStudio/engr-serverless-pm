@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
 import type { DeviceAccessRecoveryBackup } from "../../domain/device-trust";
+import type { RawMasterPassword } from "../../domain/master-password";
+import { InvalidNewMasterPasswordError } from "../../errors/master-password.errors";
 import {
   DeviceKeySlotNotFoundError,
   DeviceKeySlotVerificationFailedError,
@@ -30,6 +32,43 @@ function createContext() {
 }
 
 describe("RecoverDeviceAccessUseCase", () => {
+  it("rejects a short new password before reading recovery state", async () => {
+    const ctx = createContext();
+    const requireVaultCanBeActivated = vi.spyOn(
+      ctx.ports.sessionServices.unlockedVaultSession,
+      "requireVaultCanBeActivated",
+    );
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        recoveryMnemonicKey: ctx.values.recoveryMnemonicKey,
+        newMasterPassword: "12345678901" as RawMasterPassword,
+      }),
+    ).rejects.toBeInstanceOf(InvalidNewMasterPasswordError);
+
+    expect(requireVaultCanBeActivated).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.getDeviceAccessRecoveryBackup,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("accepts a new password at the minimum length", async () => {
+    const ctx = createContext();
+    const newMasterPassword = "123456789012" as RawMasterPassword;
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      recoveryMnemonicKey: ctx.values.recoveryMnemonicKey,
+      newMasterPassword,
+    });
+
+    expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenCalledWith(
+      newMasterPassword,
+      ctx.values.masterPasswordSalt,
+    );
+  });
+
   it("recovers the wrapping key and re-protects the complete local identity", async () => {
     const ctx = createContext();
 

@@ -1,7 +1,37 @@
 import { describe, expect, it, vi } from "vitest";
 import { createInitializeVaultTestContext } from "../../__tests__/fixtures/initialize-vault";
+import type { RawMasterPassword } from "../../domain/master-password";
+import { InvalidNewMasterPasswordError } from "../../errors/master-password.errors";
 
 describe("InitializeVaultUseCase", () => {
+  it("rejects a short master password before generating IDs", async () => {
+    const ctx = createInitializeVaultTestContext();
+
+    await expect(
+      ctx.useCase.execute({
+        masterPassword: "12345678901" as RawMasterPassword,
+        deviceName: "Laptop",
+      }),
+    ).rejects.toBeInstanceOf(InvalidNewMasterPasswordError);
+
+    expect(ctx.ports.ids.generateId).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("accepts a master password at the minimum length", async () => {
+    const ctx = createInitializeVaultTestContext();
+    const masterPassword = "123456789012" as RawMasterPassword;
+
+    await ctx.useCase.execute({ masterPassword, deviceName: "Laptop" });
+
+    expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenCalledWith(
+      masterPassword,
+      ctx.values.masterPasswordSalt,
+    );
+  });
+
   it("creates separate signing and wrapping identities with generation one envelope", async () => {
     const ctx = createInitializeVaultTestContext();
 
