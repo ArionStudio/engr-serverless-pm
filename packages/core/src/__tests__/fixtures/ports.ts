@@ -53,6 +53,60 @@ export type SavedCoreRecords = {
 
 export type CoreTestPorts = ReturnType<typeof createCoreTestPorts>;
 
+function requirePersistedSnapshot(
+  snapshot: VaultSnapshot | undefined,
+): VaultSnapshot {
+  if (snapshot === undefined) {
+    throw new Error("Expected the workflow to persist a vault snapshot.");
+  }
+
+  return snapshot;
+}
+
+export function replaceVaultSnapshotAfterNextSave(
+  ports: CoreTestPorts,
+  replacement: VaultSnapshot,
+): () => VaultSnapshot {
+  const save = vi.mocked(
+    ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+  );
+  const saveImplementation = save.getMockImplementation();
+  let persistedSnapshot: VaultSnapshot | undefined;
+
+  if (saveImplementation === undefined) {
+    throw new Error("Expected the local snapshot save fixture implementation.");
+  }
+
+  save.mockImplementationOnce(async (params) => {
+    await saveImplementation(params);
+    persistedSnapshot = params.snapshot;
+    ports.saved.vaultSnapshot = replacement;
+  });
+
+  return () => requirePersistedSnapshot(persistedSnapshot);
+}
+
+export function replaceVaultSnapshotAfterNextInitializedSave(
+  ports: CoreTestPorts,
+  replacement: VaultSnapshot,
+): () => VaultSnapshot {
+  const save = vi.mocked(ports.vaultLocalRepository.saveInitializedLocalVault);
+  const saveImplementation = save.getMockImplementation();
+  let persistedSnapshot: VaultSnapshot | undefined;
+
+  if (saveImplementation === undefined) {
+    throw new Error("Expected the initialized vault save fixture implementation.");
+  }
+
+  save.mockImplementationOnce(async (params) => {
+    await saveImplementation(params);
+    persistedSnapshot = params.snapshot;
+    ports.saved.vaultSnapshot = replacement;
+  });
+
+  return () => requirePersistedSnapshot(persistedSnapshot);
+}
+
 export function createCoreTestPorts(
   values: CoreTestValues = createCoreTestValues(),
 ) {

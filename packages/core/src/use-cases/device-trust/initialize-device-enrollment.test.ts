@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
+import { replaceVaultSnapshotAfterNextSave } from "../../__tests__/fixtures/ports";
 import { createUnlockedVaultWithEntries } from "../../__tests__/fixtures/vault-entries";
 import type {
   DevicePublicSignKey,
@@ -47,6 +48,49 @@ function createContext() {
 }
 
 describe("InitializeDeviceEnrollmentUseCase", () => {
+  it("uploads the signed snapshot even when local storage replaces it after save", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession;
+
+    if (session === undefined) {
+      throw new Error("Expected an unlocked test session.");
+    }
+
+    ctx.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          syncTarget: ctx.values.syncTarget,
+        },
+      },
+    };
+    ctx.saved.deviceSyncCredentialState =
+      ctx.values.encryptedDeviceSyncCredentialState;
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValue(
+      toVaultSnapshotDescriptor(ctx.values.vaultId, ctx.vaultSnapshot),
+    );
+    const getPersistedSnapshot = replaceVaultSnapshotAfterNextSave(
+      ctx.ports,
+      ctx.vaultSnapshot,
+    );
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      request: ctx.values.enrollmentRequest,
+    });
+
+    const uploadedSnapshot = vi.mocked(
+      ctx.ports.syncProvider.uploadVaultSnapshot,
+    ).mock.calls[0]?.[1];
+    expect(uploadedSnapshot).toBe(getPersistedSnapshot());
+    expect(uploadedSnapshot).not.toBe(ctx.saved.vaultSnapshot);
+    expect(ctx.saved.vaultSnapshot).toBe(ctx.vaultSnapshot);
+  });
+
   it("authorizes a signed public request and creates a normal target envelope", async () => {
     const ctx = createContext();
 

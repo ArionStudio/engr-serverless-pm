@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
+import {
+  createCoreTestPorts,
+  replaceVaultSnapshotAfterNextSave,
+} from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import { singlePasswordEntry } from "../../__tests__/fixtures/vault-entries";
 import type {
@@ -160,6 +163,27 @@ function createContext() {
 }
 
 describe("RevokeDeviceUseCase", () => {
+  it("uploads the signed revocation even when local storage replaces it after save", async () => {
+    const ctx = createContext();
+    const getPersistedSnapshot = replaceVaultSnapshotAfterNextSave(
+      ctx.ports,
+      ctx.snapshot,
+    );
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      deviceId: ctx.values.pendingDeviceId,
+      replacementSyncConfig: ctx.values.replacementSyncConfigInput,
+    });
+
+    const uploadedSnapshot = vi.mocked(
+      ctx.ports.syncProvider.uploadVaultSnapshot,
+    ).mock.calls[0]?.[1];
+    expect(uploadedSnapshot).toBe(getPersistedSnapshot());
+    expect(uploadedSnapshot).not.toBe(ctx.ports.saved.vaultSnapshot);
+    expect(ctx.ports.saved.vaultSnapshot).toBe(ctx.snapshot);
+  });
+
   it("rotates the vault key and creates envelopes only for survivors", async () => {
     const ctx = createContext();
 
