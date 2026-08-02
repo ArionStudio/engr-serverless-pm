@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
+import {
+  GENERATED_USERNAME_NUMBER_DIGITS,
+  GENERATED_USERNAME_WORD_COUNT,
+  GENERATED_USERNAME_WORDS,
+} from "../../lib/generate-username/generated-username.const";
 import { RandomSamplerService } from "../../services/randomness/random-sampler.service";
 import type { RandomBytes } from "../../domain/crypto/brand-keys";
 import { InvalidGeneratedUsernameSettingsError } from "../../errors/generate-username.errors";
@@ -27,18 +32,19 @@ function createContext(randomValues: number[] = []) {
       return randomBytesFromUint32(randomValues.shift() ?? 0);
     },
   );
+  const randomSampler = new RandomSamplerService(ports.crypto);
 
   return {
     ports,
-    useCase: new GenerateUsernameUseCase(
-      new RandomSamplerService(ports.crypto),
-    ),
+    randomSampler,
+    useCase: new GenerateUsernameUseCase(randomSampler),
   };
 }
 
 describe("GenerateUsernameUseCase", () => {
   it("generates a default username that fits password entry login storage", async () => {
     const ctx = createContext([0, 1, 2, 3, 4, 5]);
+    const pickIndexSpy = vi.spyOn(ctx.randomSampler, "pickIndex");
 
     const result = await ctx.useCase.execute();
 
@@ -47,11 +53,36 @@ describe("GenerateUsernameUseCase", () => {
     });
     expect(result.username.length).toBeLessThanOrEqual(128);
     expect(result.username).toMatch(/^[a-z0-9]+$/);
+    expect(pickIndexSpy).toHaveBeenNthCalledWith(
+      1,
+      GENERATED_USERNAME_WORDS.length,
+    );
+    expect(pickIndexSpy).toHaveBeenNthCalledWith(
+      2,
+      GENERATED_USERNAME_WORDS.length,
+    );
     expect(
       vi
         .mocked(ctx.ports.crypto.generateRandomBytes)
         .mock.calls.every(([byteLength]) => byteLength === 4),
     ).toBe(true);
+  });
+
+  it("keeps every normalized source word unique and within login storage", () => {
+    const normalizedWords = GENERATED_USERNAME_WORDS.map((word) =>
+      word.toLowerCase().replaceAll(/[^a-z0-9]/g, ""),
+    );
+    const maximumGeneratedUsernameLength =
+      Math.max(...normalizedWords.map((word) => word.length)) *
+        GENERATED_USERNAME_WORD_COUNT +
+      GENERATED_USERNAME_NUMBER_DIGITS;
+
+    expect(GENERATED_USERNAME_WORDS).toHaveLength(7_775);
+    expect(new Set(normalizedWords).size).toBe(normalizedWords.length);
+    expect(normalizedWords.every((word) => /^[a-z0-9]+$/.test(word))).toBe(
+      true,
+    );
+    expect(maximumGeneratedUsernameLength).toBeLessThanOrEqual(128);
   });
 
   it("can generate a capitalized username without a number suffix", async () => {
