@@ -1103,7 +1103,7 @@ describe("ConsumeDeviceRevocationUseCase", () => {
     );
   });
 
-  it("applies normal sync resolution to changes after revocation", async () => {
+  it("captures and applies normal sync resolution after revocation", async () => {
     const ctx = createContext();
     const remoteVault = {
       ...ctx.remoteVault,
@@ -1115,20 +1115,23 @@ describe("ConsumeDeviceRevocationUseCase", () => {
         },
       ],
     };
-    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
-      ...remoteVault,
+    const command = {
+      ...createCommand(ctx),
+      resolution: {
+        entryResolutions: [],
+        tagResolutions: [{ tagId: 1, action: "use_remote" as const }],
+        deviceProfileResolutions: [],
+      },
+    };
+    vi.mocked(
+      ctx.ports.crypto.decryptVaultSnapshotContent,
+    ).mockImplementationOnce(async () => {
+      command.resolution.tagResolutions.length = 0;
+
+      return { ...remoteVault };
     });
 
-    await expect(
-      ctx.useCase.execute({
-        ...createCommand(ctx),
-        resolution: {
-          entryResolutions: [],
-          tagResolutions: [{ tagId: 1, action: "use_remote" }],
-          deviceProfileResolutions: [],
-        },
-      }),
-    ).resolves.toMatchObject({
+    await expect(ctx.useCase.execute(command)).resolves.toMatchObject({
       revokedDeviceIds: [ctx.values.pendingDeviceId],
     });
 

@@ -502,7 +502,7 @@ describe("device enrollment consumption", () => {
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });
 
-  it("reviews, resolves, and uploads later ordinary content changes", async () => {
+  it("captures, resolves, and uploads later ordinary content changes", async () => {
     const ctx = createContext();
     const remoteVault = {
       ...ctx.localVault,
@@ -515,18 +515,23 @@ describe("device enrollment consumption", () => {
         },
       ],
     };
-    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue(
-      remoteVault,
-    );
-
-    await ctx.consumeUseCase.execute({
+    const command = {
       ...createCommand(ctx),
       resolution: {
         entryResolutions: [],
-        tagResolutions: [{ tagId: 1, action: "use_remote" }],
+        tagResolutions: [{ tagId: 1, action: "use_remote" as const }],
         deviceProfileResolutions: [],
       },
+    };
+    vi.mocked(
+      ctx.ports.crypto.decryptVaultSnapshotContent,
+    ).mockImplementationOnce(async () => {
+      command.resolution.tagResolutions.length = 0;
+
+      return remoteVault;
     });
+
+    await ctx.consumeUseCase.execute(command);
 
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).toHaveBeenCalledWith(
       ctx.values.syncAccess,
