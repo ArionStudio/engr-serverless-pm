@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { objectGraphContainsString } from "../../__tests__/fixtures/error-inspection";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
@@ -13,7 +14,10 @@ import {
   SyncRemovalPendingError,
   SyncConflictDetectedError,
 } from "../../errors/sync.errors";
-import { InvalidPasswordEntryError } from "../../errors/vault-entry.errors";
+import {
+  InvalidEntryUrlError,
+  InvalidPasswordEntryError,
+} from "../../errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 import { VaultSyncGuardService } from "../../services/sync";
 import { AddEntryUseCase } from "./add-entry";
@@ -154,6 +158,42 @@ describe("AddEntryUseCase", () => {
       }),
     ).rejects.toBeInstanceOf(InvalidPasswordEntryError);
 
+    expect(ctx.ports.ids.generateId).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
+    ).not.toHaveBeenCalled();
+    expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
+  });
+
+  it("does not retain a malformed entry url in the public validation error", async () => {
+    const ctx = createContext();
+    const credentialSecret = "credential-secret";
+    const querySecret = "query-secret";
+    let caught: unknown;
+
+    try {
+      await ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        entry: {
+          password: "secret-password",
+          login: "user@example.com",
+          tags: [],
+          url: `https://user:${credentialSecret}@?token=${querySecret}`,
+        },
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(InvalidPasswordEntryError);
+
+    if (!(caught instanceof InvalidPasswordEntryError)) {
+      return;
+    }
+
+    expect(caught.cause).toBeInstanceOf(InvalidEntryUrlError);
+    expect(objectGraphContainsString(caught, credentialSecret)).toBe(false);
+    expect(objectGraphContainsString(caught, querySecret)).toBe(false);
     expect(ctx.ports.ids.generateId).not.toHaveBeenCalled();
     expect(
       ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,

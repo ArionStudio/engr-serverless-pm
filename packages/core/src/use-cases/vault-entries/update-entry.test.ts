@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { objectGraphContainsString } from "../../__tests__/fixtures/error-inspection";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import {
@@ -9,6 +10,7 @@ import {
   standardPasswordEntries,
 } from "../../__tests__/fixtures/vault-entries";
 import {
+  InvalidEntryUrlError,
   InvalidPasswordEntryError,
   PasswordEntryNotFoundError,
 } from "../../errors/vault-entry.errors";
@@ -183,6 +185,42 @@ describe("UpdateEntryUseCase", () => {
       }),
     ).rejects.toBeInstanceOf(InvalidPasswordEntryError);
 
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
+    ).not.toHaveBeenCalled();
+    expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
+  });
+
+  it("does not retain a malformed entry url in the public validation error", async () => {
+    const ctx = createContext();
+    const credentialSecret = "credential-secret";
+    const querySecret = "query-secret";
+    let caught: unknown;
+
+    try {
+      await ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        entryId: firstPasswordEntry.id,
+        entry: {
+          password: "updated-password",
+          login: "updated@example.com",
+          tags: [],
+          url: `https://user:${credentialSecret}@?token=${querySecret}`,
+        },
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(InvalidPasswordEntryError);
+
+    if (!(caught instanceof InvalidPasswordEntryError)) {
+      return;
+    }
+
+    expect(caught.cause).toBeInstanceOf(InvalidEntryUrlError);
+    expect(objectGraphContainsString(caught, credentialSecret)).toBe(false);
+    expect(objectGraphContainsString(caught, querySecret)).toBe(false);
     expect(
       ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
     ).not.toHaveBeenCalled();
