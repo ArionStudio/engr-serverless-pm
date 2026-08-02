@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import {
+  createDivergedTrustBaselineFixture,
+} from "../../__tests__/fixtures/device-trust";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import type {
@@ -17,6 +20,7 @@ import {
   SyncResolutionIncompleteError,
 } from "../../errors/sync.errors";
 import { LocalVaultSnapshotChangedError } from "../../errors/vault-snapshot.errors";
+import { VaultSnapshotRollbackDetectedError } from "../../errors/vault-trust.errors";
 import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import { VaultSyncGuardService } from "../../services/sync";
 import { ConsumeDeviceEnrollmentUseCase } from "./consume-device-enrollment";
@@ -311,6 +315,47 @@ describe("device enrollment consumption", () => {
       ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("rejects an enrollment chain that diverges from the local trust baseline", async () => {
+    const ctx = createContext();
+    const localBaseline = ctx.localSnapshot.trustChain.certificates[1];
+    const remoteTransition = ctx.remoteSnapshot.trustChain.certificates[2];
+
+    if (localBaseline === undefined || remoteTransition === undefined) {
+      throw new Error("Expected local and remote trust transitions.");
+    }
+
+    const {
+      divergedBaseline,
+      divergedBaselineDigest,
+      forgedRemoteSnapshot,
+    } = createDivergedTrustBaselineFixture({
+      remoteSnapshot: ctx.remoteSnapshot,
+      remotePrefix: ctx.remoteSnapshot.trustChain.certificates.slice(0, 1),
+      localBaseline,
+      remoteTransition,
+      replacementSignature: ctx.values.enrollmentRequestSignature,
+    });
+    vi.mocked(
+      ctx.ports.crypto.digestVaultTrustCertificate,
+    ).mockImplementation(async (certificate) =>
+      certificate === divergedBaseline
+        ? divergedBaselineDigest
+        : ctx.values.vaultTrustCertificateDigest,
+    );
+    vi.mocked(ctx.ports.syncProvider.downloadVaultSnapshot).mockResolvedValue(
+      forgedRemoteSnapshot,
+    );
+
+    await expect(
+      ctx.prepareUseCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toBeInstanceOf(VaultSnapshotRollbackDetectedError);
+
+    expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
   });
 
   it("does not allow resolution to remove the enrolled profile", async () => {
