@@ -1,6 +1,6 @@
-import { z } from "zod";
+import type { z } from "zod";
 import type { VersionVector } from "../versioning/version-vector.type";
-import { tagSchema } from "./tag.schema";
+import type { tagSchema } from "./tag.schema";
 
 export type TagInput = z.infer<typeof tagSchema>;
 
