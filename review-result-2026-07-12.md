@@ -452,7 +452,7 @@ this report is the only created file.
 
 - **28. Core contracts may duplicate authoritative state and derived views across
     parameter graphs.**
-    [packages/core/src/domain/sync/sync-resolution.utils.ts:23](packages/core/src/domain/sync/sync-resolution.utils.ts#L23),
+    [packages/core/src/domain/sync/sync-resolution.utils.ts:35](packages/core/src/domain/sync/sync-resolution.utils.ts#L35),
     [packages/core/src/domain/sync/entry-resolution.utils.ts:16](packages/core/src/domain/sync/entry-resolution.utils.ts#L16),
     [packages/core/src/use-cases/sync/apply-sync-resolution.ts:324](packages/core/src/use-cases/sync/apply-sync-resolution.ts#L324)
 
