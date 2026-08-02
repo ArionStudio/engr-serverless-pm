@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
+import {
+  createCoreTestPorts,
+  replaceVaultSnapshotAfterNextSave,
+} from "../../__tests__/fixtures/ports";
 import {
   createCoreTestValues,
   type CoreTestValues,
@@ -662,6 +665,43 @@ describe("PrepareDeviceRevocationConsumptionUseCase", () => {
 });
 
 describe("ConsumeDeviceRevocationUseCase", () => {
+  it("uploads the signed consumption even when local storage replaces it after save", async () => {
+    const ctx = createContext();
+    const remoteVault = {
+      ...ctx.remoteVault,
+      tags: [
+        {
+          id: 1,
+          name: "Remote tag",
+          versionVector: { [ctx.values.deviceId]: 3 },
+        },
+      ],
+    };
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue(
+      remoteVault,
+    );
+    const getPersistedSnapshot = replaceVaultSnapshotAfterNextSave(
+      ctx.ports,
+      ctx.localSnapshot,
+    );
+
+    await ctx.useCase.execute({
+      ...createCommand(ctx),
+      resolution: {
+        entryResolutions: [],
+        tagResolutions: [{ tagId: 1, action: "use_remote" }],
+        deviceProfileResolutions: [],
+      },
+    });
+
+    const uploadedSnapshot = vi.mocked(
+      ctx.ports.syncProvider.uploadVaultSnapshot,
+    ).mock.calls[0]?.[1];
+    expect(uploadedSnapshot).toBe(getPersistedSnapshot());
+    expect(uploadedSnapshot).not.toBe(ctx.ports.saved.vaultSnapshot);
+    expect(ctx.ports.saved.vaultSnapshot).toBe(ctx.localSnapshot);
+  });
+
   it("opens the survivor envelope and commits the rotated snapshot", async () => {
     const ctx = createContext();
     const survivorSlot = ctx.remoteSnapshot.keySlots.deviceSlots[0];

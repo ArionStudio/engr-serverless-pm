@@ -1,6 +1,6 @@
-import { z } from "zod";
+import type { z } from "zod";
 import type { VersionVector } from "../versioning/version-vector.type";
-import { passwordEntryInputSchema } from "./password-entry.schema";
+import type { passwordEntryInputSchema } from "./password-entry.schema";
 
 export type PasswordEntryInput = z.infer<typeof passwordEntryInputSchema>;
 

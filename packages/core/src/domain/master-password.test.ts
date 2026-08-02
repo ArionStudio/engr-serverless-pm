@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { objectGraphContainsString } from "../__tests__/fixtures/error-inspection";
 import { InvalidNewMasterPasswordError } from "../errors/master-password.errors";
 import {
   assertValidNewMasterPassword,
@@ -29,6 +30,8 @@ describe("new master password policy", () => {
       message: "New master password does not meet the password policy.",
     });
     expect(thrownError).not.toHaveProperty("cause");
-    expect(JSON.stringify(thrownError)).not.toContain(submittedPassword);
+    expect(objectGraphContainsString(thrownError, submittedPassword)).toBe(
+      false,
+    );
   });
 });

@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
+import {
+  createCoreTestPorts,
+  replaceVaultSnapshotAfterNextInitializedSave,
+} from "../../__tests__/fixtures/ports";
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import { singlePasswordEntry } from "../../__tests__/fixtures/vault-entries";
@@ -155,6 +158,28 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       masterPassword,
       ctx.values.masterPasswordSalt,
     );
+  });
+
+  it("uploads the signed enrollment even when local storage replaces it after save", async () => {
+    const ctx = createContext(true);
+    const getPersistedSnapshot = replaceVaultSnapshotAfterNextInitializedSave(
+      ctx.ports,
+      ctx.response.snapshot,
+    );
+
+    await ctx.useCase.execute({
+      enrollmentResponse: ctx.response,
+      masterPassword: ctx.values.masterPassword,
+      deviceName: "New laptop",
+      syncConfig: ctx.values.syncConfigInput,
+    });
+
+    const uploadedSnapshot = vi.mocked(
+      ctx.ports.syncProvider.uploadVaultSnapshot,
+    ).mock.calls[0]?.[1];
+    expect(uploadedSnapshot).toBe(getPersistedSnapshot());
+    expect(uploadedSnapshot).not.toBe(ctx.ports.saved.vaultSnapshot);
+    expect(ctx.ports.saved.vaultSnapshot).toBe(ctx.response.snapshot);
   });
 
   it("uses retained target keys and removes pending state only after completion", async () => {
