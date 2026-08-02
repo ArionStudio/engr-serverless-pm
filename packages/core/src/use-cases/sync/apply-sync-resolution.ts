@@ -7,7 +7,10 @@ import {
 import { findChangedEntries } from "../../domain/sync/entry-review.utils";
 import { findChangesInKeySlots } from "../../domain/sync/key-slot-review.utils";
 import type { VaultSyncResolution } from "../../domain/sync/sync-resolution.type";
-import { applyVaultSyncResolution } from "../../domain/sync/sync-resolution.utils";
+import {
+  applyVaultSyncResolution,
+  cloneVaultSyncResolution,
+} from "../../domain/sync/sync-resolution.utils";
 import { findChangedTags } from "../../domain/sync/tag-review.utils";
 import {
   areVaultSnapshotDescriptorsEqual,
@@ -72,6 +75,7 @@ export class ApplySyncResolutionUseCase {
   async execute(params: ApplySyncResolutionCommandParams) {
     const { local: localSnapshotDescriptor, remote: remoteSnapshotDescriptor } =
       cloneReviewedVaultSnapshotDescriptors(params.reviewedSnapshotDescriptors);
+    const resolution = cloneVaultSyncResolution(params.resolution);
     const { sessionId, sourceSnapshotVersionVector, unlockedVault } =
       await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
@@ -272,10 +276,9 @@ export class ApplySyncResolutionUseCase {
     }
 
     if (
-      entryReviews.length !== params.resolution.entryResolutions.length ||
-      tagReviews.length !== params.resolution.tagResolutions.length ||
-      deviceProfileReviews.length !==
-        params.resolution.deviceProfileResolutions.length
+      entryReviews.length !== resolution.entryResolutions.length ||
+      tagReviews.length !== resolution.tagResolutions.length ||
+      deviceProfileReviews.length !== resolution.deviceProfileResolutions.length
     ) {
       throw new SyncResolutionIncompleteError(params.vaultId);
     }
@@ -323,7 +326,7 @@ export class ApplySyncResolutionUseCase {
         unlockedVault.vault,
         remoteVault,
         { entryReviews, tagReviews, deviceProfileReviews },
-        params.resolution,
+        resolution,
         unlockedVault.deviceId,
       );
     } catch (error) {

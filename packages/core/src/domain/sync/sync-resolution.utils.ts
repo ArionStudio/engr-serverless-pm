@@ -20,6 +20,18 @@ import {
   resolveTagStates,
 } from "./tag-resolution.utils";
 
+export function cloneVaultSyncResolution(
+  resolution: VaultSyncResolution,
+): VaultSyncResolution {
+  return {
+    entryResolutions: resolution.entryResolutions.map((item) => ({ ...item })),
+    tagResolutions: resolution.tagResolutions.map((item) => ({ ...item })),
+    deviceProfileResolutions: resolution.deviceProfileResolutions.map(
+      (item) => ({ ...item }),
+    ),
+  };
+}
+
 export function applyVaultSyncResolution(
   localVault: Vault,
   remoteVault: Vault,

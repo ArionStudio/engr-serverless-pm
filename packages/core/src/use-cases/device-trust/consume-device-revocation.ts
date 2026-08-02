@@ -11,7 +11,10 @@ import type {
   SyncSetupInput,
 } from "../../domain/sync";
 import type { VaultSyncResolution } from "../../domain/sync/sync-resolution.type";
-import { applyVaultSyncResolution } from "../../domain/sync/sync-resolution.utils";
+import {
+  applyVaultSyncResolution,
+  cloneVaultSyncResolution,
+} from "../../domain/sync/sync-resolution.utils";
 import { findChangedTags } from "../../domain/sync/tag-review.utils";
 import type {
   ReviewedVaultSnapshotDescriptors,
@@ -91,6 +94,7 @@ export class ConsumeDeviceRevocationUseCase {
     const reviewedSnapshotDescriptors = cloneReviewedVaultSnapshotDescriptors(
       params.reviewedSnapshotDescriptors,
     );
+    const resolution = cloneVaultSyncResolution(params.resolution);
     if (
       reviewedSnapshotDescriptors.local.vaultId !== params.vaultId ||
       reviewedSnapshotDescriptors.remote.vaultId !== params.vaultId
@@ -127,10 +131,9 @@ export class ConsumeDeviceRevocationUseCase {
     );
 
     if (
-      entryReviews.length !== params.resolution.entryResolutions.length ||
-      tagReviews.length !== params.resolution.tagResolutions.length ||
-      deviceProfileReviews.length !==
-        params.resolution.deviceProfileResolutions.length
+      entryReviews.length !== resolution.entryResolutions.length ||
+      tagReviews.length !== resolution.tagResolutions.length ||
+      deviceProfileReviews.length !== resolution.deviceProfileResolutions.length
     ) {
       throw new SyncResolutionIncompleteError(params.vaultId);
     }
@@ -178,7 +181,7 @@ export class ConsumeDeviceRevocationUseCase {
           candidate.trustTransitionBaseline,
           candidate.remoteVault,
           { entryReviews, tagReviews, deviceProfileReviews },
-          params.resolution,
+          resolution,
           unlockedVault.deviceId,
         );
       } catch (error) {

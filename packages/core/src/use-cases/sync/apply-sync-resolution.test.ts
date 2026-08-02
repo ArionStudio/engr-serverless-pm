@@ -8,6 +8,7 @@ import {
   cloneVaultSnapshotDescriptor,
   toVaultSnapshotDescriptor,
 } from "../../domain/snapshot";
+import type { EntryReviewResolution } from "../../domain/sync/entry-resolution.type";
 import {
   InvalidVaultSyncReviewError,
   RemoteVaultSnapshotChangedError,
@@ -213,8 +214,12 @@ describe("ApplySyncResolutionUseCase", () => {
     ).rejects.toBeInstanceOf(RemoteVaultSnapshotChangedError);
   });
 
-  it("captures reviewed descriptors before asynchronous work", async () => {
+  it("captures reviewed inputs before asynchronous work", async () => {
     const ctx = createContext();
+    const entryResolution: EntryReviewResolution = {
+      entryId: singlePasswordEntry.id,
+      action: "use_remote",
+    };
     const command = {
       vaultId: ctx.values.vaultId,
       reviewedSnapshotDescriptors: {
@@ -222,9 +227,7 @@ describe("ApplySyncResolutionUseCase", () => {
         remote: cloneVaultSnapshotDescriptor(ctx.remoteDescriptor),
       },
       resolution: {
-        entryResolutions: [
-          { entryId: singlePasswordEntry.id, action: "use_remote" as const },
-        ],
+        entryResolutions: [entryResolution],
         tagResolutions: [],
         deviceProfileResolutions: [],
       },
@@ -238,12 +241,22 @@ describe("ApplySyncResolutionUseCase", () => {
       command.reviewedSnapshotDescriptors.remote.snapshotVersionVector[
         ctx.values.deviceId
       ] = 99;
+      command.resolution.entryResolutions[0] = {
+        entryId: singlePasswordEntry.id,
+        action: "use_local",
+      };
 
       return ctx.remoteDescriptor;
     });
 
     await expect(ctx.useCase.execute(command)).resolves.toMatchObject({
       revisionTimestamp: ctx.values.timestamp,
+    });
+    expect(
+      ctx.ports.saved.unlockedVaultSession?.unlockedVault.vault.entries,
+    ).toContainEqual({
+      ...singlePasswordEntry,
+      versionVector: { [ctx.values.deviceId]: 2 },
     });
   });
 
