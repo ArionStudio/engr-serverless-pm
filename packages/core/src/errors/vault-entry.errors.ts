@@ -23,6 +23,13 @@ export class InvalidSearchEntryQueryError extends Error {
   }
 }
 
+export class InvalidEntryUrlError extends Error {
+  constructor() {
+    super("Entry URL is invalid.");
+    this.name = "InvalidEntryUrlError";
+  }
+}
+
 export class UnsupportedEntryUrlProtocolError extends Error {
   constructor(protocol: string) {
     super(`Unsupported entry URL protocol "${protocol}".`);

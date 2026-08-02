@@ -1,9 +1,18 @@
-import { UnsupportedEntryUrlProtocolError } from "../../errors/vault-entry.errors";
+import {
+  InvalidEntryUrlError,
+  UnsupportedEntryUrlProtocolError,
+} from "../../errors/vault-entry.errors";
 
 const ALLOWED_ENTRY_URL_PROTOCOLS = new Set(["http:", "https:"]);
 
 export function sanitizeEntryUrl(rawUrl: string): string {
-  const parsedUrl = new URL(rawUrl);
+  let parsedUrl: URL;
+
+  try {
+    parsedUrl = new URL(rawUrl);
+  } catch {
+    throw new InvalidEntryUrlError();
+  }
 
   if (!ALLOWED_ENTRY_URL_PROTOCOLS.has(parsedUrl.protocol)) {
     throw new UnsupportedEntryUrlProtocolError(parsedUrl.protocol);
