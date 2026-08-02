@@ -3,10 +3,14 @@ import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import type {
   DevicePublicSignKey,
+  DeviceTrustIdentity,
   DeviceVaultPublicKey,
 } from "../../domain/device-trust";
 import type { VaultSnapshot } from "../../domain/snapshot";
-import { VaultTrustStateInvalidError } from "../../errors/vault-trust.errors";
+import {
+  VaultSnapshotRollbackDetectedError,
+  VaultTrustStateInvalidError,
+} from "../../errors/vault-trust.errors";
 import { VaultTrustService } from "./vault-trust.service";
 
 function createContext() {
@@ -145,6 +149,237 @@ describe("VaultTrustService", () => {
         ctx.values.devicePrivateSignKey,
       ),
     ).rejects.toBeInstanceOf(VaultTrustStateInvalidError);
+  });
+
+  it("rejects removed or mutated certificates in the trusted prefix", async () => {
+    const ctx = createContext();
+    const targetIdentity = {
+      deviceId: ctx.values.pendingDeviceId,
+      publicSignKey: ctx.values.pendingDevicePublicSignKey,
+      publicVaultKey: ctx.values.pendingDevicePublicVaultKey,
+    };
+    const enrollment = await ctx.service.appendTrustTransition(
+      ctx.values.vaultId,
+      ctx.values.vaultTrustChain,
+      ctx.values.verifiedVaultTrustState,
+      [...ctx.values.verifiedVaultTrustState.trustedDevices, targetIdentity],
+      1,
+      ctx.values.deviceId,
+      ctx.values.devicePrivateSignKey,
+    );
+    const trustedCertificate = enrollment.chain.certificates[1];
+
+    if (trustedCertificate === undefined) {
+      throw new Error("Expected an appended trust certificate.");
+    }
+
+    const mutatedCertificate = {
+      ...trustedCertificate,
+      signature: ctx.values.enrollmentRequestSignature,
+    };
+    vi.mocked(
+      ctx.ports.crypto.digestVaultTrustCertificate,
+    ).mockImplementation(async (certificate) =>
+      certificate === mutatedCertificate
+        ? "mutated-trust-certificate-digest"
+        : ctx.values.vaultTrustCertificateDigest,
+    );
+
+    await expect(
+      ctx.service.requireTrustDescendsFrom(
+        ctx.values.vaultId,
+        ctx.values.vaultTrustChain,
+        enrollment.trust,
+        enrollment.trust,
+      ),
+    ).rejects.toBeInstanceOf(VaultSnapshotRollbackDetectedError);
+    await expect(
+      ctx.service.requireTrustDescendsFrom(
+        ctx.values.vaultId,
+        {
+          certificates: [
+            ...ctx.values.vaultTrustChain.certificates,
+            mutatedCertificate,
+          ],
+        },
+        enrollment.trust,
+        enrollment.trust,
+      ),
+    ).rejects.toBeInstanceOf(VaultSnapshotRollbackDetectedError);
+  });
+
+  it("rejects disconnected or unauthorized trust certificates", async () => {
+    const ctx = createContext();
+    const targetIdentity = {
+      deviceId: ctx.values.pendingDeviceId,
+      publicSignKey: ctx.values.pendingDevicePublicSignKey,
+      publicVaultKey: ctx.values.pendingDevicePublicVaultKey,
+    };
+    const enrollment = await ctx.service.appendTrustTransition(
+      ctx.values.vaultId,
+      ctx.values.vaultTrustChain,
+      ctx.values.verifiedVaultTrustState,
+      [...ctx.values.verifiedVaultTrustState.trustedDevices, targetIdentity],
+      1,
+      ctx.values.deviceId,
+      ctx.values.devicePrivateSignKey,
+    );
+    const certificate = enrollment.chain.certificates[1];
+
+    if (certificate === undefined) {
+      throw new Error("Expected an appended trust certificate.");
+    }
+
+    await expect(
+      ctx.service.verifyTrustChain(ctx.values.vaultId, ctx.values.vaultTrustAnchor, {
+        certificates: [
+          ...ctx.values.vaultTrustChain.certificates,
+          {
+            ...certificate,
+            payload: {
+              ...certificate.payload,
+              previousCertificateDigest: "disconnected-certificate-digest",
+            },
+          },
+        ],
+      }),
+    ).rejects.toBeInstanceOf(VaultTrustStateInvalidError);
+    await expect(
+      ctx.service.verifyTrustChain(ctx.values.vaultId, ctx.values.vaultTrustAnchor, {
+        certificates: [
+          ...ctx.values.vaultTrustChain.certificates,
+          {
+            ...certificate,
+            payload: {
+              ...certificate.payload,
+              generation: certificate.payload.generation + 1,
+            },
+          },
+        ],
+      }),
+    ).rejects.toBeInstanceOf(VaultTrustStateInvalidError);
+    await expect(
+      ctx.service.verifyTrustChain(ctx.values.vaultId, ctx.values.vaultTrustAnchor, {
+        certificates: [
+          ...ctx.values.vaultTrustChain.certificates,
+          {
+            ...certificate,
+            payload: {
+              ...certificate.payload,
+              authorizedByDeviceId: "untrusted-authorizer",
+            },
+          },
+        ],
+      }),
+    ).rejects.toBeInstanceOf(VaultTrustStateInvalidError);
+
+    vi.mocked(
+      ctx.ports.crypto.verifyVaultTrustCertificateSignature,
+    ).mockReset().mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+
+    await expect(
+      ctx.service.verifyTrustChain(
+        ctx.values.vaultId,
+        ctx.values.vaultTrustAnchor,
+        enrollment.chain,
+      ),
+    ).rejects.toBeInstanceOf(VaultTrustStateInvalidError);
+  });
+
+  it("rejects a certificate signed by a trusted device other than its declared authorizer", async () => {
+    const ctx = createContext();
+    const targetIdentity = {
+      deviceId: ctx.values.pendingDeviceId,
+      publicSignKey: ctx.values.pendingDevicePublicSignKey,
+      publicVaultKey: ctx.values.pendingDevicePublicVaultKey,
+    };
+    const enrollment = await ctx.service.appendTrustTransition(
+      ctx.values.vaultId,
+      ctx.values.vaultTrustChain,
+      ctx.values.verifiedVaultTrustState,
+      [...ctx.values.verifiedVaultTrustState.trustedDevices, targetIdentity],
+      1,
+      ctx.values.deviceId,
+      ctx.values.devicePrivateSignKey,
+    );
+    const revocation = await ctx.service.appendTrustTransition(
+      ctx.values.vaultId,
+      enrollment.chain,
+      enrollment.trust,
+      [targetIdentity],
+      2,
+      targetIdentity.deviceId,
+      ctx.values.pendingDevicePrivateSignKey,
+    );
+    const revocationCertificate = revocation.chain.certificates[2];
+
+    if (revocationCertificate === undefined) {
+      throw new Error("Expected an appended revocation certificate.");
+    }
+
+    const certificateSignedByAnotherDevice = {
+      ...revocationCertificate,
+      signature: ctx.values.enrollmentRequestSignature,
+    };
+    vi.mocked(
+      ctx.ports.crypto.verifyVaultTrustCertificateSignature,
+    ).mockImplementation(async (certificate, publicKey) =>
+      certificate === certificateSignedByAnotherDevice
+        ? publicKey === ctx.values.devicePublicSignKey
+        : true,
+    );
+
+    await expect(
+      ctx.service.verifyTrustChain(
+        ctx.values.vaultId,
+        ctx.values.vaultTrustAnchor,
+        {
+          certificates: [
+            ...revocation.chain.certificates.slice(0, -1),
+            certificateSignedByAnotherDevice,
+          ],
+        },
+      ),
+    ).rejects.toBeInstanceOf(VaultTrustStateInvalidError);
+
+    expect(
+      ctx.ports.crypto.verifyVaultTrustCertificateSignature,
+    ).toHaveBeenCalledWith(
+      certificateSignedByAnotherDevice,
+      targetIdentity.publicSignKey,
+    );
+  });
+
+  it("rejects appending a transition with another device's private signing key", async () => {
+    const ctx = createContext();
+    const targetIdentity = {
+      deviceId: ctx.values.pendingDeviceId,
+      publicSignKey: ctx.values.pendingDevicePublicSignKey,
+      publicVaultKey: ctx.values.pendingDevicePublicVaultKey,
+    };
+    vi.mocked(ctx.ports.crypto.verifyDeviceSignKeyPair).mockImplementation(
+      async (publicKey, privateKey) =>
+        publicKey === ctx.values.devicePublicSignKey &&
+        privateKey === ctx.values.devicePrivateSignKey,
+    );
+
+    await expect(
+      ctx.service.appendTrustTransition(
+        ctx.values.vaultId,
+        ctx.values.vaultTrustChain,
+        ctx.values.verifiedVaultTrustState,
+        [...ctx.values.verifiedVaultTrustState.trustedDevices, targetIdentity],
+        1,
+        ctx.values.deviceId,
+        ctx.values.pendingDevicePrivateSignKey,
+      ),
+    ).rejects.toBeInstanceOf(VaultTrustStateInvalidError);
+
+    expect(ctx.ports.crypto.verifyDeviceSignKeyPair).toHaveBeenCalledWith(
+      ctx.values.devicePublicSignKey,
+      ctx.values.pendingDevicePrivateSignKey,
+    );
+    expect(ctx.ports.crypto.signVaultTrustCertificate).not.toHaveBeenCalled();
   });
 
   it("validates multiple consecutive revocations after an offline baseline", async () => {
@@ -356,11 +591,38 @@ describe("VaultTrustService", () => {
 
   it("rejects re-enrollment of a historically revoked device identity", async () => {
     const ctx = createContext();
+    const freshPublicSignKey = new Uint8Array([5])
+      .buffer as DevicePublicSignKey;
+    const freshPublicVaultKey = new Uint8Array([6])
+      .buffer as DeviceVaultPublicKey;
     const targetIdentity = {
       deviceId: ctx.values.pendingDeviceId,
       publicSignKey: ctx.values.pendingDevicePublicSignKey,
       publicVaultKey: ctx.values.pendingDevicePublicVaultKey,
     };
+    const reusedDeviceIdWithFreshKeys = {
+      deviceId: targetIdentity.deviceId,
+      publicSignKey: freshPublicSignKey,
+      publicVaultKey: freshPublicVaultKey,
+    };
+    vi.mocked(ctx.ports.crypto.digestDevicePublicSignKey).mockImplementation(
+      async (key) => {
+        if (key === targetIdentity.publicSignKey) {
+          return "revoked-sign";
+        }
+
+        return key === freshPublicSignKey ? "fresh-sign" : "initial-sign";
+      },
+    );
+    vi.mocked(ctx.ports.crypto.digestDevicePublicVaultKey).mockImplementation(
+      async (key) => {
+        if (key === targetIdentity.publicVaultKey) {
+          return "revoked-vault";
+        }
+
+        return key === freshPublicVaultKey ? "fresh-vault" : "initial-vault";
+      },
+    );
     const enrollment = await ctx.service.appendTrustTransition(
       ctx.values.vaultId,
       ctx.values.vaultTrustChain,
@@ -385,7 +647,7 @@ describe("VaultTrustService", () => {
         ctx.values.vaultId,
         revocation.chain,
         revocation.trust,
-        [...revocation.trust.trustedDevices, targetIdentity],
+        [...revocation.trust.trustedDevices, reusedDeviceIdWithFreshKeys],
         2,
         ctx.values.deviceId,
         ctx.values.devicePrivateSignKey,
@@ -400,7 +662,10 @@ describe("VaultTrustService", () => {
         vaultKeyGeneration: 2,
         previousCertificateDigest: ctx.values.vaultTrustCertificateDigest,
         authorizedByDeviceId: ctx.values.deviceId,
-        trustedDevices: [...revocation.trust.trustedDevices, targetIdentity],
+        trustedDevices: [
+          ...revocation.trust.trustedDevices,
+          reusedDeviceIdWithFreshKeys,
+        ],
       },
       signature: ctx.values.vaultTrustCertificateSignature,
     };
@@ -505,37 +770,48 @@ describe("VaultTrustService", () => {
       ),
     ).rejects.toBeInstanceOf(VaultTrustStateInvalidError);
 
-    await expect(
-      ctx.service.verifyTrustChain(
-        ctx.values.vaultId,
-        ctx.values.vaultTrustAnchor,
-        {
-          certificates: [
-            ...revocation.chain.certificates,
-            {
-              payload: {
-                version: 1,
-                vaultId: ctx.values.vaultId,
-                generation: 3,
-                vaultKeyGeneration: 2,
-                previousCertificateDigest:
-                  ctx.values.vaultTrustCertificateDigest,
-                authorizedByDeviceId: ctx.values.deviceId,
-                trustedDevices: [
-                  ...revocation.trust.trustedDevices,
-                  {
-                    deviceId: "fresh-device-with-historical-key",
-                    publicSignKey: revokedIdentity.publicSignKey,
-                    publicVaultKey: freshPublicVaultKey,
-                  },
-                ],
+    const hostileRemoteIdentities = [
+      {
+        deviceId: "fresh-device-with-historical-signing-key",
+        publicSignKey: revokedIdentity.publicSignKey,
+        publicVaultKey: freshPublicVaultKey,
+      },
+      {
+        deviceId: "fresh-device-with-historical-vault-key",
+        publicSignKey: freshPublicSignKey,
+        publicVaultKey: revokedIdentity.publicVaultKey,
+      },
+    ] satisfies readonly DeviceTrustIdentity[];
+
+    for (const hostileRemoteIdentity of hostileRemoteIdentities) {
+      await expect(
+        ctx.service.verifyTrustChain(
+          ctx.values.vaultId,
+          ctx.values.vaultTrustAnchor,
+          {
+            certificates: [
+              ...revocation.chain.certificates,
+              {
+                payload: {
+                  version: 1,
+                  vaultId: ctx.values.vaultId,
+                  generation: 3,
+                  vaultKeyGeneration: 2,
+                  previousCertificateDigest:
+                    ctx.values.vaultTrustCertificateDigest,
+                  authorizedByDeviceId: ctx.values.deviceId,
+                  trustedDevices: [
+                    ...revocation.trust.trustedDevices,
+                    hostileRemoteIdentity,
+                  ],
+                },
+                signature: ctx.values.vaultTrustCertificateSignature,
               },
-              signature: ctx.values.vaultTrustCertificateSignature,
-            },
-          ],
-        },
-      ),
-    ).rejects.toBeInstanceOf(VaultTrustStateInvalidError);
+            ],
+          },
+        ),
+      ).rejects.toBeInstanceOf(VaultTrustStateInvalidError);
+    }
   });
 
   it("verifies a snapshot with exactly one current-generation slot per trusted device", async () => {
