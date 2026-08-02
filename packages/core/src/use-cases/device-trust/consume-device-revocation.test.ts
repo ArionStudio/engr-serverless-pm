@@ -1202,6 +1202,7 @@ describe("ConsumeDeviceRevocationUseCase", () => {
       }),
     ).rejects.toBeInstanceOf(LocalVaultSnapshotChangedError);
 
+    expect(ctx.ports.syncProvider.setup).not.toHaveBeenCalled();
     expect(
       ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
     ).not.toHaveBeenCalled();

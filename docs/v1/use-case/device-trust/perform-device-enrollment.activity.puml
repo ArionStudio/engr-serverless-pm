@@ -113,16 +113,21 @@ else (no)
 endif
 
 if (upload registered snapshot succeeds?) then (yes)
-  :Return visible vault projection, snapshotVersionVector,\nrevisionTimestamp, deviceId,\nrecoveryMnemonicKey;
+  :Return visible vault projection, snapshotVersionVector,\nrevisionTimestamp, deviceId,\nrecoveryMnemonicKey, syncUpload = complete;
   stop
 else (no)
-  :Best effort remove unlocked session;
-  :Best effort remove persisted local vault;
   if (failure is RemoteVaultSnapshotChangedError?) then (yes)
-    :Throw SyncConflictDetectedError;
-    stop
+    :Discard session and local snapshot\nonly if they still match this enrollment;
+    if (session advanced?) then (yes)
+      :Return visible vault projection, snapshotVersionVector,\nrevisionTimestamp, deviceId,\nrecoveryMnemonicKey, syncUpload = complete;
+      stop
+    else (no)
+      :Throw DeviceEnrollmentRemoteSnapshotChangedError\nor DeviceEnrollmentRollbackIncompleteError;
+      stop
+    endif
   else (no)
-    :Throw original upload error;
+    :Retain the committed local enrollment;
+    :Return visible vault projection, snapshotVersionVector,\nrevisionTimestamp, deviceId,\nrecoveryMnemonicKey, syncUpload = pending;
     stop
   endif
 endif

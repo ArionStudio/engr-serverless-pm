@@ -50,12 +50,7 @@ export function resolveEntryStates(
     resolvedStateById.set(
       entryReview.entryId,
       stampEntryState(
-        selectEntryState(
-          entryReview,
-          entryResolution,
-          localState,
-          remoteState,
-        ),
+        selectEntryState(entryReview, entryResolution, localState, remoteState),
         localState,
         remoteState,
         deviceId,
@@ -131,9 +126,7 @@ function selectEntryState(
     );
   }
 
-  return entryResolution.action === "use_local"
-    ? localState
-    : remoteState;
+  return entryResolution.action === "use_local" ? localState : remoteState;
 }
 
 function stampEntryState(

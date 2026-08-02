@@ -313,7 +313,9 @@ export class ApplySyncResolutionUseCase {
       );
 
       return {
-        snapshotVersionVector: persistedSnapshot.snapshotVersionVector,
+        snapshotVersionVector: {
+          ...persistedSnapshot.snapshotVersionVector,
+        },
         revisionTimestamp: persistedSnapshot.revisionTimestamp,
       };
     }
@@ -405,7 +407,9 @@ export class ApplySyncResolutionUseCase {
     );
 
     return {
-      snapshotVersionVector: persistedSnapshot.snapshotVersionVector,
+      snapshotVersionVector: {
+        ...persistedSnapshot.snapshotVersionVector,
+      },
       revisionTimestamp: persistedSnapshot.revisionTimestamp,
     };
   }

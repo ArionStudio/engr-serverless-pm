@@ -96,7 +96,7 @@ describe("ApplySyncResolutionUseCase", () => {
   it("applies ordinary content resolution with local credentials", async () => {
     const ctx = createContext();
 
-    await ctx.useCase.execute({
+    const result = await ctx.useCase.execute({
       vaultId: ctx.values.vaultId,
       localSnapshotDescriptor: ctx.localDescriptor,
       remoteSnapshotDescriptor: ctx.remoteDescriptor,
@@ -132,6 +132,16 @@ describe("ApplySyncResolutionUseCase", () => {
       uploadedSnapshot,
       ctx.remoteDescriptor,
     );
+    const expectedSnapshotVersionVector = {
+      ...result.snapshotVersionVector,
+    };
+    result.snapshotVersionVector[ctx.values.deviceId] = 99;
+    expect(
+      ctx.ports.saved.vaultSnapshot?.metadata.snapshotVersionVector,
+    ).toEqual(expectedSnapshotVersionVector);
+    expect(
+      ctx.ports.saved.unlockedVaultSession?.sourceSnapshotVersionVector,
+    ).toEqual(expectedSnapshotVersionVector);
   });
 
   it("rejects unsigned key-generation rotation through generic resolution", async () => {
@@ -363,7 +373,7 @@ describe("ApplySyncResolutionUseCase", () => {
       versionVector: { [ctx.values.deviceId]: 2 },
     });
 
-    await ctx.useCase.execute({
+    const result = await ctx.useCase.execute({
       vaultId: ctx.values.vaultId,
       localSnapshotDescriptor: ctx.localDescriptor,
       remoteSnapshotDescriptor: ctx.remoteDescriptor,
@@ -380,6 +390,16 @@ describe("ApplySyncResolutionUseCase", () => {
     ).toBeUndefined();
     expect(ctx.ports.saved.vaultSnapshot).toEqual(ctx.remoteSnapshot);
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+    const expectedSnapshotVersionVector = {
+      ...result.snapshotVersionVector,
+    };
+    result.snapshotVersionVector[ctx.values.deviceId] = 99;
+    expect(
+      ctx.ports.saved.vaultSnapshot?.metadata.snapshotVersionVector,
+    ).toEqual(expectedSnapshotVersionVector);
+    expect(
+      ctx.ports.saved.unlockedVaultSession?.sourceSnapshotVersionVector,
+    ).toEqual(expectedSnapshotVersionVector);
   });
 
   it("clears provider credential revocation while applying content resolution", async () => {

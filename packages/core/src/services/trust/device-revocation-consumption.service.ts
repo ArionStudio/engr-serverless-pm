@@ -72,6 +72,23 @@ export class DeviceRevocationConsumptionService {
       throw new ReplacementSyncTargetMismatchError(params.vaultId);
     }
 
+    const localSnapshot =
+      await this.vaultSnapshot.requireCurrentSnapshotForUnlockedVault(
+        params.vaultId,
+        params.unlockedVault,
+        params.sourceSnapshotVersionVector,
+      );
+
+    if (
+      params.expectedLocalSnapshotDescriptor !== undefined &&
+      !areVaultSnapshotDescriptorsEqual(
+        toVaultSnapshotDescriptor(params.vaultId, localSnapshot),
+        params.expectedLocalSnapshotDescriptor,
+      )
+    ) {
+      throw new LocalVaultSnapshotChangedError(params.vaultId);
+    }
+
     let replacementAccess: SyncAccess;
 
     try {
@@ -135,22 +152,6 @@ export class DeviceRevocationConsumptionService {
       throw new ReplacementSyncCredentialsUnchangedError(params.vaultId);
     }
 
-    const localSnapshot =
-      await this.vaultSnapshot.requireCurrentSnapshotForUnlockedVault(
-        params.vaultId,
-        params.unlockedVault,
-        params.sourceSnapshotVersionVector,
-      );
-
-    if (
-      params.expectedLocalSnapshotDescriptor !== undefined &&
-      !areVaultSnapshotDescriptorsEqual(
-        toVaultSnapshotDescriptor(params.vaultId, localSnapshot),
-        params.expectedLocalSnapshotDescriptor,
-      )
-    ) {
-      throw new LocalVaultSnapshotChangedError(params.vaultId);
-    }
     const providerRemoteSnapshotDescriptor =
       await this.syncProvider.getLatestVaultSnapshotDescriptor(
         replacementAccess,

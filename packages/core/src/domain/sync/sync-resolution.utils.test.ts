@@ -68,9 +68,7 @@ describe("applyVaultSyncResolution", () => {
           deviceProfileReviews: [],
         },
         {
-          entryResolutions: [
-            { entryId: remoteEntry.id, action: "use_local" },
-          ],
+          entryResolutions: [{ entryId: remoteEntry.id, action: "use_local" }],
           tagResolutions: [],
           deviceProfileResolutions: [],
         },
@@ -105,9 +103,7 @@ describe("applyVaultSyncResolution", () => {
       remoteVault,
       { entryReviews, tagReviews: [], deviceProfileReviews: [] },
       {
-        entryResolutions: [
-          { entryId: remoteEntry.id, action: "use_remote" },
-        ],
+        entryResolutions: [{ entryId: remoteEntry.id, action: "use_remote" }],
         tagResolutions: [],
         deviceProfileResolutions: [],
       },
