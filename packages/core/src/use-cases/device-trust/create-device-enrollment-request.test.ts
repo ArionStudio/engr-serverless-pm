@@ -6,7 +6,7 @@ import { InvalidNewMasterPasswordError } from "../../errors/master-password.erro
 import { CreateDeviceEnrollmentRequestUseCase } from "./create-device-enrollment-request";
 
 describe("CreateDeviceEnrollmentRequestUseCase", () => {
-  it("rejects a short password before generating the request identity", async () => {
+  it("rejects a weak password before generating the request identity", async () => {
     const values = createCoreTestValues();
     const ports = createCoreTestPorts(values);
     const useCase = new CreateDeviceEnrollmentRequestUseCase(
@@ -20,7 +20,7 @@ describe("CreateDeviceEnrollmentRequestUseCase", () => {
         vaultId: values.vaultId,
         expectedGenesisCertificateDigest:
           values.vaultTrustAnchor.genesisCertificateDigest,
-        masterPassword: "12345678901" as RawMasterPassword,
+        masterPassword: "Password1234567!" as RawMasterPassword,
       }),
     ).rejects.toBeInstanceOf(InvalidNewMasterPasswordError);
 
@@ -30,7 +30,7 @@ describe("CreateDeviceEnrollmentRequestUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("accepts a password at the minimum length", async () => {
+  it("accepts a strong password at the minimum length", async () => {
     const values = createCoreTestValues();
     const ports = createCoreTestPorts(values);
     const useCase = new CreateDeviceEnrollmentRequestUseCase(
@@ -38,7 +38,7 @@ describe("CreateDeviceEnrollmentRequestUseCase", () => {
       ports.ids,
       ports.vaultLocalRepository,
     );
-    const masterPassword = "123456789012" as RawMasterPassword;
+    const masterPassword = "vN7#qL2!xP9@rT4$" as RawMasterPassword;
 
     await useCase.execute({
       vaultId: values.vaultId,

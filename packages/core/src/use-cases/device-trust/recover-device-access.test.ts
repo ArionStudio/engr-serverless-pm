@@ -32,7 +32,7 @@ function createContext() {
 }
 
 describe("RecoverDeviceAccessUseCase", () => {
-  it("rejects a short new password before reading recovery state", async () => {
+  it("rejects a weak new password before reading recovery state", async () => {
     const ctx = createContext();
     const requireVaultCanBeActivated = vi.spyOn(
       ctx.ports.sessionServices.unlockedVaultSession,
@@ -43,7 +43,7 @@ describe("RecoverDeviceAccessUseCase", () => {
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
         recoveryMnemonicKey: ctx.values.recoveryMnemonicKey,
-        newMasterPassword: "12345678901" as RawMasterPassword,
+        newMasterPassword: "Password1234567!" as RawMasterPassword,
       }),
     ).rejects.toBeInstanceOf(InvalidNewMasterPasswordError);
 
@@ -53,9 +53,9 @@ describe("RecoverDeviceAccessUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("accepts a new password at the minimum length", async () => {
+  it("accepts a strong new password at the minimum length", async () => {
     const ctx = createContext();
-    const newMasterPassword = "123456789012" as RawMasterPassword;
+    const newMasterPassword = "vN7#qL2!xP9@rT4$" as RawMasterPassword;
 
     await ctx.useCase.execute({
       vaultId: ctx.values.vaultId,

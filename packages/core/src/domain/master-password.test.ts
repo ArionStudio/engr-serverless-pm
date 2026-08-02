@@ -7,14 +7,36 @@ import {
 } from "./master-password";
 
 describe("new master password policy", () => {
-  it("accepts the documented minimum length", () => {
-    const password = "a".repeat(MASTER_PASSWORD_MINIMUM_LENGTH);
+  it("accepts a strong generated password at the minimum length", () => {
+    const password = "vN7#qL2!xP9@rT4$";
 
+    expect([...password]).toHaveLength(MASTER_PASSWORD_MINIMUM_LENGTH);
     expect(() => assertValidNewMasterPassword(password)).not.toThrow();
   });
 
-  it("rejects a short password without retaining it in the error", () => {
-    const submittedPassword = "weak-pass-1";
+  it("accepts a strong random-word passphrase", () => {
+    expect(() =>
+      assertValidNewMasterPassword("orbit lantern velvet canyon river"),
+    ).not.toThrow();
+  });
+
+  it.each([
+    ["a".repeat(MASTER_PASSWORD_MINIMUM_LENGTH), "repeated characters"],
+    ["Password1234567!", "a predictable mixed-character password"],
+  ])("rejects %s (%s)", (submittedPassword) => {
+    expect(() => assertValidNewMasterPassword(submittedPassword)).toThrow(
+      InvalidNewMasterPasswordError,
+    );
+  });
+
+  it("rejects a strong password below the minimum length", () => {
+    expect(() => assertValidNewMasterPassword("vN7#qL2!xP9@rT4")).toThrow(
+      InvalidNewMasterPasswordError,
+    );
+  });
+
+  it("rejects a weak password without retaining it in the error", () => {
+    const submittedPassword = "Password1234567!";
 
     let thrownError: unknown;
 

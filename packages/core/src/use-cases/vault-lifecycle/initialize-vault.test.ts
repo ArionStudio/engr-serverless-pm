@@ -4,12 +4,12 @@ import type { RawMasterPassword } from "../../domain/master-password";
 import { InvalidNewMasterPasswordError } from "../../errors/master-password.errors";
 
 describe("InitializeVaultUseCase", () => {
-  it("rejects a short master password before generating IDs", async () => {
+  it("rejects a weak master password before generating IDs", async () => {
     const ctx = createInitializeVaultTestContext();
 
     await expect(
       ctx.useCase.execute({
-        masterPassword: "12345678901" as RawMasterPassword,
+        masterPassword: "Password1234567!" as RawMasterPassword,
         deviceName: "Laptop",
       }),
     ).rejects.toBeInstanceOf(InvalidNewMasterPasswordError);
@@ -20,9 +20,9 @@ describe("InitializeVaultUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("accepts a master password at the minimum length", async () => {
+  it("accepts a strong master password at the minimum length", async () => {
     const ctx = createInitializeVaultTestContext();
-    const masterPassword = "123456789012" as RawMasterPassword;
+    const masterPassword = "vN7#qL2!xP9@rT4$" as RawMasterPassword;
 
     await ctx.useCase.execute({ masterPassword, deviceName: "Laptop" });
 

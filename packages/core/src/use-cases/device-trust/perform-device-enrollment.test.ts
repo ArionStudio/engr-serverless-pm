@@ -126,13 +126,13 @@ function createContext(synced = false) {
 }
 
 describe("PerformDeviceEnrollmentUseCase", () => {
-  it("rejects a short password before reading pending enrollment", async () => {
+  it("rejects a weak password before reading pending enrollment", async () => {
     const ctx = createContext();
 
     await expect(
       ctx.useCase.execute({
         enrollmentResponse: ctx.response,
-        masterPassword: "12345678901" as RawMasterPassword,
+        masterPassword: "Password1234567!" as RawMasterPassword,
         deviceName: "New laptop",
       }),
     ).rejects.toBeInstanceOf(InvalidNewMasterPasswordError);
@@ -143,9 +143,9 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
   });
 
-  it("accepts a password at the minimum length", async () => {
+  it("accepts a strong password at the minimum length", async () => {
     const ctx = createContext();
-    const masterPassword = "123456789012" as RawMasterPassword;
+    const masterPassword = "vN7#qL2!xP9@rT4$" as RawMasterPassword;
 
     await ctx.useCase.execute({
       enrollmentResponse: ctx.response,

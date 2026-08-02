@@ -72,8 +72,12 @@ cryptographic primitives. Arbitrary mixing of algorithms is not permitted.
 
 ### 3.2.1 Master Password Requirements
 
-- **Minimum requirement:** at least **12 characters**.
-- **Recommended requirement:** at least **16 characters**, or a passphrase of **5 or more random words**.
+- **Minimum requirement:** at least **16 Unicode characters** and a score of
+  **4/4** from the local `zxcvbn-ts` guessability estimator.
+- **Passphrase guidance:** prefer **5 or more randomly selected words**.
+- **Composition:** do not require arbitrary mixtures of uppercase, lowercase,
+  numbers, or symbols; predictable passwords can satisfy those rules while
+  remaining easy to guess.
 - **Uniqueness:** the master password **MUST NOT** be reused from any other site, app, or account.
 - **Rationale:** in this serverless, client-side, open-source design there is no server-held secret protecting the vault. Resistance to offline guessing depends primarily on the password strength, the random salt, and the PBKDF2 cost factor.
 
@@ -306,7 +310,7 @@ Since JS Garbage Collection is unpredictable:
 
 ### 8.1 Setup (Genesis)
 
-1.  **Strength Check:** Enforce the minimum master-password policy and warn when the password does not meet the recommended strength guidance.
+1.  **Strength Check:** Enforce the master-password length and local guessability requirements.
 2.  **Derivation:** MasterKEK = PBKDF2(Password, Salt, 600k).
 3.  **Generation:** Create the initial Vault Key, Ed25519 pair, ECDH P-256
     pair, and device-local protection key.
@@ -490,7 +494,7 @@ Strict CSP required in manifest.json:
 - [ ] **Dual Key Pairs:** Every device generates two distinct pairs: Ed25519 (Identity) and ECDH P-256 (Key Exchange).
 - [ ] **IV Uniqueness:** All AES-GCM operations use a fresh, random 12-byte IV. Never reuse an IV for the same key.
 - [ ] **Salt Strength:** All salts are random and >= 32 bytes (upgraded from 16 bytes).
-- [ ] **Master Password Policy:** Enforce the documented minimum length and present the recommended stronger passphrase guidance during setup.
+- [ ] **Master Password Policy:** Enforce the documented minimum length and local guessability score, and present the random-word passphrase guidance during setup.
 - [ ] **KDF Safety:** ECDH raw key bits are never used directly. HKDF-SHA-256
       derives the AES-256 wrapping key.
 - [ ] **Ephemeral Envelopes:** Every recipient envelope uses a fresh ephemeral
