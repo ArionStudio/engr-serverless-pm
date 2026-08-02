@@ -14,11 +14,15 @@ import type { VaultSyncResolution } from "../../domain/sync/sync-resolution.type
 import { applyVaultSyncResolution } from "../../domain/sync/sync-resolution.utils";
 import { findChangedTags } from "../../domain/sync/tag-review.utils";
 import type {
+  ReviewedVaultSnapshotDescriptors,
   VaultMasterKey,
   VaultSnapshot,
   VaultSnapshotDescriptor,
 } from "../../domain/snapshot";
-import { cloneVaultSnapshotDescriptor } from "../../domain/snapshot";
+import {
+  cloneReviewedVaultSnapshotDescriptors,
+  cloneVaultSnapshotDescriptor,
+} from "../../domain/snapshot";
 import type { Vault } from "../../domain/vault";
 import type { VersionVector } from "../../domain/versioning";
 import { mergeVersionVectors } from "../../domain/versioning";
@@ -40,8 +44,7 @@ import { VaultTrustService } from "../../services/trust/vault-trust.service";
 export type ConsumeDeviceRevocationCommandParams = {
   readonly vaultId: string;
   readonly replacementSyncConfig: SyncSetupInput;
-  readonly localSnapshotDescriptor: VaultSnapshotDescriptor;
-  readonly remoteSnapshotDescriptor: VaultSnapshotDescriptor;
+  readonly reviewedSnapshotDescriptors: ReviewedVaultSnapshotDescriptors;
   readonly resolution: VaultSyncResolution;
 };
 
@@ -85,15 +88,12 @@ export class ConsumeDeviceRevocationUseCase {
   async execute(
     params: ConsumeDeviceRevocationCommandParams,
   ): Promise<ConsumeDeviceRevocationResult> {
-    const localSnapshotDescriptor = cloneVaultSnapshotDescriptor(
-      params.localSnapshotDescriptor,
-    );
-    const remoteSnapshotDescriptor = cloneVaultSnapshotDescriptor(
-      params.remoteSnapshotDescriptor,
+    const reviewedSnapshotDescriptors = cloneReviewedVaultSnapshotDescriptors(
+      params.reviewedSnapshotDescriptors,
     );
     if (
-      localSnapshotDescriptor.vaultId !== params.vaultId ||
-      remoteSnapshotDescriptor.vaultId !== params.vaultId
+      reviewedSnapshotDescriptors.local.vaultId !== params.vaultId ||
+      reviewedSnapshotDescriptors.remote.vaultId !== params.vaultId
     ) {
       throw new InvalidSyncResolutionError(
         params.vaultId,
@@ -111,8 +111,7 @@ export class ConsumeDeviceRevocationUseCase {
       replacementSyncConfig: params.replacementSyncConfig,
       unlockedVault,
       sourceSnapshotVersionVector,
-      expectedLocalSnapshotDescriptor: localSnapshotDescriptor,
-      expectedRemoteSnapshotDescriptor: remoteSnapshotDescriptor,
+      reviewedSnapshotDescriptors,
     });
     const entryReviews = findChangedEntries(
       candidate.trustTransitionBaseline,

@@ -1,4 +1,4 @@
-import type { VaultSnapshotDescriptor } from "../../domain/snapshot";
+import type { ReviewedVaultSnapshotDescriptors } from "../../domain/snapshot";
 import { areJsonEqual } from "../../domain/common";
 import {
   findChangedDeviceProfiles,
@@ -11,6 +11,7 @@ import { applyVaultSyncResolution } from "../../domain/sync/sync-resolution.util
 import { findChangedTags } from "../../domain/sync/tag-review.utils";
 import {
   areVaultSnapshotDescriptorsEqual,
+  cloneReviewedVaultSnapshotDescriptors,
   cloneVaultSnapshotDescriptor,
   compareVaultSnapshotDescriptors,
   toVaultSnapshotDescriptor,
@@ -46,8 +47,7 @@ export type {
 
 export type ApplySyncResolutionCommandParams = {
   readonly vaultId: string;
-  readonly localSnapshotDescriptor: VaultSnapshotDescriptor;
-  readonly remoteSnapshotDescriptor: VaultSnapshotDescriptor;
+  readonly reviewedSnapshotDescriptors: ReviewedVaultSnapshotDescriptors;
   readonly resolution: VaultSyncResolution;
 };
 
@@ -70,12 +70,8 @@ export class ApplySyncResolutionUseCase {
   }
 
   async execute(params: ApplySyncResolutionCommandParams) {
-    const localSnapshotDescriptor = cloneVaultSnapshotDescriptor(
-      params.localSnapshotDescriptor,
-    );
-    const remoteSnapshotDescriptor = cloneVaultSnapshotDescriptor(
-      params.remoteSnapshotDescriptor,
-    );
+    const { local: localSnapshotDescriptor, remote: remoteSnapshotDescriptor } =
+      cloneReviewedVaultSnapshotDescriptors(params.reviewedSnapshotDescriptors);
     const { sessionId, sourceSnapshotVersionVector, unlockedVault } =
       await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,

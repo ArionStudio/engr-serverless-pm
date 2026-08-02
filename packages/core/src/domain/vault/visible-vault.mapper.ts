@@ -1,5 +1,6 @@
 import { toVisiblePasswordEntryFields } from "../entry/password-entry.mapper";
-import type { Vault, VisibleVaultFields } from "./vault";
+import type { Vault } from "./vault";
+import type { VisibleVaultFields } from "./visible-vault.type";
 
 export function toVisibleVaultFields(vault: Vault): VisibleVaultFields {
   return {

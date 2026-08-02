@@ -479,6 +479,11 @@ this report is the only created file.
     evidence-backed contract reductions with focused regression tests. Do not
     solve this as a local sync-only cleanup.
 
+    Finding 10's follow-up correction restored the authoritative entry-review
+    type and removed redundant vault parameters from the entry-state resolver.
+    That local alignment does not close this finding; the requested whole-core
+    contract inventory and research remain outstanding.
+
 ## Overall Assessment
 
 The package is not ready to be treated as a security boundary or a complete

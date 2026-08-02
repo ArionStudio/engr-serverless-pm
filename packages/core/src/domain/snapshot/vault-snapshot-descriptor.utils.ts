@@ -1,5 +1,8 @@
 import type { VaultSnapshot } from "./vault-snapshot";
-import type { VaultSnapshotDescriptor } from "./vault-snapshot-descriptor.type";
+import type {
+  ReviewedVaultSnapshotDescriptors,
+  VaultSnapshotDescriptor,
+} from "./vault-snapshot-descriptor.type";
 import { compareVersionVectors } from "../versioning/version-vector.utils";
 import type { VersionVectorRelation } from "../versioning/version-vector.type";
 
@@ -10,6 +13,15 @@ export function cloneVaultSnapshotDescriptor(
     vaultId: descriptor.vaultId,
     snapshotVersionVector: { ...descriptor.snapshotVersionVector },
     revisionTimestamp: descriptor.revisionTimestamp,
+  };
+}
+
+export function cloneReviewedVaultSnapshotDescriptors(
+  descriptors: ReviewedVaultSnapshotDescriptors,
+): ReviewedVaultSnapshotDescriptors {
+  return {
+    local: cloneVaultSnapshotDescriptor(descriptors.local),
+    remote: cloneVaultSnapshotDescriptor(descriptors.remote),
   };
 }
 

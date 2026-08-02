@@ -6,10 +6,13 @@ import type { VaultSyncResolution } from "../../domain/sync/sync-resolution.type
 import { applyVaultSyncResolution } from "../../domain/sync/sync-resolution.utils";
 import { findChangedTags } from "../../domain/sync/tag-review.utils";
 import type {
+  ReviewedVaultSnapshotDescriptors,
   VaultSnapshot,
-  VaultSnapshotDescriptor,
 } from "../../domain/snapshot";
-import { cloneVaultSnapshotDescriptor } from "../../domain/snapshot";
+import {
+  cloneReviewedVaultSnapshotDescriptors,
+  cloneVaultSnapshotDescriptor,
+} from "../../domain/snapshot";
 import type { Vault } from "../../domain/vault";
 import { mergeVersionVectors } from "../../domain/versioning";
 import {
@@ -28,8 +31,7 @@ import { VaultTrustService } from "../../services/trust/vault-trust.service";
 
 export type ConsumeDeviceEnrollmentCommandParams = {
   readonly vaultId: string;
-  readonly localSnapshotDescriptor: VaultSnapshotDescriptor;
-  readonly remoteSnapshotDescriptor: VaultSnapshotDescriptor;
+  readonly reviewedSnapshotDescriptors: ReviewedVaultSnapshotDescriptors;
   readonly resolution: VaultSyncResolution;
 };
 
@@ -72,15 +74,12 @@ export class ConsumeDeviceEnrollmentUseCase {
   async execute(
     params: ConsumeDeviceEnrollmentCommandParams,
   ): Promise<ConsumeDeviceEnrollmentResult> {
-    const localSnapshotDescriptor = cloneVaultSnapshotDescriptor(
-      params.localSnapshotDescriptor,
-    );
-    const remoteSnapshotDescriptor = cloneVaultSnapshotDescriptor(
-      params.remoteSnapshotDescriptor,
+    const reviewedSnapshotDescriptors = cloneReviewedVaultSnapshotDescriptors(
+      params.reviewedSnapshotDescriptors,
     );
     if (
-      localSnapshotDescriptor.vaultId !== params.vaultId ||
-      remoteSnapshotDescriptor.vaultId !== params.vaultId
+      reviewedSnapshotDescriptors.local.vaultId !== params.vaultId ||
+      reviewedSnapshotDescriptors.remote.vaultId !== params.vaultId
     ) {
       throw new InvalidSyncResolutionError(
         params.vaultId,
@@ -98,8 +97,7 @@ export class ConsumeDeviceEnrollmentUseCase {
       operation: "consume device enrollment",
       unlockedVault,
       sourceSnapshotVersionVector,
-      expectedLocalSnapshotDescriptor: localSnapshotDescriptor,
-      expectedRemoteSnapshotDescriptor: remoteSnapshotDescriptor,
+      reviewedSnapshotDescriptors,
     });
     const entryReviews = findChangedEntries(
       candidate.enrollmentBaseline,

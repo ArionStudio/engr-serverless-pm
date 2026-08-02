@@ -1,4 +1,4 @@
-import type { VaultSnapshotDescriptor } from "../../domain/snapshot/vault-snapshot-descriptor.type";
+import type { ReviewedVaultSnapshotDescriptors } from "../../domain/snapshot/vault-snapshot-descriptor.type";
 import { areJsonEqual } from "../../domain/common";
 import type { VersionVectorRelation } from "../../domain/versioning/version-vector.type";
 import {
@@ -21,8 +21,9 @@ import {
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
+import { toVisibleEntryReviewItem } from "../../domain/sync/entry-review.mapper";
 import { findChangedEntries } from "../../domain/sync/entry-review.utils";
-import type { EntryReviewItem } from "../../domain/sync/entry-review.type";
+import type { VisibleEntryReviewItem } from "../../domain/sync/entry-review.type";
 import { findChangedTags } from "../../domain/sync/tag-review.utils";
 import type { TagReviewItem } from "../../domain/sync/tag-review.type";
 import {
@@ -39,15 +40,14 @@ export type PrepareSyncReviewCommandParams = {
 };
 
 export type PrepareSyncReviewResult = {
-  readonly localSnapshotDescriptor: VaultSnapshotDescriptor;
-  readonly remoteSnapshotDescriptor: VaultSnapshotDescriptor;
+  readonly reviewedSnapshotDescriptors: ReviewedVaultSnapshotDescriptors;
   readonly relation: VersionVectorRelation;
   readonly review: VaultSyncReview | null;
 };
 
 type VaultSyncReview = {
   readonly actionable: {
-    readonly entryReviews: readonly EntryReviewItem[];
+    readonly entryReviews: readonly VisibleEntryReviewItem[];
     readonly tagReviews: readonly TagReviewItem[];
     readonly deviceProfileReviews: readonly DeviceProfileReviewItem[];
   };
@@ -144,10 +144,10 @@ export class PrepareSyncReviewUseCase {
       }
 
       return {
-        localSnapshotDescriptor,
-        remoteSnapshotDescriptor: cloneVaultSnapshotDescriptor(
-          remoteSnapshotDescriptor,
-        ),
+        reviewedSnapshotDescriptors: {
+          local: localSnapshotDescriptor,
+          remote: cloneVaultSnapshotDescriptor(remoteSnapshotDescriptor),
+        },
         relation,
         review: null,
       };
@@ -266,14 +266,17 @@ export class PrepareSyncReviewUseCase {
     );
 
     return {
-      localSnapshotDescriptor,
-      remoteSnapshotDescriptor: cloneVaultSnapshotDescriptor(
-        remoteSnapshotDescriptor,
-      ),
+      reviewedSnapshotDescriptors: {
+        local: localSnapshotDescriptor,
+        remote: cloneVaultSnapshotDescriptor(remoteSnapshotDescriptor),
+      },
       relation,
       review: {
         actionable: {
-          entryReviews: findChangedEntries(unlockedVault.vault, remoteVault),
+          entryReviews: findChangedEntries(
+            unlockedVault.vault,
+            remoteVault,
+          ).map(toVisibleEntryReviewItem),
           tagReviews: findChangedTags(unlockedVault.vault, remoteVault),
           deviceProfileReviews,
         },

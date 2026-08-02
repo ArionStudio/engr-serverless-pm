@@ -262,14 +262,10 @@ function createContext() {
 function createCommand(ctx: ReturnType<typeof createContext>) {
   return {
     vaultId: ctx.values.vaultId,
-    localSnapshotDescriptor: toVaultSnapshotDescriptor(
-      ctx.values.vaultId,
-      ctx.localSnapshot,
-    ),
-    remoteSnapshotDescriptor: toVaultSnapshotDescriptor(
-      ctx.values.vaultId,
-      ctx.remoteSnapshot,
-    ),
+    reviewedSnapshotDescriptors: {
+      local: toVaultSnapshotDescriptor(ctx.values.vaultId, ctx.localSnapshot),
+      remote: toVaultSnapshotDescriptor(ctx.values.vaultId, ctx.remoteSnapshot),
+    },
     resolution: {
       entryResolutions: [],
       tagResolutions: [],
@@ -307,7 +303,7 @@ describe("device enrollment consumption", () => {
 
     expect(result.enrolledDeviceIds).toEqual([ctx.enrolledDevice.deviceId]);
     expect(result.vaultKeyGeneration).toBe(1);
-    expect(result.localSnapshotDescriptor).toEqual(
+    expect(result.reviewedSnapshotDescriptors.local).toEqual(
       toVaultSnapshotDescriptor(ctx.values.vaultId, ctx.localSnapshot),
     );
     expect(result.review.deviceProfileReviews).toEqual([]);
@@ -707,10 +703,13 @@ describe("device enrollment consumption", () => {
     await expect(
       ctx.consumeUseCase.execute({
         ...command,
-        localSnapshotDescriptor: {
-          ...command.localSnapshotDescriptor,
-          revisionTimestamp:
-            command.localSnapshotDescriptor.revisionTimestamp - 1,
+        reviewedSnapshotDescriptors: {
+          ...command.reviewedSnapshotDescriptors,
+          local: {
+            ...command.reviewedSnapshotDescriptors.local,
+            revisionTimestamp:
+              command.reviewedSnapshotDescriptors.local.revisionTimestamp - 1,
+          },
         },
       }),
     ).rejects.toBeInstanceOf(LocalVaultSnapshotChangedError);

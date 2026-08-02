@@ -144,10 +144,9 @@ describe("PrepareSyncReviewUseCase", () => {
     });
 
     expect(result).toMatchObject({
-      localSnapshotDescriptor: toVaultSnapshotDescriptor(
-        ctx.values.vaultId,
-        ctx.vaultSnapshot,
-      ),
+      reviewedSnapshotDescriptors: {
+        local: toVaultSnapshotDescriptor(ctx.values.vaultId, ctx.vaultSnapshot),
+      },
       relation: "remote_ahead",
       review: {
         actionable: {
@@ -161,8 +160,9 @@ describe("PrepareSyncReviewUseCase", () => {
       },
     });
 
-    result.localSnapshotDescriptor.snapshotVersionVector[ctx.values.deviceId] =
-      99;
+    result.reviewedSnapshotDescriptors.local.snapshotVersionVector[
+      ctx.values.deviceId
+    ] = 99;
 
     expect(ctx.saved.vaultSnapshot?.metadata.snapshotVersionVector).toEqual({
       [ctx.values.deviceId]: 1,
@@ -191,9 +191,9 @@ describe("PrepareSyncReviewUseCase", () => {
     providerDescriptor.snapshotVersionVector[ctx.values.deviceId] = 99;
     downloadDescriptor.snapshotVersionVector[ctx.values.deviceId] = 98;
 
-    expect(result.remoteSnapshotDescriptor.snapshotVersionVector).toEqual({
-      [ctx.values.deviceId]: 2,
-    });
+    expect(
+      result.reviewedSnapshotDescriptors.remote.snapshotVersionVector,
+    ).toEqual({ [ctx.values.deviceId]: 2 });
   });
 
   it("rejects a key-generation rotation that is not signed into trust", async () => {

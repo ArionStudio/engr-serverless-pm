@@ -1,6 +1,7 @@
 import type { DeviceProfileReviewItem } from "../../domain/sync/device-profile-review.type";
 import { findChangedDeviceProfiles } from "../../domain/sync/device-profile-review.utils";
-import type { EntryReviewItem } from "../../domain/sync/entry-review.type";
+import { toVisibleEntryReviewItem } from "../../domain/sync/entry-review.mapper";
+import type { VisibleEntryReviewItem } from "../../domain/sync/entry-review.type";
 import { findChangedEntries } from "../../domain/sync/entry-review.utils";
 import type { SyncSetupInput } from "../../domain/sync";
 import type { TagReviewItem } from "../../domain/sync/tag-review.type";
@@ -8,7 +9,7 @@ import { findChangedTags } from "../../domain/sync/tag-review.utils";
 import {
   cloneVaultSnapshotDescriptor,
   toVaultSnapshotDescriptor,
-  type VaultSnapshotDescriptor,
+  type ReviewedVaultSnapshotDescriptors,
 } from "../../domain/snapshot";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
@@ -23,13 +24,12 @@ export type PrepareDeviceRevocationConsumptionCommandParams = {
 };
 
 export type PrepareDeviceRevocationConsumptionResult = {
-  readonly localSnapshotDescriptor: VaultSnapshotDescriptor;
-  readonly remoteSnapshotDescriptor: VaultSnapshotDescriptor;
+  readonly reviewedSnapshotDescriptors: ReviewedVaultSnapshotDescriptors;
   readonly revokedDeviceIds: readonly string[];
   readonly enrolledDeviceIds: readonly string[];
   readonly vaultKeyGeneration: number;
   readonly review: {
-    readonly entryReviews: readonly EntryReviewItem[];
+    readonly entryReviews: readonly VisibleEntryReviewItem[];
     readonly tagReviews: readonly TagReviewItem[];
     readonly deviceProfileReviews: readonly DeviceProfileReviewItem[];
   };
@@ -71,13 +71,15 @@ export class PrepareDeviceRevocationConsumptionUseCase {
     });
 
     return {
-      localSnapshotDescriptor: toVaultSnapshotDescriptor(
-        params.vaultId,
-        candidate.localSnapshot,
-      ),
-      remoteSnapshotDescriptor: cloneVaultSnapshotDescriptor(
-        candidate.remoteSnapshotDescriptor,
-      ),
+      reviewedSnapshotDescriptors: {
+        local: toVaultSnapshotDescriptor(
+          params.vaultId,
+          candidate.localSnapshot,
+        ),
+        remote: cloneVaultSnapshotDescriptor(
+          candidate.remoteSnapshotDescriptor,
+        ),
+      },
       revokedDeviceIds: candidate.revocations.map(
         (transition) => transition.revokedDeviceId,
       ),
@@ -89,7 +91,7 @@ export class PrepareDeviceRevocationConsumptionUseCase {
         entryReviews: findChangedEntries(
           candidate.trustTransitionBaseline,
           candidate.remoteVault,
-        ),
+        ).map(toVisibleEntryReviewItem),
         tagReviews: findChangedTags(
           candidate.trustTransitionBaseline,
           candidate.remoteVault,

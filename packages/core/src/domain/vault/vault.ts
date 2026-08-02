@@ -5,23 +5,12 @@ import type {
 import type {
   DeletedPasswordEntry,
   PasswordEntry,
-  VisiblePasswordEntryFields,
 } from "../entry/password-entry.type";
 import type { SyncTarget } from "../sync/sync-config.type";
 import type { VaultSnapshotDescriptor } from "../snapshot/vault-snapshot-descriptor.type";
 import type { VaultSnapshot } from "../snapshot/vault-snapshot";
 import type { VersionVector } from "../versioning/version-vector.type";
 import type { DeletedTag, Tag } from "../entry/tag.type";
-
-export type VisibleVaultFields = {
-  readonly entries: readonly VisiblePasswordEntryFields[];
-  readonly deviceProfiles: readonly Pick<
-    DeviceProfile,
-    "id" | "name" | "createdAt"
-  >[];
-  readonly tags: readonly Pick<Tag, "id" | "name">[];
-  readonly syncConfigured: boolean;
-};
 
 export interface Vault {
   versionVector: VersionVector;

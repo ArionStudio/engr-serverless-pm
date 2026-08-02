@@ -10,7 +10,7 @@ skinparam activity {
 }
 
 start
-:Input:\nvaultId, localSnapshotDescriptor,\nremoteSnapshotDescriptor, resolution;
+:Input:\nvaultId, reviewedSnapshotDescriptors { local, remote },\nresolution;
 :Source:\npackages/core/src/use-cases/sync/apply-sync-resolution.ts;
 :Require unlocked vault context for "apply sync resolution";
 if (syncConfig missing?) then (yes)

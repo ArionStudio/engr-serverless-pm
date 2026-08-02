@@ -9,19 +9,17 @@ import {
   incrementVersionVector,
   mergeVersionVectors,
 } from "../versioning/version-vector.utils";
-import type { EntryReviewItem } from "./entry-review.type";
+import type { EntryReviewItem, ReviewableEntry } from "./entry-review.type";
 import type { EntryReviewResolution } from "./entry-resolution.type";
 import type { VaultSyncReviewAction } from "./vault-sync-item-review.type";
 
 export function resolveEntryStates(
-  localVault: Vault,
-  remoteVault: Vault,
   entryReviews: readonly EntryReviewItem[],
   entryResolutions: readonly EntryReviewResolution[],
   deviceId: string,
-): Map<string, ResolvableEntryState> {
+): Map<string, ReviewableEntry> {
   const resolutionById = createEntryResolutionMap(entryResolutions);
-  const resolvedStateById = new Map<string, ResolvableEntryState>();
+  const resolvedStateById = new Map<string, ReviewableEntry>();
 
   for (const entryResolution of entryResolutions) {
     if (
@@ -44,15 +42,12 @@ export function resolveEntryStates(
       );
     }
 
-    const localState = getEntryState(localVault, entryReview.entryId);
-    const remoteState = getEntryState(remoteVault, entryReview.entryId);
-
     resolvedStateById.set(
       entryReview.entryId,
       stampEntryState(
-        selectEntryState(entryReview, entryResolution, localState, remoteState),
-        localState,
-        remoteState,
+        selectEntryState(entryReview, entryResolution),
+        entryReview.localEntry,
+        entryReview.remoteEntry,
         deviceId,
       ),
     );
@@ -64,7 +59,7 @@ export function resolveEntryStates(
 export function buildResolvedVaultEntries(
   localVault: Vault,
   remoteVault: Vault,
-  resolvedStateById: ReadonlyMap<string, ResolvableEntryState>,
+  resolvedStateById: ReadonlyMap<string, ReviewableEntry>,
 ): {
   readonly entries: PasswordEntry[];
   readonly deletedEntries: DeletedPasswordEntry[];
@@ -114,9 +109,7 @@ function createEntryResolutionMap(
 function selectEntryState(
   entryReview: EntryReviewItem,
   entryResolution: EntryReviewResolution,
-  localState: ResolvableEntryState,
-  remoteState: ResolvableEntryState,
-): ResolvableEntryState {
+): ReviewableEntry {
   if (
     entryReview.relation === "remote_only" &&
     entryResolution.action === "use_local"
@@ -126,15 +119,17 @@ function selectEntryState(
     );
   }
 
-  return entryResolution.action === "use_local" ? localState : remoteState;
+  return entryResolution.action === "use_local"
+    ? entryReview.localEntry
+    : entryReview.remoteEntry;
 }
 
 function stampEntryState(
-  selectedState: ResolvableEntryState,
-  localState: ResolvableEntryState,
-  remoteState: ResolvableEntryState,
+  selectedState: ReviewableEntry,
+  localState: ReviewableEntry,
+  remoteState: ReviewableEntry,
   deviceId: string,
-): ResolvableEntryState {
+): ReviewableEntry {
   if (selectedState.state === "missing") {
     return selectedState;
   }
@@ -164,9 +159,7 @@ function stampEntryState(
   };
 }
 
-function getEntryVersionVector(
-  state: ResolvableEntryState,
-): VersionVector | null {
+function getEntryVersionVector(state: ReviewableEntry): VersionVector | null {
   if (state.state === "missing") {
     return null;
   }
@@ -187,7 +180,7 @@ function collectEntryIds(localVault: Vault, remoteVault: Vault): Set<string> {
   ]);
 }
 
-function getEntryState(vault: Vault, entryId: string): ResolvableEntryState {
+function getEntryState(vault: Vault, entryId: string): ReviewableEntry {
   const entry = vault.entries.find((vaultEntry) => vaultEntry.id === entryId);
   const deletedEntry = vault.deletedEntries.find(
     (vaultDeletedEntry) => vaultDeletedEntry.id === entryId,
@@ -217,19 +210,6 @@ function getEntryState(vault: Vault, entryId: string): ResolvableEntryState {
     state: "missing",
   };
 }
-
-type ResolvableEntryState =
-  | {
-      readonly entry: PasswordEntry;
-      readonly state: "entry";
-    }
-  | {
-      readonly deletedEntry: DeletedPasswordEntry;
-      readonly state: "deleted";
-    }
-  | {
-      readonly state: "missing";
-    };
 
 function assertSupportedAction(action: VaultSyncReviewAction): void {
   if (action === "use_local" || action === "use_remote") {

@@ -5,3 +5,8 @@ export type VaultSnapshotDescriptor = {
   readonly snapshotVersionVector: VersionVector;
   readonly revisionTimestamp: number;
 };
+
+export type ReviewedVaultSnapshotDescriptors = {
+  readonly local: VaultSnapshotDescriptor;
+  readonly remote: VaultSnapshotDescriptor;
+};

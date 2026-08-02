@@ -98,8 +98,10 @@ describe("ApplySyncResolutionUseCase", () => {
 
     const result = await ctx.useCase.execute({
       vaultId: ctx.values.vaultId,
-      localSnapshotDescriptor: ctx.localDescriptor,
-      remoteSnapshotDescriptor: ctx.remoteDescriptor,
+      reviewedSnapshotDescriptors: {
+        local: ctx.localDescriptor,
+        remote: ctx.remoteDescriptor,
+      },
       resolution: {
         entryResolutions: [
           { entryId: singlePasswordEntry.id, action: "use_remote" },
@@ -169,8 +171,10 @@ describe("ApplySyncResolutionUseCase", () => {
     await expect(
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
-        localSnapshotDescriptor: ctx.localDescriptor,
-        remoteSnapshotDescriptor: ctx.remoteDescriptor,
+        reviewedSnapshotDescriptors: {
+          local: ctx.localDescriptor,
+          remote: ctx.remoteDescriptor,
+        },
         resolution: {
           entryResolutions: [
             { entryId: singlePasswordEntry.id, action: "use_remote" },
@@ -194,8 +198,10 @@ describe("ApplySyncResolutionUseCase", () => {
     await expect(
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
-        localSnapshotDescriptor: ctx.localDescriptor,
-        remoteSnapshotDescriptor: ctx.remoteDescriptor,
+        reviewedSnapshotDescriptors: {
+          local: ctx.localDescriptor,
+          remote: ctx.remoteDescriptor,
+        },
         resolution: {
           entryResolutions: [
             { entryId: singlePasswordEntry.id, action: "use_remote" },
@@ -211,12 +217,10 @@ describe("ApplySyncResolutionUseCase", () => {
     const ctx = createContext();
     const command = {
       vaultId: ctx.values.vaultId,
-      localSnapshotDescriptor: cloneVaultSnapshotDescriptor(
-        ctx.localDescriptor,
-      ),
-      remoteSnapshotDescriptor: cloneVaultSnapshotDescriptor(
-        ctx.remoteDescriptor,
-      ),
+      reviewedSnapshotDescriptors: {
+        local: cloneVaultSnapshotDescriptor(ctx.localDescriptor),
+        remote: cloneVaultSnapshotDescriptor(ctx.remoteDescriptor),
+      },
       resolution: {
         entryResolutions: [
           { entryId: singlePasswordEntry.id, action: "use_remote" as const },
@@ -228,10 +232,10 @@ describe("ApplySyncResolutionUseCase", () => {
     vi.mocked(
       ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
     ).mockImplementationOnce(async () => {
-      command.localSnapshotDescriptor.snapshotVersionVector[
+      command.reviewedSnapshotDescriptors.local.snapshotVersionVector[
         ctx.values.deviceId
       ] = 99;
-      command.remoteSnapshotDescriptor.snapshotVersionVector[
+      command.reviewedSnapshotDescriptors.remote.snapshotVersionVector[
         ctx.values.deviceId
       ] = 99;
 
@@ -262,8 +266,10 @@ describe("ApplySyncResolutionUseCase", () => {
     await expect(
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
-        localSnapshotDescriptor: ctx.localDescriptor,
-        remoteSnapshotDescriptor: ctx.remoteDescriptor,
+        reviewedSnapshotDescriptors: {
+          local: ctx.localDescriptor,
+          remote: ctx.remoteDescriptor,
+        },
         resolution: {
           entryResolutions: [
             { entryId: singlePasswordEntry.id, action: "use_remote" },
@@ -285,11 +291,13 @@ describe("ApplySyncResolutionUseCase", () => {
     await expect(
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
-        localSnapshotDescriptor: {
-          ...ctx.localDescriptor,
-          revisionTimestamp: ctx.localDescriptor.revisionTimestamp - 1,
+        reviewedSnapshotDescriptors: {
+          local: {
+            ...ctx.localDescriptor,
+            revisionTimestamp: ctx.localDescriptor.revisionTimestamp - 1,
+          },
+          remote: ctx.remoteDescriptor,
         },
-        remoteSnapshotDescriptor: ctx.remoteDescriptor,
         resolution: {
           entryResolutions: [
             { entryId: singlePasswordEntry.id, action: "use_remote" },
@@ -329,8 +337,10 @@ describe("ApplySyncResolutionUseCase", () => {
     await expect(
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
-        localSnapshotDescriptor: ctx.localDescriptor,
-        remoteSnapshotDescriptor: ctx.remoteDescriptor,
+        reviewedSnapshotDescriptors: {
+          local: ctx.localDescriptor,
+          remote: ctx.remoteDescriptor,
+        },
         resolution: {
           entryResolutions: [
             { entryId: singlePasswordEntry.id, action: "use_remote" },
@@ -375,8 +385,10 @@ describe("ApplySyncResolutionUseCase", () => {
 
     const result = await ctx.useCase.execute({
       vaultId: ctx.values.vaultId,
-      localSnapshotDescriptor: ctx.localDescriptor,
-      remoteSnapshotDescriptor: ctx.remoteDescriptor,
+      reviewedSnapshotDescriptors: {
+        local: ctx.localDescriptor,
+        remote: ctx.remoteDescriptor,
+      },
       resolution: {
         entryResolutions: [],
         tagResolutions: [],
@@ -426,8 +438,10 @@ describe("ApplySyncResolutionUseCase", () => {
 
     await ctx.useCase.execute({
       vaultId: ctx.values.vaultId,
-      localSnapshotDescriptor: ctx.localDescriptor,
-      remoteSnapshotDescriptor: ctx.remoteDescriptor,
+      reviewedSnapshotDescriptors: {
+        local: ctx.localDescriptor,
+        remote: ctx.remoteDescriptor,
+      },
       resolution: {
         entryResolutions: [
           { entryId: singlePasswordEntry.id, action: "use_remote" },
@@ -479,8 +493,10 @@ describe("ApplySyncResolutionUseCase", () => {
     await expect(
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
-        localSnapshotDescriptor: ctx.localDescriptor,
-        remoteSnapshotDescriptor: ctx.remoteDescriptor,
+        reviewedSnapshotDescriptors: {
+          local: ctx.localDescriptor,
+          remote: ctx.remoteDescriptor,
+        },
         resolution: {
           entryResolutions: [
             { entryId: singlePasswordEntry.id, action: "use_remote" },

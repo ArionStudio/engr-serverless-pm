@@ -76,7 +76,7 @@ describe("applyVaultSyncResolution", () => {
     ).toThrow(InvalidVaultSyncResolutionError);
   });
 
-  it("applies a selected password without exposing it in the review", () => {
+  it("applies the selected password from the authoritative entry review", () => {
     const localEntry = {
       id: "changed-entry",
       password: "local-password",
@@ -93,10 +93,6 @@ describe("applyVaultSyncResolution", () => {
     const localVault = createVault({ entries: [localEntry] });
     const remoteVault = createVault({ entries: [remoteEntry] });
     const entryReviews = findChangedEntries(localVault, remoteVault);
-
-    expect(entryReviews[0]?.passwordChanged).toBe(true);
-    expect(entryReviews[0]?.localEntry).not.toHaveProperty("entry.password");
-    expect(entryReviews[0]?.remoteEntry).not.toHaveProperty("entry.password");
 
     const resolvedVault = applyResolution(
       localVault,

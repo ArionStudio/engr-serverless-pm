@@ -18,8 +18,8 @@ import {
 } from "../../domain/snapshot";
 import type { UnlockedVault } from "../../domain/session";
 import type { Vault } from "../../domain/vault";
-import { toVisibleVaultFields } from "../../domain/vault";
 import type { VisibleVaultFields } from "../../domain/vault";
+import { toVisibleVaultFields } from "../../domain/vault/visible-vault.mapper";
 import type { LocalVaultDescriptor } from "../../domain/vault";
 import { addDeviceProfileToVault } from "../../domain/vault/vault-device.mutations";
 import { incrementVersionVector } from "../../domain/versioning";

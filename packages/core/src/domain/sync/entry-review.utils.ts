@@ -1,26 +1,8 @@
 import { InvalidVaultSyncReviewError } from "../../errors";
 import { areJsonEqual } from "../common";
-import { toVisiblePasswordEntryFields } from "../entry/password-entry.mapper";
-import type {
-  DeletedPasswordEntry,
-  PasswordEntry,
-} from "../entry/password-entry.type";
 import type { Vault } from "../vault";
 import type { EntryReviewItem, ReviewableEntry } from "./entry-review.type";
 import type { VaultSyncItemRelation } from "./vault-sync-item-review.type";
-
-type StoredEntryState =
-  | {
-      readonly entry: PasswordEntry;
-      readonly state: "entry";
-    }
-  | {
-      readonly deletedEntry: DeletedPasswordEntry;
-      readonly state: "deleted";
-    }
-  | {
-      readonly state: "missing";
-    };
 
 export function findChangedEntries(
   localVault: Vault,
@@ -48,16 +30,15 @@ export function findChangedEntries(
       entryId,
       relation,
       preselectedAction: "use_remote",
-      localEntry: toReviewableEntry(localEntry),
-      remoteEntry: toReviewableEntry(remoteEntry),
-      passwordChanged: havePasswordsChanged(localEntry, remoteEntry),
+      localEntry,
+      remoteEntry,
     });
   }
 
   return entryReviews;
 }
 
-function findEntry(vault: Vault, entryId: string): StoredEntryState {
+function findEntry(vault: Vault, entryId: string): ReviewableEntry {
   const entry = vault.entries.find((entry) => entry.id === entryId);
   const deletedEntry = vault.deletedEntries.find(
     (deletedEntry) => deletedEntry.id === entryId,
@@ -89,8 +70,8 @@ function findEntry(vault: Vault, entryId: string): StoredEntryState {
 }
 
 function getEntryRelation(
-  localEntry: StoredEntryState,
-  remoteEntry: StoredEntryState,
+  localEntry: ReviewableEntry,
+  remoteEntry: ReviewableEntry,
 ): VaultSyncItemRelation {
   if (areJsonEqual(localEntry, remoteEntry)) {
     return "equal";
@@ -141,38 +122,6 @@ function getEntryRelation(
   }
 
   return "broken";
-}
-
-function toReviewableEntry(entryState: StoredEntryState): ReviewableEntry {
-  if (entryState.state === "entry") {
-    return {
-      state: "entry",
-      entry: toVisiblePasswordEntryFields(entryState.entry),
-    };
-  }
-
-  if (entryState.state === "deleted") {
-    return {
-      state: "deleted",
-      deletedEntry: {
-        id: entryState.deletedEntry.id,
-        deletedAt: entryState.deletedEntry.deletedAt,
-      },
-    };
-  }
-
-  return { state: "missing" };
-}
-
-function havePasswordsChanged(
-  localEntry: StoredEntryState,
-  remoteEntry: StoredEntryState,
-): boolean {
-  return (
-    localEntry.state === "entry" &&
-    remoteEntry.state === "entry" &&
-    localEntry.entry.password !== remoteEntry.entry.password
-  );
 }
 
 export function findAllEntriesIds(

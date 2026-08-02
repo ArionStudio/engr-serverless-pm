@@ -8,7 +8,7 @@ import {
   cloneVaultSnapshotDescriptor,
   toVaultSnapshotDescriptor,
 } from "../../domain/snapshot";
-import type { VaultSnapshotDescriptor } from "../../domain/snapshot";
+import type { ReviewedVaultSnapshotDescriptors } from "../../domain/snapshot";
 import type { Vault } from "../../domain/vault";
 import { clearVaultProviderCredentialRevocationPending } from "../../domain/vault/vault-sync-config.mutations";
 import { compareVersionVectors } from "../../domain/versioning";
@@ -50,8 +50,7 @@ export class DeviceEnrollmentConsumptionService {
     readonly operation: string;
     readonly unlockedVault: UnlockedVault;
     readonly sourceSnapshotVersionVector: VersionVector;
-    readonly expectedLocalSnapshotDescriptor?: VaultSnapshotDescriptor;
-    readonly expectedRemoteSnapshotDescriptor?: VaultSnapshotDescriptor;
+    readonly reviewedSnapshotDescriptors?: ReviewedVaultSnapshotDescriptors;
   }) {
     if (params.unlockedVault.vault.syncTarget === undefined) {
       throw new SyncNotConfiguredError(params.vaultId, params.operation);
@@ -69,10 +68,10 @@ export class DeviceEnrollmentConsumptionService {
       );
 
     if (
-      params.expectedLocalSnapshotDescriptor !== undefined &&
+      params.reviewedSnapshotDescriptors !== undefined &&
       !areVaultSnapshotDescriptorsEqual(
         toVaultSnapshotDescriptor(params.vaultId, localSnapshot),
-        params.expectedLocalSnapshotDescriptor,
+        params.reviewedSnapshotDescriptors.local,
       )
     ) {
       throw new LocalVaultSnapshotChangedError(params.vaultId);
@@ -95,10 +94,10 @@ export class DeviceEnrollmentConsumptionService {
     );
 
     if (
-      params.expectedRemoteSnapshotDescriptor !== undefined &&
+      params.reviewedSnapshotDescriptors !== undefined &&
       !areVaultSnapshotDescriptorsEqual(
         remoteSnapshotDescriptor,
-        params.expectedRemoteSnapshotDescriptor,
+        params.reviewedSnapshotDescriptors.remote,
       )
     ) {
       throw new RemoteVaultSnapshotChangedError(params.vaultId);

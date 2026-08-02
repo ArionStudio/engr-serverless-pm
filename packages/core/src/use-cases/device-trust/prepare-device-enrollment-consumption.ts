@@ -1,13 +1,14 @@
 import type { DeviceProfileReviewItem } from "../../domain/sync/device-profile-review.type";
 import { findChangedDeviceProfiles } from "../../domain/sync/device-profile-review.utils";
-import type { EntryReviewItem } from "../../domain/sync/entry-review.type";
+import { toVisibleEntryReviewItem } from "../../domain/sync/entry-review.mapper";
+import type { VisibleEntryReviewItem } from "../../domain/sync/entry-review.type";
 import { findChangedEntries } from "../../domain/sync/entry-review.utils";
 import type { TagReviewItem } from "../../domain/sync/tag-review.type";
 import { findChangedTags } from "../../domain/sync/tag-review.utils";
 import {
   cloneVaultSnapshotDescriptor,
   toVaultSnapshotDescriptor,
-  type VaultSnapshotDescriptor,
+  type ReviewedVaultSnapshotDescriptors,
 } from "../../domain/snapshot";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
@@ -21,12 +22,11 @@ export type PrepareDeviceEnrollmentConsumptionCommandParams = {
 };
 
 export type PrepareDeviceEnrollmentConsumptionResult = {
-  readonly localSnapshotDescriptor: VaultSnapshotDescriptor;
-  readonly remoteSnapshotDescriptor: VaultSnapshotDescriptor;
+  readonly reviewedSnapshotDescriptors: ReviewedVaultSnapshotDescriptors;
   readonly enrolledDeviceIds: readonly string[];
   readonly vaultKeyGeneration: number;
   readonly review: {
-    readonly entryReviews: readonly EntryReviewItem[];
+    readonly entryReviews: readonly VisibleEntryReviewItem[];
     readonly tagReviews: readonly TagReviewItem[];
     readonly deviceProfileReviews: readonly DeviceProfileReviewItem[];
   };
@@ -68,13 +68,15 @@ export class PrepareDeviceEnrollmentConsumptionUseCase {
     });
 
     return {
-      localSnapshotDescriptor: toVaultSnapshotDescriptor(
-        params.vaultId,
-        candidate.localSnapshot,
-      ),
-      remoteSnapshotDescriptor: cloneVaultSnapshotDescriptor(
-        candidate.remoteSnapshotDescriptor,
-      ),
+      reviewedSnapshotDescriptors: {
+        local: toVaultSnapshotDescriptor(
+          params.vaultId,
+          candidate.localSnapshot,
+        ),
+        remote: cloneVaultSnapshotDescriptor(
+          candidate.remoteSnapshotDescriptor,
+        ),
+      },
       enrolledDeviceIds: candidate.transitions.map(
         (transition) => transition.enrolledDeviceId,
       ),
@@ -83,7 +85,7 @@ export class PrepareDeviceEnrollmentConsumptionUseCase {
         entryReviews: findChangedEntries(
           candidate.enrollmentBaseline,
           candidate.remoteVault,
-        ),
+        ).map(toVisibleEntryReviewItem),
         tagReviews: findChangedTags(
           candidate.enrollmentBaseline,
           candidate.remoteVault,
