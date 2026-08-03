@@ -9,13 +9,12 @@
     "./services": "./src/services/index.ts"
   },
   "scripts": {
+    "generate:common-passwords": "node ./scripts/generate-common-passwords.mjs",
     "test": "vitest",
-    "type-check": "tsc --noEmit -p tsconfig.json"
+    "type-check": "tsc --noEmit -p tsconfig.json",
+    "verify:common-passwords": "node ./scripts/generate-common-passwords.mjs --check"
   },
   "dependencies": {
-    "@zxcvbn-ts/core": "^4.1.2",
-    "@zxcvbn-ts/language-common": "^4.1.3",
-    "@zxcvbn-ts/language-en": "^4.1.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {

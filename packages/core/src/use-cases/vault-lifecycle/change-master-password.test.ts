@@ -9,14 +9,14 @@ import {
 import { InvalidNewMasterPasswordError } from "../../errors/master-password.errors";
 
 describe("ChangeMasterPasswordUseCase", () => {
-  it("rejects a weak new password before reading the session", async () => {
+  it("rejects a new password below maximum strength before reading the session", async () => {
     const ctx = createChangeMasterPasswordTestContext();
 
     await expect(
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
         currentMasterPassword: "12345678901" as RawMasterPassword,
-        newMasterPassword: "Password1234567!" as RawMasterPassword,
+        newMasterPassword: "correcthorsebatterystaple" as RawMasterPassword,
       }),
     ).rejects.toBeInstanceOf(InvalidNewMasterPasswordError);
 
@@ -29,10 +29,10 @@ describe("ChangeMasterPasswordUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("accepts a strong new password while verifying a short current password", async () => {
+  it("accepts a maximum-strength new password while verifying a weak current password", async () => {
     const ctx = createChangeMasterPasswordTestContext();
     const currentMasterPassword = "12345678901" as RawMasterPassword;
-    const newMasterPassword = "vN7#qL2!xP9@rT4$" as RawMasterPassword;
+    const newMasterPassword = "mQ8#sW3!cH7@uJ5$eR9%" as RawMasterPassword;
 
     await ctx.useCase.execute({
       vaultId: ctx.values.vaultId,

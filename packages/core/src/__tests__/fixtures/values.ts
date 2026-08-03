@@ -214,8 +214,8 @@ export function createCoreTestValues() {
   } satisfies DeviceEnrollmentPrivateState;
 
   return {
-    masterPassword: "vN7#qL2!xP9@rT4$" as RawMasterPassword,
-    newMasterPassword: "mK8@zR3#uW6!cF9%" as RawMasterPassword,
+    masterPassword: "vN7#qL2!xP9@rT4$zK6&" as RawMasterPassword,
+    newMasterPassword: "mQ8#sW3!cH7@uJ5$eR9%" as RawMasterPassword,
     vaultId: "vault-id",
     sessionId: "session-id",
     vaultLockActionId: "vault-lock-action-id",

@@ -1,24 +1,16 @@
-import { z } from "zod";
 import type { Brand } from "./common/brand-keys";
 import { InvalidNewMasterPasswordError } from "../errors/master-password.errors";
-import { meetsMasterPasswordStrengthRequirement } from "./master-password-strength";
+import { calculatePasswordStrength } from "../lib/password-strength/password-strength.utils";
 
 export type RawMasterPassword = Brand<string, "RawMasterPassword">;
-
-export const MASTER_PASSWORD_MINIMUM_LENGTH = 16;
-
-const newMasterPasswordSchema = z
-  .string()
-  .refine(
-    (masterPassword) =>
-      [...masterPassword].length >= MASTER_PASSWORD_MINIMUM_LENGTH &&
-      meetsMasterPasswordStrengthRequirement(masterPassword),
-  );
 
 export function assertValidNewMasterPassword(
   masterPassword: unknown,
 ): asserts masterPassword is RawMasterPassword {
-  if (!newMasterPasswordSchema.safeParse(masterPassword).success) {
+  if (
+    typeof masterPassword !== "string" ||
+    calculatePasswordStrength(masterPassword).score !== 4
+  ) {
     throw new InvalidNewMasterPasswordError();
   }
 }

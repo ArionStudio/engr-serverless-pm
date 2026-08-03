@@ -2,14 +2,19 @@ import { passwordEntryInputSchema } from "../../domain/entry/password-entry.sche
 import { sanitizeEntryUrl } from "../../domain/entry/sanitized-entry-url.utils";
 import { addPasswordEntryToVault } from "../../domain/vault/vault-entry.mutations";
 import type { IdPort } from "../../ports/system/id.port";
-import { InvalidPasswordEntryError } from "../../errors/vault-entry.errors";
+import {
+  InvalidPasswordEntryError,
+  PasswordEntryStrengthRequirementNotMetError,
+} from "../../errors/vault-entry.errors";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import type { VersionVector } from "../../domain/versioning/version-vector.type";
 import type { VaultSyncGuardService } from "../../services/sync";
+import { calculatePasswordStrength } from "../../lib/password-strength/password-strength.utils";
 
 export type AddEntryCommandParams = {
   vaultId: string;
+  allowWeakPassword?: boolean;
   entry: {
     password: string;
     login: string;
@@ -66,6 +71,13 @@ export class AddEntryUseCase {
 
     if (!entryPayloadResult.success) {
       throw new InvalidPasswordEntryError(entryPayloadResult.error);
+    }
+
+    if (
+      params.allowWeakPassword !== true &&
+      calculatePasswordStrength(entryPayloadResult.data.password).score !== 4
+    ) {
+      throw new PasswordEntryStrengthRequirementNotMetError();
     }
 
     const syncState = await this.vaultSyncGuard.prepareLocalMutation(

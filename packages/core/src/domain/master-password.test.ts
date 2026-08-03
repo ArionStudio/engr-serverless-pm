@@ -1,42 +1,34 @@
 import { describe, expect, it } from "vitest";
 import { objectGraphContainsString } from "../__tests__/fixtures/error-inspection";
 import { InvalidNewMasterPasswordError } from "../errors/master-password.errors";
-import {
-  assertValidNewMasterPassword,
-  MASTER_PASSWORD_MINIMUM_LENGTH,
-} from "./master-password";
+import { assertValidNewMasterPassword } from "./master-password";
 
 describe("new master password policy", () => {
-  it("accepts a strong generated password at the minimum length", () => {
-    const password = "vN7#qL2!xP9@rT4$";
-
-    expect([...password]).toHaveLength(MASTER_PASSWORD_MINIMUM_LENGTH);
-    expect(() => assertValidNewMasterPassword(password)).not.toThrow();
-  });
-
-  it("accepts a strong random-word passphrase", () => {
+  it("accepts only a maximum-strength password", () => {
     expect(() =>
-      assertValidNewMasterPassword("orbit lantern velvet canyon river"),
+      assertValidNewMasterPassword("vN7#qL2!xP9@rT4$zK6&"),
     ).not.toThrow();
   });
 
   it.each([
-    ["a".repeat(MASTER_PASSWORD_MINIMUM_LENGTH), "repeated characters"],
-    ["Password1234567!", "a predictable mixed-character password"],
-  ])("rejects %s (%s)", (submittedPassword) => {
+    "password",
+    "abcabcabcabcabcabc",
+    "mixed-value!",
+    "correcthorsebatterystaple",
+  ])("rejects a password below maximum strength", (submittedPassword) => {
     expect(() => assertValidNewMasterPassword(submittedPassword)).toThrow(
       InvalidNewMasterPasswordError,
     );
   });
 
-  it("rejects a strong password below the minimum length", () => {
-    expect(() => assertValidNewMasterPassword("vN7#qL2!xP9@rT4")).toThrow(
+  it("rejects a non-string password", () => {
+    expect(() => assertValidNewMasterPassword(undefined)).toThrow(
       InvalidNewMasterPasswordError,
     );
   });
 
-  it("rejects a weak password without retaining it in the error", () => {
-    const submittedPassword = "Password1234567!";
+  it("does not retain the rejected password in the error", () => {
+    const submittedPassword = "thisisaverylongpassword";
 
     let thrownError: unknown;
 

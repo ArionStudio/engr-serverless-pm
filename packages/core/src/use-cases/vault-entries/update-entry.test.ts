@@ -12,11 +12,14 @@ import {
 import {
   InvalidEntryUrlError,
   InvalidPasswordEntryError,
+  PasswordEntryStrengthRequirementNotMetError,
   PasswordEntryNotFoundError,
 } from "../../errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 import { VaultSyncGuardService } from "../../services/sync";
 import { UpdateEntryUseCase } from "./update-entry";
+
+const maximumStrengthPassword = "mQ8#sW3!cH7@uJ5$eR9%";
 
 function createContext() {
   const values = createCoreTestValues();
@@ -35,6 +38,7 @@ function createContext() {
     values,
     ports,
     saved: ports.saved,
+    vaultSyncGuard,
     vaultSnapshot,
     useCase: new UpdateEntryUseCase(
       ports.sessionServices.unlockedVaultSession,
@@ -52,7 +56,7 @@ describe("UpdateEntryUseCase", () => {
       vaultId: ctx.values.vaultId,
       entryId: firstPasswordEntry.id,
       entry: {
-        password: "updated-password",
+        password: maximumStrengthPassword,
         login: "updated@example.com",
         tags: [1, 2],
         url: "https://example.com/updated?token=secret#field",
@@ -70,7 +74,7 @@ describe("UpdateEntryUseCase", () => {
       [
         {
           id: firstPasswordEntry.id,
-          password: "updated-password",
+          password: maximumStrengthPassword,
           login: "updated@example.com",
           tags: [1, 2],
           sanitizedUrl: "https://example.com/updated",
@@ -112,6 +116,62 @@ describe("UpdateEntryUseCase", () => {
     );
   });
 
+  it("rejects a password below maximum strength by default without side effects or secret retention", async () => {
+    const ctx = createContext();
+    const submittedPassword = "correcthorsebatterystaple";
+    const prepareLocalMutation = vi.spyOn(
+      ctx.vaultSyncGuard,
+      "prepareLocalMutation",
+    );
+    let caught: unknown;
+
+    try {
+      await ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        entryId: firstPasswordEntry.id,
+        entry: {
+          password: submittedPassword,
+          login: "updated@example.com",
+          tags: [],
+          url: "https://example.com",
+        },
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(PasswordEntryStrengthRequirementNotMetError);
+    expect(caught).not.toHaveProperty("cause");
+    expect(objectGraphContainsString(caught, submittedPassword)).toBe(false);
+    expect(prepareLocalMutation).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+    expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("updates an entry to a weak password only when the caller explicitly allows it", async () => {
+    const ctx = createContext();
+    const weakPassword = "correcthorsebatterystaple";
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      entryId: firstPasswordEntry.id,
+      allowWeakPassword: true,
+      entry: {
+        password: weakPassword,
+        login: "updated@example.com",
+        tags: [],
+        url: "https://example.com",
+      },
+    });
+
+    expect(
+      ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries[0]?.password,
+    ).toBe(weakPassword);
+  });
+
   it("uploads the persisted snapshot before committing a synced entry update", async () => {
     const ctx = createContext();
     const remoteSnapshotDescriptor = {
@@ -141,7 +201,7 @@ describe("UpdateEntryUseCase", () => {
       vaultId: ctx.values.vaultId,
       entryId: firstPasswordEntry.id,
       entry: {
-        password: "updated-password",
+        password: maximumStrengthPassword,
         login: "updated@example.com",
         tags: [],
         url: "https://example.com",
@@ -176,6 +236,7 @@ describe("UpdateEntryUseCase", () => {
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
         entryId: firstPasswordEntry.id,
+        allowWeakPassword: true,
         entry: {
           password: "",
           login: "updated@example.com",
@@ -201,8 +262,9 @@ describe("UpdateEntryUseCase", () => {
       await ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
         entryId: firstPasswordEntry.id,
+        allowWeakPassword: true,
         entry: {
-          password: "updated-password",
+          password: maximumStrengthPassword,
           login: "updated@example.com",
           tags: [],
           url: `https://user:${credentialSecret}@?token=${querySecret}`,
@@ -236,7 +298,7 @@ describe("UpdateEntryUseCase", () => {
         vaultId: ctx.values.vaultId,
         entryId: firstPasswordEntry.id,
         entry: {
-          password: "updated-password",
+          password: "correcthorsebatterystaple",
           login: "updated@example.com",
           tags: [],
           url: "https://example.com",
@@ -253,7 +315,7 @@ describe("UpdateEntryUseCase", () => {
         vaultId: ctx.values.vaultId,
         entryId: "missing-entry",
         entry: {
-          password: "updated-password",
+          password: "correcthorsebatterystaple",
           login: "updated@example.com",
           tags: [],
           url: "https://example.com",
@@ -278,7 +340,7 @@ describe("UpdateEntryUseCase", () => {
         vaultId: ctx.values.vaultId,
         entryId: firstPasswordEntry.id,
         entry: {
-          password: "updated-password",
+          password: maximumStrengthPassword,
           login: "updated@example.com",
           tags: [],
           url: "https://example.com",
@@ -305,7 +367,7 @@ describe("UpdateEntryUseCase", () => {
         vaultId: ctx.values.vaultId,
         entryId: firstPasswordEntry.id,
         entry: {
-          password: "updated-password",
+          password: maximumStrengthPassword,
           login: "updated@example.com",
           tags: [],
           url: "https://example.com",
@@ -327,7 +389,7 @@ describe("UpdateEntryUseCase", () => {
         vaultId: ctx.values.vaultId,
         entryId: firstPasswordEntry.id,
         entry: {
-          password: "updated-password",
+          password: maximumStrengthPassword,
           login: "updated@example.com",
           tags: [],
           url: "https://example.com",

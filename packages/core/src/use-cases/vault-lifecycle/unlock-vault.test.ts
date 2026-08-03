@@ -9,7 +9,7 @@ import {
 } from "../../errors/unlock-vault.errors";
 
 describe("UnlockVaultUseCase", () => {
-  it("continues to attempt a legacy password below the new minimum", async () => {
+  it("continues to attempt a current password below the new strength requirement", async () => {
     const ctx = createUnlockVaultTestContext();
     const masterPassword = "12345678901" as RawMasterPassword;
 

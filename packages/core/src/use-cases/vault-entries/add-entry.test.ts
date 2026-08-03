@@ -17,10 +17,13 @@ import {
 import {
   InvalidEntryUrlError,
   InvalidPasswordEntryError,
+  PasswordEntryStrengthRequirementNotMetError,
 } from "../../errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 import { VaultSyncGuardService } from "../../services/sync";
 import { AddEntryUseCase } from "./add-entry";
+
+const maximumStrengthPassword = "vN7#qL2!xP9@rT4$zK6&";
 
 function createContext() {
   const values = createCoreTestValues();
@@ -61,7 +64,7 @@ describe("AddEntryUseCase", () => {
     const result = await ctx.useCase.execute({
       vaultId: ctx.values.vaultId,
       entry: {
-        password: "secret-password",
+        password: maximumStrengthPassword,
         login: "user@example.com",
         tags: [1, 2],
         url: "https://example.com/login?session=secret#form",
@@ -79,7 +82,7 @@ describe("AddEntryUseCase", () => {
       [
         {
           id: "entry-id",
-          password: "secret-password",
+          password: maximumStrengthPassword,
           login: "user@example.com",
           tags: [1, 2],
           sanitizedUrl: "https://example.com/login",
@@ -120,6 +123,60 @@ describe("AddEntryUseCase", () => {
     );
   });
 
+  it("rejects a password below maximum strength by default without side effects or secret retention", async () => {
+    const ctx = createContext();
+    const submittedPassword = "weak-entry-password";
+    const prepareLocalMutation = vi.spyOn(
+      ctx.vaultSyncGuard,
+      "prepareLocalMutation",
+    );
+    let caught: unknown;
+
+    try {
+      await ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        entry: {
+          password: submittedPassword,
+          login: "user@example.com",
+          tags: [],
+          url: "https://example.com/login",
+        },
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(PasswordEntryStrengthRequirementNotMetError);
+    expect(caught).not.toHaveProperty("cause");
+    expect(objectGraphContainsString(caught, submittedPassword)).toBe(false);
+    expect(prepareLocalMutation).not.toHaveBeenCalled();
+    expect(ctx.ports.ids.generateId).not.toHaveBeenCalled();
+    expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("adds a weak password only when the caller explicitly allows it", async () => {
+    const ctx = createContext();
+    const weakPassword = "weak-entry-password";
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      allowWeakPassword: true,
+      entry: {
+        password: weakPassword,
+        login: "user@example.com",
+        tags: [],
+        url: "https://example.com/login",
+      },
+    });
+
+    expect(
+      ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries[0]?.password,
+    ).toBe(weakPassword);
+  });
+
   it("fails when the target vault is not unlocked", async () => {
     const ctx = createContext();
     ctx.saved.unlockedVaultSession = undefined;
@@ -128,7 +185,7 @@ describe("AddEntryUseCase", () => {
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
         entry: {
-          password: "secret-password",
+          password: "weak-entry-password",
           login: "user@example.com",
           tags: [],
           url: "https://example.com/login",
@@ -149,6 +206,7 @@ describe("AddEntryUseCase", () => {
     await expect(
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
+        allowWeakPassword: true,
         entry: {
           password: "",
           login: "user@example.com",
@@ -174,8 +232,9 @@ describe("AddEntryUseCase", () => {
     try {
       await ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
+        allowWeakPassword: true,
         entry: {
-          password: "secret-password",
+          password: maximumStrengthPassword,
           login: "user@example.com",
           tags: [],
           url: `https://user:${credentialSecret}@?token=${querySecret}`,
@@ -225,7 +284,7 @@ describe("AddEntryUseCase", () => {
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
         entry: {
-          password: "secret-password",
+          password: maximumStrengthPassword,
           login: "user@example.com",
           tags: [],
           url: "https://example.com/login",
@@ -269,7 +328,7 @@ describe("AddEntryUseCase", () => {
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
         entry: {
-          password: "secret-password",
+          password: maximumStrengthPassword,
           login: "user@example.com",
           tags: [],
           url: "https://example.com/login",
@@ -335,7 +394,7 @@ describe("AddEntryUseCase", () => {
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
         entry: {
-          password: "secret-password",
+          password: maximumStrengthPassword,
           login: "user@example.com",
           tags: [],
           url: "https://example.com/login",
@@ -382,7 +441,7 @@ describe("AddEntryUseCase", () => {
     await ctx.useCase.execute({
       vaultId: ctx.values.vaultId,
       entry: {
-        password: "secret-password",
+        password: maximumStrengthPassword,
         login: "user@example.com",
         tags: [],
         url: "https://example.com/login",
@@ -449,7 +508,7 @@ describe("AddEntryUseCase", () => {
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
         entry: {
-          password: "secret-password",
+          password: maximumStrengthPassword,
           login: "user@example.com",
           tags: [],
           url: "https://example.com/login",
@@ -527,7 +586,7 @@ describe("AddEntryUseCase", () => {
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
         entry: {
-          password: "secret-password",
+          password: maximumStrengthPassword,
           login: "user@example.com",
           tags: [],
           url: "https://example.com/login",
@@ -574,7 +633,7 @@ describe("AddEntryUseCase", () => {
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
         entry: {
-          password: "secret-password",
+          password: maximumStrengthPassword,
           login: "user@example.com",
           tags: [],
           url: "https://example.com/login",
@@ -595,7 +654,7 @@ describe("AddEntryUseCase", () => {
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
         entry: {
-          password: "secret-password",
+          password: maximumStrengthPassword,
           login: "user@example.com",
           tags: [],
           url: "https://example.com/login",
@@ -621,7 +680,7 @@ describe("AddEntryUseCase", () => {
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
         entry: {
-          password: "secret-password",
+          password: maximumStrengthPassword,
           login: "user@example.com",
           tags: [],
           url: "https://example.com/login",
@@ -643,7 +702,7 @@ describe("AddEntryUseCase", () => {
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
         entry: {
-          password: "secret-password",
+          password: maximumStrengthPassword,
           login: "user@example.com",
           tags: [],
           url: "https://example.com/login",
