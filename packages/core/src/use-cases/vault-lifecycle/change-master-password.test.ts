@@ -23,6 +23,13 @@ describe("ChangeMasterPasswordUseCase", () => {
     expect(
       ctx.ports.sessionServices.unlockedVaultSession.get,
     ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.getDeviceAccessMaterial,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.generateMasterPasswordSalt).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.crypto.generateLocalKeysProtectionSalt,
+    ).not.toHaveBeenCalled();
     expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
     expect(
       ctx.ports.vaultLocalRepository.saveDeviceAccessMaterial,

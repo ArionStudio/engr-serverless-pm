@@ -6,6 +6,10 @@ import { InvalidNewMasterPasswordError } from "../../errors/master-password.erro
 describe("InitializeVaultUseCase", () => {
   it("rejects a master password below maximum strength before generating IDs", async () => {
     const ctx = createInitializeVaultTestContext();
+    const requireVaultCanBeActivated = vi.spyOn(
+      ctx.ports.sessionServices.unlockedVaultSession,
+      "requireVaultCanBeActivated",
+    );
 
     await expect(
       ctx.useCase.execute({
@@ -14,7 +18,10 @@ describe("InitializeVaultUseCase", () => {
       }),
     ).rejects.toBeInstanceOf(InvalidNewMasterPasswordError);
 
+    expect(requireVaultCanBeActivated).not.toHaveBeenCalled();
     expect(ctx.ports.ids.generateId).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.generateMasterPasswordSalt).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
     expect(
       ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
     ).not.toHaveBeenCalled();

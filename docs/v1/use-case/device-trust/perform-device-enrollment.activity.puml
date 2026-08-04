@@ -12,6 +12,11 @@ skinparam activity {
 start
 :Input:\nenrollmentBundle, masterPassword, deviceName;
 :Source:\npackages/core/src/use-cases/device-trust/perform-device-enrollment.ts;
+:Calculate masterPassword strength;
+if (password score below 4?) then (yes)
+  :Throw InvalidNewMasterPasswordError;
+  stop
+endif
 :Require bundle vault can be activated locally;
 :Read latest remote snapshot descriptor with bundle syncConfig;
 if (remote descriptor missing?) then (yes)

@@ -200,28 +200,31 @@ describe("AddEntryUseCase", () => {
     expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
   });
 
-  it("does not persist a snapshot when entry validation fails", async () => {
-    const ctx = createContext();
+  it.each([undefined, true])(
+    "does not persist a snapshot when entry validation fails with allowWeakPassword=$allowWeakPassword",
+    async (allowWeakPassword) => {
+      const ctx = createContext();
 
-    await expect(
-      ctx.useCase.execute({
-        vaultId: ctx.values.vaultId,
-        allowWeakPassword: true,
-        entry: {
-          password: "",
-          login: "user@example.com",
-          tags: [],
-          url: "https://example.com/login",
-        },
-      }),
-    ).rejects.toBeInstanceOf(InvalidPasswordEntryError);
+      await expect(
+        ctx.useCase.execute({
+          vaultId: ctx.values.vaultId,
+          allowWeakPassword,
+          entry: {
+            password: "",
+            login: "user@example.com",
+            tags: [],
+            url: "https://example.com/login",
+          },
+        }),
+      ).rejects.toBeInstanceOf(InvalidPasswordEntryError);
 
-    expect(ctx.ports.ids.generateId).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
-    ).not.toHaveBeenCalled();
-    expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
-  });
+      expect(ctx.ports.ids.generateId).not.toHaveBeenCalled();
+      expect(
+        ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
+      ).not.toHaveBeenCalled();
+      expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
+    },
+  );
 
   it("does not retain a malformed entry url in the public validation error", async () => {
     const ctx = createContext();

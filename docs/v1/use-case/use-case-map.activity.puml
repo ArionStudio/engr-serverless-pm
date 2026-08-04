@@ -48,6 +48,7 @@ partition "Device trust" {
 }
 
 partition "Tools and session" {
+  :check-password-strength\ncalculate locally and return only { score: 0..4 };
   :generate-password / generate-username\nvalidate settings and use RandomSamplerService;
   :get-vault-session-status\nread session material only and report locked or unlocked;
 }

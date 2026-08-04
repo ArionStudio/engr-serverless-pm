@@ -160,7 +160,7 @@ function hasDominantRepeatedCharacters(characters: string[]): boolean {
   let repeatedCharacters = 0;
   let runLength = 1;
 
-  for (let index = 1; index <= characters.length; index += 1) {
+  for (let index = 1; index < characters.length; index += 1) {
     if (characters[index] === characters[index - 1]) {
       runLength += 1;
       continue;
@@ -169,6 +169,8 @@ function hasDominantRepeatedCharacters(characters: string[]): boolean {
     if (runLength > 1) repeatedCharacters += runLength;
     runLength = 1;
   }
+
+  if (runLength > 1) repeatedCharacters += runLength;
 
   return (
     repeatedCharacters / characters.length >=
