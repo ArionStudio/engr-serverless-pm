@@ -1,12 +1,64 @@
 import { describe, expect, it, vi } from "vitest";
 import { createChangeMasterPasswordTestContext } from "../../__tests__/fixtures/change-master-password";
+import type { RawMasterPassword } from "../../domain/master-password";
 import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
 import {
   DeviceAccessMaterialNotFoundForMasterPasswordChangeError,
   VaultMustBeUnlockedForMasterPasswordChangeError,
 } from "../../errors/change-master-password.errors";
+import { InvalidNewMasterPasswordError } from "../../errors/master-password.errors";
 
 describe("ChangeMasterPasswordUseCase", () => {
+  it("rejects a new password below maximum strength before reading the session", async () => {
+    const ctx = createChangeMasterPasswordTestContext();
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        currentMasterPassword: "12345678901" as RawMasterPassword,
+        newMasterPassword: "correcthorsebatterystaple" as RawMasterPassword,
+      }),
+    ).rejects.toBeInstanceOf(InvalidNewMasterPasswordError);
+
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.get,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.getDeviceAccessMaterial,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.generateMasterPasswordSalt).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.crypto.generateLocalKeysProtectionSalt,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveDeviceAccessMaterial,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("accepts a maximum-strength new password while verifying a weak current password", async () => {
+    const ctx = createChangeMasterPasswordTestContext();
+    const currentMasterPassword = "12345678901" as RawMasterPassword;
+    const newMasterPassword = "mQ8#sW3!cH7@uJ5$eR9%" as RawMasterPassword;
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      currentMasterPassword,
+      newMasterPassword,
+    });
+
+    expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenNthCalledWith(
+      1,
+      currentMasterPassword,
+      ctx.values.masterPasswordSalt,
+    );
+    expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenNthCalledWith(
+      2,
+      newMasterPassword,
+      ctx.values.newMasterPasswordSalt,
+    );
+  });
+
   it("re-protects local device access material with the new master password", async () => {
     const ctx = createChangeMasterPasswordTestContext();
 

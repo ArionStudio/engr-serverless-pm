@@ -11,6 +11,7 @@ import type {
   PendingDeviceEnrollment,
   VaultTrustChain,
 } from "../../domain/device-trust";
+import type { RawMasterPassword } from "../../domain/master-password";
 import type { VaultSnapshot } from "../../domain/snapshot";
 import { toVaultSnapshotDescriptor } from "../../domain/snapshot";
 import {
@@ -19,6 +20,7 @@ import {
   DeviceEnrollmentRemoteSnapshotChangedError,
   PendingDeviceEnrollmentMismatchError,
 } from "../../errors/device-enrollment.errors";
+import { InvalidNewMasterPasswordError } from "../../errors/master-password.errors";
 import {
   RemoteVaultSnapshotChangedError,
   SyncRemovalPendingError,
@@ -124,6 +126,40 @@ function createContext(synced = false) {
 }
 
 describe("PerformDeviceEnrollmentUseCase", () => {
+  it("rejects a password below maximum strength before reading pending enrollment", async () => {
+    const ctx = createContext();
+
+    await expect(
+      ctx.useCase.execute({
+        enrollmentResponse: ctx.response,
+        masterPassword: "correcthorsebatterystaple" as RawMasterPassword,
+        deviceName: "New laptop",
+      }),
+    ).rejects.toBeInstanceOf(InvalidNewMasterPasswordError);
+
+    expect(
+      ctx.ports.vaultLocalRepository.getPendingDeviceEnrollment,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+  });
+
+  it("accepts a maximum-strength password", async () => {
+    const ctx = createContext();
+    const masterPassword = "vN7#qL2!xP9@rT4$zK6&" as RawMasterPassword;
+
+    await ctx.useCase.execute({
+      enrollmentResponse: ctx.response,
+      masterPassword,
+      deviceName: "New laptop",
+    });
+
+    expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenNthCalledWith(
+      1,
+      masterPassword,
+      ctx.values.masterPasswordSalt,
+    );
+  });
+
   it("uploads the signed enrollment even when local storage replaces it after save", async () => {
     const ctx = createContext(true);
     const getPersistedSnapshot = replaceVaultSnapshotAfterNextInitializedSave(

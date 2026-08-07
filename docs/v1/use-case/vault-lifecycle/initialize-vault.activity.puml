@@ -12,6 +12,11 @@ skinparam activity {
 start
 :Input:\nmasterPassword, deviceName;
 :Source:\npackages/core/src/use-cases/vault-lifecycle/initialize-vault.ts;
+:Calculate masterPassword strength;
+if (password score below 4?) then (yes)
+  :Throw InvalidNewMasterPasswordError;
+  stop
+endif
 :Generate vaultId;
 :Require vault can be activated;
 if (another vault is active?) then (yes)

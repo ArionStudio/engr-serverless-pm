@@ -1,7 +1,44 @@
 import { describe, expect, it, vi } from "vitest";
 import { createInitializeVaultTestContext } from "../../__tests__/fixtures/initialize-vault";
+import type { RawMasterPassword } from "../../domain/master-password";
+import { InvalidNewMasterPasswordError } from "../../errors/master-password.errors";
 
 describe("InitializeVaultUseCase", () => {
+  it("rejects a master password below maximum strength before generating IDs", async () => {
+    const ctx = createInitializeVaultTestContext();
+    const requireVaultCanBeActivated = vi.spyOn(
+      ctx.ports.sessionServices.unlockedVaultSession,
+      "requireVaultCanBeActivated",
+    );
+
+    await expect(
+      ctx.useCase.execute({
+        masterPassword: "correcthorsebatterystaple" as RawMasterPassword,
+        deviceName: "Laptop",
+      }),
+    ).rejects.toBeInstanceOf(InvalidNewMasterPasswordError);
+
+    expect(requireVaultCanBeActivated).not.toHaveBeenCalled();
+    expect(ctx.ports.ids.generateId).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.generateMasterPasswordSalt).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("accepts a maximum-strength master password", async () => {
+    const ctx = createInitializeVaultTestContext();
+    const masterPassword = "vN7#qL2!xP9@rT4$zK6&" as RawMasterPassword;
+
+    await ctx.useCase.execute({ masterPassword, deviceName: "Laptop" });
+
+    expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenCalledWith(
+      masterPassword,
+      ctx.values.masterPasswordSalt,
+    );
+  });
+
   it("creates separate signing and wrapping identities with generation one envelope", async () => {
     const ctx = createInitializeVaultTestContext();
 

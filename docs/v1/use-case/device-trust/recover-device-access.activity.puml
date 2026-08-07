@@ -12,6 +12,11 @@ skinparam activity {
 start
 :Input:\nvaultId, recoveryMnemonicKey, newMasterPassword;
 :Source:\npackages/core/src/use-cases/device-trust/recover-device-access.ts;
+:Calculate newMasterPassword strength;
+if (password score below 4?) then (yes)
+  :Throw InvalidNewMasterPasswordError;
+  stop
+endif
 :Require vault can be activated locally;
 if (another vault is active?) then (yes)
   :Throw activation error from session service;

@@ -6,6 +6,7 @@ import type {
   LocalKeysPayload,
 } from "../../domain/device-trust";
 import type { RawMasterPassword } from "../../domain/master-password";
+import { assertNewMasterPasswordMeetsPolicy } from "../../domain/master-password/master-password.utils";
 import type { RecoveryKeyMnemonic } from "../../domain/recovery";
 import type { SyncAccess, SyncSetupInput } from "../../domain/sync";
 import type {
@@ -97,6 +98,8 @@ export class PerformDeviceEnrollmentUseCase {
   async execute(
     params: PerformDeviceEnrollmentCommandParams,
   ): Promise<PerformDeviceEnrollmentResult> {
+    assertNewMasterPasswordMeetsPolicy(params.masterPassword);
+
     const response = params.enrollmentResponse;
     const pending = await this.vaultLocalRepository.getPendingDeviceEnrollment(
       response.requestId,
