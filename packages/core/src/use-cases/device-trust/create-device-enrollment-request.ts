@@ -3,10 +3,8 @@ import type {
   DeviceEnrollmentRequest,
   PendingDeviceEnrollment,
 } from "../../domain/device-trust";
-import {
-  assertValidNewMasterPassword,
-  type RawMasterPassword,
-} from "../../domain/master-password";
+import type { RawMasterPassword } from "../../domain/master-password";
+import { assertNewMasterPasswordMeetsPolicy } from "../../domain/master-password/master-password.utils";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { IdPort } from "../../ports/system/id.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
@@ -35,7 +33,7 @@ export class CreateDeviceEnrollmentRequestUseCase {
   async execute(
     params: CreateDeviceEnrollmentRequestCommandParams,
   ): Promise<DeviceEnrollmentRequest> {
-    assertValidNewMasterPassword(params.masterPassword);
+    assertNewMasterPasswordMeetsPolicy(params.masterPassword);
 
     const requestId = await this.ids.generateId();
     const deviceId = await this.ids.generateId();

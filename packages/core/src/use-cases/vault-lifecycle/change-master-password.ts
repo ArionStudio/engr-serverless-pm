@@ -1,8 +1,6 @@
 import type { DeviceAccessMaterial } from "../../domain/device-trust/device-access-material";
-import {
-  assertValidNewMasterPassword,
-  type RawMasterPassword,
-} from "../../domain/master-password";
+import type { RawMasterPassword } from "../../domain/master-password";
+import { assertNewMasterPasswordMeetsPolicy } from "../../domain/master-password/master-password.utils";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
@@ -34,7 +32,7 @@ export class ChangeMasterPasswordUseCase {
   }
 
   async execute(params: ChangeMasterPasswordCommandParams): Promise<void> {
-    assertValidNewMasterPassword(params.newMasterPassword);
+    assertNewMasterPasswordMeetsPolicy(params.newMasterPassword);
 
     const unlockedVaultSession = await this.unlockedVaultSession.get();
     const unlockedVault = unlockedVaultSession?.unlockedVault;

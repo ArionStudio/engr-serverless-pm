@@ -2,10 +2,8 @@ import type { DeviceAccessMaterial } from "../../domain/device-trust/device-acce
 import type { DeviceAccessRecoveryBackup } from "../../domain/device-trust/device-access-recovery-backup";
 import type { DeviceProfile } from "../../domain/device-profile/device-profile";
 import type { LocalKeysPayload } from "../../domain/device-trust/local-protection.type";
-import {
-  assertValidNewMasterPassword,
-  type RawMasterPassword,
-} from "../../domain/master-password";
+import type { RawMasterPassword } from "../../domain/master-password";
+import { assertNewMasterPasswordMeetsPolicy } from "../../domain/master-password/master-password.utils";
 import type { RecoveryKeyMnemonic } from "../../domain/recovery/bip39-mnemonic";
 import type {
   UnsignedVaultSnapshot,
@@ -66,7 +64,9 @@ export class InitializeVaultUseCase {
   async execute(
     initializeVaultCommandParams: InitializeVaultCommandParams,
   ): Promise<InitializeVaultResult> {
-    assertValidNewMasterPassword(initializeVaultCommandParams.masterPassword);
+    assertNewMasterPasswordMeetsPolicy(
+      initializeVaultCommandParams.masterPassword,
+    );
 
     const vaultId = await this.ids.generateId();
     const activationGeneration =

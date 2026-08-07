@@ -1,10 +1,8 @@
 import type { DeviceAccessMaterial } from "../../domain/device-trust/device-access-material";
 import type { DeviceAccessRecoveryBackup } from "../../domain/device-trust/device-access-recovery-backup";
 import type { LocalKeysPayload } from "../../domain/device-trust/local-protection.type";
-import {
-  assertValidNewMasterPassword,
-  type RawMasterPassword,
-} from "../../domain/master-password";
+import type { RawMasterPassword } from "../../domain/master-password";
+import { assertNewMasterPasswordMeetsPolicy } from "../../domain/master-password/master-password.utils";
 import type { RecoveryKeyMnemonic } from "../../domain/recovery/bip39-mnemonic";
 import type { DeviceKeySlot } from "../../domain/snapshot";
 import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
@@ -62,7 +60,7 @@ export class RecoverDeviceAccessUseCase {
   async execute(
     params: RecoverDeviceAccessCommandParams,
   ): Promise<RecoverDeviceAccessResult> {
-    assertValidNewMasterPassword(params.newMasterPassword);
+    assertNewMasterPasswordMeetsPolicy(params.newMasterPassword);
 
     await this.unlockedVaultSession.requireVaultCanBeActivated(params.vaultId);
 

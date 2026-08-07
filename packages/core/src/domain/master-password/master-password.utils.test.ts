@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { objectGraphContainsString } from "../__tests__/fixtures/error-inspection";
-import { InvalidNewMasterPasswordError } from "../errors/master-password.errors";
-import { assertValidNewMasterPassword } from "./master-password";
+import { objectGraphContainsString } from "../../__tests__/fixtures/error-inspection";
+import { InvalidNewMasterPasswordError } from "../../errors/master-password.errors";
+import { assertNewMasterPasswordMeetsPolicy } from "./master-password.utils";
 
 describe("new master password policy", () => {
   it("accepts only a maximum-strength password", () => {
     expect(() =>
-      assertValidNewMasterPassword("vN7#qL2!xP9@rT4$zK6&"),
+      assertNewMasterPasswordMeetsPolicy("vN7#qL2!xP9@rT4$zK6&"),
     ).not.toThrow();
   });
 
@@ -16,13 +16,13 @@ describe("new master password policy", () => {
     "mixed-value!",
     "correcthorsebatterystaple",
   ])("rejects a password below maximum strength", (submittedPassword) => {
-    expect(() => assertValidNewMasterPassword(submittedPassword)).toThrow(
+    expect(() => assertNewMasterPasswordMeetsPolicy(submittedPassword)).toThrow(
       InvalidNewMasterPasswordError,
     );
   });
 
   it("rejects a non-string password", () => {
-    expect(() => assertValidNewMasterPassword(undefined)).toThrow(
+    expect(() => assertNewMasterPasswordMeetsPolicy(undefined)).toThrow(
       InvalidNewMasterPasswordError,
     );
   });
@@ -33,7 +33,7 @@ describe("new master password policy", () => {
     let thrownError: unknown;
 
     try {
-      assertValidNewMasterPassword(submittedPassword);
+      assertNewMasterPasswordMeetsPolicy(submittedPassword);
     } catch (error) {
       thrownError = error;
     }
