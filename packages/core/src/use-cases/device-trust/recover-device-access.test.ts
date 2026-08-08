@@ -1,18 +1,25 @@
 import { describe, expect, it, vi } from "vitest";
+import { expectSecretSafeDeviceAccessMaterialChange } from "../../__tests__/fixtures/device-access-errors";
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
 import type { DeviceAccessRecoveryBackup } from "../../domain/device-trust";
+import type { RawMasterPassword } from "../../domain/master-password";
+import { InvalidNewMasterPasswordError } from "../../errors/master-password.errors";
 import {
   DeviceKeySlotNotFoundError,
   DeviceKeySlotVerificationFailedError,
 } from "../../errors/unlock-vault.errors";
-import { DeviceAccessMaterialChangedError } from "../../errors/vault-device.errors";
 import { ChangeMasterPasswordUseCase } from "../vault-lifecycle/change-master-password";
 import { RecoverDeviceAccessUseCase } from "./recover-device-access";
 
 function createContext() {
   const ctx = createUnlockVaultTestContext();
+  vi.mocked(ctx.ports.ids.generateId).mockReset();
+  vi.mocked(ctx.ports.ids.generateId).mockResolvedValue(
+    ctx.values.replacementLocalAccessGenerationId,
+  );
   const backup: DeviceAccessRecoveryBackup = {
     revision: 1,
+    localAccessGenerationId: ctx.values.localAccessGenerationId,
     vaultId: ctx.values.vaultId,
     deviceId: ctx.values.deviceId,
     algorithmSuiteId: ctx.ports.crypto.algorithmSuite.id,
@@ -25,6 +32,7 @@ function createContext() {
   const useCase = new RecoverDeviceAccessUseCase(
     ctx.ports.bip39,
     ctx.ports.crypto,
+    ctx.ports.ids,
     ctx.ports.sessionServices.unlockedVaultSession,
     ctx.ports.vaultLocalRepository,
   );
@@ -71,30 +79,44 @@ function deferRecoveryReplacement(ctx: ReturnType<typeof createContext>) {
   };
 }
 
-function expectSecretSafeMaterialChange(
-  error: unknown,
-  ctx: ReturnType<typeof createContext>,
-): void {
-  expect(error).toBeInstanceOf(DeviceAccessMaterialChangedError);
-
-  if (!(error instanceof Error)) {
-    throw new Error("Expected a device access material conflict.");
-  }
-
-  expect(error.name).toBe("DeviceAccessMaterialChangedError");
-  expect(error.message).toBe(
-    `Device access material for vault "${ctx.values.vaultId}" changed before save.`,
-  );
-  expect(error.cause).toBeUndefined();
-  expect(String(error)).not.toContain(ctx.values.masterPassword);
-  expect(String(error)).not.toContain(ctx.values.newMasterPassword);
-  expect(Object.values(error)).not.toContain(ctx.values.devicePublicSignKey);
-  expect(Object.values(error)).not.toContain(ctx.values.devicePrivateSignKey);
-  expect(Object.values(error)).not.toContain(ctx.values.devicePublicVaultKey);
-  expect(Object.values(error)).not.toContain(ctx.values.devicePrivateVaultKey);
-}
-
 describe("RecoverDeviceAccessUseCase", () => {
+  it("rejects a new password below maximum strength before reading recovery state", async () => {
+    const ctx = createContext();
+    const requireVaultCanBeActivated = vi.spyOn(
+      ctx.ports.sessionServices.unlockedVaultSession,
+      "requireVaultCanBeActivated",
+    );
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        recoveryMnemonicKey: ctx.values.recoveryMnemonicKey,
+        newMasterPassword: "correcthorsebatterystaple" as RawMasterPassword,
+      }),
+    ).rejects.toBeInstanceOf(InvalidNewMasterPasswordError);
+
+    expect(requireVaultCanBeActivated).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.getDeviceAccessRecoveryBackup,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("accepts a maximum-strength new password", async () => {
+    const ctx = createContext();
+    const newMasterPassword = "mQ8#sW3!cH7@uJ5$eR9%" as RawMasterPassword;
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      recoveryMnemonicKey: ctx.values.recoveryMnemonicKey,
+      newMasterPassword,
+    });
+
+    expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenCalledWith(
+      newMasterPassword,
+      ctx.values.masterPasswordSalt,
+    );
+  });
+
   it("recovers the wrapping key and re-protects the complete local identity", async () => {
     const ctx = createContext();
 
@@ -111,16 +133,19 @@ describe("RecoverDeviceAccessUseCase", () => {
     expect(ctx.ports.crypto.openDeviceVaultKeyEnvelope).toHaveBeenCalled();
     expect(ctx.saved.deviceAccessMaterial).toMatchObject({
       revision: ctx.deviceAccessMaterial.revision + 1,
+      localAccessGenerationId: ctx.values.localAccessGenerationId,
       devicePublicSignKey: ctx.values.devicePublicSignKey,
       devicePublicVaultKey: ctx.values.devicePublicVaultKey,
     });
-    expect(ctx.saved.deviceAccessRecoveryBackup?.revision).toBe(
-      ctx.backup.revision + 1,
-    );
+    expect(ctx.saved.deviceAccessRecoveryBackup).toMatchObject({
+      revision: ctx.backup.revision + 1,
+      localAccessGenerationId: ctx.values.localAccessGenerationId,
+    });
   });
 
-  it("recovers when device access material is absent", async () => {
+  it("rotates the generation when material is absent and rejects a stale save", async () => {
     const ctx = createContext();
+    const staleDeviceAccessMaterial = ctx.deviceAccessMaterial;
     ctx.saved.deviceAccessMaterial = undefined;
 
     await expect(
@@ -131,13 +156,50 @@ describe("RecoverDeviceAccessUseCase", () => {
       }),
     ).resolves.toMatchObject({ deviceId: ctx.values.deviceId });
 
-    expect(ctx.saved.deviceAccessMaterial).toBeDefined();
+    const recoveredDeviceAccessMaterial = ctx.saved.deviceAccessMaterial;
+    expect(recoveredDeviceAccessMaterial).toMatchObject({
+      revision: 1,
+      localAccessGenerationId: ctx.values.replacementLocalAccessGenerationId,
+    });
+    expect(ctx.saved.deviceAccessRecoveryBackup).toMatchObject({
+      localAccessGenerationId: ctx.values.replacementLocalAccessGenerationId,
+    });
     expect(
       ctx.ports.vaultLocalRepository.saveRecoveredDeviceAccess,
     ).toHaveBeenCalledWith(
       expect.objectContaining({
         expectedDeviceAccessMaterialRevision: null,
+        expectedDeviceAccessMaterialGenerationId: null,
+        expectedDeviceAccessRecoveryBackupGenerationId:
+          ctx.values.localAccessGenerationId,
       }),
+    );
+
+    const staleSave = ctx.ports.vaultLocalRepository
+      .saveDeviceAccessMaterial({
+        expectedDeviceAccessMaterialRevision:
+          staleDeviceAccessMaterial.revision,
+        expectedLocalAccessGenerationId:
+          staleDeviceAccessMaterial.localAccessGenerationId,
+        deviceAccessMaterial: {
+          ...staleDeviceAccessMaterial,
+          revision: staleDeviceAccessMaterial.revision + 1,
+        },
+      })
+      .catch((caught: unknown) => caught);
+    expectSecretSafeDeviceAccessMaterialChange({
+      error: await staleSave,
+      vaultId: ctx.values.vaultId,
+      passwords: [ctx.values.masterPassword, ctx.values.newMasterPassword],
+      rawDeviceKeys: [
+        ctx.values.devicePublicSignKey,
+        ctx.values.devicePrivateSignKey,
+        ctx.values.devicePublicVaultKey,
+        ctx.values.devicePrivateVaultKey,
+      ],
+    });
+    expect(ctx.saved.deviceAccessMaterial).toEqual(
+      recoveredDeviceAccessMaterial,
     );
   });
 
@@ -200,7 +262,17 @@ describe("RecoverDeviceAccessUseCase", () => {
 
     const materialChange = recovery.catch((caught: unknown) => caught);
     continueRecoveryWrapping();
-    expectSecretSafeMaterialChange(await materialChange, ctx);
+    expectSecretSafeDeviceAccessMaterialChange({
+      error: await materialChange,
+      vaultId: ctx.values.vaultId,
+      passwords: [ctx.values.masterPassword, ctx.values.newMasterPassword],
+      rawDeviceKeys: [
+        ctx.values.devicePublicSignKey,
+        ctx.values.devicePrivateSignKey,
+        ctx.values.devicePublicVaultKey,
+        ctx.values.devicePrivateVaultKey,
+      ],
+    });
 
     expect(ctx.saved.deviceAccessMaterial).toEqual(passwordChangedMaterial);
     expect(ctx.saved.deviceAccessRecoveryBackup).toEqual(ctx.backup);
@@ -230,13 +302,68 @@ describe("RecoverDeviceAccessUseCase", () => {
 
     const materialChange = recovery.catch((caught: unknown) => caught);
     continueRecoveryWrapping();
-    expectSecretSafeMaterialChange(await materialChange, ctx);
+    expectSecretSafeDeviceAccessMaterialChange({
+      error: await materialChange,
+      vaultId: ctx.values.vaultId,
+      passwords: [ctx.values.masterPassword, ctx.values.newMasterPassword],
+      rawDeviceKeys: [
+        ctx.values.devicePublicSignKey,
+        ctx.values.devicePrivateSignKey,
+        ctx.values.devicePublicVaultKey,
+        ctx.values.devicePrivateVaultKey,
+      ],
+    });
 
     expect(ctx.saved.deviceAccessMaterial).toEqual(
       originalDeviceAccessMaterial,
     );
     expect(ctx.saved.deviceAccessRecoveryBackup).toEqual(
       concurrentlyReplacedBackup,
+    );
+  });
+
+  it("does not accept reset revisions from a replayed enrollment", async () => {
+    const ctx = createContext();
+    const { continueRecoveryWrapping, recoveryWrappingStarted } =
+      deferRecoveryReplacement(ctx);
+    const recovery = ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      recoveryMnemonicKey: ctx.values.recoveryMnemonicKey,
+      newMasterPassword: ctx.values.newMasterPassword,
+    });
+
+    await recoveryWrappingStarted;
+
+    const reEnrolledDeviceAccessMaterial = {
+      ...ctx.deviceAccessMaterial,
+      localAccessGenerationId: ctx.values.replacementLocalAccessGenerationId,
+    };
+    const reEnrolledRecoveryBackup: DeviceAccessRecoveryBackup = {
+      ...ctx.backup,
+      localAccessGenerationId: ctx.values.replacementLocalAccessGenerationId,
+    };
+    ctx.saved.deviceAccessMaterial = reEnrolledDeviceAccessMaterial;
+    ctx.saved.deviceAccessRecoveryBackup = reEnrolledRecoveryBackup;
+
+    const materialChange = recovery.catch((caught: unknown) => caught);
+    continueRecoveryWrapping();
+    expectSecretSafeDeviceAccessMaterialChange({
+      error: await materialChange,
+      vaultId: ctx.values.vaultId,
+      passwords: [ctx.values.masterPassword, ctx.values.newMasterPassword],
+      rawDeviceKeys: [
+        ctx.values.devicePublicSignKey,
+        ctx.values.devicePrivateSignKey,
+        ctx.values.devicePublicVaultKey,
+        ctx.values.devicePrivateVaultKey,
+      ],
+    });
+
+    expect(ctx.saved.deviceAccessMaterial).toEqual(
+      reEnrolledDeviceAccessMaterial,
+    );
+    expect(ctx.saved.deviceAccessRecoveryBackup).toEqual(
+      reEnrolledRecoveryBackup,
     );
   });
 

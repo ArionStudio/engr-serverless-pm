@@ -3,6 +3,7 @@ import type { DeviceAccessRecoveryBackup } from "../../domain/device-trust/devic
 import type { DeviceProfile } from "../../domain/device-profile/device-profile";
 import type { LocalKeysPayload } from "../../domain/device-trust/local-protection.type";
 import type { RawMasterPassword } from "../../domain/master-password";
+import { assertNewMasterPasswordMeetsPolicy } from "../../domain/master-password/master-password.utils";
 import type { RecoveryKeyMnemonic } from "../../domain/recovery/bip39-mnemonic";
 import type {
   UnsignedVaultSnapshot,
@@ -63,11 +64,16 @@ export class InitializeVaultUseCase {
   async execute(
     initializeVaultCommandParams: InitializeVaultCommandParams,
   ): Promise<InitializeVaultResult> {
+    assertNewMasterPasswordMeetsPolicy(
+      initializeVaultCommandParams.masterPassword,
+    );
+
     const vaultId = await this.ids.generateId();
     const activationGeneration =
       await this.unlockedVaultSession.requireVaultCanBeActivated(vaultId);
 
     const deviceId = await this.ids.generateId();
+    const localAccessGenerationId = await this.ids.generateId();
     const timestamp = this.clock.now();
     const vaultDisplayName =
       await this.vaultDisplayName.generateVaultDisplayName();
@@ -203,6 +209,7 @@ export class InitializeVaultUseCase {
 
     const deviceAccessMaterial: DeviceAccessMaterial = {
       revision: 1,
+      localAccessGenerationId,
       vaultId,
       deviceId,
       algorithmSuiteId: this.crypto.algorithmSuite.id,
@@ -214,6 +221,7 @@ export class InitializeVaultUseCase {
     };
     const deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup = {
       revision: 1,
+      localAccessGenerationId,
       vaultId,
       deviceId,
       algorithmSuiteId: this.crypto.algorithmSuite.id,

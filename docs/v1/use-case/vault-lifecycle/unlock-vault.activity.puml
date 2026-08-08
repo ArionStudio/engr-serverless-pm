@@ -24,6 +24,10 @@ if (missing?) then (yes)
   :Throw DeviceAccessMaterialNotFoundError;
   stop
 endif
+if (material vault id differs from requested vault?) then (yes)
+  :Throw DeviceAccessMaterialIdentityMismatchError;
+  stop
+endif
 
 :Load local vault snapshot;
 if (missing?) then (yes)

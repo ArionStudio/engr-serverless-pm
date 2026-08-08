@@ -16,11 +16,16 @@ participant "PerformDeviceEnrollmentUseCase" as UC
 participant "UnlockedVaultSessionService" as Session
 participant "SyncProviderPort" as Sync
 participant "CryptoPort" as Crypto
+participant "IdPort" as Ids
 participant "VaultDisplayNamePort" as Names
 database "VaultLocalRepositoryPort" as LocalRepo
 participant "Domain device mutation" as Domain
 
 Caller -> UC : execute(enrollmentBundle, masterPassword, deviceName)
+UC -> UC : calculate masterPassword strength
+break password score below 4
+  UC --> Caller : throw InvalidNewMasterPasswordError
+end
 UC -> Session : requireVaultCanBeActivated(bundle.vaultId)
 UC -> Sync : getLatestVaultSnapshotDescriptor(bundle.syncConfig, vaultId)
 UC -> UC : compare remote descriptor with bundle descriptor
@@ -39,6 +44,7 @@ UC -> Domain : addDeviceProfileToVault(vault, pendingDeviceId, deviceName, now)
 UC -> Crypto : encryptVaultSnapshotContent(registeredVault, vaultMasterKey)
 UC -> Crypto : signVaultSnapshot(unsignedSnapshot, pendingPrivateSignKey)
 UC -> Crypto : verifyVaultSnapshotSignature(registeredSnapshot, pendingPublicSignKey)
+UC -> Ids : generateId() for fresh localAccessGenerationId
 UC -> LocalRepo : saveInitializedLocalVault(descriptor, accessMaterial, recoveryBackup, registeredSnapshot)
 UC -> Session : commit(unlockedVault, registeredSnapshot.vector)
 alt commit fails

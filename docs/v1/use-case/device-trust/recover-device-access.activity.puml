@@ -12,13 +12,19 @@ skinparam activity {
 start
 :Input:\nvaultId, recoveryMnemonicKey, newMasterPassword;
 :Source:\npackages/core/src/use-cases/device-trust/recover-device-access.ts;
+:Calculate newMasterPassword strength;
+if (password score below 4?) then (yes)
+  :Throw InvalidNewMasterPasswordError;
+  stop
+endif
 :Require vault can be activated locally;
 if (another vault is active?) then (yes)
   :Throw activation error from session service;
   stop
 endif
 
-:Read local device access recovery backup;
+:Read current device access material and capture\nits revision, localAccessGenerationId, or absence;
+:Read local device access recovery backup and capture\nits revision and localAccessGenerationId;
 if (backup missing?) then (yes)
   :Throw DeviceAccessRecoveryBackupNotFoundError;
   stop
@@ -91,9 +97,13 @@ endif
 :Derive fresh recovery local-keys protection key;
 :Wrap same local keys payload for new recovery backup;
 
-:Build DeviceAccessMaterial;
-:Build replacement DeviceAccessRecoveryBackup;
-:Atomically save recovered device access material and recovery backup;
+:If material was absent, generate a fresh\nlocalAccessGenerationId; otherwise retain it;
+:Build both replacements with next revisions\nand the selected localAccessGenerationId;
+:Atomically compare-and-save both records using the\ncaptured revisions and localAccessGenerationId;
+if (either persisted revision or generation changed first?) then (yes)
+  :Throw DeviceAccessMaterialChangedError\nwithout changing either record;
+  stop
+endif
 :Return deviceId and fresh recoveryMnemonicKey;
 stop
 @enduml

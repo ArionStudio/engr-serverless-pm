@@ -23,6 +23,10 @@ Caller -> UC : execute(vaultId, masterPassword, lockAfterMs)
 UC -> UC : validate lockAfterMs
 UC -> Session : requireVaultCanBeActivated(vaultId)
 UC -> LocalRepo : getDeviceAccessMaterial(vaultId)
+UC -> UC : verify material vault id matches requested vault
+break material vault id mismatch
+  UC --> Caller : throw DeviceAccessMaterialIdentityMismatchError
+end
 UC -> LocalRepo : getVaultSnapshot(vaultId)
 UC -> UC : check algorithm suites, vault id, signer, device slot
 UC -> Crypto : verifyVaultSnapshotSignature(snapshot, signerSlot.publicSignKey)

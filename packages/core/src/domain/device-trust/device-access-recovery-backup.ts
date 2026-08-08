@@ -12,6 +12,7 @@ import type { LocalKeysPayload } from "./local-protection.type";
  */
 export type DeviceAccessRecoveryBackup = {
   readonly revision: number;
+  readonly localAccessGenerationId: string;
   readonly vaultId: string;
   readonly deviceId: string;
   readonly algorithmSuiteId: string;

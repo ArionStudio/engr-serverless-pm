@@ -1,5 +1,5 @@
-import { z } from "zod";
-import { generatedUsernameSettingsSchema } from "./generated-username.schema";
+import type { z } from "zod";
+import type { generatedUsernameSettingsSchema } from "./generated-username.schema";
 
 export type GeneratedUsernameSettings = z.infer<
   typeof generatedUsernameSettingsSchema

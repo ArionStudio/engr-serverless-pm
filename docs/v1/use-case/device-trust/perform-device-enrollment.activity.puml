@@ -12,6 +12,11 @@ skinparam activity {
 start
 :Input:\nenrollmentBundle, masterPassword, deviceName;
 :Source:\npackages/core/src/use-cases/device-trust/perform-device-enrollment.ts;
+:Calculate masterPassword strength;
+if (password score below 4?) then (yes)
+  :Throw InvalidNewMasterPasswordError;
+  stop
+endif
 :Require bundle vault can be activated locally;
 :Read latest remote snapshot descriptor with bundle syncConfig;
 if (remote descriptor missing?) then (yes)
@@ -101,8 +106,9 @@ if (signature verification fails?) then (yes)
   stop
 endif
 
-:Build device access material and local vault descriptor;
-:Build device access recovery backup;
+:Generate fresh localAccessGenerationId;
+:Build device access material and recovery backup\nwith revision 1 and the same localAccessGenerationId;
+:Build local vault descriptor;
 :Save initialized local vault for new device\nincluding recovery backup;
 if (commit unlocked session succeeds?) then (yes)
   :Continue;

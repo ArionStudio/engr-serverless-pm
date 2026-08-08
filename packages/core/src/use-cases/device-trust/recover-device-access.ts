@@ -2,6 +2,7 @@ import type { DeviceAccessMaterial } from "../../domain/device-trust/device-acce
 import type { DeviceAccessRecoveryBackup } from "../../domain/device-trust/device-access-recovery-backup";
 import type { LocalKeysPayload } from "../../domain/device-trust/local-protection.type";
 import type { RawMasterPassword } from "../../domain/master-password";
+import { assertNewMasterPasswordMeetsPolicy } from "../../domain/master-password/master-password.utils";
 import type { RecoveryKeyMnemonic } from "../../domain/recovery/bip39-mnemonic";
 import type { DeviceKeySlot } from "../../domain/snapshot";
 import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
@@ -13,6 +14,7 @@ import {
 import { PersistedVaultMismatchError } from "../../errors/vault-snapshot.errors";
 import type { Bip39Port } from "../../ports/crypto/bip39.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
+import type { IdPort } from "../../ports/system/id.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import {
@@ -39,6 +41,7 @@ export type RecoverDeviceAccessResult = {
 export class RecoverDeviceAccessUseCase {
   private readonly bip39: Bip39Port;
   private readonly crypto: CryptoPort;
+  private readonly ids: IdPort;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
   private readonly vaultTrust: VaultTrustService;
@@ -46,11 +49,13 @@ export class RecoverDeviceAccessUseCase {
   constructor(
     bip39: Bip39Port,
     crypto: CryptoPort,
+    ids: IdPort,
     unlockedVaultSession: UnlockedVaultSessionService,
     vaultLocalRepository: VaultLocalRepositoryPort,
   ) {
     this.bip39 = bip39;
     this.crypto = crypto;
+    this.ids = ids;
     this.unlockedVaultSession = unlockedVaultSession;
     this.vaultLocalRepository = vaultLocalRepository;
     this.vaultTrust = new VaultTrustService(crypto);
@@ -59,6 +64,8 @@ export class RecoverDeviceAccessUseCase {
   async execute(
     params: RecoverDeviceAccessCommandParams,
   ): Promise<RecoverDeviceAccessResult> {
+    assertNewMasterPasswordMeetsPolicy(params.newMasterPassword);
+
     await this.unlockedVaultSession.requireVaultCanBeActivated(params.vaultId);
 
     const expectedDeviceAccessMaterial =
@@ -288,8 +295,13 @@ export class RecoverDeviceAccessUseCase {
         localKeysPayload,
         nextRecoveryLocalKeysProtectionKey,
       );
+    const localAccessGenerationId =
+      expectedDeviceAccessMaterial === null
+        ? await this.ids.generateId()
+        : expectedDeviceAccessMaterial.localAccessGenerationId;
     const deviceAccessMaterial: DeviceAccessMaterial = {
       revision: (expectedDeviceAccessMaterial?.revision ?? 0) + 1,
+      localAccessGenerationId,
       vaultId: params.vaultId,
       deviceId: recoveryBackup.deviceId,
       algorithmSuiteId: this.crypto.algorithmSuite.id,
@@ -301,6 +313,7 @@ export class RecoverDeviceAccessUseCase {
     };
     const deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup = {
       revision: recoveryBackup.revision + 1,
+      localAccessGenerationId,
       vaultId: params.vaultId,
       deviceId: recoveryBackup.deviceId,
       algorithmSuiteId: this.crypto.algorithmSuite.id,
@@ -313,7 +326,11 @@ export class RecoverDeviceAccessUseCase {
     await this.vaultLocalRepository.saveRecoveredDeviceAccess({
       expectedDeviceAccessMaterialRevision:
         expectedDeviceAccessMaterial?.revision ?? null,
+      expectedDeviceAccessMaterialGenerationId:
+        expectedDeviceAccessMaterial?.localAccessGenerationId ?? null,
       expectedDeviceAccessRecoveryBackupRevision: recoveryBackup.revision,
+      expectedDeviceAccessRecoveryBackupGenerationId:
+        recoveryBackup.localAccessGenerationId,
       deviceAccessMaterial,
       deviceAccessRecoveryBackup,
     });

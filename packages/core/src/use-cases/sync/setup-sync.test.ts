@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
+import { replaceVaultSnapshotAfterNextSave } from "../../__tests__/fixtures/ports";
 import { createUnlockedVaultWithEntries } from "../../__tests__/fixtures/vault-entries";
 import {
   InvalidSyncConfigError,
@@ -42,6 +43,26 @@ function createContext() {
 }
 
 describe("SetupSyncUseCase", () => {
+  it("uploads the signed initial-sync snapshot when local storage replaces it after save", async () => {
+    const ctx = createContext();
+    const getPersistedSnapshot = replaceVaultSnapshotAfterNextSave(
+      ctx.ports,
+      ctx.vaultSnapshot,
+    );
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      syncConfig: ctx.values.syncConfigInput,
+    });
+
+    const uploadedSnapshot = vi.mocked(
+      ctx.ports.syncProvider.uploadVaultSnapshot,
+    ).mock.calls[0]?.[1];
+    expect(uploadedSnapshot).toBe(getPersistedSnapshot());
+    expect(uploadedSnapshot).not.toBe(ctx.saved.vaultSnapshot);
+    expect(ctx.saved.vaultSnapshot).toBe(ctx.vaultSnapshot);
+  });
+
   it("stores only the target in the vault and encrypts credentials locally", async () => {
     const ctx = createContext();
 

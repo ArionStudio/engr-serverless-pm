@@ -11,7 +11,8 @@ export interface VaultLocalRepositoryPort {
    * Atomically creates all local records for a new vault. Implementations must
    * reject when any local record already exists for the vault and avoid
    * leaving a partial descriptor/material/recovery-backup/snapshot set when
-   * this rejects.
+   * this rejects. Access material and its recovery backup must carry the same
+   * freshly generated `localAccessGenerationId`.
    */
   saveInitializedLocalVault: (params: {
     readonly descriptor: LocalVaultDescriptor;
@@ -41,22 +42,31 @@ export interface VaultLocalRepositoryPort {
 
   /**
    * Atomically replaces device access material only when the persisted record
-   * still has `expectedDeviceAccessMaterialRevision`. Rejects without
-   * changing the record when another writer replaced it first.
+   * still has `expectedDeviceAccessMaterialRevision` and
+   * `expectedLocalAccessGenerationId`, and the replacement retains that
+   * generation and device identity. Rejects with
+   * `DeviceAccessMaterialChangedError` without changing the record when
+   * another writer replaced it first.
    */
   saveDeviceAccessMaterial: (params: {
     readonly expectedDeviceAccessMaterialRevision: number;
+    readonly expectedLocalAccessGenerationId: string;
     readonly deviceAccessMaterial: DeviceAccessMaterial;
   }) => Promise<void>;
   /**
    * Atomically compares and replaces local device trust material and its
-   * recovery backup. `null` permits recovery when access material is absent.
-   * Implementations must reject without changing either record when either
-   * persisted revision no longer matches the expected revision.
+   * recovery backup. `null` expected material fields permit recovery when
+   * access material is absent and allow both replacements to use a fresh
+   * generation ID. Implementations must reject with
+   * `DeviceAccessMaterialChangedError` without changing either record when an
+   * expected revision, generation ID, or device identity no longer matches.
+   * Both replacements must carry the same generation ID.
    */
   saveRecoveredDeviceAccess: (params: {
     readonly expectedDeviceAccessMaterialRevision: number | null;
+    readonly expectedDeviceAccessMaterialGenerationId: string | null;
     readonly expectedDeviceAccessRecoveryBackupRevision: number;
+    readonly expectedDeviceAccessRecoveryBackupGenerationId: string;
     readonly deviceAccessMaterial: DeviceAccessMaterial;
     readonly deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup;
   }) => Promise<void>;
@@ -65,9 +75,6 @@ export interface VaultLocalRepositoryPort {
   ) => Promise<DeviceAccessMaterial | null>;
   removeDeviceAccessMaterial: (vaultId: string) => Promise<void>;
 
-  saveDeviceAccessRecoveryBackup: (
-    deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup,
-  ) => Promise<void>;
   getDeviceAccessRecoveryBackup: (
     vaultId: string,
   ) => Promise<DeviceAccessRecoveryBackup | null>;

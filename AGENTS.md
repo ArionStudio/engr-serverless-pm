@@ -63,6 +63,10 @@ Run project commands from repo root unless a task explicitly requires a subdirec
 - **Theme context**: Components using `useTheme()` need `ThemeProvider` wrapper.
 - **CVA + cn()**: Always merge CVA variants with `cn()` utility.
 - **No `delete` operator**: Do not use JavaScript `delete` anywhere in code.
+- **Domain type and policy separation**: Keep stable public domain types in
+  `.type.ts` modules. Keep context-specific pure policy operations in separate
+  internal modules, and do not use policy validation to assert a broader raw
+  input brand or export internal policy helpers through domain barrels.
 - **Device enrollment expiry**: Do not model enrollment expiry in core device-trust state; without a trusted time authority, local `expiresAt` checks are not security boundaries.
 
 ---

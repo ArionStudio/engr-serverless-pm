@@ -15,6 +15,7 @@ export function createUnlockVaultTestContext() {
 
   const deviceAccessMaterial: DeviceAccessMaterial = {
     revision: 1,
+    localAccessGenerationId: values.localAccessGenerationId,
     vaultId: values.vaultId,
     deviceId: values.deviceId,
     algorithmSuiteId: ports.crypto.algorithmSuite.id,

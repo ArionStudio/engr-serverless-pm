@@ -1,14 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import { createChangeMasterPasswordTestContext } from "../../__tests__/fixtures/change-master-password";
+import {
+  expectErrorDoesNotContainSecrets,
+  expectSecretSafeDeviceAccessMaterialChange,
+} from "../../__tests__/fixtures/device-access-errors";
+import type { RawMasterPassword } from "../../domain/master-password";
 import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
 import {
   DeviceAccessMaterialNotFoundForMasterPasswordChangeError,
   VaultMustBeUnlockedForMasterPasswordChangeError,
 } from "../../errors/change-master-password.errors";
-import {
-  DeviceAccessMaterialChangedError,
-  DeviceAccessMaterialIdentityMismatchError,
-} from "../../errors/vault-device.errors";
+import { InvalidNewMasterPasswordError } from "../../errors/master-password.errors";
+import { DeviceAccessMaterialIdentityMismatchError } from "../../errors/vault-device.errors";
 
 function expectSecretSafeIdentityMismatch(
   error: unknown,
@@ -27,43 +30,102 @@ function expectSecretSafeIdentityMismatch(
   );
   expect(error.cause).toBeUndefined();
 
-  for (const password of passwords) {
-    expect(String(error)).not.toContain(password);
-  }
-
-  for (const rawKey of rawKeys) {
-    expect(Object.values(error)).not.toContain(rawKey);
-  }
+  expectErrorDoesNotContainSecrets({
+    error,
+    stringSecrets: passwords,
+    objectSecrets: rawKeys,
+  });
 }
 
-function expectSecretSafeMaterialChange(
-  error: unknown,
-  vaultId: string,
-  passwords: readonly string[],
-  rawKeys: readonly ArrayBuffer[],
-): void {
-  expect(error).toBeInstanceOf(DeviceAccessMaterialChangedError);
+function createDeferredSignal() {
+  let resolveSignal: (() => void) | undefined;
+  const signaled = new Promise<void>((resolve) => {
+    resolveSignal = resolve;
+  });
 
-  if (!(error instanceof Error)) {
-    throw new Error("Expected a device access material conflict.");
-  }
+  return {
+    signal: () => {
+      if (resolveSignal === undefined) {
+        throw new Error("Expected a deferred signal resolver.");
+      }
 
-  expect(error.name).toBe("DeviceAccessMaterialChangedError");
-  expect(error.message).toBe(
-    `Device access material for vault "${vaultId}" changed before save.`,
+      resolveSignal();
+    },
+    signaled,
+  };
+}
+
+function deferWrapping(
+  ctx: ReturnType<typeof createChangeMasterPasswordTestContext>,
+) {
+  const wrappingStarted = createDeferredSignal();
+  const wrappingCanContinue = createDeferredSignal();
+
+  vi.mocked(ctx.ports.crypto.wrapLocalKeysPayload).mockImplementationOnce(
+    async () => {
+      wrappingStarted.signal();
+      await wrappingCanContinue.signaled;
+      return ctx.values.reprotectedLocalKeys;
+    },
   );
-  expect(error.cause).toBeUndefined();
 
-  for (const password of passwords) {
-    expect(String(error)).not.toContain(password);
-  }
-
-  for (const rawKey of rawKeys) {
-    expect(Object.values(error)).not.toContain(rawKey);
-  }
+  return {
+    resume: wrappingCanContinue.signal,
+    started: wrappingStarted.signaled,
+  };
 }
 
 describe("ChangeMasterPasswordUseCase", () => {
+  it("rejects a new password below maximum strength before reading the session", async () => {
+    const ctx = createChangeMasterPasswordTestContext();
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        currentMasterPassword: "12345678901" as RawMasterPassword,
+        newMasterPassword: "correcthorsebatterystaple" as RawMasterPassword,
+      }),
+    ).rejects.toBeInstanceOf(InvalidNewMasterPasswordError);
+
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.get,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.getDeviceAccessMaterial,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.generateMasterPasswordSalt).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.crypto.generateLocalKeysProtectionSalt,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveDeviceAccessMaterial,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("accepts a maximum-strength new password while verifying a weak current password", async () => {
+    const ctx = createChangeMasterPasswordTestContext();
+    const currentMasterPassword = "12345678901" as RawMasterPassword;
+    const newMasterPassword = "mQ8#sW3!cH7@uJ5$eR9%" as RawMasterPassword;
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      currentMasterPassword,
+      newMasterPassword,
+    });
+
+    expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenNthCalledWith(
+      1,
+      currentMasterPassword,
+      ctx.values.masterPasswordSalt,
+    );
+    expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenNthCalledWith(
+      2,
+      newMasterPassword,
+      ctx.values.newMasterPasswordSalt,
+    );
+  });
+
   it("re-protects local device access material with the new master password", async () => {
     const ctx = createChangeMasterPasswordTestContext();
 
@@ -451,22 +513,7 @@ describe("ChangeMasterPasswordUseCase", () => {
 
   it("does not allow vault lock to interleave with password rotation", async () => {
     const ctx = createChangeMasterPasswordTestContext();
-    let continueWrapping!: () => void;
-    let markWrappingStarted!: () => void;
-    const wrappingStarted = new Promise<void>((resolve) => {
-      markWrappingStarted = resolve;
-    });
-    const wrappingCanContinue = new Promise<void>((resolve) => {
-      continueWrapping = resolve;
-    });
-
-    vi.mocked(ctx.ports.crypto.wrapLocalKeysPayload).mockImplementationOnce(
-      async () => {
-        markWrappingStarted();
-        await wrappingCanContinue;
-        return ctx.values.reprotectedLocalKeys;
-      },
-    );
+    const wrapping = deferWrapping(ctx);
 
     const passwordRotation = ctx.useCase.execute({
       vaultId: ctx.values.vaultId,
@@ -474,7 +521,7 @@ describe("ChangeMasterPasswordUseCase", () => {
       newMasterPassword: ctx.values.newMasterPassword,
     });
 
-    await wrappingStarted;
+    await wrapping.started;
     const lock = ctx.ports.sessionServices.unlockedVaultSession.remove();
     await Promise.resolve();
 
@@ -483,7 +530,7 @@ describe("ChangeMasterPasswordUseCase", () => {
       ctx.ports.vaultLocalRepository.saveDeviceAccessMaterial,
     ).not.toHaveBeenCalled();
 
-    continueWrapping();
+    wrapping.resume();
     await passwordRotation;
     await lock;
 
@@ -495,22 +542,7 @@ describe("ChangeMasterPasswordUseCase", () => {
 
   it("serializes concurrent password rotations before reading access material", async () => {
     const ctx = createChangeMasterPasswordTestContext();
-    let continueFirstWrapping!: () => void;
-    let markFirstWrappingStarted!: () => void;
-    const firstWrappingStarted = new Promise<void>((resolve) => {
-      markFirstWrappingStarted = resolve;
-    });
-    const firstWrappingCanContinue = new Promise<void>((resolve) => {
-      continueFirstWrapping = resolve;
-    });
-
-    vi.mocked(ctx.ports.crypto.wrapLocalKeysPayload).mockImplementationOnce(
-      async () => {
-        markFirstWrappingStarted();
-        await firstWrappingCanContinue;
-        return ctx.values.reprotectedLocalKeys;
-      },
-    );
+    const firstWrapping = deferWrapping(ctx);
 
     const firstRotation = ctx.useCase.execute({
       vaultId: ctx.values.vaultId,
@@ -518,7 +550,7 @@ describe("ChangeMasterPasswordUseCase", () => {
       newMasterPassword: ctx.values.newMasterPassword,
     });
 
-    await firstWrappingStarted;
+    await firstWrapping.started;
 
     const secondRotation = ctx.useCase.execute({
       vaultId: ctx.values.vaultId,
@@ -531,7 +563,7 @@ describe("ChangeMasterPasswordUseCase", () => {
       ctx.ports.vaultLocalRepository.getDeviceAccessMaterial,
     ).toHaveBeenCalledTimes(1);
 
-    continueFirstWrapping();
+    firstWrapping.resume();
     await firstRotation;
     await secondRotation;
 
@@ -550,22 +582,7 @@ describe("ChangeMasterPasswordUseCase", () => {
 
   it("rejects instead of overwriting material replaced by another writer", async () => {
     const ctx = createChangeMasterPasswordTestContext();
-    let continueWrapping!: () => void;
-    let markWrappingStarted!: () => void;
-    const wrappingStarted = new Promise<void>((resolve) => {
-      markWrappingStarted = resolve;
-    });
-    const wrappingCanContinue = new Promise<void>((resolve) => {
-      continueWrapping = resolve;
-    });
-
-    vi.mocked(ctx.ports.crypto.wrapLocalKeysPayload).mockImplementationOnce(
-      async () => {
-        markWrappingStarted();
-        await wrappingCanContinue;
-        return ctx.values.reprotectedLocalKeys;
-      },
-    );
+    const wrapping = deferWrapping(ctx);
 
     const passwordRotation = ctx.useCase.execute({
       vaultId: ctx.values.vaultId,
@@ -573,7 +590,7 @@ describe("ChangeMasterPasswordUseCase", () => {
       newMasterPassword: ctx.values.newMasterPassword,
     });
 
-    await wrappingStarted;
+    await wrapping.started;
 
     const concurrentlyReplacedMaterial = {
       ...ctx.deviceAccessMaterial,
@@ -585,24 +602,60 @@ describe("ChangeMasterPasswordUseCase", () => {
     const materialChange = passwordRotation.catch(
       (caught: unknown) => caught,
     );
-    continueWrapping();
+    wrapping.resume();
     const error = await materialChange;
 
-    expectSecretSafeMaterialChange(
+    expectSecretSafeDeviceAccessMaterialChange({
       error,
-      ctx.values.vaultId,
-      [ctx.values.masterPassword, ctx.values.newMasterPassword],
-      [
+      vaultId: ctx.values.vaultId,
+      passwords: [ctx.values.masterPassword, ctx.values.newMasterPassword],
+      rawDeviceKeys: [
         ctx.values.devicePublicSignKey,
         ctx.values.devicePrivateSignKey,
         ctx.values.devicePublicVaultKey,
         ctx.values.devicePrivateVaultKey,
       ],
-    );
+    });
 
     expect(ctx.saved.deviceAccessMaterial).toEqual(
       concurrentlyReplacedMaterial,
     );
+  });
+
+  it("rejects reset revisions from a new local access generation", async () => {
+    const ctx = createChangeMasterPasswordTestContext();
+    const wrapping = deferWrapping(ctx);
+    const passwordRotation = ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      currentMasterPassword: ctx.values.masterPassword,
+      newMasterPassword: ctx.values.newMasterPassword,
+    });
+
+    await wrapping.started;
+
+    const reinitializedMaterial = {
+      ...ctx.deviceAccessMaterial,
+      localAccessGenerationId: ctx.values.replacementLocalAccessGenerationId,
+    };
+    ctx.saved.deviceAccessMaterial = reinitializedMaterial;
+
+    const materialChange = passwordRotation.catch(
+      (caught: unknown) => caught,
+    );
+    wrapping.resume();
+    expectSecretSafeDeviceAccessMaterialChange({
+      error: await materialChange,
+      vaultId: ctx.values.vaultId,
+      passwords: [ctx.values.masterPassword, ctx.values.newMasterPassword],
+      rawDeviceKeys: [
+        ctx.values.devicePublicSignKey,
+        ctx.values.devicePrivateSignKey,
+        ctx.values.devicePublicVaultKey,
+        ctx.values.devicePrivateVaultKey,
+      ],
+    });
+
+    expect(ctx.saved.deviceAccessMaterial).toEqual(reinitializedMaterial);
   });
 
   it("does not save updated access material when current password unwrap fails", async () => {

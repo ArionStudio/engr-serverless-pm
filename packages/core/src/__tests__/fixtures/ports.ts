@@ -54,6 +54,60 @@ export type SavedCoreRecords = {
 
 export type CoreTestPorts = ReturnType<typeof createCoreTestPorts>;
 
+function requirePersistedSnapshot(
+  snapshot: VaultSnapshot | undefined,
+): VaultSnapshot {
+  if (snapshot === undefined) {
+    throw new Error("Expected the workflow to persist a vault snapshot.");
+  }
+
+  return snapshot;
+}
+
+export function replaceVaultSnapshotAfterNextSave(
+  ports: CoreTestPorts,
+  replacement: VaultSnapshot,
+): () => VaultSnapshot {
+  const save = vi.mocked(
+    ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+  );
+  const saveImplementation = save.getMockImplementation();
+  let persistedSnapshot: VaultSnapshot | undefined;
+
+  if (saveImplementation === undefined) {
+    throw new Error("Expected the local snapshot save fixture implementation.");
+  }
+
+  save.mockImplementationOnce(async (params) => {
+    await saveImplementation(params);
+    persistedSnapshot = params.snapshot;
+    ports.saved.vaultSnapshot = replacement;
+  });
+
+  return () => requirePersistedSnapshot(persistedSnapshot);
+}
+
+export function replaceVaultSnapshotAfterNextInitializedSave(
+  ports: CoreTestPorts,
+  replacement: VaultSnapshot,
+): () => VaultSnapshot {
+  const save = vi.mocked(ports.vaultLocalRepository.saveInitializedLocalVault);
+  const saveImplementation = save.getMockImplementation();
+  let persistedSnapshot: VaultSnapshot | undefined;
+
+  if (saveImplementation === undefined) {
+    throw new Error("Expected the initialized vault save fixture implementation.");
+  }
+
+  save.mockImplementationOnce(async (params) => {
+    await saveImplementation(params);
+    persistedSnapshot = params.snapshot;
+    ports.saved.vaultSnapshot = replacement;
+  });
+
+  return () => requirePersistedSnapshot(persistedSnapshot);
+}
+
 export function createCoreTestPorts(
   values: CoreTestValues = createCoreTestValues(),
 ) {
@@ -355,6 +409,7 @@ export function createCoreTestPorts(
     saveDeviceAccessMaterial: vi.fn(
       async ({
         expectedDeviceAccessMaterialRevision,
+        expectedLocalAccessGenerationId,
         deviceAccessMaterial,
       }) => {
         const currentDeviceAccessMaterial = saved.deviceAccessMaterial;
@@ -362,8 +417,14 @@ export function createCoreTestPorts(
         if (
           currentDeviceAccessMaterial?.vaultId !==
             deviceAccessMaterial.vaultId ||
+          currentDeviceAccessMaterial?.deviceId !==
+            deviceAccessMaterial.deviceId ||
+          currentDeviceAccessMaterial?.localAccessGenerationId !==
+            expectedLocalAccessGenerationId ||
           currentDeviceAccessMaterial?.revision !==
-            expectedDeviceAccessMaterialRevision
+            expectedDeviceAccessMaterialRevision ||
+          deviceAccessMaterial.localAccessGenerationId !==
+            expectedLocalAccessGenerationId
         ) {
           throw new DeviceAccessMaterialChangedError(
             deviceAccessMaterial.vaultId,
@@ -376,7 +437,9 @@ export function createCoreTestPorts(
     saveRecoveredDeviceAccess: vi.fn(
       async ({
         expectedDeviceAccessMaterialRevision,
+        expectedDeviceAccessMaterialGenerationId,
         expectedDeviceAccessRecoveryBackupRevision,
+        expectedDeviceAccessRecoveryBackupGenerationId,
         deviceAccessMaterial,
         deviceAccessRecoveryBackup,
       }) => {
@@ -388,14 +451,33 @@ export function createCoreTestPorts(
           currentDeviceAccessMaterial.vaultId !== deviceAccessMaterial.vaultId
             ? null
             : currentDeviceAccessMaterial.revision;
+        const currentDeviceAccessMaterialGenerationId =
+          currentDeviceAccessMaterial === undefined ||
+          currentDeviceAccessMaterial.vaultId !== deviceAccessMaterial.vaultId
+            ? null
+            : currentDeviceAccessMaterial.localAccessGenerationId;
 
         if (
           currentDeviceAccessMaterialRevision !==
             expectedDeviceAccessMaterialRevision ||
+          currentDeviceAccessMaterialGenerationId !==
+            expectedDeviceAccessMaterialGenerationId ||
+          (currentDeviceAccessMaterial !== undefined &&
+            currentDeviceAccessMaterial.deviceId !==
+              deviceAccessMaterial.deviceId) ||
           currentDeviceAccessRecoveryBackup?.vaultId !==
             deviceAccessRecoveryBackup.vaultId ||
+          currentDeviceAccessRecoveryBackup?.deviceId !==
+            deviceAccessRecoveryBackup.deviceId ||
+          currentDeviceAccessRecoveryBackup?.localAccessGenerationId !==
+            expectedDeviceAccessRecoveryBackupGenerationId ||
           currentDeviceAccessRecoveryBackup?.revision !==
-            expectedDeviceAccessRecoveryBackupRevision
+            expectedDeviceAccessRecoveryBackupRevision ||
+          deviceAccessMaterial.localAccessGenerationId !==
+            deviceAccessRecoveryBackup.localAccessGenerationId ||
+          (expectedDeviceAccessMaterialGenerationId !== null &&
+            deviceAccessMaterial.localAccessGenerationId !==
+              expectedDeviceAccessMaterialGenerationId)
         ) {
           throw new DeviceAccessMaterialChangedError(
             deviceAccessMaterial.vaultId,
@@ -420,11 +502,6 @@ export function createCoreTestPorts(
     removeDeviceAccessMaterial: vi.fn(async () => {
       saved.deviceAccessMaterial = undefined;
     }),
-    saveDeviceAccessRecoveryBackup: vi.fn(
-      async (deviceAccessRecoveryBackup) => {
-        saved.deviceAccessRecoveryBackup = deviceAccessRecoveryBackup;
-      },
-    ),
     getDeviceAccessRecoveryBackup: vi.fn(async (vaultId) => {
       const deviceAccessRecoveryBackup = saved.deviceAccessRecoveryBackup;
 
@@ -548,6 +625,7 @@ export function createCoreTestPorts(
       .fn()
       .mockResolvedValueOnce(values.vaultId)
       .mockResolvedValueOnce(values.deviceId)
+      .mockResolvedValueOnce(values.localAccessGenerationId)
       .mockResolvedValue(values.sessionId),
   };
 

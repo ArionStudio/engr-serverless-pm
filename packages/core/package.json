@@ -5,11 +5,14 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./lib": "./src/lib/index.ts"
+    "./lib": "./src/lib/index.ts",
+    "./services": "./src/services/index.ts"
   },
   "scripts": {
+    "generate:common-passwords": "node ./scripts/generate-common-passwords.mjs",
     "test": "vitest",
-    "type-check": "tsc --noEmit -p tsconfig.json"
+    "type-check": "tsc --noEmit -p tsconfig.json",
+    "verify:common-passwords": "node ./scripts/generate-common-passwords.mjs --check"
   },
   "dependencies": {
     "zod": "^4.3.6"

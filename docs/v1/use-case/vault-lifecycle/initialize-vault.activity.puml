@@ -12,6 +12,11 @@ skinparam activity {
 start
 :Input:\nmasterPassword, deviceName;
 :Source:\npackages/core/src/use-cases/vault-lifecycle/initialize-vault.ts;
+:Calculate masterPassword strength;
+if (password score below 4?) then (yes)
+  :Throw InvalidNewMasterPasswordError;
+  stop
+endif
 :Generate vaultId;
 :Require vault can be activated;
 if (another vault is active?) then (yes)
@@ -19,7 +24,8 @@ if (another vault is active?) then (yes)
   stop
 endif
 
-:Generate deviceId, timestamp, vaultDisplayName;
+:Generate deviceId and fresh localAccessGenerationId;
+:Read timestamp and generate vaultDisplayName;
 :Generate vaultMasterKey, deviceSlotKey,\ndevice signing key pair;
 :Generate recovery key and recovery mnemonic;
 :Generate master-password salt and local-keys protection salt;
@@ -36,8 +42,7 @@ endif
 :Encrypt vault content with vaultMasterKey;
 :Build unsigned snapshot with one device slot;
 :Sign snapshot with device private signing key;
-:Build device access material;
-:Build device access recovery backup;
+:Build device access material and recovery backup\nwith revision 1 and the same localAccessGenerationId;
 :Build local vault descriptor;
 :Build unlocked vault session object;
 :saveInitializedLocalVault(descriptor,\naccess material, recovery backup, snapshot);

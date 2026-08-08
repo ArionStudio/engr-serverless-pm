@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
+import {
+  createDivergedTrustBaselineFixture,
+} from "../../__tests__/fixtures/device-trust";
+import {
+  createCoreTestPorts,
+  replaceVaultSnapshotAfterNextSave,
+} from "../../__tests__/fixtures/ports";
 import {
   createCoreTestValues,
   type CoreTestValues,
@@ -28,6 +34,7 @@ import {
 } from "../../errors/sync.errors";
 import { UnlockedVaultSessionExpiredError } from "../../errors/vault-session.errors";
 import { LocalVaultSnapshotChangedError } from "../../errors/vault-snapshot.errors";
+import { VaultSnapshotRollbackDetectedError } from "../../errors/vault-trust.errors";
 import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import { ConsumeDeviceRevocationUseCase } from "./consume-device-revocation";
 import { PrepareDeviceRevocationConsumptionUseCase } from "./prepare-device-revocation-consumption";
@@ -302,6 +309,58 @@ describe("PrepareDeviceRevocationConsumptionUseCase", () => {
       ctx.ports.crypto.encryptDeviceSyncCredentialState,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("rejects a revocation chain that diverges from the local trust baseline", async () => {
+    const ctx = createContext();
+    const localBaseline = ctx.localSnapshot.trustChain.certificates[1];
+    const remoteTransition = ctx.remoteSnapshot.trustChain.certificates[2];
+
+    if (localBaseline === undefined || remoteTransition === undefined) {
+      throw new Error("Expected local and remote trust transitions.");
+    }
+
+    const {
+      divergedBaseline,
+      divergedBaselineDigest,
+      forgedRemoteSnapshot,
+    } = createDivergedTrustBaselineFixture({
+      remoteSnapshot: ctx.remoteSnapshot,
+      remotePrefix: ctx.remoteSnapshot.trustChain.certificates.slice(0, 1),
+      localBaseline,
+      remoteTransition,
+      replacementSignature: ctx.values.enrollmentRequestSignature,
+    });
+    vi.mocked(
+      ctx.ports.crypto.digestVaultTrustCertificate,
+    ).mockImplementation(async (certificate) =>
+      certificate === divergedBaseline
+        ? divergedBaselineDigest
+        : ctx.values.vaultTrustCertificateDigest,
+    );
+    vi.mocked(ctx.ports.syncProvider.downloadVaultSnapshot).mockResolvedValue(
+      forgedRemoteSnapshot,
+    );
+    const useCase = new PrepareDeviceRevocationConsumptionUseCase(
+      ctx.ports.crypto,
+      ctx.ports.syncProvider,
+      ctx.ports.sessionServices.unlockedVaultSession,
+      ctx.snapshotService,
+      ctx.ports.vaultLocalRepository,
+    );
+
+    await expect(
+      useCase.execute({
+        vaultId: ctx.values.vaultId,
+        replacementSyncConfig: ctx.values.replacementSyncConfigInput,
+      }),
+    ).rejects.toBeInstanceOf(VaultSnapshotRollbackDetectedError);
+
+    expect(ctx.ports.crypto.openDeviceVaultKeyEnvelope).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
   });
 
   it("replaces a locally stale completed marker through verified revocation consumption", async () => {
@@ -662,6 +721,43 @@ describe("PrepareDeviceRevocationConsumptionUseCase", () => {
 });
 
 describe("ConsumeDeviceRevocationUseCase", () => {
+  it("uploads the signed consumption even when local storage replaces it after save", async () => {
+    const ctx = createContext();
+    const remoteVault = {
+      ...ctx.remoteVault,
+      tags: [
+        {
+          id: 1,
+          name: "Remote tag",
+          versionVector: { [ctx.values.deviceId]: 3 },
+        },
+      ],
+    };
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue(
+      remoteVault,
+    );
+    const getPersistedSnapshot = replaceVaultSnapshotAfterNextSave(
+      ctx.ports,
+      ctx.localSnapshot,
+    );
+
+    await ctx.useCase.execute({
+      ...createCommand(ctx),
+      resolution: {
+        entryResolutions: [],
+        tagResolutions: [{ tagId: 1, action: "use_remote" }],
+        deviceProfileResolutions: [],
+      },
+    });
+
+    const uploadedSnapshot = vi.mocked(
+      ctx.ports.syncProvider.uploadVaultSnapshot,
+    ).mock.calls[0]?.[1];
+    expect(uploadedSnapshot).toBe(getPersistedSnapshot());
+    expect(uploadedSnapshot).not.toBe(ctx.ports.saved.vaultSnapshot);
+    expect(ctx.ports.saved.vaultSnapshot).toBe(ctx.localSnapshot);
+  });
+
   it("opens the survivor envelope and commits the rotated snapshot", async () => {
     const ctx = createContext();
     const survivorSlot = ctx.remoteSnapshot.keySlots.deviceSlots[0];

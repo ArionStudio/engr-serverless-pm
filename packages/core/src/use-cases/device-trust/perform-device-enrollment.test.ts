@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
+import {
+  createCoreTestPorts,
+  replaceVaultSnapshotAfterNextInitializedSave,
+} from "../../__tests__/fixtures/ports";
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import { singlePasswordEntry } from "../../__tests__/fixtures/vault-entries";
@@ -8,6 +11,7 @@ import type {
   PendingDeviceEnrollment,
   VaultTrustChain,
 } from "../../domain/device-trust";
+import type { RawMasterPassword } from "../../domain/master-password";
 import type { VaultSnapshot } from "../../domain/snapshot";
 import { toVaultSnapshotDescriptor } from "../../domain/snapshot";
 import {
@@ -16,6 +20,7 @@ import {
   DeviceEnrollmentRemoteSnapshotChangedError,
   PendingDeviceEnrollmentMismatchError,
 } from "../../errors/device-enrollment.errors";
+import { InvalidNewMasterPasswordError } from "../../errors/master-password.errors";
 import {
   RemoteVaultSnapshotChangedError,
   SyncRemovalPendingError,
@@ -26,6 +31,10 @@ import { PerformDeviceEnrollmentUseCase } from "./perform-device-enrollment";
 function createContext(synced = false) {
   const values = createCoreTestValues();
   const ports = createCoreTestPorts(values);
+  vi.mocked(ports.ids.generateId).mockReset();
+  vi.mocked(ports.ids.generateId)
+    .mockResolvedValueOnce(values.localAccessGenerationId)
+    .mockResolvedValue(values.sessionId);
   const targetIdentity = {
     deviceId: values.pendingDeviceId,
     publicSignKey: values.pendingDevicePublicSignKey,
@@ -110,6 +119,7 @@ function createContext(synced = false) {
   const useCase = new PerformDeviceEnrollmentUseCase(
     ports.clock,
     ports.crypto,
+    ports.ids,
     ports.bip39,
     ports.syncProvider,
     ports.sessionServices.unlockedVaultSession,
@@ -121,6 +131,62 @@ function createContext(synced = false) {
 }
 
 describe("PerformDeviceEnrollmentUseCase", () => {
+  it("rejects a password below maximum strength before reading pending enrollment", async () => {
+    const ctx = createContext();
+
+    await expect(
+      ctx.useCase.execute({
+        enrollmentResponse: ctx.response,
+        masterPassword: "correcthorsebatterystaple" as RawMasterPassword,
+        deviceName: "New laptop",
+      }),
+    ).rejects.toBeInstanceOf(InvalidNewMasterPasswordError);
+
+    expect(
+      ctx.ports.vaultLocalRepository.getPendingDeviceEnrollment,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+  });
+
+  it("accepts a maximum-strength password", async () => {
+    const ctx = createContext();
+    const masterPassword = "vN7#qL2!xP9@rT4$zK6&" as RawMasterPassword;
+
+    await ctx.useCase.execute({
+      enrollmentResponse: ctx.response,
+      masterPassword,
+      deviceName: "New laptop",
+    });
+
+    expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenNthCalledWith(
+      1,
+      masterPassword,
+      ctx.values.masterPasswordSalt,
+    );
+  });
+
+  it("uploads the signed enrollment even when local storage replaces it after save", async () => {
+    const ctx = createContext(true);
+    const getPersistedSnapshot = replaceVaultSnapshotAfterNextInitializedSave(
+      ctx.ports,
+      ctx.response.snapshot,
+    );
+
+    await ctx.useCase.execute({
+      enrollmentResponse: ctx.response,
+      masterPassword: ctx.values.masterPassword,
+      deviceName: "New laptop",
+      syncConfig: ctx.values.syncConfigInput,
+    });
+
+    const uploadedSnapshot = vi.mocked(
+      ctx.ports.syncProvider.uploadVaultSnapshot,
+    ).mock.calls[0]?.[1];
+    expect(uploadedSnapshot).toBe(getPersistedSnapshot());
+    expect(uploadedSnapshot).not.toBe(ctx.ports.saved.vaultSnapshot);
+    expect(ctx.ports.saved.vaultSnapshot).toBe(ctx.response.snapshot);
+  });
+
   it("uses retained target keys and removes pending state only after completion", async () => {
     const ctx = createContext();
 
@@ -141,9 +207,13 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       },
     );
     expect(ctx.ports.saved.deviceAccessMaterial).toMatchObject({
+      localAccessGenerationId: ctx.values.localAccessGenerationId,
       deviceId: ctx.values.pendingDeviceId,
       devicePublicSignKey: ctx.values.pendingDevicePublicSignKey,
       devicePublicVaultKey: ctx.values.pendingDevicePublicVaultKey,
+    });
+    expect(ctx.ports.saved.deviceAccessRecoveryBackup).toMatchObject({
+      localAccessGenerationId: ctx.values.localAccessGenerationId,
     });
     expect(ctx.ports.saved.pendingDeviceEnrollment).toBeUndefined();
     expect(result.vault.deviceProfiles).toContainEqual(
@@ -543,6 +613,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     };
     const existingAccessMaterial = {
       revision: 1,
+      localAccessGenerationId: ctx.values.localAccessGenerationId,
       vaultId: ctx.values.vaultId,
       deviceId: ctx.values.deviceId,
       algorithmSuiteId: ctx.ports.crypto.algorithmSuite.id,

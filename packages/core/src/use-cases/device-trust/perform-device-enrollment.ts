@@ -6,6 +6,7 @@ import type {
   LocalKeysPayload,
 } from "../../domain/device-trust";
 import type { RawMasterPassword } from "../../domain/master-password";
+import { assertNewMasterPasswordMeetsPolicy } from "../../domain/master-password/master-password.utils";
 import type { RecoveryKeyMnemonic } from "../../domain/recovery";
 import type { SyncAccess, SyncSetupInput } from "../../domain/sync";
 import type {
@@ -44,6 +45,7 @@ import type { Bip39Port } from "../../ports/crypto/bip39.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { ClockPort } from "../../ports/system/clock.port";
+import type { IdPort } from "../../ports/system/id.port";
 import type { VaultDisplayNamePort } from "../../ports/vault/vault-display-name.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
@@ -69,6 +71,7 @@ export class PerformDeviceEnrollmentUseCase {
   private readonly bip39: Bip39Port;
   private readonly clock: ClockPort;
   private readonly crypto: CryptoPort;
+  private readonly ids: IdPort;
   private readonly syncProvider: SyncProviderPort;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
   private readonly vaultDisplayName: VaultDisplayNamePort;
@@ -78,6 +81,7 @@ export class PerformDeviceEnrollmentUseCase {
   constructor(
     clock: ClockPort,
     crypto: CryptoPort,
+    ids: IdPort,
     bip39: Bip39Port,
     syncProvider: SyncProviderPort,
     unlockedVaultSession: UnlockedVaultSessionService,
@@ -87,6 +91,7 @@ export class PerformDeviceEnrollmentUseCase {
     this.bip39 = bip39;
     this.clock = clock;
     this.crypto = crypto;
+    this.ids = ids;
     this.syncProvider = syncProvider;
     this.unlockedVaultSession = unlockedVaultSession;
     this.vaultDisplayName = vaultDisplayName;
@@ -97,6 +102,8 @@ export class PerformDeviceEnrollmentUseCase {
   async execute(
     params: PerformDeviceEnrollmentCommandParams,
   ): Promise<PerformDeviceEnrollmentResult> {
+    assertNewMasterPasswordMeetsPolicy(params.masterPassword);
+
     const response = params.enrollmentResponse;
     const pending = await this.vaultLocalRepository.getPendingDeviceEnrollment(
       response.requestId,
@@ -318,8 +325,10 @@ export class PerformDeviceEnrollmentUseCase {
         recoverySecretKey,
         recoveryLocalKeysProtectionSalt,
       );
+    const localAccessGenerationId = await this.ids.generateId();
     const deviceAccessMaterial: DeviceAccessMaterial = {
       revision: 1,
+      localAccessGenerationId,
       vaultId: response.vaultId,
       deviceId: request.payload.deviceId,
       algorithmSuiteId: this.crypto.algorithmSuite.id,
@@ -334,6 +343,7 @@ export class PerformDeviceEnrollmentUseCase {
     };
     const deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup = {
       revision: 1,
+      localAccessGenerationId,
       vaultId: response.vaultId,
       deviceId: request.payload.deviceId,
       algorithmSuiteId: this.crypto.algorithmSuite.id,

@@ -16,10 +16,24 @@ export class InvalidPasswordEntryError extends Error {
   }
 }
 
+export class PasswordEntryStrengthRequirementNotMetError extends Error {
+  constructor() {
+    super("Password entry does not meet the password strength requirement.");
+    this.name = "PasswordEntryStrengthRequirementNotMetError";
+  }
+}
+
 export class InvalidSearchEntryQueryError extends Error {
   constructor(cause: unknown) {
     super("Search entry query is invalid.", { cause });
     this.name = "InvalidSearchEntryQueryError";
+  }
+}
+
+export class InvalidEntryUrlError extends Error {
+  constructor() {
+    super("Entry URL is invalid.");
+    this.name = "InvalidEntryUrlError";
   }
 }
 

@@ -7752,7 +7752,6 @@ export const GENERATED_USERNAME_WORDS = [
   "yoga",
   "yogurt",
   "yonder",
-  "yoyo",
   "yummy",
   "zap",
   "zealous",
