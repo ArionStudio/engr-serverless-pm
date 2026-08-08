@@ -542,6 +542,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       createdAt: ctx.values.timestamp,
     };
     const existingAccessMaterial = {
+      revision: 1,
       vaultId: ctx.values.vaultId,
       deviceId: ctx.values.deviceId,
       algorithmSuiteId: ctx.ports.crypto.algorithmSuite.id,

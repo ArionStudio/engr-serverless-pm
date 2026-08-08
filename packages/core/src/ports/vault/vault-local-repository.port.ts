@@ -39,17 +39,27 @@ export interface VaultLocalRepositoryPort {
   listLocalVaultDescriptors: () => Promise<LocalVaultDescriptor[]>;
   removeLocalVaultDescriptor: (vaultId: string) => Promise<void>;
 
-  saveDeviceAccessMaterial: (
-    deviceAccessMaterial: DeviceAccessMaterial,
-  ) => Promise<void>;
   /**
-   * Atomically replaces local device trust material and its recovery backup.
-   * Implementations must avoid leaving only one side updated when this rejects.
+   * Atomically replaces device access material only when the persisted record
+   * still has `expectedDeviceAccessMaterialRevision`. Rejects without
+   * changing the record when another writer replaced it first.
    */
-  saveRecoveredDeviceAccess: (
-    deviceAccessMaterial: DeviceAccessMaterial,
-    deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup,
-  ) => Promise<void>;
+  saveDeviceAccessMaterial: (params: {
+    readonly expectedDeviceAccessMaterialRevision: number;
+    readonly deviceAccessMaterial: DeviceAccessMaterial;
+  }) => Promise<void>;
+  /**
+   * Atomically compares and replaces local device trust material and its
+   * recovery backup. `null` permits recovery when access material is absent.
+   * Implementations must reject without changing either record when either
+   * persisted revision no longer matches the expected revision.
+   */
+  saveRecoveredDeviceAccess: (params: {
+    readonly expectedDeviceAccessMaterialRevision: number | null;
+    readonly expectedDeviceAccessRecoveryBackupRevision: number;
+    readonly deviceAccessMaterial: DeviceAccessMaterial;
+    readonly deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup;
+  }) => Promise<void>;
   getDeviceAccessMaterial: (
     vaultId: string,
   ) => Promise<DeviceAccessMaterial | null>;

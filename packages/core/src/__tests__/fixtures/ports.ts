@@ -33,6 +33,7 @@ import type { EncryptedDeviceSyncCredentialState } from "../../domain/sync";
 import type { PendingDeviceEnrollment } from "../../domain/device-trust";
 import { LocalVaultSnapshotChangedError } from "../../errors/vault-snapshot.errors";
 import { LocalVaultAlreadyInitializedError } from "../../errors/vault-lifecycle.errors";
+import { DeviceAccessMaterialChangedError } from "../../errors/vault-device.errors";
 
 export type SavedCoreRecords = {
   localVaultDescriptor?: LocalVaultDescriptor;
@@ -351,11 +352,56 @@ export function createCoreTestPorts(
     }),
     listLocalVaultDescriptors: vi.fn(),
     removeLocalVaultDescriptor: vi.fn(),
-    saveDeviceAccessMaterial: vi.fn(async (deviceAccessMaterial) => {
-      saved.deviceAccessMaterial = deviceAccessMaterial;
-    }),
+    saveDeviceAccessMaterial: vi.fn(
+      async ({
+        expectedDeviceAccessMaterialRevision,
+        deviceAccessMaterial,
+      }) => {
+        const currentDeviceAccessMaterial = saved.deviceAccessMaterial;
+
+        if (
+          currentDeviceAccessMaterial?.vaultId !==
+            deviceAccessMaterial.vaultId ||
+          currentDeviceAccessMaterial?.revision !==
+            expectedDeviceAccessMaterialRevision
+        ) {
+          throw new DeviceAccessMaterialChangedError(
+            deviceAccessMaterial.vaultId,
+          );
+        }
+
+        saved.deviceAccessMaterial = deviceAccessMaterial;
+      },
+    ),
     saveRecoveredDeviceAccess: vi.fn(
-      async (deviceAccessMaterial, deviceAccessRecoveryBackup) => {
+      async ({
+        expectedDeviceAccessMaterialRevision,
+        expectedDeviceAccessRecoveryBackupRevision,
+        deviceAccessMaterial,
+        deviceAccessRecoveryBackup,
+      }) => {
+        const currentDeviceAccessMaterial = saved.deviceAccessMaterial;
+        const currentDeviceAccessRecoveryBackup =
+          saved.deviceAccessRecoveryBackup;
+        const currentDeviceAccessMaterialRevision =
+          currentDeviceAccessMaterial === undefined ||
+          currentDeviceAccessMaterial.vaultId !== deviceAccessMaterial.vaultId
+            ? null
+            : currentDeviceAccessMaterial.revision;
+
+        if (
+          currentDeviceAccessMaterialRevision !==
+            expectedDeviceAccessMaterialRevision ||
+          currentDeviceAccessRecoveryBackup?.vaultId !==
+            deviceAccessRecoveryBackup.vaultId ||
+          currentDeviceAccessRecoveryBackup?.revision !==
+            expectedDeviceAccessRecoveryBackupRevision
+        ) {
+          throw new DeviceAccessMaterialChangedError(
+            deviceAccessMaterial.vaultId,
+          );
+        }
+
         saved.deviceAccessMaterial = deviceAccessMaterial;
         saved.deviceAccessRecoveryBackup = deviceAccessRecoveryBackup;
       },

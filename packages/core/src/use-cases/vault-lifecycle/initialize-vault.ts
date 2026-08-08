@@ -202,6 +202,7 @@ export class InitializeVaultUseCase {
     };
 
     const deviceAccessMaterial: DeviceAccessMaterial = {
+      revision: 1,
       vaultId,
       deviceId,
       algorithmSuiteId: this.crypto.algorithmSuite.id,
@@ -212,6 +213,7 @@ export class InitializeVaultUseCase {
       protectedLocalKeys,
     };
     const deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup = {
+      revision: 1,
       vaultId,
       deviceId,
       algorithmSuiteId: this.crypto.algorithmSuite.id,

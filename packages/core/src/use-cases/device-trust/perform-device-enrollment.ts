@@ -319,6 +319,7 @@ export class PerformDeviceEnrollmentUseCase {
         recoveryLocalKeysProtectionSalt,
       );
     const deviceAccessMaterial: DeviceAccessMaterial = {
+      revision: 1,
       vaultId: response.vaultId,
       deviceId: request.payload.deviceId,
       algorithmSuiteId: this.crypto.algorithmSuite.id,
@@ -332,6 +333,7 @@ export class PerformDeviceEnrollmentUseCase {
       ),
     };
     const deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup = {
+      revision: 1,
       vaultId: response.vaultId,
       deviceId: request.payload.deviceId,
       algorithmSuiteId: this.crypto.algorithmSuite.id,

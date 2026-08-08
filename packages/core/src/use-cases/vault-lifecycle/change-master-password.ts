@@ -7,6 +7,7 @@ import {
   DeviceAccessMaterialNotFoundForMasterPasswordChangeError,
   VaultMustBeUnlockedForMasterPasswordChangeError,
 } from "../../errors/change-master-password.errors";
+import { DeviceAccessMaterialIdentityMismatchError } from "../../errors/vault-device.errors";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 
 export type ChangeMasterPasswordCommandParams = {
@@ -32,77 +33,136 @@ export class ChangeMasterPasswordUseCase {
 
   async execute(params: ChangeMasterPasswordCommandParams): Promise<void> {
     const unlockedVaultSession = await this.unlockedVaultSession.get();
-    const unlockedVault = unlockedVaultSession?.unlockedVault;
 
-    if (unlockedVault?.vaultId !== params.vaultId) {
+    if (unlockedVaultSession?.unlockedVault.vaultId !== params.vaultId) {
       throw new VaultMustBeUnlockedForMasterPasswordChangeError(params.vaultId);
     }
 
-    const deviceAccessMaterial =
-      await this.vaultLocalRepository.getDeviceAccessMaterial(params.vaultId);
+    const unlockedVault = unlockedVaultSession.unlockedVault;
 
-    if (deviceAccessMaterial === null) {
-      throw new DeviceAccessMaterialNotFoundForMasterPasswordChangeError(
-        params.vaultId,
-      );
-    }
+    await this.unlockedVaultSession.persistForActiveSession(
+      unlockedVaultSession.sessionId,
+      params.vaultId,
+      async () => {
+        const deviceAccessMaterial =
+          await this.vaultLocalRepository.getDeviceAccessMaterial(
+            params.vaultId,
+          );
 
-    if (
-      deviceAccessMaterial.algorithmSuiteId !== this.crypto.algorithmSuite.id
-    ) {
-      throw new UnsupportedAlgorithmSuiteError({
-        vaultId: params.vaultId,
-        artifact: "device access material",
-        expectedAlgorithmSuiteId: this.crypto.algorithmSuite.id,
-        actualAlgorithmSuiteId: deviceAccessMaterial.algorithmSuiteId,
-      });
-    }
+        if (deviceAccessMaterial === null) {
+          throw new DeviceAccessMaterialNotFoundForMasterPasswordChangeError(
+            params.vaultId,
+          );
+        }
 
-    const currentLocalRootKey = await this.crypto.deriveLocalRootKey(
-      params.currentMasterPassword,
-      deviceAccessMaterial.masterPasswordSalt,
-    );
+        if (
+          deviceAccessMaterial.vaultId !== params.vaultId ||
+          deviceAccessMaterial.deviceId !== unlockedVault.deviceId
+        ) {
+          throw new DeviceAccessMaterialIdentityMismatchError(params.vaultId);
+        }
 
-    const currentLocalKeysProtectionKey =
-      await this.crypto.deriveLocalKeysProtectionKey(
-        currentLocalRootKey,
-        deviceAccessMaterial.localKeysProtectionSalt,
-      );
+        if (
+          deviceAccessMaterial.algorithmSuiteId !==
+          this.crypto.algorithmSuite.id
+        ) {
+          throw new UnsupportedAlgorithmSuiteError({
+            vaultId: params.vaultId,
+            artifact: "device access material",
+            expectedAlgorithmSuiteId: this.crypto.algorithmSuite.id,
+            actualAlgorithmSuiteId: deviceAccessMaterial.algorithmSuiteId,
+          });
+        }
 
-    const localKeysPayload = await this.crypto.unwrapLocalKeysPayload(
-      deviceAccessMaterial.protectedLocalKeys,
-      currentLocalKeysProtectionKey,
-    );
+        const trustedDevice =
+          unlockedVault.trustedSnapshotContext.trust.trustedDevices.find(
+            (device) => device.deviceId === unlockedVault.deviceId,
+          );
 
-    const newMasterPasswordSalt =
-      await this.crypto.generateMasterPasswordSalt();
-    const newLocalRootKey = await this.crypto.deriveLocalRootKey(
-      params.newMasterPassword,
-      newMasterPasswordSalt,
-    );
+        if (
+          trustedDevice === undefined ||
+          !(await this.crypto.verifyDeviceSignKeyPair(
+            deviceAccessMaterial.devicePublicSignKey,
+            unlockedVault.devicePrivateSignKey,
+          )) ||
+          !(await this.crypto.verifyDeviceVaultKeyPair(
+            deviceAccessMaterial.devicePublicVaultKey,
+            unlockedVault.devicePrivateVaultKey,
+          )) ||
+          !(await this.crypto.verifyDeviceSignKeyPair(
+            trustedDevice.publicSignKey,
+            unlockedVault.devicePrivateSignKey,
+          )) ||
+          !(await this.crypto.verifyDeviceVaultKeyPair(
+            trustedDevice.publicVaultKey,
+            unlockedVault.devicePrivateVaultKey,
+          ))
+        ) {
+          throw new DeviceAccessMaterialIdentityMismatchError(params.vaultId);
+        }
 
-    const newLocalKeysProtectionSalt =
-      await this.crypto.generateLocalKeysProtectionSalt();
-    const newLocalKeysProtectionKey =
-      await this.crypto.deriveLocalKeysProtectionKey(
-        newLocalRootKey,
-        newLocalKeysProtectionSalt,
-      );
+        const currentLocalRootKey = await this.crypto.deriveLocalRootKey(
+          params.currentMasterPassword,
+          deviceAccessMaterial.masterPasswordSalt,
+        );
 
-    const protectedLocalKeys = await this.crypto.wrapLocalKeysPayload(
-      localKeysPayload,
-      newLocalKeysProtectionKey,
-    );
+        const currentLocalKeysProtectionKey =
+          await this.crypto.deriveLocalKeysProtectionKey(
+            currentLocalRootKey,
+            deviceAccessMaterial.localKeysProtectionSalt,
+          );
 
-    const updatedDeviceAccessMaterial: DeviceAccessMaterial = {
-      ...deviceAccessMaterial,
-      masterPasswordSalt: newMasterPasswordSalt,
-      localKeysProtectionSalt: newLocalKeysProtectionSalt,
-      protectedLocalKeys,
-    };
+        const localKeysPayload = await this.crypto.unwrapLocalKeysPayload(
+          deviceAccessMaterial.protectedLocalKeys,
+          currentLocalKeysProtectionKey,
+        );
 
-    await this.vaultLocalRepository.saveDeviceAccessMaterial(
-      updatedDeviceAccessMaterial,
+        if (
+          !(await this.crypto.verifyDeviceSignKeyPair(
+            deviceAccessMaterial.devicePublicSignKey,
+            localKeysPayload.devicePrivateSignKey,
+          )) ||
+          !(await this.crypto.verifyDeviceVaultKeyPair(
+            deviceAccessMaterial.devicePublicVaultKey,
+            localKeysPayload.devicePrivateVaultKey,
+          ))
+        ) {
+          throw new DeviceAccessMaterialIdentityMismatchError(params.vaultId);
+        }
+
+        const newMasterPasswordSalt =
+          await this.crypto.generateMasterPasswordSalt();
+        const newLocalRootKey = await this.crypto.deriveLocalRootKey(
+          params.newMasterPassword,
+          newMasterPasswordSalt,
+        );
+
+        const newLocalKeysProtectionSalt =
+          await this.crypto.generateLocalKeysProtectionSalt();
+        const newLocalKeysProtectionKey =
+          await this.crypto.deriveLocalKeysProtectionKey(
+            newLocalRootKey,
+            newLocalKeysProtectionSalt,
+          );
+
+        const protectedLocalKeys = await this.crypto.wrapLocalKeysPayload(
+          localKeysPayload,
+          newLocalKeysProtectionKey,
+        );
+
+        const updatedDeviceAccessMaterial: DeviceAccessMaterial = {
+          ...deviceAccessMaterial,
+          revision: deviceAccessMaterial.revision + 1,
+          masterPasswordSalt: newMasterPasswordSalt,
+          localKeysProtectionSalt: newLocalKeysProtectionSalt,
+          protectedLocalKeys,
+        };
+
+        await this.vaultLocalRepository.saveDeviceAccessMaterial({
+          expectedDeviceAccessMaterialRevision: deviceAccessMaterial.revision,
+          deviceAccessMaterial: updatedDeviceAccessMaterial,
+        });
+      },
     );
   }
 }

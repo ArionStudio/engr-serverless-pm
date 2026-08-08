@@ -9,6 +9,7 @@ export function createChangeMasterPasswordTestContext() {
   const ports = createCoreTestPorts(values);
 
   const deviceAccessMaterial: DeviceAccessMaterial = {
+    revision: 1,
     vaultId: values.vaultId,
     deviceId: values.deviceId,
     algorithmSuiteId: ports.crypto.algorithmSuite.id,

@@ -11,6 +11,7 @@ import type { LocalKeysPayload } from "./local-protection.type";
  * words that protected that older backup.
  */
 export type DeviceAccessRecoveryBackup = {
+  readonly revision: number;
   readonly vaultId: string;
   readonly deviceId: string;
   readonly algorithmSuiteId: string;

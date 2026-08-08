@@ -61,6 +61,9 @@ export class RecoverDeviceAccessUseCase {
   ): Promise<RecoverDeviceAccessResult> {
     await this.unlockedVaultSession.requireVaultCanBeActivated(params.vaultId);
 
+    const expectedDeviceAccessMaterial =
+      await this.vaultLocalRepository.getDeviceAccessMaterial(params.vaultId);
+
     const recoveryBackup =
       await this.vaultLocalRepository.getDeviceAccessRecoveryBackup(
         params.vaultId,
@@ -286,6 +289,7 @@ export class RecoverDeviceAccessUseCase {
         nextRecoveryLocalKeysProtectionKey,
       );
     const deviceAccessMaterial: DeviceAccessMaterial = {
+      revision: (expectedDeviceAccessMaterial?.revision ?? 0) + 1,
       vaultId: params.vaultId,
       deviceId: recoveryBackup.deviceId,
       algorithmSuiteId: this.crypto.algorithmSuite.id,
@@ -296,6 +300,7 @@ export class RecoverDeviceAccessUseCase {
       protectedLocalKeys,
     };
     const deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup = {
+      revision: recoveryBackup.revision + 1,
       vaultId: params.vaultId,
       deviceId: recoveryBackup.deviceId,
       algorithmSuiteId: this.crypto.algorithmSuite.id,
@@ -305,10 +310,13 @@ export class RecoverDeviceAccessUseCase {
       protectedLocalKeys: nextRecoveryProtectedLocalKeys,
     };
 
-    await this.vaultLocalRepository.saveRecoveredDeviceAccess(
+    await this.vaultLocalRepository.saveRecoveredDeviceAccess({
+      expectedDeviceAccessMaterialRevision:
+        expectedDeviceAccessMaterial?.revision ?? null,
+      expectedDeviceAccessRecoveryBackupRevision: recoveryBackup.revision,
       deviceAccessMaterial,
       deviceAccessRecoveryBackup,
-    );
+    });
 
     return {
       deviceId: recoveryBackup.deviceId,

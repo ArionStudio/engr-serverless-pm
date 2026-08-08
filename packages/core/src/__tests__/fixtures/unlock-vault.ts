@@ -14,6 +14,7 @@ export function createUnlockVaultTestContext() {
     .mockResolvedValue(values.sessionId);
 
   const deviceAccessMaterial: DeviceAccessMaterial = {
+    revision: 1,
     vaultId: values.vaultId,
     deviceId: values.deviceId,
     algorithmSuiteId: ports.crypto.algorithmSuite.id,

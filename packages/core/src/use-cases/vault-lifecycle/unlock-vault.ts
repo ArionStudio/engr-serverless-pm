@@ -24,6 +24,7 @@ import { InvalidVaultLockDelayError } from "../../errors/vault-session.errors";
 import { PersistedVaultMismatchError } from "../../errors/vault-snapshot.errors";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import { VaultTrustService } from "../../services/trust/vault-trust.service";
+import { DeviceAccessMaterialIdentityMismatchError } from "../../errors/vault-device.errors";
 import { LocalVaultTrustCheckpointNotFoundError } from "../../errors/vault-trust.errors";
 import { VaultTrustStateInvalidError } from "../../errors/vault-trust.errors";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
@@ -90,6 +91,10 @@ export class UnlockVaultUseCase {
 
     if (deviceAccessMaterial === null) {
       throw new DeviceAccessMaterialNotFoundError(params.vaultId);
+    }
+
+    if (deviceAccessMaterial.vaultId !== params.vaultId) {
+      throw new DeviceAccessMaterialIdentityMismatchError(params.vaultId);
     }
 
     const vaultSnapshot = await this.vaultLocalRepository.getVaultSnapshot(

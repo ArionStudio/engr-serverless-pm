@@ -6,6 +6,9 @@ import {
   DeviceKeySlotNotFoundError,
   DeviceKeySlotVerificationFailedError,
 } from "../../errors/unlock-vault.errors";
+import {
+  DeviceAccessMaterialIdentityMismatchError,
+} from "../../errors/vault-device.errors";
 
 describe("UnlockVaultUseCase", () => {
   it("returns status and visible vault fields without stored secrets", async () => {
@@ -108,6 +111,33 @@ describe("UnlockVaultUseCase", () => {
     ).rejects.toBeInstanceOf(DeviceKeySlotNotFoundError);
 
     expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
+  });
+
+  it("rejects device access material for another vault before reading the snapshot", async () => {
+    const ctx = createUnlockVaultTestContext();
+    vi.mocked(
+      ctx.ports.vaultLocalRepository.getDeviceAccessMaterial,
+    ).mockResolvedValueOnce({
+      ...ctx.deviceAccessMaterial,
+      vaultId: "another-vault-id",
+    });
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 60_000,
+      }),
+    ).rejects.toBeInstanceOf(DeviceAccessMaterialIdentityMismatchError);
+
+    expect(
+      ctx.ports.vaultLocalRepository.getVaultSnapshot,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.vaultLockTasks.save).not.toHaveBeenCalled();
   });
 
   it.each(["signing", "wrapping"] as const)(
