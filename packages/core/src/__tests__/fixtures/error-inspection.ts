@@ -39,3 +39,41 @@ export function objectGraphContainsString(
 
   return visit(value);
 }
+
+export function objectGraphContainsReference(
+  value: unknown,
+  reference: object,
+): boolean {
+  const visited = new Set<object>();
+
+  function visit(current: unknown): boolean {
+    if (current === reference) {
+      return true;
+    }
+
+    if (
+      current === null ||
+      (typeof current !== "object" && typeof current !== "function")
+    ) {
+      return false;
+    }
+
+    if (visited.has(current)) {
+      return false;
+    }
+
+    visited.add(current);
+
+    return Reflect.ownKeys(current).some((propertyKey) => {
+      const descriptor = Object.getOwnPropertyDescriptor(current, propertyKey);
+
+      return (
+        descriptor !== undefined &&
+        "value" in descriptor &&
+        visit(descriptor.value)
+      );
+    });
+  }
+
+  return visit(value);
+}

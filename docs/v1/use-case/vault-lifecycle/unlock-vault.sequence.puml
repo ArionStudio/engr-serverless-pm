@@ -22,7 +22,14 @@ participant "ScheduledTaskPort" as Tasks
 Caller -> UC : execute(vaultId, masterPassword, lockAfterMs)
 UC -> UC : validate lockAfterMs
 UC -> Session : requireVaultCanBeActivated(vaultId)
-UC -> LocalRepo : getDeviceAccessMaterial(vaultId)
+UC -> LocalRepo : getDeviceAccessRecords(vaultId)
+break material missing
+  UC --> Caller : throw DeviceAccessMaterialNotFoundError
+end
+UC -> UC : verify companion-bound vault, device,\nalgorithm, public keys, and generation
+break material/backup identity mismatch
+  UC --> Caller : throw DeviceAccessMaterialIdentityMismatchError
+end
 UC -> LocalRepo : getVaultSnapshot(vaultId)
 UC -> UC : check algorithm suites, vault id, signer, device slot
 UC -> Crypto : verifyVaultSnapshotSignature(snapshot, signerSlot.publicSignKey)

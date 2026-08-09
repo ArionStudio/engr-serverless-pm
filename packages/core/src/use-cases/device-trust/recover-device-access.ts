@@ -1,5 +1,14 @@
 import type { DeviceAccessMaterial } from "../../domain/device-trust/device-access-material";
 import type { DeviceAccessRecoveryBackup } from "../../domain/device-trust/device-access-recovery-backup";
+import {
+  getNextDeviceAccessRevision,
+  INITIAL_DEVICE_ACCESS_REVISION,
+} from "../../domain/device-trust/device-access-revision";
+import {
+  areDeviceAccessRecordsConsistent,
+  isValidDeviceAccessRecordIdentity,
+  isValidLocalAccessGenerationId,
+} from "../../domain/device-trust/device-access-records";
 import type { LocalKeysPayload } from "../../domain/device-trust/local-protection.type";
 import type { RawMasterPassword } from "../../domain/master-password";
 import { assertNewMasterPasswordMeetsPolicy } from "../../domain/master-password/master-password.utils";
@@ -12,8 +21,10 @@ import {
   VaultSnapshotNotFoundError,
 } from "../../errors/unlock-vault.errors";
 import { PersistedVaultMismatchError } from "../../errors/vault-snapshot.errors";
+import { DeviceAccessMaterialChangedError } from "../../errors/vault-device.errors";
 import type { Bip39Port } from "../../ports/crypto/bip39.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
+import type { IdPort } from "../../ports/system/id.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import {
@@ -40,6 +51,7 @@ export type RecoverDeviceAccessResult = {
 export class RecoverDeviceAccessUseCase {
   private readonly bip39: Bip39Port;
   private readonly crypto: CryptoPort;
+  private readonly ids: IdPort;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
   private readonly vaultTrust: VaultTrustService;
@@ -47,11 +59,13 @@ export class RecoverDeviceAccessUseCase {
   constructor(
     bip39: Bip39Port,
     crypto: CryptoPort,
+    ids: IdPort,
     unlockedVaultSession: UnlockedVaultSessionService,
     vaultLocalRepository: VaultLocalRepositoryPort,
   ) {
     this.bip39 = bip39;
     this.crypto = crypto;
+    this.ids = ids;
     this.unlockedVaultSession = unlockedVaultSession;
     this.vaultLocalRepository = vaultLocalRepository;
     this.vaultTrust = new VaultTrustService(crypto);
@@ -64,10 +78,10 @@ export class RecoverDeviceAccessUseCase {
 
     await this.unlockedVaultSession.requireVaultCanBeActivated(params.vaultId);
 
-    const recoveryBackup =
-      await this.vaultLocalRepository.getDeviceAccessRecoveryBackup(
-        params.vaultId,
-      );
+    const {
+      deviceAccessMaterial: expectedDeviceAccessMaterial,
+      deviceAccessRecoveryBackup: recoveryBackup,
+    } = await this.vaultLocalRepository.getDeviceAccessRecords(params.vaultId);
 
     if (recoveryBackup === null) {
       throw new DeviceAccessRecoveryBackupNotFoundError(params.vaultId);
@@ -84,6 +98,41 @@ export class RecoverDeviceAccessUseCase {
         expectedAlgorithmSuiteId: this.crypto.algorithmSuite.id,
         actualAlgorithmSuiteId: recoveryBackup.algorithmSuiteId,
       });
+    }
+
+    if (
+      !isValidDeviceAccessRecordIdentity(recoveryBackup) ||
+      (expectedDeviceAccessMaterial !== null &&
+        !areDeviceAccessRecordsConsistent(
+          expectedDeviceAccessMaterial,
+          recoveryBackup,
+        ))
+    ) {
+      throw new DeviceAccessMaterialChangedError(params.vaultId);
+    }
+
+    const nextDeviceAccessMaterialRevision =
+      expectedDeviceAccessMaterial === null
+        ? INITIAL_DEVICE_ACCESS_REVISION
+        : getNextDeviceAccessRevision(expectedDeviceAccessMaterial.revision);
+    const nextDeviceAccessRecoveryBackupRevision = getNextDeviceAccessRevision(
+      recoveryBackup.revision,
+    );
+
+    if (
+      nextDeviceAccessMaterialRevision === null ||
+      nextDeviceAccessRecoveryBackupRevision === null
+    ) {
+      throw new DeviceAccessMaterialChangedError(params.vaultId);
+    }
+
+    const localAccessGenerationId = await this.ids.generateId();
+
+    if (
+      !isValidLocalAccessGenerationId(localAccessGenerationId) ||
+      localAccessGenerationId === recoveryBackup.localAccessGenerationId
+    ) {
+      throw new DeviceAccessMaterialChangedError(params.vaultId);
     }
 
     const vaultSnapshot = await this.vaultLocalRepository.getVaultSnapshot(
@@ -289,6 +338,8 @@ export class RecoverDeviceAccessUseCase {
         nextRecoveryLocalKeysProtectionKey,
       );
     const deviceAccessMaterial: DeviceAccessMaterial = {
+      revision: nextDeviceAccessMaterialRevision,
+      localAccessGenerationId,
       vaultId: params.vaultId,
       deviceId: recoveryBackup.deviceId,
       algorithmSuiteId: this.crypto.algorithmSuite.id,
@@ -299,6 +350,8 @@ export class RecoverDeviceAccessUseCase {
       protectedLocalKeys,
     };
     const deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup = {
+      revision: nextDeviceAccessRecoveryBackupRevision,
+      localAccessGenerationId,
       vaultId: params.vaultId,
       deviceId: recoveryBackup.deviceId,
       algorithmSuiteId: this.crypto.algorithmSuite.id,
@@ -308,10 +361,27 @@ export class RecoverDeviceAccessUseCase {
       protectedLocalKeys: nextRecoveryProtectedLocalKeys,
     };
 
-    await this.vaultLocalRepository.saveRecoveredDeviceAccess(
+    const expectedDeviceAccessMaterialState =
+      expectedDeviceAccessMaterial === null
+        ? {
+            expectedDeviceAccessMaterialRevision: null,
+            expectedDeviceAccessMaterialGenerationId: null,
+          }
+        : {
+            expectedDeviceAccessMaterialRevision:
+              expectedDeviceAccessMaterial.revision,
+            expectedDeviceAccessMaterialGenerationId:
+              expectedDeviceAccessMaterial.localAccessGenerationId,
+          };
+
+    await this.vaultLocalRepository.saveDeviceAccessRecords({
+      ...expectedDeviceAccessMaterialState,
+      expectedDeviceAccessRecoveryBackupRevision: recoveryBackup.revision,
+      expectedDeviceAccessRecoveryBackupGenerationId:
+        recoveryBackup.localAccessGenerationId,
       deviceAccessMaterial,
       deviceAccessRecoveryBackup,
-    );
+    });
 
     return {
       deviceId: recoveryBackup.deviceId,

@@ -19,9 +19,13 @@ if (invalid delay?) then (yes)
 endif
 
 :Require vault can be activated;
-:Load device access material;
-if (missing?) then (yes)
+:Atomically load device access material\nand its recovery backup;
+if (material missing?) then (yes)
   :Throw DeviceAccessMaterialNotFoundError;
+  stop
+endif
+if (backup missing or pair vault, device, algorithm,\npublic keys, or generation differ?) then (yes)
+  :Throw DeviceAccessMaterialIdentityMismatchError;
   stop
 endif
 

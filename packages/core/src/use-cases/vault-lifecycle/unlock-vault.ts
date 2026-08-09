@@ -1,5 +1,6 @@
 import type { LocalKeysPayload } from "../../domain/device-trust/local-protection.type";
 import type { RawMasterPassword } from "../../domain/master-password";
+import { areDeviceAccessRecordsConsistent } from "../../domain/device-trust/device-access-records";
 import { vaultLockDelayMsSchema } from "../../domain/scheduled-task/scheduled-task-delay.schema";
 import type { VaultLockDelayMs } from "../../domain/scheduled-task/scheduled-task-delay.type";
 import type { DeviceKeySlot } from "../../domain/snapshot/key-slot";
@@ -24,6 +25,7 @@ import { InvalidVaultLockDelayError } from "../../errors/vault-session.errors";
 import { PersistedVaultMismatchError } from "../../errors/vault-snapshot.errors";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import { VaultTrustService } from "../../services/trust/vault-trust.service";
+import { DeviceAccessMaterialIdentityMismatchError } from "../../errors/vault-device.errors";
 import { LocalVaultTrustCheckpointNotFoundError } from "../../errors/vault-trust.errors";
 import { VaultTrustStateInvalidError } from "../../errors/vault-trust.errors";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
@@ -85,11 +87,22 @@ export class UnlockVaultUseCase {
         params.vaultId,
       );
 
-    const deviceAccessMaterial =
-      await this.vaultLocalRepository.getDeviceAccessMaterial(params.vaultId);
+    const { deviceAccessMaterial, deviceAccessRecoveryBackup } =
+      await this.vaultLocalRepository.getDeviceAccessRecords(params.vaultId);
 
     if (deviceAccessMaterial === null) {
       throw new DeviceAccessMaterialNotFoundError(params.vaultId);
+    }
+
+    if (
+      deviceAccessRecoveryBackup === null ||
+      deviceAccessMaterial.vaultId !== params.vaultId ||
+      !areDeviceAccessRecordsConsistent(
+        deviceAccessMaterial,
+        deviceAccessRecoveryBackup,
+      )
+    ) {
+      throw new DeviceAccessMaterialIdentityMismatchError(params.vaultId);
     }
 
     const vaultSnapshot = await this.vaultLocalRepository.getVaultSnapshot(

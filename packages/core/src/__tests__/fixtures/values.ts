@@ -221,6 +221,11 @@ export function createCoreTestValues() {
     vaultLockActionId: "vault-lock-action-id",
     vaultDisplayName: "blue-river-4821",
     deviceId: "device-id",
+    localAccessGenerationId: "local-access-generation-id",
+    replacementLocalAccessGenerationId:
+      "replacement-local-access-generation-id",
+    secondReplacementLocalAccessGenerationId:
+      "second-replacement-local-access-generation-id",
     enrollmentId: "enrollment-id",
     requestId: "enrollment-request-id",
     pendingDeviceId: "pending-device-id",

@@ -1,5 +1,7 @@
 import type { DeviceAccessMaterial } from "../../domain/device-trust/device-access-material";
 import type { DeviceAccessRecoveryBackup } from "../../domain/device-trust/device-access-recovery-backup";
+import { INITIAL_DEVICE_ACCESS_REVISION } from "../../domain/device-trust/device-access-revision";
+import { isValidLocalAccessGenerationId } from "../../domain/device-trust/device-access-records";
 import type { DeviceProfile } from "../../domain/device-profile/device-profile";
 import type { LocalKeysPayload } from "../../domain/device-trust/local-protection.type";
 import type { RawMasterPassword } from "../../domain/master-password";
@@ -21,6 +23,7 @@ import type { VaultDisplayNamePort } from "../../ports/vault/vault-display-name.
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import { VaultTrustService } from "../../services/trust/vault-trust.service";
+import { DeviceAccessMaterialChangedError } from "../../errors/vault-device.errors";
 
 export type InitializeVaultCommandParams = {
   masterPassword: RawMasterPassword;
@@ -73,6 +76,11 @@ export class InitializeVaultUseCase {
       await this.unlockedVaultSession.requireVaultCanBeActivated(vaultId);
 
     const deviceId = await this.ids.generateId();
+    const localAccessGenerationId = await this.ids.generateId();
+
+    if (!isValidLocalAccessGenerationId(localAccessGenerationId)) {
+      throw new DeviceAccessMaterialChangedError(vaultId);
+    }
     const timestamp = this.clock.now();
     const vaultDisplayName =
       await this.vaultDisplayName.generateVaultDisplayName();
@@ -207,6 +215,8 @@ export class InitializeVaultUseCase {
     };
 
     const deviceAccessMaterial: DeviceAccessMaterial = {
+      revision: INITIAL_DEVICE_ACCESS_REVISION,
+      localAccessGenerationId,
       vaultId,
       deviceId,
       algorithmSuiteId: this.crypto.algorithmSuite.id,
@@ -217,6 +227,8 @@ export class InitializeVaultUseCase {
       protectedLocalKeys,
     };
     const deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup = {
+      revision: INITIAL_DEVICE_ACCESS_REVISION,
+      localAccessGenerationId,
       vaultId,
       deviceId,
       algorithmSuiteId: this.crypto.algorithmSuite.id,

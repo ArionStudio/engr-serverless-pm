@@ -7,6 +7,16 @@ import type {
 } from "../../domain/device-trust/brand-keys";
 import type { DeviceAccessMaterial } from "../../domain/device-trust/device-access-material";
 import type { DeviceAccessRecoveryBackup } from "../../domain/device-trust/device-access-recovery-backup";
+import {
+  getNextDeviceAccessRevision,
+  INITIAL_DEVICE_ACCESS_REVISION,
+} from "../../domain/device-trust/device-access-revision";
+import {
+  areDeviceAccessRecordsConsistent,
+  haveSameDeviceAccessIdentity,
+  isValidDeviceAccessRecordIdentity,
+  isValidLocalAccessGenerationId,
+} from "../../domain/device-trust/device-access-records";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import type { LocalVaultDescriptor } from "../../domain/vault/local-vault-descriptor";
 import type {
@@ -33,6 +43,7 @@ import type { EncryptedDeviceSyncCredentialState } from "../../domain/sync";
 import type { PendingDeviceEnrollment } from "../../domain/device-trust";
 import { LocalVaultSnapshotChangedError } from "../../errors/vault-snapshot.errors";
 import { LocalVaultAlreadyInitializedError } from "../../errors/vault-lifecycle.errors";
+import { DeviceAccessMaterialChangedError } from "../../errors/vault-device.errors";
 
 export type SavedCoreRecords = {
   localVaultDescriptor?: LocalVaultDescriptor;
@@ -95,7 +106,9 @@ export function replaceVaultSnapshotAfterNextInitializedSave(
   let persistedSnapshot: VaultSnapshot | undefined;
 
   if (saveImplementation === undefined) {
-    throw new Error("Expected the initialized vault save fixture implementation.");
+    throw new Error(
+      "Expected the initialized vault save fixture implementation.",
+    );
   }
 
   save.mockImplementationOnce(async (params) => {
@@ -356,6 +369,18 @@ export function createCoreTestPorts(
           throw new LocalVaultAlreadyInitializedError(descriptor.vaultId);
         }
 
+        if (
+          deviceAccessMaterial.revision !== INITIAL_DEVICE_ACCESS_REVISION ||
+          deviceAccessRecoveryBackup.revision !==
+            INITIAL_DEVICE_ACCESS_REVISION ||
+          !areDeviceAccessRecordsConsistent(
+            deviceAccessMaterial,
+            deviceAccessRecoveryBackup,
+          )
+        ) {
+          throw new DeviceAccessMaterialChangedError(descriptor.vaultId);
+        }
+
         saved.localVaultDescriptor = descriptor;
         saved.deviceAccessMaterial = deviceAccessMaterial;
         saved.deviceAccessRecoveryBackup = deviceAccessRecoveryBackup;
@@ -405,15 +430,114 @@ export function createCoreTestPorts(
     }),
     listLocalVaultDescriptors: vi.fn(),
     removeLocalVaultDescriptor: vi.fn(),
-    saveDeviceAccessMaterial: vi.fn(async (deviceAccessMaterial) => {
-      saved.deviceAccessMaterial = deviceAccessMaterial;
-    }),
-    saveRecoveredDeviceAccess: vi.fn(
-      async (deviceAccessMaterial, deviceAccessRecoveryBackup) => {
+    saveDeviceAccessRecords: vi.fn(
+      async ({
+        expectedDeviceAccessMaterialRevision,
+        expectedDeviceAccessMaterialGenerationId,
+        expectedDeviceAccessRecoveryBackupRevision,
+        expectedDeviceAccessRecoveryBackupGenerationId,
+        deviceAccessMaterial,
+        deviceAccessRecoveryBackup,
+      }) => {
+        const currentDeviceAccessMaterial = saved.deviceAccessMaterial;
+        const currentDeviceAccessRecoveryBackup =
+          saved.deviceAccessRecoveryBackup;
+        const currentDeviceAccessMaterialRevision =
+          currentDeviceAccessMaterial === undefined ||
+          currentDeviceAccessMaterial.vaultId !== deviceAccessMaterial.vaultId
+            ? null
+            : currentDeviceAccessMaterial.revision;
+        const currentDeviceAccessMaterialGenerationId =
+          currentDeviceAccessMaterial === undefined ||
+          currentDeviceAccessMaterial.vaultId !== deviceAccessMaterial.vaultId
+            ? null
+            : currentDeviceAccessMaterial.localAccessGenerationId;
+        const nextDeviceAccessMaterialRevision =
+          expectedDeviceAccessMaterialRevision === null
+            ? INITIAL_DEVICE_ACCESS_REVISION
+            : getNextDeviceAccessRevision(expectedDeviceAccessMaterialRevision);
+        const nextDeviceAccessRecoveryBackupRevision =
+          getNextDeviceAccessRevision(
+            expectedDeviceAccessRecoveryBackupRevision,
+          );
+        const isExpectedMaterialAbsent =
+          expectedDeviceAccessMaterialRevision === null &&
+          expectedDeviceAccessMaterialGenerationId === null;
+        const hasSplitMaterialExpectation =
+          (expectedDeviceAccessMaterialRevision === null) !==
+          (expectedDeviceAccessMaterialGenerationId === null);
+        const isCurrentMaterialAbsent =
+          currentDeviceAccessMaterial === undefined;
+
+        if (
+          nextDeviceAccessMaterialRevision === null ||
+          nextDeviceAccessRecoveryBackupRevision === null ||
+          hasSplitMaterialExpectation ||
+          currentDeviceAccessRecoveryBackup === undefined ||
+          isCurrentMaterialAbsent !== isExpectedMaterialAbsent ||
+          !isValidLocalAccessGenerationId(
+            expectedDeviceAccessRecoveryBackupGenerationId,
+          ) ||
+          (expectedDeviceAccessMaterialGenerationId !== null &&
+            !isValidLocalAccessGenerationId(
+              expectedDeviceAccessMaterialGenerationId,
+            )) ||
+          !isValidDeviceAccessRecordIdentity(
+            currentDeviceAccessRecoveryBackup,
+          ) ||
+          (currentDeviceAccessMaterial !== undefined &&
+            !areDeviceAccessRecordsConsistent(
+              currentDeviceAccessMaterial,
+              currentDeviceAccessRecoveryBackup,
+            )) ||
+          !areDeviceAccessRecordsConsistent(
+            deviceAccessMaterial,
+            deviceAccessRecoveryBackup,
+          ) ||
+          !haveSameDeviceAccessIdentity(
+            currentDeviceAccessRecoveryBackup,
+            deviceAccessRecoveryBackup,
+          ) ||
+          currentDeviceAccessMaterialRevision !==
+            expectedDeviceAccessMaterialRevision ||
+          currentDeviceAccessMaterialGenerationId !==
+            expectedDeviceAccessMaterialGenerationId ||
+          currentDeviceAccessRecoveryBackup?.localAccessGenerationId !==
+            expectedDeviceAccessRecoveryBackupGenerationId ||
+          currentDeviceAccessRecoveryBackup?.revision !==
+            expectedDeviceAccessRecoveryBackupRevision ||
+          deviceAccessMaterial.localAccessGenerationId ===
+            expectedDeviceAccessRecoveryBackupGenerationId ||
+          deviceAccessMaterial.revision !== nextDeviceAccessMaterialRevision ||
+          deviceAccessRecoveryBackup.revision !==
+            nextDeviceAccessRecoveryBackupRevision
+        ) {
+          throw new DeviceAccessMaterialChangedError(
+            deviceAccessMaterial.vaultId,
+          );
+        }
+
         saved.deviceAccessMaterial = deviceAccessMaterial;
         saved.deviceAccessRecoveryBackup = deviceAccessRecoveryBackup;
       },
     ),
+    getDeviceAccessRecords: vi.fn(async (vaultId) => {
+      const deviceAccessMaterial = saved.deviceAccessMaterial;
+      const deviceAccessRecoveryBackup = saved.deviceAccessRecoveryBackup;
+
+      return {
+        deviceAccessMaterial:
+          deviceAccessMaterial !== undefined &&
+          deviceAccessMaterial.vaultId === vaultId
+            ? deviceAccessMaterial
+            : null,
+        deviceAccessRecoveryBackup:
+          deviceAccessRecoveryBackup !== undefined &&
+          deviceAccessRecoveryBackup.vaultId === vaultId
+            ? deviceAccessRecoveryBackup
+            : null,
+      };
+    }),
     getDeviceAccessMaterial: vi.fn(async (vaultId) => {
       const deviceAccessMaterial = saved.deviceAccessMaterial;
 
@@ -428,11 +552,6 @@ export function createCoreTestPorts(
     removeDeviceAccessMaterial: vi.fn(async () => {
       saved.deviceAccessMaterial = undefined;
     }),
-    saveDeviceAccessRecoveryBackup: vi.fn(
-      async (deviceAccessRecoveryBackup) => {
-        saved.deviceAccessRecoveryBackup = deviceAccessRecoveryBackup;
-      },
-    ),
     getDeviceAccessRecoveryBackup: vi.fn(async (vaultId) => {
       const deviceAccessRecoveryBackup = saved.deviceAccessRecoveryBackup;
 
@@ -556,6 +675,7 @@ export function createCoreTestPorts(
       .fn()
       .mockResolvedValueOnce(values.vaultId)
       .mockResolvedValueOnce(values.deviceId)
+      .mockResolvedValueOnce(values.localAccessGenerationId)
       .mockResolvedValue(values.sessionId),
   };
 

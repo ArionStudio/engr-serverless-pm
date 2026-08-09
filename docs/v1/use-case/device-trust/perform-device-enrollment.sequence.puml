@@ -16,6 +16,7 @@ participant "PerformDeviceEnrollmentUseCase" as UC
 participant "UnlockedVaultSessionService" as Session
 participant "SyncProviderPort" as Sync
 participant "CryptoPort" as Crypto
+participant "IdPort" as Ids
 participant "VaultDisplayNamePort" as Names
 database "VaultLocalRepositoryPort" as LocalRepo
 participant "Domain device mutation" as Domain
@@ -43,6 +44,8 @@ UC -> Domain : addDeviceProfileToVault(vault, pendingDeviceId, deviceName, now)
 UC -> Crypto : encryptVaultSnapshotContent(registeredVault, vaultMasterKey)
 UC -> Crypto : signVaultSnapshot(unsignedSnapshot, pendingPrivateSignKey)
 UC -> Crypto : verifyVaultSnapshotSignature(registeredSnapshot, pendingPublicSignKey)
+UC -> Ids : generateId() for fresh localAccessGenerationId
+UC -> UC : validate localAccessGenerationId
 UC -> LocalRepo : saveInitializedLocalVault(descriptor, accessMaterial, recoveryBackup, registeredSnapshot)
 UC -> Session : commit(unlockedVault, registeredSnapshot.vector)
 alt commit fails

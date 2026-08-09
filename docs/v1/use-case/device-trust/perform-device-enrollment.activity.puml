@@ -106,8 +106,13 @@ if (signature verification fails?) then (yes)
   stop
 endif
 
-:Build device access material and local vault descriptor;
-:Build device access recovery backup;
+:Generate fresh localAccessGenerationId;
+if (localAccessGenerationId invalid?) then (yes)
+  :Throw DeviceAccessMaterialChangedError;
+  stop
+endif
+:Build device access material and recovery backup\nwith revision 1 and the same localAccessGenerationId;
+:Build local vault descriptor;
 :Save initialized local vault for new device\nincluding recovery backup;
 if (commit unlocked session succeeds?) then (yes)
   :Continue;

@@ -23,7 +23,8 @@ if (another vault is active?) then (yes)
   stop
 endif
 
-:Read local device access recovery backup;
+:Atomically read current device access material and recovery backup;
+:Capture both revisions, both generations, or material absence;
 if (backup missing?) then (yes)
   :Throw DeviceAccessRecoveryBackupNotFoundError;
   stop
@@ -34,6 +35,22 @@ if (backup vault id differs?) then (yes)
 endif
 if (backup algorithm unsupported?) then (yes)
   :Throw UnsupportedAlgorithmSuiteError;
+  stop
+endif
+if (present material and backup vault, device, algorithm,\npublic keys, or localAccessGenerationId differ?) then (yes)
+  :Throw DeviceAccessMaterialChangedError;
+  stop
+endif
+:Validate present material and backup revisions are
+positive safe integers with available exact successors;
+if (either revision invalid or exhausted?) then (yes)
+  :Throw DeviceAccessMaterialChangedError;
+  stop
+endif
+:Generate a fresh localAccessGenerationId;
+:Validate the generated generation ID;
+if (generation ID invalid or reused?) then (yes)
+  :Throw DeviceAccessMaterialChangedError;
   stop
 endif
 
@@ -96,9 +113,12 @@ endif
 :Derive fresh recovery local-keys protection key;
 :Wrap same local keys payload for new recovery backup;
 
-:Build DeviceAccessMaterial;
-:Build replacement DeviceAccessRecoveryBackup;
-:Atomically save recovered device access material and recovery backup;
+:Build both replacements with next revisions\nand the selected localAccessGenerationId;
+:Atomically compare-and-save both records using the\ncaptured revisions and localAccessGenerationId;
+if (either persisted revision or generation changed first?) then (yes)
+  :Throw DeviceAccessMaterialChangedError\nwithout changing either record;
+  stop
+endif
 :Return deviceId and fresh recoveryMnemonicKey;
 stop
 @enduml

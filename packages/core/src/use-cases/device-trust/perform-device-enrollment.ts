@@ -5,6 +5,8 @@ import type {
   DeviceEnrollmentResponse,
   LocalKeysPayload,
 } from "../../domain/device-trust";
+import { INITIAL_DEVICE_ACCESS_REVISION } from "../../domain/device-trust/device-access-revision";
+import { isValidLocalAccessGenerationId } from "../../domain/device-trust/device-access-records";
 import type { RawMasterPassword } from "../../domain/master-password";
 import { assertNewMasterPasswordMeetsPolicy } from "../../domain/master-password/master-password.utils";
 import type { RecoveryKeyMnemonic } from "../../domain/recovery";
@@ -41,10 +43,12 @@ import {
   SyncRemovalPendingError,
 } from "../../errors/sync.errors";
 import { LocalVaultAlreadyInitializedError } from "../../errors/vault-lifecycle.errors";
+import { DeviceAccessMaterialChangedError } from "../../errors/vault-device.errors";
 import type { Bip39Port } from "../../ports/crypto/bip39.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { ClockPort } from "../../ports/system/clock.port";
+import type { IdPort } from "../../ports/system/id.port";
 import type { VaultDisplayNamePort } from "../../ports/vault/vault-display-name.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
@@ -70,6 +74,7 @@ export class PerformDeviceEnrollmentUseCase {
   private readonly bip39: Bip39Port;
   private readonly clock: ClockPort;
   private readonly crypto: CryptoPort;
+  private readonly ids: IdPort;
   private readonly syncProvider: SyncProviderPort;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
   private readonly vaultDisplayName: VaultDisplayNamePort;
@@ -79,6 +84,7 @@ export class PerformDeviceEnrollmentUseCase {
   constructor(
     clock: ClockPort,
     crypto: CryptoPort,
+    ids: IdPort,
     bip39: Bip39Port,
     syncProvider: SyncProviderPort,
     unlockedVaultSession: UnlockedVaultSessionService,
@@ -88,6 +94,7 @@ export class PerformDeviceEnrollmentUseCase {
     this.bip39 = bip39;
     this.clock = clock;
     this.crypto = crypto;
+    this.ids = ids;
     this.syncProvider = syncProvider;
     this.unlockedVaultSession = unlockedVaultSession;
     this.vaultDisplayName = vaultDisplayName;
@@ -321,7 +328,14 @@ export class PerformDeviceEnrollmentUseCase {
         recoverySecretKey,
         recoveryLocalKeysProtectionSalt,
       );
+    const localAccessGenerationId = await this.ids.generateId();
+
+    if (!isValidLocalAccessGenerationId(localAccessGenerationId)) {
+      throw new DeviceAccessMaterialChangedError(response.vaultId);
+    }
     const deviceAccessMaterial: DeviceAccessMaterial = {
+      revision: INITIAL_DEVICE_ACCESS_REVISION,
+      localAccessGenerationId,
       vaultId: response.vaultId,
       deviceId: request.payload.deviceId,
       algorithmSuiteId: this.crypto.algorithmSuite.id,
@@ -335,6 +349,8 @@ export class PerformDeviceEnrollmentUseCase {
       ),
     };
     const deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup = {
+      revision: INITIAL_DEVICE_ACCESS_REVISION,
+      localAccessGenerationId,
       vaultId: response.vaultId,
       deviceId: request.payload.deviceId,
       algorithmSuiteId: this.crypto.algorithmSuite.id,
