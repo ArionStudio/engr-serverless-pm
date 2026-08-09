@@ -1,5 +1,6 @@
 import type { DeviceAccessMaterial } from "../../domain/device-trust/device-access-material";
 import type { DeviceAccessRecoveryBackup } from "../../domain/device-trust/device-access-recovery-backup";
+import { INITIAL_DEVICE_ACCESS_REVISION } from "../../domain/device-trust/device-access-revision";
 import type { CoreTestValues } from "./values";
 
 export function createDeviceAccessRecords(
@@ -11,7 +12,7 @@ export function createDeviceAccessRecords(
 } {
   return {
     deviceAccessMaterial: {
-      revision: 1,
+      revision: INITIAL_DEVICE_ACCESS_REVISION,
       localAccessGenerationId: values.localAccessGenerationId,
       vaultId: values.vaultId,
       deviceId: values.deviceId,
@@ -23,7 +24,7 @@ export function createDeviceAccessRecords(
       protectedLocalKeys: values.protectedLocalKeys,
     },
     deviceAccessRecoveryBackup: {
-      revision: 1,
+      revision: INITIAL_DEVICE_ACCESS_REVISION,
       localAccessGenerationId: values.localAccessGenerationId,
       vaultId: values.vaultId,
       deviceId: values.deviceId,

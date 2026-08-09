@@ -4,6 +4,7 @@ import { singlePasswordEntry } from "../../__tests__/fixtures/vault-entries";
 import type { RawMasterPassword } from "../../domain/master-password";
 import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
 import {
+  DeviceAccessMaterialNotFoundError,
   DeviceKeySlotNotFoundError,
   DeviceKeySlotVerificationFailedError,
 } from "../../errors/unlock-vault.errors";
@@ -157,6 +158,24 @@ describe("UnlockVaultUseCase", () => {
       ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.vaultLockTasks.save).not.toHaveBeenCalled();
+  });
+
+  it("rejects missing device access material before reading the snapshot", async () => {
+    const ctx = createUnlockVaultTestContext();
+    ctx.saved.deviceAccessMaterial = undefined;
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 60_000,
+      }),
+    ).rejects.toBeInstanceOf(DeviceAccessMaterialNotFoundError);
+
+    expect(
+      ctx.ports.vaultLocalRepository.getVaultSnapshot,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
   });
 
   it("rejects material without a matching recovery companion before password derivation", async () => {

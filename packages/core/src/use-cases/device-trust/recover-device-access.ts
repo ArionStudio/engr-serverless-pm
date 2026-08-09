@@ -361,15 +361,21 @@ export class RecoverDeviceAccessUseCase {
       protectedLocalKeys: nextRecoveryProtectedLocalKeys,
     };
 
+    const expectedDeviceAccessMaterialState =
+      expectedDeviceAccessMaterial === null
+        ? {
+            expectedDeviceAccessMaterialRevision: null,
+            expectedDeviceAccessMaterialGenerationId: null,
+          }
+        : {
+            expectedDeviceAccessMaterialRevision:
+              expectedDeviceAccessMaterial.revision,
+            expectedDeviceAccessMaterialGenerationId:
+              expectedDeviceAccessMaterial.localAccessGenerationId,
+          };
+
     await this.vaultLocalRepository.saveDeviceAccessRecords({
-      expectedDeviceAccessMaterialRevision:
-        expectedDeviceAccessMaterial === null
-          ? null
-          : expectedDeviceAccessMaterial.revision,
-      expectedDeviceAccessMaterialGenerationId:
-        expectedDeviceAccessMaterial === null
-          ? null
-          : expectedDeviceAccessMaterial.localAccessGenerationId,
+      ...expectedDeviceAccessMaterialState,
       expectedDeviceAccessRecoveryBackupRevision: recoveryBackup.revision,
       expectedDeviceAccessRecoveryBackupGenerationId:
         recoveryBackup.localAccessGenerationId,

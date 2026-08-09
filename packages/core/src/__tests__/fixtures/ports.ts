@@ -463,12 +463,16 @@ export function createCoreTestPorts(
         const isExpectedMaterialAbsent =
           expectedDeviceAccessMaterialRevision === null &&
           expectedDeviceAccessMaterialGenerationId === null;
+        const hasSplitMaterialExpectation =
+          (expectedDeviceAccessMaterialRevision === null) !==
+          (expectedDeviceAccessMaterialGenerationId === null);
         const isCurrentMaterialAbsent =
           currentDeviceAccessMaterial === undefined;
 
         if (
           nextDeviceAccessMaterialRevision === null ||
           nextDeviceAccessRecoveryBackupRevision === null ||
+          hasSplitMaterialExpectation ||
           currentDeviceAccessRecoveryBackup === undefined ||
           isCurrentMaterialAbsent !== isExpectedMaterialAbsent ||
           !isValidLocalAccessGenerationId(

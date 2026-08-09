@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { expectSecretSafeDeviceAccessMaterialChange } from "../../__tests__/fixtures/device-access-errors";
+import {
+  expectErrorDoesNotContainSecrets,
+  expectSecretSafeDeviceAccessMaterialChange,
+} from "../../__tests__/fixtures/device-access-errors";
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
 import type { DeviceAccessRecoveryBackup } from "../../domain/device-trust";
 import type { RawMasterPassword } from "../../domain/master-password";
@@ -690,6 +693,205 @@ describe("RecoverDeviceAccessUseCase", () => {
       expect(ctx.saved.deviceAccessMaterial).toEqual(
         originalDeviceAccessMaterial,
       );
+      expect(ctx.saved.deviceAccessRecoveryBackup).toEqual(ctx.backup);
+    },
+  );
+
+  it("atomically rejects split-null expectations for malformed present material", async () => {
+    const ctx = createContext();
+    const malformedDeviceAccessMaterial = {
+      ...ctx.deviceAccessMaterial,
+      revision: null as unknown as number,
+    };
+    ctx.saved.deviceAccessMaterial = malformedDeviceAccessMaterial;
+    const malformedSave = {
+      expectedDeviceAccessMaterialRevision: null,
+      expectedDeviceAccessMaterialGenerationId:
+        malformedDeviceAccessMaterial.localAccessGenerationId,
+      expectedDeviceAccessRecoveryBackupRevision: ctx.backup.revision,
+      expectedDeviceAccessRecoveryBackupGenerationId:
+        ctx.backup.localAccessGenerationId,
+      deviceAccessMaterial: {
+        ...ctx.deviceAccessMaterial,
+        revision: 1,
+        localAccessGenerationId:
+          ctx.values.replacementLocalAccessGenerationId,
+      },
+      deviceAccessRecoveryBackup: {
+        ...ctx.backup,
+        revision: ctx.backup.revision + 1,
+        localAccessGenerationId:
+          ctx.values.replacementLocalAccessGenerationId,
+      },
+    } as unknown as Parameters<
+      typeof ctx.ports.vaultLocalRepository.saveDeviceAccessRecords
+    >[0];
+
+    const materialChange = ctx.ports.vaultLocalRepository
+      .saveDeviceAccessRecords(malformedSave)
+      .catch((caught: unknown) => caught);
+
+    expectSecretSafeDeviceAccessMaterialChange({
+      error: await materialChange,
+      vaultId: ctx.values.vaultId,
+      passwords: [ctx.values.masterPassword, ctx.values.newMasterPassword],
+      rawDeviceKeys: [
+        ctx.values.devicePublicSignKey,
+        ctx.values.devicePrivateSignKey,
+        ctx.values.devicePublicVaultKey,
+        ctx.values.devicePrivateVaultKey,
+      ],
+    });
+    expect(ctx.saved.deviceAccessMaterial).toEqual(
+      malformedDeviceAccessMaterial,
+    );
+    expect(ctx.saved.deviceAccessRecoveryBackup).toEqual(ctx.backup);
+  });
+
+  it.each([
+    {
+      expectedDeviceAccessMaterialRevision: null,
+      expectedDeviceAccessMaterialGenerationId:
+        "local-access-generation-id",
+    },
+    {
+      expectedDeviceAccessMaterialRevision: 1,
+      expectedDeviceAccessMaterialGenerationId: null,
+    },
+  ] as const)(
+    "atomically rejects split-null absent-material expectations %#",
+    async ({
+      expectedDeviceAccessMaterialRevision,
+      expectedDeviceAccessMaterialGenerationId,
+    }) => {
+      const ctx = createContext();
+      ctx.saved.deviceAccessMaterial = undefined;
+      const malformedSave = {
+        expectedDeviceAccessMaterialRevision,
+        expectedDeviceAccessMaterialGenerationId,
+        expectedDeviceAccessRecoveryBackupRevision: ctx.backup.revision,
+        expectedDeviceAccessRecoveryBackupGenerationId:
+          ctx.backup.localAccessGenerationId,
+        deviceAccessMaterial: {
+          ...ctx.deviceAccessMaterial,
+          revision: 1,
+          localAccessGenerationId:
+            ctx.values.replacementLocalAccessGenerationId,
+        },
+        deviceAccessRecoveryBackup: {
+          ...ctx.backup,
+          revision: ctx.backup.revision + 1,
+          localAccessGenerationId:
+            ctx.values.replacementLocalAccessGenerationId,
+        },
+      } as unknown as Parameters<
+        typeof ctx.ports.vaultLocalRepository.saveDeviceAccessRecords
+      >[0];
+
+      const materialChange = ctx.ports.vaultLocalRepository
+        .saveDeviceAccessRecords(malformedSave)
+        .catch((caught: unknown) => caught);
+
+      expectSecretSafeDeviceAccessMaterialChange({
+        error: await materialChange,
+        vaultId: ctx.values.vaultId,
+        passwords: [ctx.values.masterPassword, ctx.values.newMasterPassword],
+        rawDeviceKeys: [
+          ctx.values.devicePublicSignKey,
+          ctx.values.devicePrivateSignKey,
+          ctx.values.devicePublicVaultKey,
+          ctx.values.devicePrivateVaultKey,
+        ],
+      });
+      expect(ctx.saved.deviceAccessMaterial).toBeUndefined();
+      expect(ctx.saved.deviceAccessRecoveryBackup).toEqual(ctx.backup);
+    },
+  );
+
+  it.each([
+    "vaultId",
+    "deviceId",
+    "algorithmSuiteId",
+    "devicePublicSignKey",
+    "devicePublicVaultKey",
+  ] as const)(
+    "atomically preserves the persisted backup when absent-material replacements change %s",
+    async (identityField) => {
+      const ctx = createContext();
+      ctx.saved.deviceAccessMaterial = undefined;
+      const replacementPublicSignKey = new Uint8Array([1])
+        .buffer as typeof ctx.values.devicePublicSignKey;
+      const replacementPublicVaultKey = new Uint8Array([2])
+        .buffer as typeof ctx.values.devicePublicVaultKey;
+      const replacementIdentity = {
+        vaultId:
+          identityField === "vaultId"
+            ? "different-vault-id"
+            : ctx.values.vaultId,
+        deviceId:
+          identityField === "deviceId"
+            ? ctx.values.pendingDeviceId
+            : ctx.values.deviceId,
+        algorithmSuiteId:
+          identityField === "algorithmSuiteId"
+            ? "spm-unsupported"
+            : ctx.backup.algorithmSuiteId,
+        devicePublicSignKey:
+          identityField === "devicePublicSignKey"
+            ? replacementPublicSignKey
+            : ctx.values.devicePublicSignKey,
+        devicePublicVaultKey:
+          identityField === "devicePublicVaultKey"
+            ? replacementPublicVaultKey
+            : ctx.values.devicePublicVaultKey,
+      };
+
+      const materialChange = ctx.ports.vaultLocalRepository
+        .saveDeviceAccessRecords({
+          expectedDeviceAccessMaterialRevision: null,
+          expectedDeviceAccessMaterialGenerationId: null,
+          expectedDeviceAccessRecoveryBackupRevision: ctx.backup.revision,
+          expectedDeviceAccessRecoveryBackupGenerationId:
+            ctx.backup.localAccessGenerationId,
+          deviceAccessMaterial: {
+            ...ctx.deviceAccessMaterial,
+            ...replacementIdentity,
+            revision: 1,
+            localAccessGenerationId:
+              ctx.values.replacementLocalAccessGenerationId,
+          },
+          deviceAccessRecoveryBackup: {
+            ...ctx.backup,
+            ...replacementIdentity,
+            revision: ctx.backup.revision + 1,
+            localAccessGenerationId:
+              ctx.values.replacementLocalAccessGenerationId,
+          },
+        })
+        .catch((caught: unknown) => caught);
+      const error = await materialChange;
+
+      expect(error).toBeInstanceOf(DeviceAccessMaterialChangedError);
+
+      if (!(error instanceof Error)) {
+        throw new Error("Expected a device access material conflict.");
+      }
+
+      expect(error.cause).toBeUndefined();
+      expectErrorDoesNotContainSecrets({
+        error,
+        stringSecrets: [
+          ctx.values.masterPassword,
+          ctx.values.newMasterPassword,
+        ],
+        objectSecrets: [
+          ctx.values.devicePublicSignKey,
+          ctx.values.devicePrivateSignKey,
+          ctx.values.devicePublicVaultKey,
+          ctx.values.devicePrivateVaultKey,
+        ],
+      });
+      expect(ctx.saved.deviceAccessMaterial).toBeUndefined();
       expect(ctx.saved.deviceAccessRecoveryBackup).toEqual(ctx.backup);
     },
   );

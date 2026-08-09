@@ -43,8 +43,9 @@ export interface VaultLocalRepositoryPort {
 
   /**
    * Atomically compares and replaces local device trust material and its
-   * recovery backup. `null` expected material fields permit recovery when
-   * access material is absent and must be rejected when material is present.
+   * recovery backup. Expected material revision and generation must either
+   * both be `null` when access material is absent or both identify the present
+   * material. All other combinations are conflicts.
    * Both replacements must use the same fresh generation ID, distinct from
    * both persisted generations.
    * Revisions are positive safe integers. Each replacement revision must be
@@ -53,19 +54,30 @@ export interface VaultLocalRepositoryPort {
    * Implementations must reject with
    * `DeviceAccessMaterialChangedError` without changing either record when an
    * expected revision, generation ID, or device identity no longer matches.
-   * When material is present, the persisted pair and both replacements must
-   * each carry the same vault ID, device ID, algorithm suite, public signing
-   * key, public vault key, and generation ID. The replacement pair may change
-   * only the generation and local-protection fields, not the device identity.
+   * The persisted recovery backup and both replacements must carry the same
+   * vault ID, device ID, algorithm suite, public signing key, and public vault
+   * key, including when material is absent. When material is present, it must
+   * share that identity and generation with the persisted backup. The
+   * replacement pair may change only the generation and local-protection
+   * fields, not the device identity.
    */
-  saveDeviceAccessRecords: (params: {
-    readonly expectedDeviceAccessMaterialRevision: number | null;
-    readonly expectedDeviceAccessMaterialGenerationId: string | null;
-    readonly expectedDeviceAccessRecoveryBackupRevision: number;
-    readonly expectedDeviceAccessRecoveryBackupGenerationId: string;
-    readonly deviceAccessMaterial: DeviceAccessMaterial;
-    readonly deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup;
-  }) => Promise<void>;
+  saveDeviceAccessRecords: (
+    params: (
+      | {
+          readonly expectedDeviceAccessMaterialRevision: null;
+          readonly expectedDeviceAccessMaterialGenerationId: null;
+        }
+      | {
+          readonly expectedDeviceAccessMaterialRevision: number;
+          readonly expectedDeviceAccessMaterialGenerationId: string;
+        }
+    ) & {
+      readonly expectedDeviceAccessRecoveryBackupRevision: number;
+      readonly expectedDeviceAccessRecoveryBackupGenerationId: string;
+      readonly deviceAccessMaterial: DeviceAccessMaterial;
+      readonly deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup;
+    },
+  ) => Promise<void>;
   /**
    * Atomically reads the local access material and recovery backup from one
    * repository snapshot. Each field is `null` only when that record is absent

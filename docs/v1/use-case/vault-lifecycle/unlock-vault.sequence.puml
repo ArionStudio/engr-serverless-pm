@@ -23,6 +23,9 @@ Caller -> UC : execute(vaultId, masterPassword, lockAfterMs)
 UC -> UC : validate lockAfterMs
 UC -> Session : requireVaultCanBeActivated(vaultId)
 UC -> LocalRepo : getDeviceAccessRecords(vaultId)
+break material missing
+  UC --> Caller : throw DeviceAccessMaterialNotFoundError
+end
 UC -> UC : verify companion-bound vault, device,\nalgorithm, public keys, and generation
 break material/backup identity mismatch
   UC --> Caller : throw DeviceAccessMaterialIdentityMismatchError
