@@ -45,6 +45,7 @@ UC -> Crypto : encryptVaultSnapshotContent(registeredVault, vaultMasterKey)
 UC -> Crypto : signVaultSnapshot(unsignedSnapshot, pendingPrivateSignKey)
 UC -> Crypto : verifyVaultSnapshotSignature(registeredSnapshot, pendingPublicSignKey)
 UC -> Ids : generateId() for fresh localAccessGenerationId
+UC -> UC : validate localAccessGenerationId
 UC -> LocalRepo : saveInitializedLocalVault(descriptor, accessMaterial, recoveryBackup, registeredSnapshot)
 UC -> Session : commit(unlockedVault, registeredSnapshot.vector)
 alt commit fails

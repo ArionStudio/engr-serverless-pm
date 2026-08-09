@@ -4,6 +4,11 @@ import {
   getNextDeviceAccessRevision,
   INITIAL_DEVICE_ACCESS_REVISION,
 } from "../../domain/device-trust/device-access-revision";
+import {
+  areDeviceAccessRecordsConsistent,
+  isValidDeviceAccessRecordIdentity,
+  isValidLocalAccessGenerationId,
+} from "../../domain/device-trust/device-access-records";
 import type { LocalKeysPayload } from "../../domain/device-trust/local-protection.type";
 import type { RawMasterPassword } from "../../domain/master-password";
 import { assertNewMasterPasswordMeetsPolicy } from "../../domain/master-password/master-password.utils";
@@ -73,13 +78,10 @@ export class RecoverDeviceAccessUseCase {
 
     await this.unlockedVaultSession.requireVaultCanBeActivated(params.vaultId);
 
-    const expectedDeviceAccessMaterial =
-      await this.vaultLocalRepository.getDeviceAccessMaterial(params.vaultId);
-
-    const recoveryBackup =
-      await this.vaultLocalRepository.getDeviceAccessRecoveryBackup(
-        params.vaultId,
-      );
+    const {
+      deviceAccessMaterial: expectedDeviceAccessMaterial,
+      deviceAccessRecoveryBackup: recoveryBackup,
+    } = await this.vaultLocalRepository.getDeviceAccessRecords(params.vaultId);
 
     if (recoveryBackup === null) {
       throw new DeviceAccessRecoveryBackupNotFoundError(params.vaultId);
@@ -99,11 +101,12 @@ export class RecoverDeviceAccessUseCase {
     }
 
     if (
-      expectedDeviceAccessMaterial !== null &&
-      (expectedDeviceAccessMaterial.vaultId !== recoveryBackup.vaultId ||
-        expectedDeviceAccessMaterial.deviceId !== recoveryBackup.deviceId ||
-        expectedDeviceAccessMaterial.localAccessGenerationId !==
-          recoveryBackup.localAccessGenerationId)
+      !isValidDeviceAccessRecordIdentity(recoveryBackup) ||
+      (expectedDeviceAccessMaterial !== null &&
+        !areDeviceAccessRecordsConsistent(
+          expectedDeviceAccessMaterial,
+          recoveryBackup,
+        ))
     ) {
       throw new DeviceAccessMaterialChangedError(params.vaultId);
     }
@@ -119,6 +122,15 @@ export class RecoverDeviceAccessUseCase {
     if (
       nextDeviceAccessMaterialRevision === null ||
       nextDeviceAccessRecoveryBackupRevision === null
+    ) {
+      throw new DeviceAccessMaterialChangedError(params.vaultId);
+    }
+
+    const localAccessGenerationId = await this.ids.generateId();
+
+    if (
+      !isValidLocalAccessGenerationId(localAccessGenerationId) ||
+      localAccessGenerationId === recoveryBackup.localAccessGenerationId
     ) {
       throw new DeviceAccessMaterialChangedError(params.vaultId);
     }
@@ -325,7 +337,6 @@ export class RecoverDeviceAccessUseCase {
         localKeysPayload,
         nextRecoveryLocalKeysProtectionKey,
       );
-    const localAccessGenerationId = await this.ids.generateId();
     const deviceAccessMaterial: DeviceAccessMaterial = {
       revision: nextDeviceAccessMaterialRevision,
       localAccessGenerationId,
@@ -350,7 +361,7 @@ export class RecoverDeviceAccessUseCase {
       protectedLocalKeys: nextRecoveryProtectedLocalKeys,
     };
 
-    await this.vaultLocalRepository.saveRecoveredDeviceAccess({
+    await this.vaultLocalRepository.saveDeviceAccessRecords({
       expectedDeviceAccessMaterialRevision:
         expectedDeviceAccessMaterial === null
           ? null

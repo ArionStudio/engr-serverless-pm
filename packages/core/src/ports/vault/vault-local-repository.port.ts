@@ -12,7 +12,8 @@ export interface VaultLocalRepositoryPort {
    * reject when any local record already exists for the vault and avoid
    * leaving a partial descriptor/material/recovery-backup/snapshot set when
    * this rejects. Access material and its recovery backup must carry the same
-   * freshly generated `localAccessGenerationId`.
+   * vault, device, algorithm suite, public-key identity, and freshly generated
+   * `localAccessGenerationId`. Both revisions must start at one.
    */
   saveInitializedLocalVault: (params: {
     readonly descriptor: LocalVaultDescriptor;
@@ -41,26 +42,11 @@ export interface VaultLocalRepositoryPort {
   removeLocalVaultDescriptor: (vaultId: string) => Promise<void>;
 
   /**
-   * Atomically replaces device access material only when the persisted record
-   * still has `expectedDeviceAccessMaterialRevision` and
-   * `expectedLocalAccessGenerationId`, and the replacement retains that
-   * generation and device identity. Revisions are positive safe integers; the
-   * replacement revision must be exactly the expected revision plus one.
-   * Rejects exhausted or invalid revisions and all other conflicts with
-   * `DeviceAccessMaterialChangedError` without changing the record when
-   * another writer replaced it first.
-   */
-  saveDeviceAccessMaterial: (params: {
-    readonly expectedDeviceAccessMaterialRevision: number;
-    readonly expectedLocalAccessGenerationId: string;
-    readonly deviceAccessMaterial: DeviceAccessMaterial;
-  }) => Promise<void>;
-  /**
    * Atomically compares and replaces local device trust material and its
    * recovery backup. `null` expected material fields permit recovery when
    * access material is absent and must be rejected when material is present.
    * Both replacements must use the same fresh generation ID, distinct from
-   * the persisted backup generation.
+   * both persisted generations.
    * Revisions are positive safe integers. Each replacement revision must be
    * exactly its expected revision plus one; absent material starts at revision
    * one. Exhausted or invalid revisions are conflicts.
@@ -68,9 +54,11 @@ export interface VaultLocalRepositoryPort {
    * `DeviceAccessMaterialChangedError` without changing either record when an
    * expected revision, generation ID, or device identity no longer matches.
    * When material is present, the persisted pair and both replacements must
-   * each carry the same vault ID, device ID, and generation ID.
+   * each carry the same vault ID, device ID, algorithm suite, public signing
+   * key, public vault key, and generation ID. The replacement pair may change
+   * only the generation and local-protection fields, not the device identity.
    */
-  saveRecoveredDeviceAccess: (params: {
+  saveDeviceAccessRecords: (params: {
     readonly expectedDeviceAccessMaterialRevision: number | null;
     readonly expectedDeviceAccessMaterialGenerationId: string | null;
     readonly expectedDeviceAccessRecoveryBackupRevision: number;
@@ -78,6 +66,15 @@ export interface VaultLocalRepositoryPort {
     readonly deviceAccessMaterial: DeviceAccessMaterial;
     readonly deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup;
   }) => Promise<void>;
+  /**
+   * Atomically reads the local access material and recovery backup from one
+   * repository snapshot. Each field is `null` only when that record is absent
+   * for `vaultId`.
+   */
+  getDeviceAccessRecords: (vaultId: string) => Promise<{
+    readonly deviceAccessMaterial: DeviceAccessMaterial | null;
+    readonly deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup | null;
+  }>;
   getDeviceAccessMaterial: (
     vaultId: string,
   ) => Promise<DeviceAccessMaterial | null>;

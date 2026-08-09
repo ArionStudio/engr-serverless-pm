@@ -6,6 +6,7 @@ import type {
   LocalKeysPayload,
 } from "../../domain/device-trust";
 import { INITIAL_DEVICE_ACCESS_REVISION } from "../../domain/device-trust/device-access-revision";
+import { isValidLocalAccessGenerationId } from "../../domain/device-trust/device-access-records";
 import type { RawMasterPassword } from "../../domain/master-password";
 import { assertNewMasterPasswordMeetsPolicy } from "../../domain/master-password/master-password.utils";
 import type { RecoveryKeyMnemonic } from "../../domain/recovery";
@@ -42,6 +43,7 @@ import {
   SyncRemovalPendingError,
 } from "../../errors/sync.errors";
 import { LocalVaultAlreadyInitializedError } from "../../errors/vault-lifecycle.errors";
+import { DeviceAccessMaterialChangedError } from "../../errors/vault-device.errors";
 import type { Bip39Port } from "../../ports/crypto/bip39.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
@@ -327,6 +329,10 @@ export class PerformDeviceEnrollmentUseCase {
         recoveryLocalKeysProtectionSalt,
       );
     const localAccessGenerationId = await this.ids.generateId();
+
+    if (!isValidLocalAccessGenerationId(localAccessGenerationId)) {
+      throw new DeviceAccessMaterialChangedError(response.vaultId);
+    }
     const deviceAccessMaterial: DeviceAccessMaterial = {
       revision: INITIAL_DEVICE_ACCESS_REVISION,
       localAccessGenerationId,

@@ -1,8 +1,13 @@
 import type { DeviceAccessMaterial } from "../../domain/device-trust/device-access-material";
 import { getNextDeviceAccessRevision } from "../../domain/device-trust/device-access-revision";
+import {
+  areDeviceAccessRecordsConsistent,
+  isValidLocalAccessGenerationId,
+} from "../../domain/device-trust/device-access-records";
 import type { RawMasterPassword } from "../../domain/master-password";
 import { assertNewMasterPasswordMeetsPolicy } from "../../domain/master-password/master-password.utils";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
+import type { IdPort } from "../../ports/system/id.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
 import {
@@ -25,15 +30,18 @@ export class ChangeMasterPasswordUseCase {
   private readonly crypto: CryptoPort;
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
+  private readonly ids: IdPort;
 
   constructor(
     crypto: CryptoPort,
     vaultLocalRepository: VaultLocalRepositoryPort,
     unlockedVaultSession: UnlockedVaultSessionService,
+    ids: IdPort,
   ) {
     this.crypto = crypto;
     this.vaultLocalRepository = vaultLocalRepository;
     this.unlockedVaultSession = unlockedVaultSession;
+    this.ids = ids;
   }
 
   async execute(params: ChangeMasterPasswordCommandParams): Promise<void> {
@@ -51,8 +59,8 @@ export class ChangeMasterPasswordUseCase {
       unlockedVaultSession.sessionId,
       params.vaultId,
       async () => {
-        const deviceAccessMaterial =
-          await this.vaultLocalRepository.getDeviceAccessMaterial(
+        const { deviceAccessMaterial, deviceAccessRecoveryBackup } =
+          await this.vaultLocalRepository.getDeviceAccessRecords(
             params.vaultId,
           );
 
@@ -63,8 +71,13 @@ export class ChangeMasterPasswordUseCase {
         }
 
         if (
+          deviceAccessRecoveryBackup === null ||
           deviceAccessMaterial.vaultId !== params.vaultId ||
-          deviceAccessMaterial.deviceId !== unlockedVault.deviceId
+          deviceAccessMaterial.deviceId !== unlockedVault.deviceId ||
+          !areDeviceAccessRecordsConsistent(
+            deviceAccessMaterial,
+            deviceAccessRecoveryBackup,
+          )
         ) {
           throw new DeviceAccessMaterialIdentityMismatchError(params.vaultId);
         }
@@ -72,8 +85,23 @@ export class ChangeMasterPasswordUseCase {
         const nextDeviceAccessMaterialRevision = getNextDeviceAccessRevision(
           deviceAccessMaterial.revision,
         );
+        const nextDeviceAccessRecoveryBackupRevision =
+          getNextDeviceAccessRevision(deviceAccessRecoveryBackup.revision);
 
-        if (nextDeviceAccessMaterialRevision === null) {
+        if (
+          nextDeviceAccessMaterialRevision === null ||
+          nextDeviceAccessRecoveryBackupRevision === null
+        ) {
+          throw new DeviceAccessMaterialChangedError(params.vaultId);
+        }
+
+        const localAccessGenerationId = await this.ids.generateId();
+
+        if (
+          !isValidLocalAccessGenerationId(localAccessGenerationId) ||
+          localAccessGenerationId ===
+            deviceAccessMaterial.localAccessGenerationId
+        ) {
           throw new DeviceAccessMaterialChangedError(params.vaultId);
         }
 
@@ -168,16 +196,27 @@ export class ChangeMasterPasswordUseCase {
         const updatedDeviceAccessMaterial: DeviceAccessMaterial = {
           ...deviceAccessMaterial,
           revision: nextDeviceAccessMaterialRevision,
+          localAccessGenerationId,
           masterPasswordSalt: newMasterPasswordSalt,
           localKeysProtectionSalt: newLocalKeysProtectionSalt,
           protectedLocalKeys,
         };
+        const updatedDeviceAccessRecoveryBackup = {
+          ...deviceAccessRecoveryBackup,
+          revision: nextDeviceAccessRecoveryBackupRevision,
+          localAccessGenerationId,
+        };
 
-        await this.vaultLocalRepository.saveDeviceAccessMaterial({
+        await this.vaultLocalRepository.saveDeviceAccessRecords({
           expectedDeviceAccessMaterialRevision: deviceAccessMaterial.revision,
-          expectedLocalAccessGenerationId:
+          expectedDeviceAccessMaterialGenerationId:
             deviceAccessMaterial.localAccessGenerationId,
+          expectedDeviceAccessRecoveryBackupRevision:
+            deviceAccessRecoveryBackup.revision,
+          expectedDeviceAccessRecoveryBackupGenerationId:
+            deviceAccessRecoveryBackup.localAccessGenerationId,
           deviceAccessMaterial: updatedDeviceAccessMaterial,
+          deviceAccessRecoveryBackup: updatedDeviceAccessRecoveryBackup,
         });
       },
     );

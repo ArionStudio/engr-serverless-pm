@@ -8,7 +8,12 @@ import {
   DeviceKeySlotNotFoundError,
   DeviceKeySlotVerificationFailedError,
 } from "../../errors/unlock-vault.errors";
+import {
+  DeviceAccessMaterialChangedError,
+  DeviceAccessMaterialIdentityMismatchError,
+} from "../../errors/vault-device.errors";
 import { ChangeMasterPasswordUseCase } from "../vault-lifecycle/change-master-password";
+import { UnlockVaultUseCase } from "../vault-lifecycle/unlock-vault";
 import { RecoverDeviceAccessUseCase } from "./recover-device-access";
 
 function createContext() {
@@ -17,18 +22,7 @@ function createContext() {
   vi.mocked(ctx.ports.ids.generateId).mockResolvedValue(
     ctx.values.replacementLocalAccessGenerationId,
   );
-  const backup: DeviceAccessRecoveryBackup = {
-    revision: 1,
-    localAccessGenerationId: ctx.values.localAccessGenerationId,
-    vaultId: ctx.values.vaultId,
-    deviceId: ctx.values.deviceId,
-    algorithmSuiteId: ctx.ports.crypto.algorithmSuite.id,
-    recoveryLocalKeysProtectionSalt: ctx.values.recoveryLocalKeysProtectionSalt,
-    devicePublicSignKey: ctx.values.devicePublicSignKey,
-    devicePublicVaultKey: ctx.values.devicePublicVaultKey,
-    protectedLocalKeys: ctx.values.recoveryProtectedLocalKeys,
-  };
-  ctx.saved.deviceAccessRecoveryBackup = backup;
+  const backup = ctx.deviceAccessRecoveryBackup;
   const useCase = new RecoverDeviceAccessUseCase(
     ctx.ports.bip39,
     ctx.ports.crypto,
@@ -97,7 +91,7 @@ describe("RecoverDeviceAccessUseCase", () => {
 
     expect(requireVaultCanBeActivated).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.getDeviceAccessRecoveryBackup,
+      ctx.ports.vaultLocalRepository.getDeviceAccessRecords,
     ).not.toHaveBeenCalled();
   });
 
@@ -186,7 +180,7 @@ describe("RecoverDeviceAccessUseCase", () => {
     });
     expect(ctx.ports.bip39.mnemonicToRecoveryKey).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveRecoveredDeviceAccess,
+      ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
     ).toHaveBeenCalledTimes(1);
     expect(ctx.saved.deviceAccessMaterial).toEqual(
       recoveredDeviceAccessMaterial,
@@ -195,6 +189,136 @@ describe("RecoverDeviceAccessUseCase", () => {
       replayedRecoveryBackup,
     );
   });
+
+  it("rejects an old material replay before deriving its former password", async () => {
+    const ctx = createContext();
+    const replayedDeviceAccessMaterial = ctx.deviceAccessMaterial;
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      recoveryMnemonicKey: ctx.values.recoveryMnemonicKey,
+      newMasterPassword: ctx.values.newMasterPassword,
+    });
+
+    ctx.saved.deviceAccessMaterial = replayedDeviceAccessMaterial;
+    vi.mocked(ctx.ports.crypto.deriveLocalRootKey).mockClear();
+    const unlock = new UnlockVaultUseCase(
+      ctx.ports.clock,
+      ctx.ports.crypto,
+      ctx.ports.ids,
+      ctx.ports.scheduledTasks,
+      ctx.ports.vaultLocalRepository,
+      ctx.ports.vaultLockTasks,
+      ctx.ports.sessionServices.unlockedVaultSession,
+    );
+
+    await expect(
+      unlock.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 60_000,
+      }),
+    ).rejects.toBeInstanceOf(DeviceAccessMaterialIdentityMismatchError);
+
+    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+    expect(ctx.ports.vaultLockTasks.save).not.toHaveBeenCalled();
+  });
+
+  it.each(["algorithm suite", "signing key", "vault key"] as const)(
+    "rejects persisted material with a mismatched %s before recovery secrets",
+    async (identityPart) => {
+      const ctx = createContext();
+      ctx.saved.deviceAccessMaterial = {
+        ...ctx.deviceAccessMaterial,
+        algorithmSuiteId:
+          identityPart === "algorithm suite"
+            ? "spm-unsupported"
+            : ctx.deviceAccessMaterial.algorithmSuiteId,
+        devicePublicSignKey:
+          identityPart === "signing key"
+            ? (new Uint8Array([1])
+                .buffer as typeof ctx.values.devicePublicSignKey)
+            : ctx.deviceAccessMaterial.devicePublicSignKey,
+        devicePublicVaultKey:
+          identityPart === "vault key"
+            ? (new Uint8Array([2])
+                .buffer as typeof ctx.values.devicePublicVaultKey)
+            : ctx.deviceAccessMaterial.devicePublicVaultKey,
+      };
+
+      const materialChange = ctx.useCase
+        .execute({
+          vaultId: ctx.values.vaultId,
+          recoveryMnemonicKey: ctx.values.recoveryMnemonicKey,
+          newMasterPassword: ctx.values.newMasterPassword,
+        })
+        .catch((caught: unknown) => caught);
+
+      expectSecretSafeDeviceAccessMaterialChange({
+        error: await materialChange,
+        vaultId: ctx.values.vaultId,
+        passwords: [ctx.values.masterPassword, ctx.values.newMasterPassword],
+        rawDeviceKeys: [
+          ctx.values.devicePublicSignKey,
+          ctx.values.devicePrivateSignKey,
+          ctx.values.devicePublicVaultKey,
+          ctx.values.devicePrivateVaultKey,
+          ctx.values.pendingDevicePublicSignKey,
+          ctx.values.pendingDevicePublicVaultKey,
+        ],
+      });
+      expect(ctx.ports.bip39.mnemonicToRecoveryKey).not.toHaveBeenCalled();
+      expect(
+        ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
+      ).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects missing persisted generation IDs before recovery secrets", async () => {
+    const ctx = createContext();
+    ctx.saved.deviceAccessMaterial = {
+      ...ctx.deviceAccessMaterial,
+      localAccessGenerationId: undefined as unknown as string,
+    };
+    ctx.saved.deviceAccessRecoveryBackup = {
+      ...ctx.backup,
+      localAccessGenerationId: undefined as unknown as string,
+    };
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        recoveryMnemonicKey: ctx.values.recoveryMnemonicKey,
+        newMasterPassword: ctx.values.newMasterPassword,
+      }),
+    ).rejects.toBeInstanceOf(DeviceAccessMaterialChangedError);
+
+    expect(ctx.ports.bip39.mnemonicToRecoveryKey).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
+    ).not.toHaveBeenCalled();
+  });
+
+  it.each(["", "local-access-generation-id"])(
+    "rejects invalid or reused freshly generated access generation %j before recovery secrets",
+    async (generatedId) => {
+      const ctx = createContext();
+      vi.mocked(ctx.ports.ids.generateId).mockResolvedValueOnce(generatedId);
+
+      await expect(
+        ctx.useCase.execute({
+          vaultId: ctx.values.vaultId,
+          recoveryMnemonicKey: ctx.values.recoveryMnemonicKey,
+          newMasterPassword: ctx.values.newMasterPassword,
+        }),
+      ).rejects.toBeInstanceOf(DeviceAccessMaterialChangedError);
+
+      expect(ctx.ports.bip39.mnemonicToRecoveryKey).not.toHaveBeenCalled();
+      expect(
+        ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
+      ).not.toHaveBeenCalled();
+    },
+  );
 
   it.each([
     { recordKind: "material", revision: Number.MAX_SAFE_INTEGER },
@@ -240,7 +364,7 @@ describe("RecoverDeviceAccessUseCase", () => {
       expect(ctx.ports.bip39.mnemonicToRecoveryKey).not.toHaveBeenCalled();
       expect(ctx.ports.crypto.unwrapLocalKeysPayload).not.toHaveBeenCalled();
       expect(
-        ctx.ports.vaultLocalRepository.saveRecoveredDeviceAccess,
+        ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
       ).not.toHaveBeenCalled();
     },
   );
@@ -267,7 +391,7 @@ describe("RecoverDeviceAccessUseCase", () => {
       localAccessGenerationId: ctx.values.replacementLocalAccessGenerationId,
     });
     expect(
-      ctx.ports.vaultLocalRepository.saveRecoveredDeviceAccess,
+      ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
     ).toHaveBeenCalledWith(
       expect.objectContaining({
         expectedDeviceAccessMaterialRevision: null,
@@ -278,14 +402,25 @@ describe("RecoverDeviceAccessUseCase", () => {
     );
 
     const staleSave = ctx.ports.vaultLocalRepository
-      .saveDeviceAccessMaterial({
+      .saveDeviceAccessRecords({
         expectedDeviceAccessMaterialRevision:
           staleDeviceAccessMaterial.revision,
-        expectedLocalAccessGenerationId:
+        expectedDeviceAccessMaterialGenerationId:
           staleDeviceAccessMaterial.localAccessGenerationId,
+        expectedDeviceAccessRecoveryBackupRevision: ctx.backup.revision,
+        expectedDeviceAccessRecoveryBackupGenerationId:
+          ctx.backup.localAccessGenerationId,
         deviceAccessMaterial: {
           ...staleDeviceAccessMaterial,
           revision: staleDeviceAccessMaterial.revision + 1,
+          localAccessGenerationId:
+            ctx.values.replacementLocalAccessGenerationId,
+        },
+        deviceAccessRecoveryBackup: {
+          ...ctx.backup,
+          revision: ctx.backup.revision + 1,
+          localAccessGenerationId:
+            ctx.values.replacementLocalAccessGenerationId,
         },
       })
       .catch((caught: unknown) => caught);
@@ -346,6 +481,7 @@ describe("RecoverDeviceAccessUseCase", () => {
       ctx.ports.crypto,
       ctx.ports.vaultLocalRepository,
       ctx.ports.sessionServices.unlockedVaultSession,
+      ctx.ports.ids,
     );
     await changeMasterPassword.execute({
       vaultId: ctx.values.vaultId,
@@ -356,11 +492,22 @@ describe("RecoverDeviceAccessUseCase", () => {
     const passwordChangedMaterial = {
       ...ctx.deviceAccessMaterial,
       revision: ctx.deviceAccessMaterial.revision + 1,
+      localAccessGenerationId:
+        ctx.values.replacementLocalAccessGenerationId,
       masterPasswordSalt: ctx.values.newMasterPasswordSalt,
       localKeysProtectionSalt: ctx.values.newLocalKeysProtectionSalt,
       protectedLocalKeys: ctx.values.reprotectedLocalKeys,
     };
     expect(ctx.saved.deviceAccessMaterial).toEqual(passwordChangedMaterial);
+    const passwordChangedBackup = {
+      ...ctx.backup,
+      revision: ctx.backup.revision + 1,
+      localAccessGenerationId:
+        ctx.values.replacementLocalAccessGenerationId,
+    };
+    expect(ctx.saved.deviceAccessRecoveryBackup).toEqual(
+      passwordChangedBackup,
+    );
 
     const materialChange = recovery.catch((caught: unknown) => caught);
     continueRecoveryWrapping();
@@ -377,7 +524,9 @@ describe("RecoverDeviceAccessUseCase", () => {
     });
 
     expect(ctx.saved.deviceAccessMaterial).toEqual(passwordChangedMaterial);
-    expect(ctx.saved.deviceAccessRecoveryBackup).toEqual(ctx.backup);
+    expect(ctx.saved.deviceAccessRecoveryBackup).toEqual(
+      passwordChangedBackup,
+    );
   });
 
   it("does not overwrite a concurrently replaced recovery backup", async () => {
@@ -469,38 +618,61 @@ describe("RecoverDeviceAccessUseCase", () => {
     );
   });
 
-  it.each(["vaultId", "deviceId"] as const)(
+  it.each([
+    "vaultId",
+    "deviceId",
+    "algorithmSuiteId",
+    "devicePublicSignKey",
+    "devicePublicVaultKey",
+  ] as const)(
     "atomically rejects replacement records with different %s values",
     async (identityField) => {
       const ctx = createContext();
       const originalDeviceAccessMaterial = ctx.saved.deviceAccessMaterial;
       const mismatchedRecoveryBackup: DeviceAccessRecoveryBackup = {
         ...ctx.backup,
-        [identityField]:
+        revision: ctx.backup.revision + 1,
+        localAccessGenerationId: ctx.values.replacementLocalAccessGenerationId,
+        vaultId:
           identityField === "vaultId"
             ? "different-vault-id"
-            : ctx.values.pendingDeviceId,
+            : ctx.backup.vaultId,
+        deviceId:
+          identityField === "deviceId"
+            ? ctx.values.pendingDeviceId
+            : ctx.backup.deviceId,
+        algorithmSuiteId:
+          identityField === "algorithmSuiteId"
+            ? "spm-unsupported"
+            : ctx.backup.algorithmSuiteId,
+        devicePublicSignKey:
+          identityField === "devicePublicSignKey"
+            ? (new Uint8Array([1])
+                .buffer as typeof ctx.values.devicePublicSignKey)
+            : ctx.backup.devicePublicSignKey,
+        devicePublicVaultKey:
+          identityField === "devicePublicVaultKey"
+            ? (new Uint8Array([2])
+                .buffer as typeof ctx.values.devicePublicVaultKey)
+            : ctx.backup.devicePublicVaultKey,
       };
-      ctx.saved.deviceAccessRecoveryBackup = mismatchedRecoveryBackup;
 
       const materialChange = ctx.ports.vaultLocalRepository
-        .saveRecoveredDeviceAccess({
+        .saveDeviceAccessRecords({
           expectedDeviceAccessMaterialRevision:
             ctx.deviceAccessMaterial.revision,
           expectedDeviceAccessMaterialGenerationId:
             ctx.deviceAccessMaterial.localAccessGenerationId,
-          expectedDeviceAccessRecoveryBackupRevision:
-            mismatchedRecoveryBackup.revision,
+          expectedDeviceAccessRecoveryBackupRevision: ctx.backup.revision,
           expectedDeviceAccessRecoveryBackupGenerationId:
-            mismatchedRecoveryBackup.localAccessGenerationId,
+            ctx.backup.localAccessGenerationId,
           deviceAccessMaterial: {
             ...ctx.deviceAccessMaterial,
             revision: ctx.deviceAccessMaterial.revision + 1,
+            localAccessGenerationId:
+              ctx.values.replacementLocalAccessGenerationId,
           },
-          deviceAccessRecoveryBackup: {
-            ...mismatchedRecoveryBackup,
-            revision: mismatchedRecoveryBackup.revision + 1,
-          },
+          deviceAccessRecoveryBackup: mismatchedRecoveryBackup,
         })
         .catch((caught: unknown) => caught);
 
@@ -518,9 +690,7 @@ describe("RecoverDeviceAccessUseCase", () => {
       expect(ctx.saved.deviceAccessMaterial).toEqual(
         originalDeviceAccessMaterial,
       );
-      expect(ctx.saved.deviceAccessRecoveryBackup).toEqual(
-        mismatchedRecoveryBackup,
-      );
+      expect(ctx.saved.deviceAccessRecoveryBackup).toEqual(ctx.backup);
     },
   );
 
@@ -533,7 +703,7 @@ describe("RecoverDeviceAccessUseCase", () => {
     ctx.saved.deviceAccessMaterial = newerDeviceAccessMaterial;
 
     const materialChange = ctx.ports.vaultLocalRepository
-      .saveRecoveredDeviceAccess({
+      .saveDeviceAccessRecords({
         expectedDeviceAccessMaterialRevision:
           newerDeviceAccessMaterial.revision,
         expectedDeviceAccessMaterialGenerationId:
@@ -565,9 +735,7 @@ describe("RecoverDeviceAccessUseCase", () => {
         ctx.values.devicePrivateVaultKey,
       ],
     });
-    expect(ctx.saved.deviceAccessMaterial).toEqual(
-      newerDeviceAccessMaterial,
-    );
+    expect(ctx.saved.deviceAccessMaterial).toEqual(newerDeviceAccessMaterial);
     expect(ctx.saved.deviceAccessRecoveryBackup).toEqual(ctx.backup);
   });
 
@@ -582,7 +750,7 @@ describe("RecoverDeviceAccessUseCase", () => {
         ctx.backup.revision + (recordKind === "backup" ? 2 : 1);
 
       const materialChange = ctx.ports.vaultLocalRepository
-        .saveRecoveredDeviceAccess({
+        .saveDeviceAccessRecords({
           expectedDeviceAccessMaterialRevision:
             ctx.deviceAccessMaterial.revision,
           expectedDeviceAccessMaterialGenerationId:
@@ -628,7 +796,7 @@ describe("RecoverDeviceAccessUseCase", () => {
     const originalDeviceAccessMaterial = ctx.saved.deviceAccessMaterial;
 
     const materialChange = ctx.ports.vaultLocalRepository
-      .saveRecoveredDeviceAccess({
+      .saveDeviceAccessRecords({
         expectedDeviceAccessMaterialRevision: null,
         expectedDeviceAccessMaterialGenerationId: null,
         expectedDeviceAccessRecoveryBackupRevision: ctx.backup.revision,

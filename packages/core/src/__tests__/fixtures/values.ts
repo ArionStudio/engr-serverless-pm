@@ -224,6 +224,8 @@ export function createCoreTestValues() {
     localAccessGenerationId: "local-access-generation-id",
     replacementLocalAccessGenerationId:
       "replacement-local-access-generation-id",
+    secondReplacementLocalAccessGenerationId:
+      "second-replacement-local-access-generation-id",
     enrollmentId: "enrollment-id",
     requestId: "enrollment-request-id",
     pendingDeviceId: "pending-device-id",

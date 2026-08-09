@@ -25,6 +25,10 @@ if (another vault is active?) then (yes)
 endif
 
 :Generate deviceId and fresh localAccessGenerationId;
+if (localAccessGenerationId invalid?) then (yes)
+  :Throw DeviceAccessMaterialChangedError;
+  stop
+endif
 :Read timestamp and generate vaultDisplayName;
 :Generate vaultMasterKey, deviceSlotKey,\ndevice signing key pair;
 :Generate recovery key and recovery mnemonic;

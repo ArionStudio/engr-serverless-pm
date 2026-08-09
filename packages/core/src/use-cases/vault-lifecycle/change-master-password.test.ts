@@ -11,7 +11,10 @@ import {
   VaultMustBeUnlockedForMasterPasswordChangeError,
 } from "../../errors/change-master-password.errors";
 import { InvalidNewMasterPasswordError } from "../../errors/master-password.errors";
-import { DeviceAccessMaterialIdentityMismatchError } from "../../errors/vault-device.errors";
+import {
+  DeviceAccessMaterialChangedError,
+  DeviceAccessMaterialIdentityMismatchError,
+} from "../../errors/vault-device.errors";
 
 function expectSecretSafeIdentityMismatch(
   error: unknown,
@@ -91,7 +94,7 @@ describe("ChangeMasterPasswordUseCase", () => {
       ctx.ports.sessionServices.unlockedVaultSession.get,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.getDeviceAccessMaterial,
+      ctx.ports.vaultLocalRepository.getDeviceAccessRecords,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.crypto.generateMasterPasswordSalt).not.toHaveBeenCalled();
     expect(
@@ -99,7 +102,7 @@ describe("ChangeMasterPasswordUseCase", () => {
     ).not.toHaveBeenCalled();
     expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveDeviceAccessMaterial,
+      ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
     ).not.toHaveBeenCalled();
   });
 
@@ -141,7 +144,7 @@ describe("ChangeMasterPasswordUseCase", () => {
       ctx.ports.sessionServices.unlockedVaultSession.get,
     ).toHaveBeenCalledTimes(1);
     expect(
-      ctx.ports.vaultLocalRepository.getDeviceAccessMaterial,
+      ctx.ports.vaultLocalRepository.getDeviceAccessRecords,
     ).toHaveBeenCalledWith(ctx.values.vaultId);
     expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenNthCalledWith(
       1,
@@ -200,12 +203,20 @@ describe("ChangeMasterPasswordUseCase", () => {
     expect(ctx.saved.deviceAccessMaterial).toEqual({
       ...ctx.deviceAccessMaterial,
       revision: ctx.deviceAccessMaterial.revision + 1,
+      localAccessGenerationId:
+        ctx.values.replacementLocalAccessGenerationId,
       masterPasswordSalt: ctx.values.newMasterPasswordSalt,
       localKeysProtectionSalt: ctx.values.newLocalKeysProtectionSalt,
       protectedLocalKeys: ctx.values.reprotectedLocalKeys,
     });
+    expect(ctx.saved.deviceAccessRecoveryBackup).toEqual({
+      ...ctx.deviceAccessRecoveryBackup,
+      revision: ctx.deviceAccessRecoveryBackup.revision + 1,
+      localAccessGenerationId:
+        ctx.values.replacementLocalAccessGenerationId,
+    });
     expect(
-      ctx.ports.vaultLocalRepository.saveDeviceAccessMaterial,
+      ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
     ).toHaveBeenCalledTimes(1);
   });
 
@@ -222,10 +233,10 @@ describe("ChangeMasterPasswordUseCase", () => {
     ).rejects.toBeInstanceOf(VaultMustBeUnlockedForMasterPasswordChangeError);
 
     expect(
-      ctx.ports.vaultLocalRepository.getDeviceAccessMaterial,
+      ctx.ports.vaultLocalRepository.getDeviceAccessRecords,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveDeviceAccessMaterial,
+      ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
     ).not.toHaveBeenCalled();
   });
 
@@ -248,7 +259,7 @@ describe("ChangeMasterPasswordUseCase", () => {
     ).rejects.toBeInstanceOf(VaultMustBeUnlockedForMasterPasswordChangeError);
 
     expect(
-      ctx.ports.vaultLocalRepository.getDeviceAccessMaterial,
+      ctx.ports.vaultLocalRepository.getDeviceAccessRecords,
     ).not.toHaveBeenCalled();
   });
 
@@ -268,7 +279,7 @@ describe("ChangeMasterPasswordUseCase", () => {
 
     expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveDeviceAccessMaterial,
+      ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
     ).not.toHaveBeenCalled();
   });
 
@@ -276,6 +287,10 @@ describe("ChangeMasterPasswordUseCase", () => {
     const ctx = createChangeMasterPasswordTestContext();
     ctx.saved.deviceAccessMaterial = {
       ...ctx.deviceAccessMaterial,
+      algorithmSuiteId: "spm-unsupported",
+    };
+    ctx.saved.deviceAccessRecoveryBackup = {
+      ...ctx.deviceAccessRecoveryBackup,
       algorithmSuiteId: "spm-unsupported",
     };
 
@@ -291,17 +306,20 @@ describe("ChangeMasterPasswordUseCase", () => {
     expect(ctx.ports.crypto.unwrapLocalKeysPayload).not.toHaveBeenCalled();
     expect(ctx.ports.crypto.wrapLocalKeysPayload).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveDeviceAccessMaterial,
+      ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
     ).not.toHaveBeenCalled();
   });
 
   it("rejects device access material for another vault before key derivation", async () => {
     const ctx = createChangeMasterPasswordTestContext();
     vi.mocked(
-      ctx.ports.vaultLocalRepository.getDeviceAccessMaterial,
+      ctx.ports.vaultLocalRepository.getDeviceAccessRecords,
     ).mockResolvedValueOnce({
-      ...ctx.deviceAccessMaterial,
-      vaultId: "another-vault-id",
+      deviceAccessMaterial: {
+        ...ctx.deviceAccessMaterial,
+        vaultId: "another-vault-id",
+      },
+      deviceAccessRecoveryBackup: ctx.deviceAccessRecoveryBackup,
     });
 
     const execution = ctx.useCase.execute({
@@ -327,7 +345,7 @@ describe("ChangeMasterPasswordUseCase", () => {
     expect(String(error)).not.toContain(ctx.values.newMasterPassword);
     expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveDeviceAccessMaterial,
+      ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
     ).not.toHaveBeenCalled();
   });
 
@@ -348,7 +366,7 @@ describe("ChangeMasterPasswordUseCase", () => {
 
     expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveDeviceAccessMaterial,
+      ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
     ).not.toHaveBeenCalled();
   });
 
@@ -385,7 +403,7 @@ describe("ChangeMasterPasswordUseCase", () => {
     expect(ctx.ports.crypto.verifyDeviceSignKeyPair).not.toHaveBeenCalled();
     expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveDeviceAccessMaterial,
+      ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
     ).not.toHaveBeenCalled();
   });
 
@@ -445,10 +463,89 @@ describe("ChangeMasterPasswordUseCase", () => {
       );
 
       expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
-      expect(ctx.ports.crypto.generateMasterPasswordSalt).not.toHaveBeenCalled();
+      expect(
+        ctx.ports.crypto.generateMasterPasswordSalt,
+      ).not.toHaveBeenCalled();
       expect(ctx.ports.crypto.wrapLocalKeysPayload).not.toHaveBeenCalled();
       expect(
-        ctx.ports.vaultLocalRepository.saveDeviceAccessMaterial,
+        ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
+      ).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects material from a different local access generation before crypto work", async () => {
+    const ctx = createChangeMasterPasswordTestContext();
+    ctx.saved.deviceAccessRecoveryBackup = {
+      ...ctx.deviceAccessRecoveryBackup,
+      localAccessGenerationId: ctx.values.replacementLocalAccessGenerationId,
+    };
+
+    const error = await ctx.useCase
+      .execute({
+        vaultId: ctx.values.vaultId,
+        currentMasterPassword: ctx.values.masterPassword,
+        newMasterPassword: ctx.values.newMasterPassword,
+      })
+      .catch((caught: unknown) => caught);
+
+    expectSecretSafeIdentityMismatch(
+      error,
+      ctx.values.vaultId,
+      [ctx.values.masterPassword, ctx.values.newMasterPassword],
+      [
+        ctx.values.devicePublicSignKey,
+        ctx.values.devicePrivateSignKey,
+        ctx.values.devicePublicVaultKey,
+        ctx.values.devicePrivateVaultKey,
+      ],
+    );
+    expect(ctx.ports.crypto.verifyDeviceSignKeyPair).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+  });
+
+  it("rejects missing persisted generation IDs before crypto work", async () => {
+    const ctx = createChangeMasterPasswordTestContext();
+    ctx.saved.deviceAccessMaterial = {
+      ...ctx.deviceAccessMaterial,
+      localAccessGenerationId: undefined as unknown as string,
+    };
+    ctx.saved.deviceAccessRecoveryBackup = {
+      ...ctx.deviceAccessRecoveryBackup,
+      localAccessGenerationId: undefined as unknown as string,
+    };
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        currentMasterPassword: ctx.values.masterPassword,
+        newMasterPassword: ctx.values.newMasterPassword,
+      }),
+    ).rejects.toBeInstanceOf(DeviceAccessMaterialIdentityMismatchError);
+
+    expect(ctx.ports.crypto.verifyDeviceSignKeyPair).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+  });
+
+  it.each(["", "local-access-generation-id"])(
+    "rejects invalid or reused freshly generated access generation %j before crypto work",
+    async (generatedId) => {
+      const ctx = createChangeMasterPasswordTestContext();
+      vi.mocked(ctx.ports.ids.generateId)
+        .mockReset()
+        .mockResolvedValue(generatedId);
+
+      await expect(
+        ctx.useCase.execute({
+          vaultId: ctx.values.vaultId,
+          currentMasterPassword: ctx.values.masterPassword,
+          newMasterPassword: ctx.values.newMasterPassword,
+        }),
+      ).rejects.toBeInstanceOf(DeviceAccessMaterialChangedError);
+
+      expect(ctx.ports.crypto.verifyDeviceSignKeyPair).not.toHaveBeenCalled();
+      expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+      expect(
+        ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
       ).not.toHaveBeenCalled();
     },
   );
@@ -503,10 +600,12 @@ describe("ChangeMasterPasswordUseCase", () => {
       );
 
       expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenCalledTimes(1);
-      expect(ctx.ports.crypto.generateMasterPasswordSalt).not.toHaveBeenCalled();
+      expect(
+        ctx.ports.crypto.generateMasterPasswordSalt,
+      ).not.toHaveBeenCalled();
       expect(ctx.ports.crypto.wrapLocalKeysPayload).not.toHaveBeenCalled();
       expect(
-        ctx.ports.vaultLocalRepository.saveDeviceAccessMaterial,
+        ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
       ).not.toHaveBeenCalled();
     },
   );
@@ -527,7 +626,7 @@ describe("ChangeMasterPasswordUseCase", () => {
 
     expect(ctx.saved.unlockedVaultSession).toBeDefined();
     expect(
-      ctx.ports.vaultLocalRepository.saveDeviceAccessMaterial,
+      ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
     ).not.toHaveBeenCalled();
 
     wrapping.resume();
@@ -535,7 +634,7 @@ describe("ChangeMasterPasswordUseCase", () => {
     await lock;
 
     expect(
-      ctx.ports.vaultLocalRepository.saveDeviceAccessMaterial,
+      ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
     ).toHaveBeenCalledTimes(1);
     expect(ctx.saved.unlockedVaultSession).toBeUndefined();
   });
@@ -560,7 +659,7 @@ describe("ChangeMasterPasswordUseCase", () => {
     await Promise.resolve();
 
     expect(
-      ctx.ports.vaultLocalRepository.getDeviceAccessMaterial,
+      ctx.ports.vaultLocalRepository.getDeviceAccessRecords,
     ).toHaveBeenCalledTimes(1);
 
     firstWrapping.resume();
@@ -568,7 +667,7 @@ describe("ChangeMasterPasswordUseCase", () => {
     await secondRotation;
 
     expect(
-      ctx.ports.vaultLocalRepository.getDeviceAccessMaterial,
+      ctx.ports.vaultLocalRepository.getDeviceAccessRecords,
     ).toHaveBeenCalledTimes(2);
     expect(ctx.ports.crypto.unwrapLocalKeysPayload).toHaveBeenNthCalledWith(
       2,
@@ -576,7 +675,7 @@ describe("ChangeMasterPasswordUseCase", () => {
       ctx.values.newLocalKeysProtectionKey,
     );
     expect(
-      ctx.ports.vaultLocalRepository.saveDeviceAccessMaterial,
+      ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
     ).toHaveBeenCalledTimes(2);
   });
 
@@ -599,9 +698,7 @@ describe("ChangeMasterPasswordUseCase", () => {
     };
     ctx.saved.deviceAccessMaterial = concurrentlyReplacedMaterial;
 
-    const materialChange = passwordRotation.catch(
-      (caught: unknown) => caught,
-    );
+    const materialChange = passwordRotation.catch((caught: unknown) => caught);
     wrapping.resume();
     const error = await materialChange;
 
@@ -622,6 +719,45 @@ describe("ChangeMasterPasswordUseCase", () => {
     );
   });
 
+  it("rejects instead of writing after the recovery companion changes", async () => {
+    const ctx = createChangeMasterPasswordTestContext();
+    const wrapping = deferWrapping(ctx);
+    const originalDeviceAccessMaterial = ctx.saved.deviceAccessMaterial;
+    const passwordRotation = ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      currentMasterPassword: ctx.values.masterPassword,
+      newMasterPassword: ctx.values.newMasterPassword,
+    });
+
+    await wrapping.started;
+    const concurrentlyReplacedBackup = {
+      ...ctx.deviceAccessRecoveryBackup,
+      localAccessGenerationId: ctx.values.replacementLocalAccessGenerationId,
+    };
+    ctx.saved.deviceAccessRecoveryBackup = concurrentlyReplacedBackup;
+
+    const materialChange = passwordRotation.catch((caught: unknown) => caught);
+    wrapping.resume();
+    expectSecretSafeDeviceAccessMaterialChange({
+      error: await materialChange,
+      vaultId: ctx.values.vaultId,
+      passwords: [ctx.values.masterPassword, ctx.values.newMasterPassword],
+      rawDeviceKeys: [
+        ctx.values.devicePublicSignKey,
+        ctx.values.devicePrivateSignKey,
+        ctx.values.devicePublicVaultKey,
+        ctx.values.devicePrivateVaultKey,
+      ],
+    });
+
+    expect(ctx.saved.deviceAccessMaterial).toEqual(
+      originalDeviceAccessMaterial,
+    );
+    expect(ctx.saved.deviceAccessRecoveryBackup).toEqual(
+      concurrentlyReplacedBackup,
+    );
+  });
+
   it("rejects reset revisions from a new local access generation", async () => {
     const ctx = createChangeMasterPasswordTestContext();
     const wrapping = deferWrapping(ctx);
@@ -639,9 +775,7 @@ describe("ChangeMasterPasswordUseCase", () => {
     };
     ctx.saved.deviceAccessMaterial = reinitializedMaterial;
 
-    const materialChange = passwordRotation.catch(
-      (caught: unknown) => caught,
-    );
+    const materialChange = passwordRotation.catch((caught: unknown) => caught);
     wrapping.resume();
     expectSecretSafeDeviceAccessMaterialChange({
       error: await materialChange,
@@ -695,7 +829,7 @@ describe("ChangeMasterPasswordUseCase", () => {
       expect(ctx.ports.crypto.verifyDeviceSignKeyPair).not.toHaveBeenCalled();
       expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
       expect(
-        ctx.ports.vaultLocalRepository.saveDeviceAccessMaterial,
+        ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
       ).not.toHaveBeenCalled();
     },
   );
@@ -705,13 +839,25 @@ describe("ChangeMasterPasswordUseCase", () => {
     const originalDeviceAccessMaterial = ctx.saved.deviceAccessMaterial;
 
     const materialChange = ctx.ports.vaultLocalRepository
-      .saveDeviceAccessMaterial({
+      .saveDeviceAccessRecords({
         expectedDeviceAccessMaterialRevision: ctx.deviceAccessMaterial.revision,
-        expectedLocalAccessGenerationId:
+        expectedDeviceAccessMaterialGenerationId:
           ctx.deviceAccessMaterial.localAccessGenerationId,
+        expectedDeviceAccessRecoveryBackupRevision:
+          ctx.deviceAccessRecoveryBackup.revision,
+        expectedDeviceAccessRecoveryBackupGenerationId:
+          ctx.deviceAccessRecoveryBackup.localAccessGenerationId,
         deviceAccessMaterial: {
           ...ctx.deviceAccessMaterial,
           revision: ctx.deviceAccessMaterial.revision + 2,
+          localAccessGenerationId:
+            ctx.values.replacementLocalAccessGenerationId,
+        },
+        deviceAccessRecoveryBackup: {
+          ...ctx.deviceAccessRecoveryBackup,
+          revision: ctx.deviceAccessRecoveryBackup.revision + 1,
+          localAccessGenerationId:
+            ctx.values.replacementLocalAccessGenerationId,
         },
       })
       .catch((caught: unknown) => caught);
@@ -750,7 +896,7 @@ describe("ChangeMasterPasswordUseCase", () => {
 
     expect(ctx.ports.crypto.generateMasterPasswordSalt).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.saveDeviceAccessMaterial,
+      ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
     ).not.toHaveBeenCalled();
   });
 });

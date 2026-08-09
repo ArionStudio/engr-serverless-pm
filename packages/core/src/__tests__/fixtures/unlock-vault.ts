@@ -1,9 +1,9 @@
 import { vi } from "vitest";
-import type { DeviceAccessMaterial } from "../../domain/device-trust/device-access-material";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import { UnlockVaultUseCase } from "../../use-cases/vault-lifecycle/unlock-vault";
 import { createCoreTestPorts } from "./ports";
 import { createCoreTestValues } from "./values";
+import { createDeviceAccessRecords } from "./device-access";
 
 export function createUnlockVaultTestContext() {
   const values = createCoreTestValues();
@@ -13,18 +13,8 @@ export function createUnlockVaultTestContext() {
     .mockResolvedValueOnce(values.vaultLockActionId)
     .mockResolvedValue(values.sessionId);
 
-  const deviceAccessMaterial: DeviceAccessMaterial = {
-    revision: 1,
-    localAccessGenerationId: values.localAccessGenerationId,
-    vaultId: values.vaultId,
-    deviceId: values.deviceId,
-    algorithmSuiteId: ports.crypto.algorithmSuite.id,
-    masterPasswordSalt: values.masterPasswordSalt,
-    localKeysProtectionSalt: values.localKeysProtectionSalt,
-    devicePublicSignKey: values.devicePublicSignKey,
-    devicePublicVaultKey: values.devicePublicVaultKey,
-    protectedLocalKeys: values.protectedLocalKeys,
-  };
+  const { deviceAccessMaterial, deviceAccessRecoveryBackup } =
+    createDeviceAccessRecords(values, ports.crypto.algorithmSuite.id);
 
   const vaultSnapshot: VaultSnapshot = {
     metadata: {
@@ -54,6 +44,7 @@ export function createUnlockVaultTestContext() {
   };
 
   ports.saved.deviceAccessMaterial = deviceAccessMaterial;
+  ports.saved.deviceAccessRecoveryBackup = deviceAccessRecoveryBackup;
   ports.saved.vaultSnapshot = vaultSnapshot;
   ports.saved.localVaultTrustCheckpoint = values.localVaultTrustCheckpoint;
 
@@ -73,6 +64,7 @@ export function createUnlockVaultTestContext() {
     saved: ports.saved,
     useCase,
     deviceAccessMaterial,
+    deviceAccessRecoveryBackup,
     vaultSnapshot,
   };
 }

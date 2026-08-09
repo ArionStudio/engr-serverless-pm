@@ -7,9 +7,8 @@ import {
   DeviceKeySlotNotFoundError,
   DeviceKeySlotVerificationFailedError,
 } from "../../errors/unlock-vault.errors";
-import {
-  DeviceAccessMaterialIdentityMismatchError,
-} from "../../errors/vault-device.errors";
+import { DeviceAccessMaterialIdentityMismatchError } from "../../errors/vault-device.errors";
+import { ChangeMasterPasswordUseCase } from "./change-master-password";
 
 describe("UnlockVaultUseCase", () => {
   it("continues to attempt a current password below the new strength requirement", async () => {
@@ -133,10 +132,13 @@ describe("UnlockVaultUseCase", () => {
   it("rejects device access material for another vault before reading the snapshot", async () => {
     const ctx = createUnlockVaultTestContext();
     vi.mocked(
-      ctx.ports.vaultLocalRepository.getDeviceAccessMaterial,
+      ctx.ports.vaultLocalRepository.getDeviceAccessRecords,
     ).mockResolvedValueOnce({
-      ...ctx.deviceAccessMaterial,
-      vaultId: "another-vault-id",
+      deviceAccessMaterial: {
+        ...ctx.deviceAccessMaterial,
+        vaultId: "another-vault-id",
+      },
+      deviceAccessRecoveryBackup: ctx.deviceAccessRecoveryBackup,
     });
 
     await expect(
@@ -155,6 +157,76 @@ describe("UnlockVaultUseCase", () => {
       ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.vaultLockTasks.save).not.toHaveBeenCalled();
+  });
+
+  it("rejects material without a matching recovery companion before password derivation", async () => {
+    const ctx = createUnlockVaultTestContext();
+    ctx.saved.deviceAccessRecoveryBackup = undefined;
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 60_000,
+      }),
+    ).rejects.toBeInstanceOf(DeviceAccessMaterialIdentityMismatchError);
+
+    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.getVaultSnapshot,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("rejects replayed pre-change material after a master-password rotation", async () => {
+    const ctx = createUnlockVaultTestContext();
+    const preChangeDeviceAccessMaterial = ctx.deviceAccessMaterial;
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      masterPassword: ctx.values.masterPassword,
+      lockAfterMs: 60_000,
+    });
+
+    vi.mocked(ctx.ports.ids.generateId).mockReset();
+    vi.mocked(ctx.ports.ids.generateId).mockResolvedValue(
+      ctx.values.replacementLocalAccessGenerationId,
+    );
+    vi.mocked(ctx.ports.crypto.generateMasterPasswordSalt).mockResolvedValue(
+      ctx.values.newMasterPasswordSalt,
+    );
+    vi.mocked(
+      ctx.ports.crypto.generateLocalKeysProtectionSalt,
+    ).mockResolvedValue(ctx.values.newLocalKeysProtectionSalt);
+
+    const changeMasterPassword = new ChangeMasterPasswordUseCase(
+      ctx.ports.crypto,
+      ctx.ports.vaultLocalRepository,
+      ctx.ports.sessionServices.unlockedVaultSession,
+      ctx.ports.ids,
+    );
+    await changeMasterPassword.execute({
+      vaultId: ctx.values.vaultId,
+      currentMasterPassword: ctx.values.masterPassword,
+      newMasterPassword: ctx.values.newMasterPassword,
+    });
+    await ctx.ports.sessionServices.unlockedVaultSession.remove();
+
+    ctx.saved.deviceAccessMaterial = preChangeDeviceAccessMaterial;
+    vi.mocked(ctx.ports.crypto.deriveLocalRootKey).mockClear();
+    vi.mocked(ctx.ports.vaultLocalRepository.getVaultSnapshot).mockClear();
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 60_000,
+      }),
+    ).rejects.toBeInstanceOf(DeviceAccessMaterialIdentityMismatchError);
+
+    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.getVaultSnapshot,
+    ).not.toHaveBeenCalled();
   });
 
   it.each(["signing", "wrapping"] as const)(

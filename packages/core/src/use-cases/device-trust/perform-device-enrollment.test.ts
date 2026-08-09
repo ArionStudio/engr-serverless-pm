@@ -21,6 +21,7 @@ import {
   PendingDeviceEnrollmentMismatchError,
 } from "../../errors/device-enrollment.errors";
 import { InvalidNewMasterPasswordError } from "../../errors/master-password.errors";
+import { DeviceAccessMaterialChangedError } from "../../errors/vault-device.errors";
 import {
   RemoteVaultSnapshotChangedError,
   SyncRemovalPendingError,
@@ -163,6 +164,23 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       masterPassword,
       ctx.values.masterPasswordSalt,
     );
+  });
+
+  it("rejects an invalid freshly generated access generation", async () => {
+    const ctx = createContext();
+    vi.mocked(ctx.ports.ids.generateId).mockReset().mockResolvedValueOnce("");
+
+    await expect(
+      ctx.useCase.execute({
+        enrollmentResponse: ctx.response,
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "New laptop",
+      }),
+    ).rejects.toBeInstanceOf(DeviceAccessMaterialChangedError);
+
+    expect(
+      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
+    ).not.toHaveBeenCalled();
   });
 
   it("uploads the signed enrollment even when local storage replaces it after save", async () => {

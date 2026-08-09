@@ -3,6 +3,7 @@ import {
   InvalidVaultSyncReviewError,
 } from "../../errors";
 import { areJsonEqual } from "../common";
+import { areArrayBuffersEqual } from "../common/array-buffer.utils";
 import type { DeviceKeySlot } from "../snapshot";
 import type {
   ChangedDeviceKeySlot,
@@ -117,11 +118,11 @@ function areDeviceSlotsEqual(
       remoteSlot.envelope.recipientDeviceId &&
     localSlot.envelope.vaultKeyGeneration ===
       remoteSlot.envelope.vaultKeyGeneration &&
-    areBuffersEqual(
+    areArrayBuffersEqual(
       localSlot.envelope.ephemeralPublicKey,
       remoteSlot.envelope.ephemeralPublicKey,
     ) &&
-    areBuffersEqual(
+    areArrayBuffersEqual(
       localSlot.envelope.hkdfSalt,
       remoteSlot.envelope.hkdfSalt,
     ) &&
@@ -129,21 +130,5 @@ function areDeviceSlotsEqual(
       localSlot.envelope.encryptedVaultMasterKey,
       remoteSlot.envelope.encryptedVaultMasterKey,
     )
-  );
-}
-
-function areBuffersEqual(
-  localBuffer: ArrayBuffer,
-  remoteBuffer: ArrayBuffer,
-): boolean {
-  if (localBuffer.byteLength !== remoteBuffer.byteLength) {
-    return false;
-  }
-
-  const localBytes = new Uint8Array(localBuffer);
-  const remoteBytes = new Uint8Array(remoteBuffer);
-
-  return localBytes.every(
-    (localByte, index) => localByte === remoteBytes[index],
   );
 }
