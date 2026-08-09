@@ -37,6 +37,16 @@ if (backup algorithm unsupported?) then (yes)
   :Throw UnsupportedAlgorithmSuiteError;
   stop
 endif
+if (present material and backup vault, device,\nor localAccessGenerationId differ?) then (yes)
+  :Throw DeviceAccessMaterialChangedError;
+  stop
+endif
+:Validate present material and backup revisions are
+positive safe integers with available exact successors;
+if (either revision invalid or exhausted?) then (yes)
+  :Throw DeviceAccessMaterialChangedError;
+  stop
+endif
 
 :Read local vault snapshot;
 if (snapshot missing?) then (yes)
@@ -97,7 +107,7 @@ endif
 :Derive fresh recovery local-keys protection key;
 :Wrap same local keys payload for new recovery backup;
 
-:If material was absent, generate a fresh\nlocalAccessGenerationId; otherwise retain it;
+:Generate a fresh localAccessGenerationId;
 :Build both replacements with next revisions\nand the selected localAccessGenerationId;
 :Atomically compare-and-save both records using the\ncaptured revisions and localAccessGenerationId;
 if (either persisted revision or generation changed first?) then (yes)

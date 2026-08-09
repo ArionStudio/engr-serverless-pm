@@ -1,4 +1,5 @@
 import type { DeviceAccessMaterial } from "../../domain/device-trust/device-access-material";
+import { getNextDeviceAccessRevision } from "../../domain/device-trust/device-access-revision";
 import type { RawMasterPassword } from "../../domain/master-password";
 import { assertNewMasterPasswordMeetsPolicy } from "../../domain/master-password/master-password.utils";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
@@ -8,7 +9,10 @@ import {
   DeviceAccessMaterialNotFoundForMasterPasswordChangeError,
   VaultMustBeUnlockedForMasterPasswordChangeError,
 } from "../../errors/change-master-password.errors";
-import { DeviceAccessMaterialIdentityMismatchError } from "../../errors/vault-device.errors";
+import {
+  DeviceAccessMaterialChangedError,
+  DeviceAccessMaterialIdentityMismatchError,
+} from "../../errors/vault-device.errors";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 
 export type ChangeMasterPasswordCommandParams = {
@@ -63,6 +67,14 @@ export class ChangeMasterPasswordUseCase {
           deviceAccessMaterial.deviceId !== unlockedVault.deviceId
         ) {
           throw new DeviceAccessMaterialIdentityMismatchError(params.vaultId);
+        }
+
+        const nextDeviceAccessMaterialRevision = getNextDeviceAccessRevision(
+          deviceAccessMaterial.revision,
+        );
+
+        if (nextDeviceAccessMaterialRevision === null) {
+          throw new DeviceAccessMaterialChangedError(params.vaultId);
         }
 
         if (
@@ -155,7 +167,7 @@ export class ChangeMasterPasswordUseCase {
 
         const updatedDeviceAccessMaterial: DeviceAccessMaterial = {
           ...deviceAccessMaterial,
-          revision: deviceAccessMaterial.revision + 1,
+          revision: nextDeviceAccessMaterialRevision,
           masterPasswordSalt: newMasterPasswordSalt,
           localKeysProtectionSalt: newLocalKeysProtectionSalt,
           protectedLocalKeys,

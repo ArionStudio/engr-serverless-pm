@@ -1,5 +1,6 @@
 import type { DeviceAccessMaterial } from "../../domain/device-trust/device-access-material";
 import type { DeviceAccessRecoveryBackup } from "../../domain/device-trust/device-access-recovery-backup";
+import { INITIAL_DEVICE_ACCESS_REVISION } from "../../domain/device-trust/device-access-revision";
 import type { DeviceProfile } from "../../domain/device-profile/device-profile";
 import type { LocalKeysPayload } from "../../domain/device-trust/local-protection.type";
 import type { RawMasterPassword } from "../../domain/master-password";
@@ -208,7 +209,7 @@ export class InitializeVaultUseCase {
     };
 
     const deviceAccessMaterial: DeviceAccessMaterial = {
-      revision: 1,
+      revision: INITIAL_DEVICE_ACCESS_REVISION,
       localAccessGenerationId,
       vaultId,
       deviceId,
@@ -220,7 +221,7 @@ export class InitializeVaultUseCase {
       protectedLocalKeys,
     };
     const deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup = {
-      revision: 1,
+      revision: INITIAL_DEVICE_ACCESS_REVISION,
       localAccessGenerationId,
       vaultId,
       deviceId,

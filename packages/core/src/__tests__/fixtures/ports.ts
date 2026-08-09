@@ -7,6 +7,10 @@ import type {
 } from "../../domain/device-trust/brand-keys";
 import type { DeviceAccessMaterial } from "../../domain/device-trust/device-access-material";
 import type { DeviceAccessRecoveryBackup } from "../../domain/device-trust/device-access-recovery-backup";
+import {
+  getNextDeviceAccessRevision,
+  INITIAL_DEVICE_ACCESS_REVISION,
+} from "../../domain/device-trust/device-access-revision";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import type { LocalVaultDescriptor } from "../../domain/vault/local-vault-descriptor";
 import type {
@@ -413,8 +417,12 @@ export function createCoreTestPorts(
         deviceAccessMaterial,
       }) => {
         const currentDeviceAccessMaterial = saved.deviceAccessMaterial;
+        const nextDeviceAccessMaterialRevision = getNextDeviceAccessRevision(
+          expectedDeviceAccessMaterialRevision,
+        );
 
         if (
+          nextDeviceAccessMaterialRevision === null ||
           currentDeviceAccessMaterial?.vaultId !==
             deviceAccessMaterial.vaultId ||
           currentDeviceAccessMaterial?.deviceId !==
@@ -424,7 +432,8 @@ export function createCoreTestPorts(
           currentDeviceAccessMaterial?.revision !==
             expectedDeviceAccessMaterialRevision ||
           deviceAccessMaterial.localAccessGenerationId !==
-            expectedLocalAccessGenerationId
+            expectedLocalAccessGenerationId ||
+          deviceAccessMaterial.revision !== nextDeviceAccessMaterialRevision
         ) {
           throw new DeviceAccessMaterialChangedError(
             deviceAccessMaterial.vaultId,
@@ -456,8 +465,34 @@ export function createCoreTestPorts(
           currentDeviceAccessMaterial.vaultId !== deviceAccessMaterial.vaultId
             ? null
             : currentDeviceAccessMaterial.localAccessGenerationId;
+        const nextDeviceAccessMaterialRevision =
+          expectedDeviceAccessMaterialRevision === null
+            ? INITIAL_DEVICE_ACCESS_REVISION
+            : getNextDeviceAccessRevision(
+                expectedDeviceAccessMaterialRevision,
+              );
+        const nextDeviceAccessRecoveryBackupRevision =
+          getNextDeviceAccessRevision(
+            expectedDeviceAccessRecoveryBackupRevision,
+          );
 
         if (
+          nextDeviceAccessMaterialRevision === null ||
+          nextDeviceAccessRecoveryBackupRevision === null ||
+          (currentDeviceAccessMaterial === undefined) !==
+            (expectedDeviceAccessMaterialRevision === null) ||
+          (currentDeviceAccessMaterial === undefined) !==
+            (expectedDeviceAccessMaterialGenerationId === null) ||
+          deviceAccessMaterial.vaultId !== deviceAccessRecoveryBackup.vaultId ||
+          deviceAccessMaterial.deviceId !==
+            deviceAccessRecoveryBackup.deviceId ||
+          (currentDeviceAccessMaterial !== undefined &&
+            (currentDeviceAccessMaterial.vaultId !==
+              currentDeviceAccessRecoveryBackup?.vaultId ||
+              currentDeviceAccessMaterial.deviceId !==
+                currentDeviceAccessRecoveryBackup?.deviceId ||
+              currentDeviceAccessMaterial.localAccessGenerationId !==
+                currentDeviceAccessRecoveryBackup?.localAccessGenerationId)) ||
           currentDeviceAccessMaterialRevision !==
             expectedDeviceAccessMaterialRevision ||
           currentDeviceAccessMaterialGenerationId !==
@@ -475,9 +510,11 @@ export function createCoreTestPorts(
             expectedDeviceAccessRecoveryBackupRevision ||
           deviceAccessMaterial.localAccessGenerationId !==
             deviceAccessRecoveryBackup.localAccessGenerationId ||
-          (expectedDeviceAccessMaterialGenerationId !== null &&
-            deviceAccessMaterial.localAccessGenerationId !==
-              expectedDeviceAccessMaterialGenerationId)
+          deviceAccessMaterial.localAccessGenerationId ===
+            expectedDeviceAccessRecoveryBackupGenerationId ||
+          deviceAccessMaterial.revision !== nextDeviceAccessMaterialRevision ||
+          deviceAccessRecoveryBackup.revision !==
+            nextDeviceAccessRecoveryBackupRevision
         ) {
           throw new DeviceAccessMaterialChangedError(
             deviceAccessMaterial.vaultId,

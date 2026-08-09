@@ -1,5 +1,9 @@
 import type { DeviceAccessMaterial } from "../../domain/device-trust/device-access-material";
 import type { DeviceAccessRecoveryBackup } from "../../domain/device-trust/device-access-recovery-backup";
+import {
+  getNextDeviceAccessRevision,
+  INITIAL_DEVICE_ACCESS_REVISION,
+} from "../../domain/device-trust/device-access-revision";
 import type { LocalKeysPayload } from "../../domain/device-trust/local-protection.type";
 import type { RawMasterPassword } from "../../domain/master-password";
 import { assertNewMasterPasswordMeetsPolicy } from "../../domain/master-password/master-password.utils";
@@ -12,6 +16,7 @@ import {
   VaultSnapshotNotFoundError,
 } from "../../errors/unlock-vault.errors";
 import { PersistedVaultMismatchError } from "../../errors/vault-snapshot.errors";
+import { DeviceAccessMaterialChangedError } from "../../errors/vault-device.errors";
 import type { Bip39Port } from "../../ports/crypto/bip39.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { IdPort } from "../../ports/system/id.port";
@@ -91,6 +96,31 @@ export class RecoverDeviceAccessUseCase {
         expectedAlgorithmSuiteId: this.crypto.algorithmSuite.id,
         actualAlgorithmSuiteId: recoveryBackup.algorithmSuiteId,
       });
+    }
+
+    if (
+      expectedDeviceAccessMaterial !== null &&
+      (expectedDeviceAccessMaterial.vaultId !== recoveryBackup.vaultId ||
+        expectedDeviceAccessMaterial.deviceId !== recoveryBackup.deviceId ||
+        expectedDeviceAccessMaterial.localAccessGenerationId !==
+          recoveryBackup.localAccessGenerationId)
+    ) {
+      throw new DeviceAccessMaterialChangedError(params.vaultId);
+    }
+
+    const nextDeviceAccessMaterialRevision =
+      expectedDeviceAccessMaterial === null
+        ? INITIAL_DEVICE_ACCESS_REVISION
+        : getNextDeviceAccessRevision(expectedDeviceAccessMaterial.revision);
+    const nextDeviceAccessRecoveryBackupRevision = getNextDeviceAccessRevision(
+      recoveryBackup.revision,
+    );
+
+    if (
+      nextDeviceAccessMaterialRevision === null ||
+      nextDeviceAccessRecoveryBackupRevision === null
+    ) {
+      throw new DeviceAccessMaterialChangedError(params.vaultId);
     }
 
     const vaultSnapshot = await this.vaultLocalRepository.getVaultSnapshot(
@@ -295,12 +325,9 @@ export class RecoverDeviceAccessUseCase {
         localKeysPayload,
         nextRecoveryLocalKeysProtectionKey,
       );
-    const localAccessGenerationId =
-      expectedDeviceAccessMaterial === null
-        ? await this.ids.generateId()
-        : expectedDeviceAccessMaterial.localAccessGenerationId;
+    const localAccessGenerationId = await this.ids.generateId();
     const deviceAccessMaterial: DeviceAccessMaterial = {
-      revision: (expectedDeviceAccessMaterial?.revision ?? 0) + 1,
+      revision: nextDeviceAccessMaterialRevision,
       localAccessGenerationId,
       vaultId: params.vaultId,
       deviceId: recoveryBackup.deviceId,
@@ -312,7 +339,7 @@ export class RecoverDeviceAccessUseCase {
       protectedLocalKeys,
     };
     const deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup = {
-      revision: recoveryBackup.revision + 1,
+      revision: nextDeviceAccessRecoveryBackupRevision,
       localAccessGenerationId,
       vaultId: params.vaultId,
       deviceId: recoveryBackup.deviceId,
@@ -325,9 +352,13 @@ export class RecoverDeviceAccessUseCase {
 
     await this.vaultLocalRepository.saveRecoveredDeviceAccess({
       expectedDeviceAccessMaterialRevision:
-        expectedDeviceAccessMaterial?.revision ?? null,
+        expectedDeviceAccessMaterial === null
+          ? null
+          : expectedDeviceAccessMaterial.revision,
       expectedDeviceAccessMaterialGenerationId:
-        expectedDeviceAccessMaterial?.localAccessGenerationId ?? null,
+        expectedDeviceAccessMaterial === null
+          ? null
+          : expectedDeviceAccessMaterial.localAccessGenerationId,
       expectedDeviceAccessRecoveryBackupRevision: recoveryBackup.revision,
       expectedDeviceAccessRecoveryBackupGenerationId:
         recoveryBackup.localAccessGenerationId,

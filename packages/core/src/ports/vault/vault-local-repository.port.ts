@@ -44,7 +44,9 @@ export interface VaultLocalRepositoryPort {
    * Atomically replaces device access material only when the persisted record
    * still has `expectedDeviceAccessMaterialRevision` and
    * `expectedLocalAccessGenerationId`, and the replacement retains that
-   * generation and device identity. Rejects with
+   * generation and device identity. Revisions are positive safe integers; the
+   * replacement revision must be exactly the expected revision plus one.
+   * Rejects exhausted or invalid revisions and all other conflicts with
    * `DeviceAccessMaterialChangedError` without changing the record when
    * another writer replaced it first.
    */
@@ -56,11 +58,17 @@ export interface VaultLocalRepositoryPort {
   /**
    * Atomically compares and replaces local device trust material and its
    * recovery backup. `null` expected material fields permit recovery when
-   * access material is absent and allow both replacements to use a fresh
-   * generation ID. Implementations must reject with
+   * access material is absent and must be rejected when material is present.
+   * Both replacements must use the same fresh generation ID, distinct from
+   * the persisted backup generation.
+   * Revisions are positive safe integers. Each replacement revision must be
+   * exactly its expected revision plus one; absent material starts at revision
+   * one. Exhausted or invalid revisions are conflicts.
+   * Implementations must reject with
    * `DeviceAccessMaterialChangedError` without changing either record when an
    * expected revision, generation ID, or device identity no longer matches.
-   * Both replacements must carry the same generation ID.
+   * When material is present, the persisted pair and both replacements must
+   * each carry the same vault ID, device ID, and generation ID.
    */
   saveRecoveredDeviceAccess: (params: {
     readonly expectedDeviceAccessMaterialRevision: number | null;

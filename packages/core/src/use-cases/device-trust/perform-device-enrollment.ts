@@ -5,6 +5,7 @@ import type {
   DeviceEnrollmentResponse,
   LocalKeysPayload,
 } from "../../domain/device-trust";
+import { INITIAL_DEVICE_ACCESS_REVISION } from "../../domain/device-trust/device-access-revision";
 import type { RawMasterPassword } from "../../domain/master-password";
 import { assertNewMasterPasswordMeetsPolicy } from "../../domain/master-password/master-password.utils";
 import type { RecoveryKeyMnemonic } from "../../domain/recovery";
@@ -327,7 +328,7 @@ export class PerformDeviceEnrollmentUseCase {
       );
     const localAccessGenerationId = await this.ids.generateId();
     const deviceAccessMaterial: DeviceAccessMaterial = {
-      revision: 1,
+      revision: INITIAL_DEVICE_ACCESS_REVISION,
       localAccessGenerationId,
       vaultId: response.vaultId,
       deviceId: request.payload.deviceId,
@@ -342,7 +343,7 @@ export class PerformDeviceEnrollmentUseCase {
       ),
     };
     const deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup = {
-      revision: 1,
+      revision: INITIAL_DEVICE_ACCESS_REVISION,
       localAccessGenerationId,
       vaultId: response.vaultId,
       deviceId: request.payload.deviceId,

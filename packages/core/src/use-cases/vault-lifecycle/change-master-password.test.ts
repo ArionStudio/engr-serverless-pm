@@ -658,6 +658,80 @@ describe("ChangeMasterPasswordUseCase", () => {
     expect(ctx.saved.deviceAccessMaterial).toEqual(reinitializedMaterial);
   });
 
+  it.each([
+    0,
+    1.5,
+    Number.MAX_SAFE_INTEGER,
+    Number.POSITIVE_INFINITY,
+    null as unknown as number,
+  ])(
+    "rejects invalid or exhausted access-material revision %s before crypto work",
+    async (revision) => {
+      const ctx = createChangeMasterPasswordTestContext();
+      ctx.saved.deviceAccessMaterial = {
+        ...ctx.deviceAccessMaterial,
+        revision,
+      };
+
+      const materialChange = ctx.useCase
+        .execute({
+          vaultId: ctx.values.vaultId,
+          currentMasterPassword: ctx.values.masterPassword,
+          newMasterPassword: ctx.values.newMasterPassword,
+        })
+        .catch((caught: unknown) => caught);
+
+      expectSecretSafeDeviceAccessMaterialChange({
+        error: await materialChange,
+        vaultId: ctx.values.vaultId,
+        passwords: [ctx.values.masterPassword, ctx.values.newMasterPassword],
+        rawDeviceKeys: [
+          ctx.values.devicePublicSignKey,
+          ctx.values.devicePrivateSignKey,
+          ctx.values.devicePublicVaultKey,
+          ctx.values.devicePrivateVaultKey,
+        ],
+      });
+      expect(ctx.ports.crypto.verifyDeviceSignKeyPair).not.toHaveBeenCalled();
+      expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+      expect(
+        ctx.ports.vaultLocalRepository.saveDeviceAccessMaterial,
+      ).not.toHaveBeenCalled();
+    },
+  );
+
+  it("atomically rejects a replacement revision that is not the exact successor", async () => {
+    const ctx = createChangeMasterPasswordTestContext();
+    const originalDeviceAccessMaterial = ctx.saved.deviceAccessMaterial;
+
+    const materialChange = ctx.ports.vaultLocalRepository
+      .saveDeviceAccessMaterial({
+        expectedDeviceAccessMaterialRevision: ctx.deviceAccessMaterial.revision,
+        expectedLocalAccessGenerationId:
+          ctx.deviceAccessMaterial.localAccessGenerationId,
+        deviceAccessMaterial: {
+          ...ctx.deviceAccessMaterial,
+          revision: ctx.deviceAccessMaterial.revision + 2,
+        },
+      })
+      .catch((caught: unknown) => caught);
+
+    expectSecretSafeDeviceAccessMaterialChange({
+      error: await materialChange,
+      vaultId: ctx.values.vaultId,
+      passwords: [ctx.values.masterPassword, ctx.values.newMasterPassword],
+      rawDeviceKeys: [
+        ctx.values.devicePublicSignKey,
+        ctx.values.devicePrivateSignKey,
+        ctx.values.devicePublicVaultKey,
+        ctx.values.devicePrivateVaultKey,
+      ],
+    });
+    expect(ctx.saved.deviceAccessMaterial).toEqual(
+      originalDeviceAccessMaterial,
+    );
+  });
+
   it("does not save updated access material when current password unwrap fails", async () => {
     const ctx = createChangeMasterPasswordTestContext();
     const error = new Error("unwrap failed");
