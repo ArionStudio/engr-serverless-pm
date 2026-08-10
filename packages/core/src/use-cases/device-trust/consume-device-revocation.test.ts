@@ -309,6 +309,9 @@ describe("PrepareDeviceRevocationConsumptionUseCase", () => {
       ctx.ports.crypto.encryptDeviceSyncCredentialState,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+    expect(
+      Array.from(new Uint8Array(ctx.values.rotatedVaultMasterKey)),
+    ).toEqual([0]);
   });
 
   it("rejects a revocation chain that diverges from the local trust baseline", async () => {
@@ -614,6 +617,9 @@ describe("PrepareDeviceRevocationConsumptionUseCase", () => {
     expect(
       ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
+    expect(
+      Array.from(new Uint8Array(ctx.values.rotatedVaultMasterKey)),
+    ).toEqual([0]);
   });
 
   it("rejects a provider marker bound to another vault-key generation", async () => {

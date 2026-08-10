@@ -6,6 +6,7 @@ import {
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
 import type { DeviceAccessRecoveryBackup } from "../../domain/device-trust";
 import type { RawMasterPassword } from "../../domain/master-password";
+import type { VaultMasterKey } from "../../domain/snapshot";
 import { InvalidNewMasterPasswordError } from "../../errors/master-password.errors";
 import {
   DeviceKeySlotNotFoundError,
@@ -61,8 +62,11 @@ function deferRecoveryReplacement(ctx: ReturnType<typeof createContext>) {
   const recoveryWrappingCanContinue = new Promise<void>((resolve) => {
     continueRecoveryWrapping = resolve;
   });
+  let wrapCallCount = 0;
   wrapLocalKeysPayload.mockImplementation(async (payload, protectionKey) => {
-    if (protectionKey === ctx.values.rotatedRecoveryLocalKeysProtectionKey) {
+    wrapCallCount += 1;
+
+    if (wrapCallCount === 2) {
       markRecoveryWrappingStarted();
       await recoveryWrappingCanContinue;
     }
@@ -116,6 +120,11 @@ describe("RecoverDeviceAccessUseCase", () => {
 
   it("recovers the wrapping key and re-protects the complete local identity", async () => {
     const ctx = createContext();
+    const recoveredVaultMasterKey = new Uint8Array([7])
+      .buffer as VaultMasterKey;
+    vi.mocked(
+      ctx.ports.crypto.openDeviceVaultKeyEnvelope,
+    ).mockResolvedValueOnce(recoveredVaultMasterKey);
 
     await ctx.useCase.execute({
       vaultId: ctx.values.vaultId,
@@ -138,6 +147,14 @@ describe("RecoverDeviceAccessUseCase", () => {
       revision: ctx.backup.revision + 1,
       localAccessGenerationId: ctx.values.replacementLocalAccessGenerationId,
     });
+    const recoverySecretKey = await vi.mocked(
+      ctx.ports.bip39.mnemonicToRecoveryKey,
+    ).mock.results[0]!.value;
+    expect(Array.from(new Uint8Array(recoveredVaultMasterKey))).toEqual([0]);
+    expect(Array.from(new Uint8Array(recoverySecretKey))).toEqual([0]);
+    expect(Array.from(new Uint8Array(ctx.values.recoverySecretKey))).toEqual([
+      2,
+    ]);
   });
 
   it("rejects the old backup after a successful recovery rotation", async () => {
@@ -244,7 +261,7 @@ describe("RecoverDeviceAccessUseCase", () => {
             : ctx.deviceAccessMaterial.devicePublicSignKey,
         devicePublicVaultKey:
           identityPart === "vault key"
-            ? (new Uint8Array([2])
+            ? (new Uint8Array([3])
                 .buffer as typeof ctx.values.devicePublicVaultKey)
             : ctx.deviceAccessMaterial.devicePublicVaultKey,
       };
@@ -495,8 +512,7 @@ describe("RecoverDeviceAccessUseCase", () => {
     const passwordChangedMaterial = {
       ...ctx.deviceAccessMaterial,
       revision: ctx.deviceAccessMaterial.revision + 1,
-      localAccessGenerationId:
-        ctx.values.replacementLocalAccessGenerationId,
+      localAccessGenerationId: ctx.values.replacementLocalAccessGenerationId,
       masterPasswordSalt: ctx.values.newMasterPasswordSalt,
       localKeysProtectionSalt: ctx.values.newLocalKeysProtectionSalt,
       protectedLocalKeys: ctx.values.reprotectedLocalKeys,
@@ -505,12 +521,9 @@ describe("RecoverDeviceAccessUseCase", () => {
     const passwordChangedBackup = {
       ...ctx.backup,
       revision: ctx.backup.revision + 1,
-      localAccessGenerationId:
-        ctx.values.replacementLocalAccessGenerationId,
+      localAccessGenerationId: ctx.values.replacementLocalAccessGenerationId,
     };
-    expect(ctx.saved.deviceAccessRecoveryBackup).toEqual(
-      passwordChangedBackup,
-    );
+    expect(ctx.saved.deviceAccessRecoveryBackup).toEqual(passwordChangedBackup);
 
     const materialChange = recovery.catch((caught: unknown) => caught);
     continueRecoveryWrapping();
@@ -527,9 +540,7 @@ describe("RecoverDeviceAccessUseCase", () => {
     });
 
     expect(ctx.saved.deviceAccessMaterial).toEqual(passwordChangedMaterial);
-    expect(ctx.saved.deviceAccessRecoveryBackup).toEqual(
-      passwordChangedBackup,
-    );
+    expect(ctx.saved.deviceAccessRecoveryBackup).toEqual(passwordChangedBackup);
   });
 
   it("does not overwrite a concurrently replaced recovery backup", async () => {
@@ -655,7 +666,7 @@ describe("RecoverDeviceAccessUseCase", () => {
             : ctx.backup.devicePublicSignKey,
         devicePublicVaultKey:
           identityField === "devicePublicVaultKey"
-            ? (new Uint8Array([2])
+            ? (new Uint8Array([3])
                 .buffer as typeof ctx.values.devicePublicVaultKey)
             : ctx.backup.devicePublicVaultKey,
       };
@@ -714,14 +725,12 @@ describe("RecoverDeviceAccessUseCase", () => {
       deviceAccessMaterial: {
         ...ctx.deviceAccessMaterial,
         revision: 1,
-        localAccessGenerationId:
-          ctx.values.replacementLocalAccessGenerationId,
+        localAccessGenerationId: ctx.values.replacementLocalAccessGenerationId,
       },
       deviceAccessRecoveryBackup: {
         ...ctx.backup,
         revision: ctx.backup.revision + 1,
-        localAccessGenerationId:
-          ctx.values.replacementLocalAccessGenerationId,
+        localAccessGenerationId: ctx.values.replacementLocalAccessGenerationId,
       },
     } as unknown as Parameters<
       typeof ctx.ports.vaultLocalRepository.saveDeviceAccessRecords
@@ -751,8 +760,7 @@ describe("RecoverDeviceAccessUseCase", () => {
   it.each([
     {
       expectedDeviceAccessMaterialRevision: null,
-      expectedDeviceAccessMaterialGenerationId:
-        "local-access-generation-id",
+      expectedDeviceAccessMaterialGenerationId: "local-access-generation-id",
     },
     {
       expectedDeviceAccessMaterialRevision: 1,
@@ -821,7 +829,7 @@ describe("RecoverDeviceAccessUseCase", () => {
       ctx.saved.deviceAccessMaterial = undefined;
       const replacementPublicSignKey = new Uint8Array([1])
         .buffer as typeof ctx.values.devicePublicSignKey;
-      const replacementPublicVaultKey = new Uint8Array([2])
+      const replacementPublicVaultKey = new Uint8Array([3])
         .buffer as typeof ctx.values.devicePublicVaultKey;
       const replacementIdentity = {
         vaultId:

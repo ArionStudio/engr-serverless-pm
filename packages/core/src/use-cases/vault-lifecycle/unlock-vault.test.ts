@@ -310,13 +310,16 @@ describe("UnlockVaultUseCase", () => {
       }),
     ).rejects.toThrow("schedule failed");
 
-    expect(ctx.ports.vaultLockTasks.remove).toHaveBeenCalled();
+    expect(ctx.ports.vaultLockTasks.removeIfActionIsActive).toHaveBeenCalled();
     expect(ctx.saved.unlockedVaultSession).toBeUndefined();
   });
 
   it("cancels the scheduled lock and removes metadata when activation fails", async () => {
     const ctx = createUnlockVaultTestContext();
     const activationError = new Error("session activation failed");
+    vi.mocked(ctx.ports.scheduledTasks.cancelTask).mockRejectedValueOnce(
+      new Error("cancel failed"),
+    );
     vi.mocked(
       ctx.ports.unlockedVaultSessionMaterialRepository
         .saveUnlockedVaultSessionMaterial,
@@ -334,7 +337,7 @@ describe("UnlockVaultUseCase", () => {
       name: "lockVault",
       actionId: ctx.values.vaultLockActionId,
     });
-    expect(ctx.ports.vaultLockTasks.remove).toHaveBeenCalled();
+    expect(ctx.ports.vaultLockTasks.removeIfActionIsActive).toHaveBeenCalled();
     expect(ctx.saved.unlockedVaultSession).toBeUndefined();
   });
 });

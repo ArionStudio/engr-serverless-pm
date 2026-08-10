@@ -10,8 +10,13 @@ skinparam activity {
 }
 
 start
-:Input:\nenrollmentBundle, masterPassword, deviceName;
+:Input:\nenrollmentBundle, masterPassword, deviceName, lockAfterMs;
 :Source:\npackages/core/src/use-cases/device-trust/perform-device-enrollment.ts;
+:Validate lockAfterMs before pending-enrollment reads or crypto work;
+if (invalid delay?) then (yes)
+  :Throw InvalidVaultLockDelayError;
+  stop
+endif
 :Calculate masterPassword strength;
 if (password score below 4?) then (yes)
   :Throw InvalidNewMasterPasswordError;
@@ -114,9 +119,21 @@ endif
 :Build device access material and recovery backup\nwith revision 1 and the same localAccessGenerationId;
 :Build local vault descriptor;
 :Save initialized local vault for new device\nincluding recovery backup;
-if (commit unlocked session succeeds?) then (yes)
+:Enter serialized session activation boundary;
+:Save vault lock task metadata;
+if (schedule lock task succeeds?) then (yes)
   :Continue;
 else (no)
+  :Best effort remove matching lock task metadata;
+  :Best effort remove persisted local vault;
+  :Throw schedule failure;
+  stop
+endif
+if (activate unlocked session succeeds?) then (yes)
+  :Continue;
+else (no)
+  :Best effort cancel scheduled lock task;
+  :Best effort remove matching lock task metadata;
   :Best effort remove persisted local vault;
   :Throw original session activation failure;
   stop
@@ -127,12 +144,16 @@ if (upload registered snapshot succeeds?) then (yes)
   stop
 else (no)
   if (failure is RemoteVaultSnapshotChangedError?) then (yes)
-    :Discard session and local snapshot\nonly if they still match this enrollment;
+    :Enter shared lifecycle cleanup owner;
+    :Only while session ID, activation generation, and\nsource version still match, clear clipboard/task state,\nwipe and remove session records, then discard local snapshot;
     if (session advanced?) then (yes)
-      :Return visible vault projection, snapshotVersionVector,\nrevisionTimestamp, deviceId,\nrecoveryMnemonicKey, syncUpload = complete;
+      :Preserve newer local state;
+      :Throw DeviceEnrollmentRollbackIncompleteError\nbecause rejected remote upload is not proven complete;
       stop
     else (no)
-      :Throw DeviceEnrollmentRemoteSnapshotChangedError\nor DeviceEnrollmentRollbackIncompleteError;
+      :Wipe original enrollment session secrets\nwhose ownership is no longer transferred;
+      :If session was replaced or removed, preserve local state\nand throw DeviceEnrollmentRollbackIncompleteError;
+      :Otherwise throw DeviceEnrollmentRemoteSnapshotChangedError\nor DeviceEnrollmentRollbackIncompleteError;
       stop
     endif
   else (no)

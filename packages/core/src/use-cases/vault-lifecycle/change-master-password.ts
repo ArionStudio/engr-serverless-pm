@@ -18,6 +18,7 @@ import {
   DeviceAccessMaterialChangedError,
   DeviceAccessMaterialIdentityMismatchError,
 } from "../../errors/vault-device.errors";
+import { bestEffortWipeArrayBuffers } from "../../lib/secure-wipe.utils";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 
 export type ChangeMasterPasswordCommandParams = {
@@ -144,80 +145,95 @@ export class ChangeMasterPasswordUseCase {
           throw new DeviceAccessMaterialIdentityMismatchError(params.vaultId);
         }
 
-        const currentLocalRootKey = await this.crypto.deriveLocalRootKey(
-          params.currentMasterPassword,
-          deviceAccessMaterial.masterPasswordSalt,
-        );
+        const ownedSecrets: ArrayBuffer[] = [];
 
-        const currentLocalKeysProtectionKey =
-          await this.crypto.deriveLocalKeysProtectionKey(
-            currentLocalRootKey,
-            deviceAccessMaterial.localKeysProtectionSalt,
+        try {
+          const currentLocalRootKey = await this.crypto.deriveLocalRootKey(
+            params.currentMasterPassword,
+            deviceAccessMaterial.masterPasswordSalt,
           );
+          ownedSecrets.push(currentLocalRootKey);
 
-        const localKeysPayload = await this.crypto.unwrapLocalKeysPayload(
-          deviceAccessMaterial.protectedLocalKeys,
-          currentLocalKeysProtectionKey,
-        );
+          const currentLocalKeysProtectionKey =
+            await this.crypto.deriveLocalKeysProtectionKey(
+              currentLocalRootKey,
+              deviceAccessMaterial.localKeysProtectionSalt,
+            );
+          ownedSecrets.push(currentLocalKeysProtectionKey);
 
-        if (
-          !(await this.crypto.verifyDeviceSignKeyPair(
-            deviceAccessMaterial.devicePublicSignKey,
+          const localKeysPayload = await this.crypto.unwrapLocalKeysPayload(
+            deviceAccessMaterial.protectedLocalKeys,
+            currentLocalKeysProtectionKey,
+          );
+          ownedSecrets.push(
             localKeysPayload.devicePrivateSignKey,
-          )) ||
-          !(await this.crypto.verifyDeviceVaultKeyPair(
-            deviceAccessMaterial.devicePublicVaultKey,
             localKeysPayload.devicePrivateVaultKey,
-          ))
-        ) {
-          throw new DeviceAccessMaterialIdentityMismatchError(params.vaultId);
-        }
-
-        const newMasterPasswordSalt =
-          await this.crypto.generateMasterPasswordSalt();
-        const newLocalRootKey = await this.crypto.deriveLocalRootKey(
-          params.newMasterPassword,
-          newMasterPasswordSalt,
-        );
-
-        const newLocalKeysProtectionSalt =
-          await this.crypto.generateLocalKeysProtectionSalt();
-        const newLocalKeysProtectionKey =
-          await this.crypto.deriveLocalKeysProtectionKey(
-            newLocalRootKey,
-            newLocalKeysProtectionSalt,
+            localKeysPayload.deviceLocalProtectionKey,
           );
 
-        const protectedLocalKeys = await this.crypto.wrapLocalKeysPayload(
-          localKeysPayload,
-          newLocalKeysProtectionKey,
-        );
+          if (
+            !(await this.crypto.verifyDeviceSignKeyPair(
+              deviceAccessMaterial.devicePublicSignKey,
+              localKeysPayload.devicePrivateSignKey,
+            )) ||
+            !(await this.crypto.verifyDeviceVaultKeyPair(
+              deviceAccessMaterial.devicePublicVaultKey,
+              localKeysPayload.devicePrivateVaultKey,
+            ))
+          ) {
+            throw new DeviceAccessMaterialIdentityMismatchError(params.vaultId);
+          }
 
-        const updatedDeviceAccessMaterial: DeviceAccessMaterial = {
-          ...deviceAccessMaterial,
-          revision: nextDeviceAccessMaterialRevision,
-          localAccessGenerationId,
-          masterPasswordSalt: newMasterPasswordSalt,
-          localKeysProtectionSalt: newLocalKeysProtectionSalt,
-          protectedLocalKeys,
-        };
-        const updatedDeviceAccessRecoveryBackup = {
-          ...deviceAccessRecoveryBackup,
-          revision: nextDeviceAccessRecoveryBackupRevision,
-          localAccessGenerationId,
-        };
+          const newMasterPasswordSalt =
+            await this.crypto.generateMasterPasswordSalt();
+          const newLocalRootKey = await this.crypto.deriveLocalRootKey(
+            params.newMasterPassword,
+            newMasterPasswordSalt,
+          );
+          ownedSecrets.push(newLocalRootKey);
 
-        await this.vaultLocalRepository.saveDeviceAccessRecords({
-          expectedDeviceAccessMaterialRevision: deviceAccessMaterial.revision,
-          expectedDeviceAccessMaterialGenerationId:
-            deviceAccessMaterial.localAccessGenerationId,
-          expectedDeviceAccessRecoveryBackupRevision:
-            deviceAccessRecoveryBackup.revision,
-          expectedDeviceAccessRecoveryBackupGenerationId:
-            deviceAccessRecoveryBackup.localAccessGenerationId,
-          deviceAccessMaterial: updatedDeviceAccessMaterial,
-          deviceAccessRecoveryBackup: updatedDeviceAccessRecoveryBackup,
-        });
+          const newLocalKeysProtectionSalt =
+            await this.crypto.generateLocalKeysProtectionSalt();
+          const newLocalKeysProtectionKey =
+            await this.crypto.deriveLocalKeysProtectionKey(
+              newLocalRootKey,
+              newLocalKeysProtectionSalt,
+            );
+          ownedSecrets.push(newLocalKeysProtectionKey);
+
+          const protectedLocalKeys = await this.crypto.wrapLocalKeysPayload(
+            localKeysPayload,
+            newLocalKeysProtectionKey,
+          );
+
+          const updatedDeviceAccessMaterial: DeviceAccessMaterial = {
+            ...deviceAccessMaterial,
+            revision: nextDeviceAccessMaterialRevision,
+            localAccessGenerationId,
+            masterPasswordSalt: newMasterPasswordSalt,
+            localKeysProtectionSalt: newLocalKeysProtectionSalt,
+            protectedLocalKeys,
+          };
+          const updatedDeviceAccessRecoveryBackup = {
+            ...deviceAccessRecoveryBackup,
+            revision: nextDeviceAccessRecoveryBackupRevision,
+            localAccessGenerationId,
+          };
+
+          await this.vaultLocalRepository.saveDeviceAccessRecords({
+            expectedDeviceAccessMaterialRevision: deviceAccessMaterial.revision,
+            expectedDeviceAccessMaterialGenerationId:
+              deviceAccessMaterial.localAccessGenerationId,
+            expectedDeviceAccessRecoveryBackupRevision:
+              deviceAccessRecoveryBackup.revision,
+            expectedDeviceAccessRecoveryBackupGenerationId:
+              deviceAccessRecoveryBackup.localAccessGenerationId,
+            deviceAccessMaterial: updatedDeviceAccessMaterial,
+            deviceAccessRecoveryBackup: updatedDeviceAccessRecoveryBackup,
+          });
+        } finally {
+          bestEffortWipeArrayBuffers(ownedSecrets);
+        }
       },
     );
   }

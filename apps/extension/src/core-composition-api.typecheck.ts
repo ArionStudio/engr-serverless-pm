@@ -16,6 +16,7 @@ import type {
   SyncProviderPort,
   UnlockedVaultSessionMaterialRepositoryPort,
   VaultDisplayNamePort,
+  VaultLockTaskRepositoryPort,
   VaultLocalRepositoryPort,
 } from "@lfspm/core";
 import {
@@ -37,6 +38,7 @@ type CoreCompositionPorts = {
   readonly sessionMaterials: UnlockedVaultSessionMaterialRepositoryPort;
   readonly syncProvider: SyncProviderPort;
   readonly vaultDisplayName: VaultDisplayNamePort;
+  readonly vaultLockTasks: VaultLockTaskRepositoryPort;
   readonly vaults: VaultLocalRepositoryPort;
 };
 
@@ -75,6 +77,8 @@ export function composeCoreApi(ports: CoreCompositionPorts) {
       ports.ids,
       ports.clock,
       ports.vaultDisplayName,
+      ports.scheduledTasks,
+      ports.vaultLockTasks,
     ),
     vaultEntry: new AddEntryUseCase(
       ports.ids,

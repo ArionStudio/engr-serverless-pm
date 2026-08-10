@@ -44,7 +44,8 @@ import type {
 import type { Vault } from "../../domain/vault/vault";
 import type { Base64URLString } from "../../lib/base64Url.type";
 
-export const bytes = <T extends ArrayBuffer>() => new ArrayBuffer(1) as T;
+export const bytes = <T extends ArrayBuffer>() =>
+  new Uint8Array([2]).buffer as T;
 export const b64 = (value: string) => value as Base64URLString;
 
 export type CoreTestValues = ReturnType<typeof createCoreTestValues>;

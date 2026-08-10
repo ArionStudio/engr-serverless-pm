@@ -203,8 +203,7 @@ describe("ChangeMasterPasswordUseCase", () => {
     expect(ctx.saved.deviceAccessMaterial).toEqual({
       ...ctx.deviceAccessMaterial,
       revision: ctx.deviceAccessMaterial.revision + 1,
-      localAccessGenerationId:
-        ctx.values.replacementLocalAccessGenerationId,
+      localAccessGenerationId: ctx.values.replacementLocalAccessGenerationId,
       masterPasswordSalt: ctx.values.newMasterPasswordSalt,
       localKeysProtectionSalt: ctx.values.newLocalKeysProtectionSalt,
       protectedLocalKeys: ctx.values.reprotectedLocalKeys,
@@ -212,8 +211,7 @@ describe("ChangeMasterPasswordUseCase", () => {
     expect(ctx.saved.deviceAccessRecoveryBackup).toEqual({
       ...ctx.deviceAccessRecoveryBackup,
       revision: ctx.deviceAccessRecoveryBackup.revision + 1,
-      localAccessGenerationId:
-        ctx.values.replacementLocalAccessGenerationId,
+      localAccessGenerationId: ctx.values.replacementLocalAccessGenerationId,
     });
     expect(
       ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
@@ -898,5 +896,13 @@ describe("ChangeMasterPasswordUseCase", () => {
     expect(
       ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
     ).not.toHaveBeenCalled();
+    const localRootKey = await vi.mocked(ctx.ports.crypto.deriveLocalRootKey)
+      .mock.results[0]!.value;
+    const localKeysProtectionKey = await vi.mocked(
+      ctx.ports.crypto.deriveLocalKeysProtectionKey,
+    ).mock.results[0]!.value;
+    expect(Array.from(new Uint8Array(localRootKey))).toEqual([0]);
+    expect(Array.from(new Uint8Array(localKeysProtectionKey))).toEqual([0]);
+    expect(Array.from(new Uint8Array(ctx.values.localRootKey))).toEqual([2]);
   });
 });

@@ -19,6 +19,7 @@ export type ChromeStorageArea = {
 export class ChromeUnlockedVaultSessionMaterialRepository implements UnlockedVaultSessionMaterialRepositoryPort {
   private readonly storageArea: ChromeStorageArea;
   private readonly storageKey: string;
+  private cachedMaterial: UnlockedVaultSessionMaterial | undefined;
 
   constructor(
     storageArea: ChromeStorageArea = chrome.storage
@@ -35,9 +36,14 @@ export class ChromeUnlockedVaultSessionMaterialRepository implements UnlockedVau
     await this.storageArea.set({
       [this.storageKey]: serializeUnlockedVaultSessionMaterial(material),
     });
+    this.cachedMaterial = material;
   }
 
   async getUnlockedVaultSessionMaterial(): Promise<UnlockedVaultSessionMaterial | null> {
+    if (this.cachedMaterial !== undefined) {
+      return this.cachedMaterial;
+    }
+
     const storedRecords = await this.storageArea.get(this.storageKey);
     const material = storedRecords[this.storageKey];
 
@@ -45,10 +51,13 @@ export class ChromeUnlockedVaultSessionMaterialRepository implements UnlockedVau
       return null;
     }
 
-    return deserializeUnlockedVaultSessionMaterial(material);
+    const decodedMaterial = deserializeUnlockedVaultSessionMaterial(material);
+    this.cachedMaterial = decodedMaterial;
+    return decodedMaterial;
   }
 
   async removeUnlockedVaultSessionMaterial(): Promise<void> {
     await this.storageArea.remove(this.storageKey);
+    this.cachedMaterial = undefined;
   }
 }

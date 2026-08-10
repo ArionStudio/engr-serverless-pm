@@ -23,6 +23,7 @@ import type { ClockPort } from "../../ports/system/clock.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { VaultSyncGuardService } from "../../services/sync";
+import { bestEffortWipeArrayBuffers } from "../../lib/secure-wipe.utils";
 
 export type DisableSyncCommandParams = {
   readonly vaultId: string;
@@ -248,60 +249,69 @@ export class DisableSyncUseCase {
     const vaultMasterKey = revokesOtherDevices
       ? await this.crypto.generateVaultMasterKey()
       : currentUnlockedVault.vaultMasterKey;
-    const deviceSlots = revokesOtherDevices
-      ? [
-          {
-            deviceId: currentUnlockedVault.deviceId,
-            vaultKeyGeneration,
-            envelope: await this.crypto.createDeviceVaultKeyEnvelope(
-              vaultMasterKey,
-              currentIdentity.publicVaultKey,
+    let vaultMasterKeyTransferred = false;
+
+    try {
+      const deviceSlots = revokesOtherDevices
+        ? [
+            {
+              deviceId: currentUnlockedVault.deviceId,
+              vaultKeyGeneration,
+              envelope: await this.crypto.createDeviceVaultKeyEnvelope(
+                vaultMasterKey,
+                currentIdentity.publicVaultKey,
+                {
+                  vaultId: params.vaultId,
+                  deviceId: currentUnlockedVault.deviceId,
+                  vaultKeyGeneration,
+                  algorithmSuiteId: this.crypto.algorithmSuite.id,
+                },
+              ),
+            },
+          ]
+        : currentSnapshot.keySlots.deviceSlots;
+      const updatedUnlockedVault = {
+        ...currentUnlockedVault,
+        vault: updatedVault,
+        vaultMasterKey,
+      };
+
+      const persistedSnapshot =
+        await this.unlockedVaultSession.persistForActiveSession(
+          sessionId,
+          params.vaultId,
+          async () =>
+            this.vaultSnapshot.persistUnlockedVault(
+              params.vaultId,
+              updatedUnlockedVault,
+              currentSnapshotVersionVector,
               {
-                vaultId: params.vaultId,
-                deviceId: currentUnlockedVault.deviceId,
                 vaultKeyGeneration,
-                algorithmSuiteId: this.crypto.algorithmSuite.id,
+                keySlots: {
+                  deviceSlots,
+                },
+                nextTrust: {
+                  chain: nextTrust.chain,
+                  state: nextTrust.trust,
+                },
+                syncCredentialState: null,
               },
             ),
-          },
-        ]
-      : currentSnapshot.keySlots.deviceSlots;
-    const updatedUnlockedVault = {
-      ...currentUnlockedVault,
-      vault: updatedVault,
-      vaultMasterKey,
-    };
+        );
 
-    const persistedSnapshot =
-      await this.unlockedVaultSession.persistForActiveSession(
+      await this.unlockedVaultSession.commitPersistedSnapshot(
         sessionId,
-        params.vaultId,
-        async () =>
-          this.vaultSnapshot.persistUnlockedVault(
-            params.vaultId,
-            updatedUnlockedVault,
-            currentSnapshotVersionVector,
-            {
-              vaultKeyGeneration,
-              keySlots: {
-                deviceSlots,
-              },
-              nextTrust: {
-                chain: nextTrust.chain,
-                state: nextTrust.trust,
-              },
-              syncCredentialState: null,
-            },
-          ),
+        {
+          ...updatedUnlockedVault,
+          trustedSnapshotContext: persistedSnapshot.trustedSnapshotContext,
+        },
+        persistedSnapshot.snapshotVersionVector,
       );
-
-    await this.unlockedVaultSession.commitPersistedSnapshot(
-      sessionId,
-      {
-        ...updatedUnlockedVault,
-        trustedSnapshotContext: persistedSnapshot.trustedSnapshotContext,
-      },
-      persistedSnapshot.snapshotVersionVector,
-    );
+      vaultMasterKeyTransferred = true;
+    } finally {
+      if (revokesOtherDevices && !vaultMasterKeyTransferred) {
+        bestEffortWipeArrayBuffers([vaultMasterKey]);
+      }
+    }
   }
 }

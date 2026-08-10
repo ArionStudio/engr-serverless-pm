@@ -15,3 +15,19 @@
 export function secureWipe(buffer: Uint8Array): void {
   buffer.fill(0);
 }
+
+export function bestEffortWipeArrayBuffers(
+  buffers: readonly (ArrayBuffer | undefined)[],
+): void {
+  for (const buffer of buffers) {
+    if (buffer === undefined) {
+      continue;
+    }
+
+    try {
+      secureWipe(new Uint8Array(buffer));
+    } catch {
+      // Best-effort wiping must not prevent the owning cleanup from continuing.
+    }
+  }
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { secureWipe } from "./secure-wipe.utils";
+import { bestEffortWipeArrayBuffers, secureWipe } from "./secure-wipe.utils";
 
 describe("secureWipe", () => {
   it("zeros a buffer filled with non-zero data", () => {
@@ -26,5 +26,18 @@ describe("secureWipe", () => {
     crypto.getRandomValues(buffer);
     secureWipe(buffer);
     expect(buffer.length).toBe(64);
+  });
+});
+
+describe("bestEffortWipeArrayBuffers", () => {
+  it("continues wiping after encountering a detached buffer", () => {
+    const detached = new Uint8Array([1]).buffer;
+    structuredClone(detached, { transfer: [detached] });
+    const remaining = new Uint8Array([7]).buffer;
+
+    expect(() =>
+      bestEffortWipeArrayBuffers([detached, remaining]),
+    ).not.toThrow();
+    expect(Array.from(new Uint8Array(remaining))).toEqual([0]);
   });
 });

@@ -27,15 +27,16 @@ import {
   SyncRemovalPendingError,
 } from "../../errors/sync.errors";
 import { LocalVaultAlreadyInitializedError } from "../../errors/vault-lifecycle.errors";
+import { InvalidVaultLockDelayError } from "../../errors/vault-session.errors";
+import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard/clipboard-clear-task-repository.port";
+import type { ClipboardPort } from "../../ports/clipboard/clipboard.port";
+import { ClipboardClearService } from "../../services/clipboard/clipboard-clear.service";
+import { LockVaultUseCase } from "../vault-lifecycle/lock-vault";
 import { PerformDeviceEnrollmentUseCase } from "./perform-device-enrollment";
 
 function createContext(synced = false) {
   const values = createCoreTestValues();
   const ports = createCoreTestPorts(values);
-  vi.mocked(ports.ids.generateId).mockReset();
-  vi.mocked(ports.ids.generateId)
-    .mockResolvedValueOnce(values.localAccessGenerationId)
-    .mockResolvedValue(values.sessionId);
   const targetIdentity = {
     deviceId: values.pendingDeviceId,
     publicSignKey: values.pendingDevicePublicSignKey,
@@ -117,6 +118,21 @@ function createContext(synced = false) {
   ).mockResolvedValue(
     toVaultSnapshotDescriptor(values.vaultId, authorizedSnapshot),
   );
+  const clipboard: ClipboardPort = {
+    readText: vi.fn(async () => singlePasswordEntry.password),
+    writeText: vi.fn(async () => undefined),
+  };
+  const clipboardClearTasks: ClipboardClearTaskRepositoryPort = {
+    save: vi.fn(async () => undefined),
+    get: vi.fn(async () => null),
+    remove: vi.fn(async () => undefined),
+  };
+  const clipboardClear = new ClipboardClearService(
+    clipboard,
+    clipboardClearTasks,
+    ports.clock,
+    ports.crypto,
+  );
   const useCase = new PerformDeviceEnrollmentUseCase(
     ports.clock,
     ports.crypto,
@@ -126,9 +142,27 @@ function createContext(synced = false) {
     ports.sessionServices.unlockedVaultSession,
     ports.vaultDisplayName,
     ports.vaultLocalRepository,
+    clipboardClear,
+    clipboardClearTasks,
+    ports.scheduledTasks,
+    ports.vaultLockTasks,
   );
 
-  return { values, ports, response, useCase };
+  vi.mocked(ports.ids.generateId).mockReset();
+  vi.mocked(ports.ids.generateId)
+    .mockResolvedValueOnce(values.localAccessGenerationId)
+    .mockResolvedValueOnce(values.vaultLockActionId)
+    .mockResolvedValue(values.sessionId);
+
+  return {
+    values,
+    ports,
+    response,
+    clipboard,
+    clipboardClear,
+    clipboardClearTasks,
+    useCase,
+  };
 }
 
 describe("PerformDeviceEnrollmentUseCase", () => {
@@ -140,6 +174,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
         enrollmentResponse: ctx.response,
         masterPassword: "correcthorsebatterystaple" as RawMasterPassword,
         deviceName: "New laptop",
+        lockAfterMs: 60_000,
       }),
     ).rejects.toBeInstanceOf(InvalidNewMasterPasswordError);
 
@@ -157,6 +192,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       enrollmentResponse: ctx.response,
       masterPassword,
       deviceName: "New laptop",
+      lockAfterMs: 60_000,
     });
 
     expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenNthCalledWith(
@@ -175,6 +211,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
         enrollmentResponse: ctx.response,
         masterPassword: ctx.values.masterPassword,
         deviceName: "New laptop",
+        lockAfterMs: 60_000,
       }),
     ).rejects.toBeInstanceOf(DeviceAccessMaterialChangedError);
 
@@ -195,6 +232,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       masterPassword: ctx.values.masterPassword,
       deviceName: "New laptop",
       syncConfig: ctx.values.syncConfigInput,
+      lockAfterMs: 60_000,
     });
 
     const uploadedSnapshot = vi.mocked(
@@ -212,6 +250,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       enrollmentResponse: ctx.response,
       masterPassword: ctx.values.masterPassword,
       deviceName: "New laptop",
+      lockAfterMs: 60_000,
     });
 
     expect(ctx.ports.crypto.openDeviceVaultKeyEnvelope).toHaveBeenCalledWith(
@@ -260,6 +299,62 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       [ctx.values.deviceId]: 2,
       [ctx.values.pendingDeviceId]: 1,
     });
+    expect(ctx.ports.vaultLockTasks.save).toHaveBeenCalledWith({
+      actionId: ctx.values.vaultLockActionId,
+      vaultId: ctx.values.vaultId,
+      expiresAt: ctx.values.timestamp + 60_000,
+    });
+    expect(ctx.ports.scheduledTasks.scheduleTask).toHaveBeenCalledWith({
+      task: {
+        name: "lockVault",
+        actionId: ctx.values.vaultLockActionId,
+      },
+      runAt: ctx.values.timestamp + 60_000,
+    });
+  });
+
+  it("rejects an invalid lock delay before reading pending enrollment", async () => {
+    const ctx = createContext();
+
+    await expect(
+      ctx.useCase.execute({
+        enrollmentResponse: ctx.response,
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "New laptop",
+        lockAfterMs: 1 as never,
+      }),
+    ).rejects.toBeInstanceOf(InvalidVaultLockDelayError);
+
+    expect(
+      ctx.ports.vaultLocalRepository.getPendingDeviceEnrollment,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+  });
+
+  it("rolls back local enrollment when lock scheduling fails", async () => {
+    const ctx = createContext();
+    vi.mocked(ctx.ports.scheduledTasks.scheduleTask).mockRejectedValueOnce(
+      new Error("schedule failed"),
+    );
+
+    await expect(
+      ctx.useCase.execute({
+        enrollmentResponse: ctx.response,
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "New laptop",
+        lockAfterMs: 60_000,
+      }),
+    ).rejects.toThrow("schedule failed");
+
+    expect(
+      ctx.ports.vaultLockTasks.removeIfActionIsActive,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .saveUnlockedVaultSessionMaterial,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.localVaultDescriptor).toBeUndefined();
+    expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
   });
 
   it("encrypts manually supplied sync credentials only in local storage", async () => {
@@ -269,6 +364,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       enrollmentResponse: ctx.response,
       masterPassword: ctx.values.masterPassword,
       deviceName: "New laptop",
+      lockAfterMs: 60_000,
       syncConfig: ctx.values.syncConfigInput,
     });
 
@@ -310,6 +406,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
         enrollmentResponse: ctx.response,
         masterPassword: ctx.values.masterPassword,
         deviceName: "New laptop",
+        lockAfterMs: 60_000,
         syncConfig: ctx.values.syncConfigInput,
       }),
     ).rejects.toBeInstanceOf(SyncRemovalPendingError);
@@ -330,6 +427,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
         enrollmentResponse: ctx.response,
         masterPassword: ctx.values.masterPassword,
         deviceName: "New laptop",
+        lockAfterMs: 60_000,
       }),
     ).rejects.toBeInstanceOf(PendingDeviceEnrollmentMismatchError);
 
@@ -351,6 +449,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
         },
         masterPassword: ctx.values.masterPassword,
         deviceName: "New laptop",
+        lockAfterMs: 60_000,
       }),
     ).rejects.toBeInstanceOf(DeviceEnrollmentIntegrityError);
 
@@ -370,6 +469,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
         enrollmentResponse: ctx.response,
         masterPassword: ctx.values.masterPassword,
         deviceName: "New laptop",
+        lockAfterMs: 60_000,
       }),
     ).rejects.toThrow("session activation failed");
 
@@ -378,6 +478,13 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       ctx.ports.vaultLocalRepository.removePersistedLocalVault,
     ).toHaveBeenCalledWith(ctx.values.vaultId);
     expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
+    expect(ctx.ports.scheduledTasks.cancelTask).toHaveBeenCalledWith({
+      name: "lockVault",
+      actionId: ctx.values.vaultLockActionId,
+    });
+    expect(
+      ctx.ports.vaultLockTasks.removeIfActionIsActive,
+    ).toHaveBeenCalledTimes(1);
   });
 
   it("preserves the activation error when local cleanup also fails", async () => {
@@ -396,6 +503,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
         enrollmentResponse: ctx.response,
         masterPassword: ctx.values.masterPassword,
         deviceName: "New laptop",
+        lockAfterMs: 60_000,
       }),
     ).rejects.toBe(activationError);
 
@@ -406,13 +514,14 @@ describe("PerformDeviceEnrollmentUseCase", () => {
         enrollmentResponse: ctx.response,
         masterPassword: ctx.values.masterPassword,
         deviceName: "New laptop",
+        lockAfterMs: 60_000,
       }),
     ).rejects.toBeInstanceOf(LocalVaultAlreadyInitializedError);
 
     expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
   });
 
-  it("preserves newer local state after enrollment upload is rejected", async () => {
+  it("preserves newer local state without reporting a rejected upload as complete", async () => {
     const ctx = createContext(true);
     let rejectUpload: (error: Error) => void = () => undefined;
     let uploadStarted: () => void = () => undefined;
@@ -433,6 +542,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       enrollmentResponse: ctx.response,
       masterPassword: ctx.values.masterPassword,
       deviceName: "New laptop",
+      lockAfterMs: 60_000,
       syncConfig: ctx.values.syncConfigInput,
     });
 
@@ -450,10 +560,9 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     );
     rejectUpload(new RemoteVaultSnapshotChangedError(ctx.values.vaultId));
 
-    await expect(execution).resolves.toMatchObject({
-      recoveryMnemonicKey: ctx.values.recoveryMnemonicKey,
-      syncUpload: "complete",
-    });
+    await expect(execution).rejects.toBeInstanceOf(
+      DeviceEnrollmentRollbackIncompleteError,
+    );
     expect(ctx.ports.saved.localVaultDescriptor).toBeDefined();
     expect(ctx.ports.saved.unlockedVaultSession).toMatchObject({
       sourceSnapshotVersionVector: { [ctx.values.deviceId]: 3 },
@@ -461,7 +570,54 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     expect(
       ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfSnapshotMatches,
     ).not.toHaveBeenCalled();
-    expect(ctx.ports.saved.pendingDeviceEnrollment).toBeUndefined();
+    expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
+  });
+
+  it("does not report rejected enrollment upload as complete after concurrent lock", async () => {
+    const ctx = createContext(true);
+    let rejectUpload: (error: Error) => void = () => undefined;
+    let uploadStarted: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => {
+      uploadStarted = resolve;
+    });
+    vi.mocked(
+      ctx.ports.syncProvider.uploadVaultSnapshot,
+    ).mockImplementationOnce(
+      async () =>
+        new Promise<never>((_resolve, reject) => {
+          rejectUpload = reject;
+          uploadStarted();
+        }),
+    );
+    const lockVault = new LockVaultUseCase(
+      ctx.clipboardClear,
+      ctx.clipboardClearTasks,
+      ctx.ports.scheduledTasks,
+      ctx.ports.vaultLockTasks,
+      ctx.ports.sessionServices.unlockedVaultSession,
+    );
+
+    const execution = ctx.useCase.execute({
+      enrollmentResponse: ctx.response,
+      masterPassword: ctx.values.masterPassword,
+      deviceName: "New laptop",
+      lockAfterMs: 60_000,
+      syncConfig: ctx.values.syncConfigInput,
+    });
+
+    await started;
+    await lockVault.execute();
+    rejectUpload(new RemoteVaultSnapshotChangedError(ctx.values.vaultId));
+
+    await expect(execution).rejects.toBeInstanceOf(
+      DeviceEnrollmentRollbackIncompleteError,
+    );
+    expect(ctx.ports.saved.localVaultDescriptor).toBeDefined();
+    expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
+    expect(
+      ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfSnapshotMatches,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
   });
 
   it("does not remove a locally replaced enrollment snapshot", async () => {
@@ -485,6 +641,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       enrollmentResponse: ctx.response,
       masterPassword: ctx.values.masterPassword,
       deviceName: "New laptop",
+      lockAfterMs: 60_000,
       syncConfig: ctx.values.syncConfigInput,
     });
 
@@ -516,6 +673,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       enrollmentResponse: ctx.response,
       masterPassword: ctx.values.masterPassword,
       deviceName: "New laptop",
+      lockAfterMs: 60_000,
       syncConfig: ctx.values.syncConfigInput,
     });
 
@@ -544,6 +702,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
         enrollmentResponse: ctx.response,
         masterPassword: ctx.values.masterPassword,
         deviceName: "New laptop",
+        lockAfterMs: 60_000,
         syncConfig: ctx.values.syncConfigInput,
       }),
     ).rejects.toBeInstanceOf(DeviceEnrollmentRollbackIncompleteError);
@@ -568,6 +727,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       enrollmentResponse: ctx.response,
       masterPassword: ctx.values.masterPassword,
       deviceName: "New laptop",
+      lockAfterMs: 60_000,
       syncConfig: ctx.values.syncConfigInput,
     });
 
@@ -584,6 +744,16 @@ describe("PerformDeviceEnrollmentUseCase", () => {
 
   it("rolls back local state after a definitive compare-and-set rejection", async () => {
     const ctx = createContext(true);
+    vi.mocked(ctx.ports.vaultLockTasks.get).mockResolvedValue({
+      actionId: ctx.values.vaultLockActionId,
+      vaultId: ctx.values.vaultId,
+      expiresAt: ctx.values.timestamp + 60_000,
+    });
+    vi.mocked(ctx.clipboardClearTasks.get).mockResolvedValue({
+      actionId: "clipboard-action-id",
+      copiedValueHash: `hash:${singlePasswordEntry.password}`,
+      expiresAt: ctx.values.timestamp + 60_000,
+    });
     vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockRejectedValueOnce(
       new RemoteVaultSnapshotChangedError(ctx.values.vaultId),
     );
@@ -593,6 +763,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
         enrollmentResponse: ctx.response,
         masterPassword: ctx.values.masterPassword,
         deviceName: "New laptop",
+        lockAfterMs: 60_000,
         syncConfig: ctx.values.syncConfigInput,
       }),
     ).rejects.toBeInstanceOf(DeviceEnrollmentRemoteSnapshotChangedError);
@@ -600,6 +771,33 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     expect(ctx.ports.saved.localVaultDescriptor).toBeUndefined();
     expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
     expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
+    expect(ctx.clipboard.writeText).toHaveBeenCalledWith("");
+    expect(ctx.ports.scheduledTasks.cancelTask).toHaveBeenCalledWith({
+      name: "clearClipboard",
+      actionId: "clipboard-action-id",
+    });
+    expect(ctx.ports.scheduledTasks.cancelTask).toHaveBeenCalledWith({
+      name: "lockVault",
+      actionId: ctx.values.vaultLockActionId,
+    });
+    expect(
+      ctx.ports.vaultLockTasks.removeIfActionIsActive,
+    ).toHaveBeenCalledWith(ctx.values.vaultLockActionId);
+
+    const privateState = await vi.mocked(
+      ctx.ports.crypto.unwrapDeviceEnrollmentPrivateState,
+    ).mock.results[0]!.value;
+    const vaultMasterKey = await vi.mocked(
+      ctx.ports.crypto.openDeviceVaultKeyEnvelope,
+    ).mock.results[0]!.value;
+    for (const secret of [
+      privateState.devicePrivateSignKey,
+      privateState.devicePrivateVaultKey,
+      privateState.deviceLocalProtectionKey,
+      vaultMasterKey,
+    ]) {
+      expect(Array.from(new Uint8Array(secret))).toEqual([0]);
+    }
   });
 
   it("reports success when completed pending-state cleanup fails", async () => {
@@ -613,6 +811,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
         enrollmentResponse: ctx.response,
         masterPassword: ctx.values.masterPassword,
         deviceName: "New laptop",
+        lockAfterMs: 60_000,
       }),
     ).resolves.toMatchObject({
       deviceId: ctx.values.pendingDeviceId,
@@ -651,6 +850,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
         enrollmentResponse: ctx.response,
         masterPassword: ctx.values.masterPassword,
         deviceName: "New laptop",
+        lockAfterMs: 60_000,
       }),
     ).rejects.toBeInstanceOf(LocalVaultAlreadyInitializedError);
 

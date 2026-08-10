@@ -50,6 +50,11 @@ import type { Vault } from "../../domain/vault/vault";
 import type { VersionVector } from "../../domain/versioning/version-vector.type";
 
 export interface CryptoPort {
+  /**
+   * Raw buffers returned by generation, derivation, envelope opening, and
+   * unwrapping are fresh caller-owned values. Implementations must not retain
+   * or alias those returned buffers after the promise resolves.
+   */
   // Suite
   algorithmSuite: AlgorithmSuite;
 

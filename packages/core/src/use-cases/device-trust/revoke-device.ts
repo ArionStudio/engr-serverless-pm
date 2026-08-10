@@ -33,6 +33,7 @@ import {
   DeviceToRevokeNotTrustedError,
   InvalidDeviceRevocationTransitionError,
 } from "../../errors/device-revocation.errors";
+import { bestEffortWipeArrayBuffers } from "../../lib/secure-wipe.utils";
 
 export type RevokeDeviceCommandParams = {
   readonly vaultId: string;
@@ -263,118 +264,127 @@ export class RevokeDeviceUseCase {
       unlockedVault.devicePrivateSignKey,
     );
     const vaultMasterKey = await this.crypto.generateVaultMasterKey();
-    const deviceSlots = await Promise.all(
-      survivors.map(async (device) => ({
-        deviceId: device.deviceId,
-        vaultKeyGeneration,
-        envelope: await this.crypto.createDeviceVaultKeyEnvelope(
-          vaultMasterKey,
-          device.publicVaultKey,
-          {
-            vaultId: params.vaultId,
-            deviceId: device.deviceId,
-            vaultKeyGeneration,
-            algorithmSuiteId: this.crypto.algorithmSuite.id,
-          },
-        ),
-      })),
-    );
-    const rotatedUnlockedVault = {
-      ...unlockedVault,
-      vault: revokedVault,
-      vaultMasterKey,
-    };
-
-    if (
-      stagedCredentialState !== undefined &&
-      replacementAccess !== undefined
-    ) {
-      encryptedCredentialState =
-        await this.crypto.encryptDeviceSyncCredentialState(
-          stagedCredentialState,
-          unlockedVault.deviceLocalProtectionKey,
-          {
-            vaultId: params.vaultId,
-            deviceId: unlockedVault.deviceId,
-            provider: replacementAccess.target.provider,
-            target: replacementAccess.target,
-          },
-        );
-    }
-
-    const persistedSnapshot =
-      await this.unlockedVaultSession.persistForActiveSession(
-        sessionId,
-        params.vaultId,
-        async () =>
-          this.vaultSnapshot.persistUnlockedVault(
-            params.vaultId,
-            rotatedUnlockedVault,
-            sourceSnapshotVersionVector,
-            {
-              vaultKeyGeneration,
-              keySlots: { deviceSlots },
-              nextTrust: {
-                chain: nextTrust.chain,
-                state: nextTrust.trust,
-              },
-              ...(encryptedCredentialState === undefined
-                ? {}
-                : { syncCredentialState: encryptedCredentialState }),
-            },
-          ),
-      );
+    let vaultMasterKeyTransferred = false;
 
     try {
-      if (
-        replacementAccess !== undefined &&
-        syncState.remoteSnapshotDescriptor !== undefined
-      ) {
-        await this.syncProvider.uploadVaultSnapshot(
-          replacementAccess,
-          persistedSnapshot.snapshot,
-          syncState.remoteSnapshotDescriptor,
-        );
-      }
-    } catch (error) {
-      await this.unlockedVaultSession.restorePersistedState(
-        sessionId,
-        params.vaultId,
-        async () =>
-          this.vaultSnapshot.restoreLocalVaultSnapshot(
-            currentSnapshot,
-            persistedSnapshot.snapshot,
-            unlockedVault,
-            previousEncryptedCredentials,
+      const deviceSlots = await Promise.all(
+        survivors.map(async (device) => ({
+          deviceId: device.deviceId,
+          vaultKeyGeneration,
+          envelope: await this.crypto.createDeviceVaultKeyEnvelope(
+            vaultMasterKey,
+            device.publicVaultKey,
+            {
+              vaultId: params.vaultId,
+              deviceId: device.deviceId,
+              vaultKeyGeneration,
+              algorithmSuiteId: this.crypto.algorithmSuite.id,
+            },
           ),
+        })),
       );
+      const rotatedUnlockedVault = {
+        ...unlockedVault,
+        vault: revokedVault,
+        vaultMasterKey,
+      };
 
-      if (error instanceof RemoteVaultSnapshotChangedError) {
-        throw new SyncConflictDetectedError(params.vaultId);
+      if (
+        stagedCredentialState !== undefined &&
+        replacementAccess !== undefined
+      ) {
+        encryptedCredentialState =
+          await this.crypto.encryptDeviceSyncCredentialState(
+            stagedCredentialState,
+            unlockedVault.deviceLocalProtectionKey,
+            {
+              vaultId: params.vaultId,
+              deviceId: unlockedVault.deviceId,
+              provider: replacementAccess.target.provider,
+              target: replacementAccess.target,
+            },
+          );
       }
 
-      throw error;
+      const persistedSnapshot =
+        await this.unlockedVaultSession.persistForActiveSession(
+          sessionId,
+          params.vaultId,
+          async () =>
+            this.vaultSnapshot.persistUnlockedVault(
+              params.vaultId,
+              rotatedUnlockedVault,
+              sourceSnapshotVersionVector,
+              {
+                vaultKeyGeneration,
+                keySlots: { deviceSlots },
+                nextTrust: {
+                  chain: nextTrust.chain,
+                  state: nextTrust.trust,
+                },
+                ...(encryptedCredentialState === undefined
+                  ? {}
+                  : { syncCredentialState: encryptedCredentialState }),
+              },
+            ),
+        );
+
+      try {
+        if (
+          replacementAccess !== undefined &&
+          syncState.remoteSnapshotDescriptor !== undefined
+        ) {
+          await this.syncProvider.uploadVaultSnapshot(
+            replacementAccess,
+            persistedSnapshot.snapshot,
+            syncState.remoteSnapshotDescriptor,
+          );
+        }
+      } catch (error) {
+        await this.unlockedVaultSession.restorePersistedState(
+          sessionId,
+          params.vaultId,
+          async () =>
+            this.vaultSnapshot.restoreLocalVaultSnapshot(
+              currentSnapshot,
+              persistedSnapshot.snapshot,
+              unlockedVault,
+              previousEncryptedCredentials,
+            ),
+        );
+
+        if (error instanceof RemoteVaultSnapshotChangedError) {
+          throw new SyncConflictDetectedError(params.vaultId);
+        }
+
+        throw error;
+      }
+
+      await this.unlockedVaultSession.commitPersistedSnapshot(
+        sessionId,
+        {
+          ...rotatedUnlockedVault,
+          trustedSnapshotContext: persistedSnapshot.trustedSnapshotContext,
+        },
+        persistedSnapshot.snapshotVersionVector,
+      );
+      vaultMasterKeyTransferred = true;
+
+      return {
+        vault: toVisibleVaultFields(revokedVault),
+        snapshotVersionVector: {
+          ...persistedSnapshot.snapshotVersionVector,
+        },
+        revisionTimestamp: persistedSnapshot.revisionTimestamp,
+        providerCredentialRevocation:
+          replacementAccess === undefined
+            ? "not_configured"
+            : "pending_external_disable",
+      };
+    } finally {
+      if (!vaultMasterKeyTransferred) {
+        bestEffortWipeArrayBuffers([vaultMasterKey]);
+      }
     }
-
-    await this.unlockedVaultSession.commitPersistedSnapshot(
-      sessionId,
-      {
-        ...rotatedUnlockedVault,
-        trustedSnapshotContext: persistedSnapshot.trustedSnapshotContext,
-      },
-      persistedSnapshot.snapshotVersionVector,
-    );
-
-    return {
-      vault: toVisibleVaultFields(revokedVault),
-      snapshotVersionVector: {
-        ...persistedSnapshot.snapshotVersionVector,
-      },
-      revisionTimestamp: persistedSnapshot.revisionTimestamp,
-      providerCredentialRevocation:
-        replacementAccess === undefined
-          ? "not_configured"
-          : "pending_external_disable",
-    };
   }
 }

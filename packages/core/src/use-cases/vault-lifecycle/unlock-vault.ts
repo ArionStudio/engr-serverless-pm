@@ -1,7 +1,6 @@
 import type { LocalKeysPayload } from "../../domain/device-trust/local-protection.type";
 import type { RawMasterPassword } from "../../domain/master-password";
 import { areDeviceAccessRecordsConsistent } from "../../domain/device-trust/device-access-records";
-import { vaultLockDelayMsSchema } from "../../domain/scheduled-task/scheduled-task-delay.schema";
 import type { VaultLockDelayMs } from "../../domain/scheduled-task/scheduled-task-delay.type";
 import type { DeviceKeySlot } from "../../domain/snapshot/key-slot";
 import type { UnlockedVault } from "../../domain/session/unlocked-vault";
@@ -21,14 +20,15 @@ import {
   DeviceKeySlotVerificationFailedError,
   VaultSnapshotNotFoundError,
 } from "../../errors/unlock-vault.errors";
-import { InvalidVaultLockDelayError } from "../../errors/vault-session.errors";
 import { PersistedVaultMismatchError } from "../../errors/vault-snapshot.errors";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
+import { VaultSessionActivationService } from "../../services/session/vault-session-activation.service";
 import { VaultTrustService } from "../../services/trust/vault-trust.service";
 import { DeviceAccessMaterialIdentityMismatchError } from "../../errors/vault-device.errors";
 import { LocalVaultTrustCheckpointNotFoundError } from "../../errors/vault-trust.errors";
 import { VaultTrustStateInvalidError } from "../../errors/vault-trust.errors";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
+import { bestEffortWipeArrayBuffers } from "../../lib/secure-wipe.utils";
 
 export type UnlockVaultCommandParams = {
   vaultId: string;
@@ -45,12 +45,9 @@ export type UnlockVaultResult = {
 };
 
 export class UnlockVaultUseCase {
-  private readonly clock: ClockPort;
   private readonly crypto: CryptoPort;
-  private readonly ids: IdPort;
-  private readonly scheduledTasks: ScheduledTaskPort;
+  private readonly sessionActivation: VaultSessionActivationService;
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
-  private readonly vaultLockTasks: VaultLockTaskRepositoryPort;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
   private readonly vaultTrust: VaultTrustService;
 
@@ -63,24 +60,23 @@ export class UnlockVaultUseCase {
     vaultLockTasks: VaultLockTaskRepositoryPort,
     unlockedVaultSession: UnlockedVaultSessionService,
   ) {
-    this.clock = clock;
     this.crypto = crypto;
-    this.ids = ids;
-    this.scheduledTasks = scheduledTasks;
     this.vaultLocalRepository = vaultLocalRepository;
-    this.vaultLockTasks = vaultLockTasks;
     this.unlockedVaultSession = unlockedVaultSession;
+    this.sessionActivation = new VaultSessionActivationService(
+      clock,
+      ids,
+      scheduledTasks,
+      vaultLockTasks,
+      unlockedVaultSession,
+    );
     this.vaultTrust = new VaultTrustService(crypto);
   }
 
   async execute(params: UnlockVaultCommandParams): Promise<UnlockVaultResult> {
-    const lockDelayResult = vaultLockDelayMsSchema.safeParse(
+    const lockAfterMs = this.sessionActivation.requireValidLockDelay(
       params.lockAfterMs,
     );
-
-    if (!lockDelayResult.success) {
-      throw new InvalidVaultLockDelayError(lockDelayResult.error);
-    }
 
     const activationGeneration =
       await this.unlockedVaultSession.requireVaultCanBeActivated(
@@ -153,204 +149,186 @@ export class UnlockVaultUseCase {
       );
     }
 
-    const localRootKey = await this.crypto.deriveLocalRootKey(
-      params.masterPassword,
-      deviceAccessMaterial.masterPasswordSalt,
-    );
+    const ephemeralSecrets: ArrayBuffer[] = [];
+    const sessionSecrets: ArrayBuffer[] = [];
+    let sessionActivated = false;
 
-    const localKeysProtectionKey =
-      await this.crypto.deriveLocalKeysProtectionKey(
-        localRootKey,
-        deviceAccessMaterial.localKeysProtectionSalt,
+    try {
+      const localRootKey = await this.crypto.deriveLocalRootKey(
+        params.masterPassword,
+        deviceAccessMaterial.masterPasswordSalt,
       );
+      ephemeralSecrets.push(localRootKey);
 
-    const localKeysPayload: LocalKeysPayload =
-      await this.crypto.unwrapLocalKeysPayload(
-        deviceAccessMaterial.protectedLocalKeys,
-        localKeysProtectionKey,
-      );
-    const doesDeviceSigningKeyMatchMaterial =
-      await this.crypto.verifyDeviceSignKeyPair(
-        deviceAccessMaterial.devicePublicSignKey,
+      const localKeysProtectionKey =
+        await this.crypto.deriveLocalKeysProtectionKey(
+          localRootKey,
+          deviceAccessMaterial.localKeysProtectionSalt,
+        );
+      ephemeralSecrets.push(localKeysProtectionKey);
+
+      const localKeysPayload: LocalKeysPayload =
+        await this.crypto.unwrapLocalKeysPayload(
+          deviceAccessMaterial.protectedLocalKeys,
+          localKeysProtectionKey,
+        );
+      sessionSecrets.push(
         localKeysPayload.devicePrivateSignKey,
-      );
-    const doesDeviceVaultKeyMatchMaterial =
-      await this.crypto.verifyDeviceVaultKeyPair(
-        deviceAccessMaterial.devicePublicVaultKey,
         localKeysPayload.devicePrivateVaultKey,
+        localKeysPayload.deviceLocalProtectionKey,
       );
+      const doesDeviceSigningKeyMatchMaterial =
+        await this.crypto.verifyDeviceSignKeyPair(
+          deviceAccessMaterial.devicePublicSignKey,
+          localKeysPayload.devicePrivateSignKey,
+        );
+      const doesDeviceVaultKeyMatchMaterial =
+        await this.crypto.verifyDeviceVaultKeyPair(
+          deviceAccessMaterial.devicePublicVaultKey,
+          localKeysPayload.devicePrivateVaultKey,
+        );
 
-    if (
-      !doesDeviceSigningKeyMatchMaterial ||
-      !doesDeviceVaultKeyMatchMaterial
-    ) {
-      throw new DeviceKeySlotVerificationFailedError(
+      if (
+        !doesDeviceSigningKeyMatchMaterial ||
+        !doesDeviceVaultKeyMatchMaterial
+      ) {
+        throw new DeviceKeySlotVerificationFailedError(
+          params.vaultId,
+          deviceAccessMaterial.deviceId,
+        );
+      }
+
+      const localDeviceIdentity = {
+        deviceId: deviceAccessMaterial.deviceId,
+        publicSignKey: deviceAccessMaterial.devicePublicSignKey,
+        publicVaultKey: deviceAccessMaterial.devicePublicVaultKey,
+      };
+      const checkpoint =
+        await this.vaultLocalRepository.getLocalVaultTrustCheckpoint(
+          params.vaultId,
+        );
+
+      if (checkpoint === null) {
+        throw new LocalVaultTrustCheckpointNotFoundError(params.vaultId);
+      }
+
+      await this.vaultTrust.verifyCheckpoint(
         params.vaultId,
-        deviceAccessMaterial.deviceId,
+        checkpoint,
+        localDeviceIdentity,
       );
-    }
-
-    const localDeviceIdentity = {
-      deviceId: deviceAccessMaterial.deviceId,
-      publicSignKey: deviceAccessMaterial.devicePublicSignKey,
-      publicVaultKey: deviceAccessMaterial.devicePublicVaultKey,
-    };
-    const checkpoint =
-      await this.vaultLocalRepository.getLocalVaultTrustCheckpoint(
+      const verifiedTrust = await this.vaultTrust.verifyTrustChain(
         params.vaultId,
+        localKeysPayload.vaultTrustAnchor,
+        this.requireTrustChain(params.vaultId, vaultSnapshot),
+      );
+      const trustedLocalDevice = verifiedTrust.trustedDevices.find(
+        (device) => device.deviceId === deviceAccessMaterial.deviceId,
       );
 
-    if (checkpoint === null) {
-      throw new LocalVaultTrustCheckpointNotFoundError(params.vaultId);
-    }
+      if (
+        trustedLocalDevice === undefined ||
+        !(await this.crypto.verifyDeviceSignKeyPair(
+          trustedLocalDevice.publicSignKey,
+          localKeysPayload.devicePrivateSignKey,
+        )) ||
+        !(await this.crypto.verifyDeviceVaultKeyPair(
+          trustedLocalDevice.publicVaultKey,
+          localKeysPayload.devicePrivateVaultKey,
+        ))
+      ) {
+        throw new VaultTrustStateInvalidError(
+          params.vaultId,
+          "local device is not trusted",
+        );
+      }
 
-    await this.vaultTrust.verifyCheckpoint(
-      params.vaultId,
-      checkpoint,
-      localDeviceIdentity,
-    );
-    const verifiedTrust = await this.vaultTrust.verifyTrustChain(
-      params.vaultId,
-      localKeysPayload.vaultTrustAnchor,
-      this.requireTrustChain(params.vaultId, vaultSnapshot),
-    );
-    const trustedLocalDevice = verifiedTrust.trustedDevices.find(
-      (device) => device.deviceId === deviceAccessMaterial.deviceId,
-    );
-
-    if (
-      trustedLocalDevice === undefined ||
-      !(await this.crypto.verifyDeviceSignKeyPair(
-        trustedLocalDevice.publicSignKey,
-        localKeysPayload.devicePrivateSignKey,
-      )) ||
-      !(await this.crypto.verifyDeviceVaultKeyPair(
-        trustedLocalDevice.publicVaultKey,
-        localKeysPayload.devicePrivateVaultKey,
-      ))
-    ) {
-      throw new VaultTrustStateInvalidError(
-        params.vaultId,
-        "local device is not trusted",
-      );
-    }
-
-    await this.vaultTrust.verifySnapshot(
-      params.vaultId,
-      vaultSnapshot,
-      verifiedTrust,
-    );
-    const checkpointRelation =
-      await this.vaultTrust.requireSnapshotNotRolledBack(
+      await this.vaultTrust.verifySnapshot(
         params.vaultId,
         vaultSnapshot,
         verifiedTrust,
-        checkpoint,
       );
-
-    const vaultMasterKey = await this.crypto.openDeviceVaultKeyEnvelope(
-      deviceKeySlot.envelope,
-      localKeysPayload.devicePrivateVaultKey,
-      {
-        vaultId: params.vaultId,
-        deviceId: deviceAccessMaterial.deviceId,
-        vaultKeyGeneration: vaultSnapshot.metadata.vaultKeyGeneration,
-        algorithmSuiteId: vaultSnapshot.metadata.algorithmSuiteId,
-      },
-    );
-
-    const vault = await this.crypto.decryptVaultSnapshotContent(
-      vaultSnapshot.content,
-      vaultMasterKey,
-    );
-
-    const snapshotDigest = await this.crypto.digestVaultSnapshot(vaultSnapshot);
-
-    if (checkpointRelation === "newer") {
-      await this.vaultLocalRepository.saveVaultSnapshotWithCheckpoint({
-        expectedSnapshotDigest: snapshotDigest,
-        snapshot: vaultSnapshot,
-        checkpoint: await this.vaultTrust.createCheckpoint(
+      const checkpointRelation =
+        await this.vaultTrust.requireSnapshotNotRolledBack(
+          params.vaultId,
           vaultSnapshot,
           verifiedTrust,
-          deviceAccessMaterial.deviceId,
-          localKeysPayload.devicePrivateSignKey,
-        ),
-      });
-    }
+          checkpoint,
+        );
 
-    const unlockedVault: UnlockedVault = {
-      vaultId: params.vaultId,
-      deviceId: deviceAccessMaterial.deviceId,
-      vault,
-      vaultMasterKey,
-      devicePrivateSignKey: localKeysPayload.devicePrivateSignKey,
-      devicePrivateVaultKey: localKeysPayload.devicePrivateVaultKey,
-      deviceLocalProtectionKey: localKeysPayload.deviceLocalProtectionKey,
-      trustedSnapshotContext: {
-        snapshotDigest,
-        trust: verifiedTrust,
-      },
-      vaultTrustAnchor: localKeysPayload.vaultTrustAnchor,
-    };
+      const vaultMasterKey = await this.crypto.openDeviceVaultKeyEnvelope(
+        deviceKeySlot.envelope,
+        localKeysPayload.devicePrivateVaultKey,
+        {
+          vaultId: params.vaultId,
+          deviceId: deviceAccessMaterial.deviceId,
+          vaultKeyGeneration: vaultSnapshot.metadata.vaultKeyGeneration,
+          algorithmSuiteId: vaultSnapshot.metadata.algorithmSuiteId,
+        },
+      );
+      sessionSecrets.push(vaultMasterKey);
 
-    const lockVaultActionId = await this.ids.generateId();
-    const lockScheduledAt = this.clock.now() + params.lockAfterMs;
+      const vault = await this.crypto.decryptVaultSnapshotContent(
+        vaultSnapshot.content,
+        vaultMasterKey,
+      );
 
-    const lockVaultTask = {
-      name: "lockVault",
-      actionId: lockVaultActionId,
-    } as const;
+      const snapshotDigest =
+        await this.crypto.digestVaultSnapshot(vaultSnapshot);
 
-    await this.vaultLockTasks.save({
-      actionId: lockVaultActionId,
-      vaultId: params.vaultId,
-      expiresAt: lockScheduledAt,
-    });
-
-    try {
-      await this.scheduledTasks.scheduleTask({
-        task: lockVaultTask,
-        runAt: lockScheduledAt,
-      });
-    } catch (error) {
-      try {
-        await this.vaultLockTasks.remove();
-      } catch {
-        // Preserve the schedule failure.
+      if (checkpointRelation === "newer") {
+        await this.vaultLocalRepository.saveVaultSnapshotWithCheckpoint({
+          expectedSnapshotDigest: snapshotDigest,
+          snapshot: vaultSnapshot,
+          checkpoint: await this.vaultTrust.createCheckpoint(
+            vaultSnapshot,
+            verifiedTrust,
+            deviceAccessMaterial.deviceId,
+            localKeysPayload.devicePrivateSignKey,
+          ),
+        });
       }
-      throw error;
-    }
 
-    try {
-      await this.unlockedVaultSession.activate(
+      const unlockedVault: UnlockedVault = {
+        vaultId: params.vaultId,
+        deviceId: deviceAccessMaterial.deviceId,
+        vault,
+        vaultMasterKey,
+        devicePrivateSignKey: localKeysPayload.devicePrivateSignKey,
+        devicePrivateVaultKey: localKeysPayload.devicePrivateVaultKey,
+        deviceLocalProtectionKey: localKeysPayload.deviceLocalProtectionKey,
+        trustedSnapshotContext: {
+          snapshotDigest,
+          trust: verifiedTrust,
+        },
+        vaultTrustAnchor: localKeysPayload.vaultTrustAnchor,
+      };
+
+      await this.sessionActivation.activate({
         activationGeneration,
         unlockedVault,
-        vaultSnapshot.metadata.snapshotVersionVector,
-      );
-    } catch (error) {
-      try {
-        await this.scheduledTasks.cancelTask(lockVaultTask);
-      } catch {
-        // Preserve the save failure; repository cleanup still needs to run.
-      }
-      try {
-        await this.vaultLockTasks.remove();
-      } catch {
-        // Preserve the save failure.
-      }
-      throw error;
-    }
+        sourceSnapshotVersionVector:
+          vaultSnapshot.metadata.snapshotVersionVector,
+        lockAfterMs,
+      });
+      sessionActivated = true;
 
-    return {
-      vaultId: params.vaultId,
-      deviceId: deviceAccessMaterial.deviceId,
-      snapshotVersionVector: {
-        ...vaultSnapshot.metadata.snapshotVersionVector,
-      },
-      revisionTimestamp: vaultSnapshot.metadata.revisionTimestamp,
-      vault: toVisibleVaultFields(vault),
-    };
+      return {
+        vaultId: params.vaultId,
+        deviceId: deviceAccessMaterial.deviceId,
+        snapshotVersionVector: {
+          ...vaultSnapshot.metadata.snapshotVersionVector,
+        },
+        revisionTimestamp: vaultSnapshot.metadata.revisionTimestamp,
+        vault: toVisibleVaultFields(vault),
+      };
+    } finally {
+      bestEffortWipeArrayBuffers(ephemeralSecrets);
+
+      if (!sessionActivated) {
+        bestEffortWipeArrayBuffers(sessionSecrets);
+      }
+    }
   }
 
   private requireTrustChain(
