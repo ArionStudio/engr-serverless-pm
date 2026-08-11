@@ -28,7 +28,7 @@ export class DeleteLocalVaultUseCase {
       requiredVaultId: params.vaultId,
     });
 
-    if (cleanupResult === "session_unavailable") {
+    if (cleanupResult !== "cleaned") {
       throw new VaultMustBeUnlockedForLocalDeletionError(params.vaultId);
     }
   }

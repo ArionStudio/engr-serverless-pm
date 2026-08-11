@@ -70,6 +70,7 @@ function createContext() {
     clipboard,
     clipboardClearTasks,
     scheduledTasks,
+    lifecycleCleanup,
     useCase,
   };
 }
@@ -172,6 +173,21 @@ describe("DeleteLocalVaultUseCase", () => {
     expect(
       ctx.ports.sessionServices.unlockedVaultSession.cleanupActiveSession,
     ).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed when lifecycle cleanup reports a stale action", async () => {
+    const ctx = createContext();
+    vi.spyOn(ctx.lifecycleCleanup, "cleanup").mockResolvedValueOnce(
+      "stale_action",
+    );
+
+    await expect(
+      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toBeInstanceOf(VaultMustBeUnlockedForLocalDeletionError);
+
+    expect(
+      ctx.ports.vaultLocalRepository.removePersistedLocalVault,
+    ).not.toHaveBeenCalled();
   });
 
   it("bubbles persisted local deletion errors after removing unlocked state", async () => {

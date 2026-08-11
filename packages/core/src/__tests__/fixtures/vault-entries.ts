@@ -4,9 +4,13 @@ import type { PasswordEntry } from "../../domain/entry/password-entry.type";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import type { Tag } from "../../domain/entry/tag.type";
 import type { UnlockedVault } from "../../domain/session/unlocked-vault";
+import type { EncryptedDeviceSyncCredentialState } from "../../domain/sync";
 import type { VersionVector } from "../../domain/versioning/version-vector.type";
 import { incrementVersionVector } from "../../domain/versioning/version-vector.utils";
-import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
+import type {
+  PreparedLocalVaultSnapshotRestore,
+  VaultSnapshotService,
+} from "../../services/snapshot/vault-snapshot.service";
 import type { CoreTestPorts } from "./ports";
 import type { CoreTestValues } from "./values";
 
@@ -147,9 +151,11 @@ export function createVaultSnapshotServiceMock(
     signature: values.snapshotSignature,
   };
 
-  const restoreLocalVaultSnapshot = vi.fn(async (vaultSnapshot) => {
-    savedVaultSnapshot = vaultSnapshot;
-  });
+  const restoreLocalVaultSnapshot = vi.fn(
+    async (vaultSnapshot: VaultSnapshot) => {
+      savedVaultSnapshot = vaultSnapshot;
+    },
+  );
 
   return {
     requireCurrentSnapshotForUnlockedVault: vi.fn(
@@ -158,14 +164,19 @@ export function createVaultSnapshotServiceMock(
     requireLocalVaultSnapshot: vi.fn(async () => savedVaultSnapshot),
     restoreLocalVaultSnapshot,
     prepareLocalVaultSnapshotRestore: vi.fn(
-      async (vaultSnapshot, _unlockedVault, syncCredentialState) => ({
+      async (
+        vaultSnapshot: VaultSnapshot,
+        _unlockedVault: UnlockedVault,
+        syncCredentialState?: EncryptedDeviceSyncCredentialState | null,
+      ) => ({
         snapshot: vaultSnapshot,
         checkpoint: values.localVaultTrustCheckpoint,
         ...(syncCredentialState === undefined ? {} : { syncCredentialState }),
       }),
     ),
-    restorePreparedLocalVaultSnapshot: vi.fn(async (preparedRestore) =>
-      restoreLocalVaultSnapshot(preparedRestore.snapshot),
+    restorePreparedLocalVaultSnapshot: vi.fn(
+      async (preparedRestore: PreparedLocalVaultSnapshotRestore) =>
+        restoreLocalVaultSnapshot(preparedRestore.snapshot),
     ),
     persistUnlockedVault: vi.fn(
       async (
