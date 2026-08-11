@@ -91,6 +91,7 @@ endif
 if (schedule lock task succeeds?) then (yes)
   :Continue;
 else (no)
+  :Best effort cancel scheduled lock task;
   :Best effort remove matching lock task metadata;
   :Throw schedule failure;
   stop

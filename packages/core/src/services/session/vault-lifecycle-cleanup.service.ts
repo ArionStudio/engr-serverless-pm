@@ -7,6 +7,7 @@ import type { VersionVector } from "../../domain/versioning/version-vector.type"
 
 export type VaultLifecycleCleanupParams = {
   readonly actionId?: string;
+  readonly afterSessionRemoval?: () => Promise<void>;
   readonly requiredVaultId?: string;
 };
 
@@ -50,6 +51,7 @@ export class VaultLifecycleCleanupService {
         }
         return !staleAction;
       },
+      params.afterSessionRemoval,
     );
 
     if (staleActionError !== undefined) {
@@ -142,14 +144,14 @@ export class VaultLifecycleCleanupService {
     let clipboardClearTask: Awaited<
       ReturnType<ClipboardClearTaskRepositoryPort["get"]>
     >;
-    let clipboardTaskReadFailed = false;
+    let clipboardTaskStateUnknown = false;
 
     try {
       clipboardClearTask = await this.clipboardClearTasks.get();
     } catch (error) {
       firstError ??= error;
       clipboardClearTask = null;
-      clipboardTaskReadFailed = true;
+      clipboardTaskStateUnknown = true;
     }
 
     if (clipboardClearTask !== null) {
@@ -160,7 +162,7 @@ export class VaultLifecycleCleanupService {
         });
       } catch (error) {
         firstError ??= error;
-        clipboardTaskReadFailed = true;
+        clipboardTaskStateUnknown = true;
       }
 
       try {
@@ -173,7 +175,7 @@ export class VaultLifecycleCleanupService {
       }
     }
 
-    if (clipboardTaskReadFailed) {
+    if (clipboardTaskStateUnknown) {
       try {
         await this.clipboardClearTasks.remove();
       } catch (error) {
@@ -196,9 +198,16 @@ export class VaultLifecycleCleanupService {
 
     if (vaultLockTask !== null && !lockMetadataRemoved) {
       try {
-        await this.vaultLockTasks.removeIfActionIsActive(
+        const removed = await this.vaultLockTasks.removeIfActionIsActive(
           vaultLockTask.actionId,
         );
+
+        if (actionId !== undefined && !removed) {
+          return {
+            status: "stale_action",
+            ...(firstError === undefined ? {} : { error: firstError }),
+          };
+        }
       } catch (error) {
         firstError ??= error;
       }

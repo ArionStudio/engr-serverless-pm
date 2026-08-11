@@ -147,14 +147,26 @@ export function createVaultSnapshotServiceMock(
     signature: values.snapshotSignature,
   };
 
+  const restoreLocalVaultSnapshot = vi.fn(async (vaultSnapshot) => {
+    savedVaultSnapshot = vaultSnapshot;
+  });
+
   return {
     requireCurrentSnapshotForUnlockedVault: vi.fn(
       async () => savedVaultSnapshot,
     ),
     requireLocalVaultSnapshot: vi.fn(async () => savedVaultSnapshot),
-    restoreLocalVaultSnapshot: vi.fn(async (vaultSnapshot) => {
-      savedVaultSnapshot = vaultSnapshot;
-    }),
+    restoreLocalVaultSnapshot,
+    prepareLocalVaultSnapshotRestore: vi.fn(
+      async (vaultSnapshot, _unlockedVault, syncCredentialState) => ({
+        snapshot: vaultSnapshot,
+        checkpoint: values.localVaultTrustCheckpoint,
+        ...(syncCredentialState === undefined ? {} : { syncCredentialState }),
+      }),
+    ),
+    restorePreparedLocalVaultSnapshot: vi.fn(async (preparedRestore) =>
+      restoreLocalVaultSnapshot(preparedRestore.snapshot),
+    ),
     persistUnlockedVault: vi.fn(
       async (
         _vaultId: string,

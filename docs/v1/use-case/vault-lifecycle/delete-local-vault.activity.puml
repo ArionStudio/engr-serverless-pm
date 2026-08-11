@@ -12,8 +12,12 @@ skinparam activity {
 start
 :Input:\nvaultId;
 :Source:\npackages/core/src/use-cases/vault-lifecycle/delete-local-vault.ts;
-:Read unlocked vault session;
-if (session missing or different vault?) then (yes)
+:Read unlocked vault session and prove the target vault identity;
+if (session read fails?) then (yes)
+  :Preserve session/task state and throw the read failure;
+  stop
+endif
+if (session missing or identifies a different vault?) then (yes)
   :Throw VaultMustBeUnlockedForLocalDeletionError;
   stop
 endif
@@ -23,7 +27,7 @@ if (cleanup failed or active identity changed?) then (yes)
   :Withhold persisted deletion and throw cleanup failure;
   stop
 endif
-:Remove persisted local vault;
+:Inside the same serialized lifecycle boundary,\nremove persisted local vault;
 :Return void;
 stop
 @enduml

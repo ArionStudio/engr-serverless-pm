@@ -54,15 +54,16 @@ endif
 :Build device access material and recovery backup\nwith revision 1 and the same localAccessGenerationId;
 :Build local vault descriptor;
 :Build unlocked vault session object;
-:saveInitializedLocalVault(descriptor,\naccess material, recovery backup, snapshot);
 :Enter serialized session activation boundary;
+:saveInitializedLocalVault(descriptor,\naccess material, recovery backup, snapshot);
 :Save vault lock task metadata;
 
 if (schedule lock task succeeds?) then (yes)
   :Continue;
 else (no)
+  :Best effort cancel scheduled lock task;
   :Best effort remove matching lock task metadata;
-  :Best effort removePersistedLocalVault(vaultId);
+  :Best effort removePersistedLocalVaultIfSnapshotMatches(vaultId, snapshotDigest);
   :Throw schedule failure;
   stop
 endif
@@ -73,7 +74,7 @@ if (activate unlocked session succeeds?) then (yes)
 else (no)
   :Best effort cancel scheduled lock task;
   :Best effort remove matching lock task metadata;
-  :Best effort removePersistedLocalVault(vaultId);
+  :Best effort removePersistedLocalVaultIfSnapshotMatches(vaultId, snapshotDigest);
   :Throw original session activation error;
   stop
 endif

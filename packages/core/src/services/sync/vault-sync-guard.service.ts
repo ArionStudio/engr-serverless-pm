@@ -19,11 +19,27 @@ import {
   ProviderCredentialRevocationPendingError,
   SyncRemovalPendingError,
 } from "../../errors/sync.errors";
+import { PersistedVaultRollbackIncompleteError } from "../../errors/vault-snapshot.errors";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import type { UnlockedVaultSessionService } from "../session/unlocked-vault-session.service";
-import type { VaultSnapshotService } from "../snapshot/vault-snapshot.service";
+import type {
+  PreparedLocalVaultSnapshotRestore,
+  VaultSnapshotService,
+} from "../snapshot/vault-snapshot.service";
+
+type LocalMutationSyncState =
+  | {
+      readonly localSnapshot: VaultSnapshot;
+      readonly syncAccess?: undefined;
+      readonly remoteSnapshotDescriptor?: undefined;
+    }
+  | {
+      readonly localSnapshot: VaultSnapshot;
+      readonly syncAccess: SyncAccess;
+      readonly remoteSnapshotDescriptor: VaultSnapshotDescriptor;
+    };
 
 export class VaultSyncGuardService {
   private readonly syncProvider: SyncProviderPort;
@@ -64,11 +80,7 @@ export class VaultSyncGuardService {
     vaultId: string,
     unlockedVault: UnlockedVault,
     sourceSnapshotVersionVector: VersionVector,
-  ): Promise<{
-    readonly localSnapshot: VaultSnapshot;
-    readonly syncAccess?: SyncAccess;
-    readonly remoteSnapshotDescriptor?: VaultSnapshotDescriptor;
-  }> {
+  ): Promise<LocalMutationSyncState> {
     const localSnapshot =
       await this.vaultSnapshot.requireCurrentSnapshotForUnlockedVault(
         vaultId,
@@ -220,7 +232,8 @@ export class VaultSyncGuardService {
       readonly remoteSnapshotDescriptor?: VaultSnapshotDescriptor;
     },
     persistedSnapshot: VaultSnapshot,
-    unlockedVault: UnlockedVault,
+    persistedSnapshotDigest: string,
+    preparedRestore: PreparedLocalVaultSnapshotRestore,
     sessionId: string,
   ): Promise<void> {
     if (
@@ -237,17 +250,21 @@ export class VaultSyncGuardService {
         syncState.remoteSnapshotDescriptor,
       );
     } catch (error) {
-      await this.unlockedVaultSession.restorePersistedState(
-        sessionId,
-        vaultId,
-        async () => {
-          await this.vaultSnapshot.restoreLocalVaultSnapshot(
-            syncState.localSnapshot,
-            persistedSnapshot,
-            unlockedVault,
-          );
-        },
-      );
+      const rollbackResult =
+        await this.unlockedVaultSession.restorePersistedState(
+          sessionId,
+          vaultId,
+          syncState.localSnapshot.metadata.snapshotVersionVector,
+          async () =>
+            this.vaultSnapshot.restorePreparedLocalVaultSnapshot(
+              preparedRestore,
+              persistedSnapshotDigest,
+            ),
+        );
+
+      if (rollbackResult === "rollback_failed") {
+        throw new PersistedVaultRollbackIncompleteError(vaultId, error);
+      }
 
       if (error instanceof RemoteVaultSnapshotChangedError) {
         throw new SyncConflictDetectedError(vaultId);
@@ -262,7 +279,8 @@ export class VaultSyncGuardService {
     syncAccess: SyncAccess,
     localSnapshot: VaultSnapshot,
     persistedSnapshot: VaultSnapshot,
-    unlockedVault: UnlockedVault,
+    persistedSnapshotDigest: string,
+    preparedRestore: PreparedLocalVaultSnapshotRestore,
     sessionId: string,
   ): Promise<void> {
     try {
@@ -272,18 +290,21 @@ export class VaultSyncGuardService {
         null,
       );
     } catch (error) {
-      await this.unlockedVaultSession.restorePersistedState(
-        sessionId,
-        vaultId,
-        async () => {
-          await this.vaultSnapshot.restoreLocalVaultSnapshot(
-            localSnapshot,
-            persistedSnapshot,
-            unlockedVault,
-            null,
-          );
-        },
-      );
+      const rollbackResult =
+        await this.unlockedVaultSession.restorePersistedState(
+          sessionId,
+          vaultId,
+          localSnapshot.metadata.snapshotVersionVector,
+          async () =>
+            this.vaultSnapshot.restorePreparedLocalVaultSnapshot(
+              preparedRestore,
+              persistedSnapshotDigest,
+            ),
+        );
+
+      if (rollbackResult === "rollback_failed") {
+        throw new PersistedVaultRollbackIncompleteError(vaultId, error);
+      }
 
       if (error instanceof RemoteVaultSnapshotChangedError) {
         throw new SyncConflictDetectedError(vaultId);

@@ -1,7 +1,10 @@
 import {
   AddEntryUseCase,
   CopyEntryPasswordUseCase,
+  DeleteLocalVaultUseCase,
   InitializeVaultUseCase,
+  LockVaultUseCase,
+  PerformDeviceEnrollmentUseCase,
   SyncUploadUseCase,
 } from "@lfspm/core";
 import type {
@@ -22,6 +25,7 @@ import type {
 import {
   ClipboardClearService,
   UnlockedVaultSessionService,
+  VaultLifecycleCleanupService,
   VaultSnapshotService,
   VaultSyncGuardService,
 } from "@lfspm/core/services";
@@ -67,6 +71,13 @@ export function composeCoreApi(ports: CoreCompositionPorts) {
     ports.clock,
     ports.crypto,
   );
+  const lifecycleCleanup = new VaultLifecycleCleanupService(
+    clipboardClear,
+    ports.clipboardClearTasks,
+    ports.scheduledTasks,
+    ports.vaultLockTasks,
+    unlockedVaultSession,
+  );
 
   return {
     vaultLifecycle: new InitializeVaultUseCase(
@@ -77,6 +88,24 @@ export function composeCoreApi(ports: CoreCompositionPorts) {
       ports.ids,
       ports.clock,
       ports.vaultDisplayName,
+      ports.scheduledTasks,
+      ports.vaultLockTasks,
+    ),
+    lockVault: new LockVaultUseCase(lifecycleCleanup),
+    deleteLocalVault: new DeleteLocalVaultUseCase(
+      ports.vaults,
+      lifecycleCleanup,
+    ),
+    performDeviceEnrollment: new PerformDeviceEnrollmentUseCase(
+      ports.clock,
+      ports.crypto,
+      ports.ids,
+      ports.bip39,
+      ports.syncProvider,
+      unlockedVaultSession,
+      ports.vaultDisplayName,
+      ports.vaults,
+      lifecycleCleanup,
       ports.scheduledTasks,
       ports.vaultLockTasks,
     ),

@@ -30,7 +30,7 @@ export class VaultSessionActivationService {
     this.unlockedVaultSession = unlockedVaultSession;
   }
 
-  requireValidLockDelay(lockAfterMs: VaultLockDelayMs): VaultLockDelayMs {
+  requireValidLockDelay(lockAfterMs: unknown): VaultLockDelayMs {
     const result = vaultLockDelayMsSchema.safeParse(lockAfterMs);
 
     if (!result.success) {
@@ -45,66 +45,58 @@ export class VaultSessionActivationService {
     readonly unlockedVault: UnlockedVault;
     readonly sourceSnapshotVersionVector: VersionVector;
     readonly lockAfterMs: VaultLockDelayMs;
+    readonly prepareActivation?: () => Promise<void>;
+    readonly rollbackPreparedActivation?: () => Promise<void>;
   }): Promise<{ readonly sessionId: string; readonly generation: number }> {
     let actionId: string | undefined;
+    let activationPrepared = false;
 
     return this.unlockedVaultSession.activateWithAutoLock(
       params.activationGeneration,
       params.unlockedVault,
       params.sourceSnapshotVersionVector,
       async () => {
+        await params.prepareActivation?.();
+        activationPrepared = true;
         actionId = await this.ids.generateId();
         const expiresAt = this.clock.now() + params.lockAfterMs;
-
-        try {
-          await this.vaultLockTasks.save({
+        await this.vaultLockTasks.save({
+          actionId,
+          vaultId: params.unlockedVault.vaultId,
+          expiresAt,
+        });
+        await this.scheduledTasks.scheduleTask({
+          task: {
+            name: "lockVault",
             actionId,
-            vaultId: params.unlockedVault.vaultId,
-            expiresAt,
-          });
-          await this.scheduledTasks.scheduleTask({
-            task: {
-              name: "lockVault",
-              actionId,
-            },
-            runAt: expiresAt,
-          });
-        } catch (error) {
+          },
+          runAt: expiresAt,
+        });
+      },
+      async () => {
+        if (actionId !== undefined) {
           try {
             await this.scheduledTasks.cancelTask({
               name: "lockVault",
               actionId,
             });
           } catch {
-            // Matching metadata cleanup still must run.
+            // Matching metadata and prepared-state cleanup still must run.
           }
 
           try {
             await this.vaultLockTasks.removeIfActionIsActive(actionId);
           } catch {
-            // The scheduling failure remains the root cause.
+            // Prepared-state cleanup still must run.
           }
-          throw error;
-        }
-      },
-      async () => {
-        if (actionId === undefined) {
-          return;
         }
 
-        try {
-          await this.scheduledTasks.cancelTask({
-            name: "lockVault",
-            actionId,
-          });
-        } catch {
-          // Metadata cleanup still must run.
-        }
-
-        try {
-          await this.vaultLockTasks.removeIfActionIsActive(actionId);
-        } catch {
-          // Session activation remains the root cause.
+        if (activationPrepared) {
+          try {
+            await params.rollbackPreparedActivation?.();
+          } catch {
+            // Session activation remains the root cause.
+          }
         }
       },
     );

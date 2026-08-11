@@ -33,7 +33,10 @@ import type { IdPort } from "../../ports/system/id.port";
 import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { VaultDisplayNamePort } from "../../ports/vault/vault-display-name.port";
-import type { VaultLockTaskRepositoryPort } from "../../ports/vault/vault-lock-task-repository.port";
+import type {
+  VaultLockTask,
+  VaultLockTaskRepositoryPort,
+} from "../../ports/vault/vault-lock-task-repository.port";
 import type { UnlockedVaultSessionMaterialRepositoryPort } from "../../ports/session/unlocked-vault-session-material-repository.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
@@ -854,11 +857,17 @@ export function createCoreTestPorts(
     sessionServices.unlockedVaultSession,
     "cleanupActiveSession",
   ).mockImplementation(
-    async (requiredVaultId, invalidateWhenUnavailable, beforeRemoval) => {
+    async (
+      requiredVaultId,
+      invalidateWhenUnavailable,
+      beforeRemoval,
+      afterRemoval,
+    ) => {
       const result = await cleanupActiveSessionOriginal(
         requiredVaultId,
         invalidateWhenUnavailable,
         beforeRemoval,
+        afterRemoval,
       );
 
       if (result === "removed") {
@@ -891,10 +900,20 @@ export function createCoreTestPorts(
     checkVaultAccess: vi.fn(async () => "authentication_rejected" as const),
   };
 
+  let activeVaultLockTask: VaultLockTask | null = null;
   const vaultLockTasks: VaultLockTaskRepositoryPort = {
-    save: vi.fn(async () => undefined),
-    get: vi.fn(async () => null),
-    removeIfActionIsActive: vi.fn(async () => true),
+    save: vi.fn(async (task) => {
+      activeVaultLockTask = task;
+    }),
+    get: vi.fn(async () => activeVaultLockTask),
+    removeIfActionIsActive: vi.fn(async (actionId) => {
+      if (activeVaultLockTask?.actionId !== actionId) {
+        return false;
+      }
+
+      activeVaultLockTask = null;
+      return true;
+    }),
   };
 
   const vaultDisplayName: VaultDisplayNamePort = {

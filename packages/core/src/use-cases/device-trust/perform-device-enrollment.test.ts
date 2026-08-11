@@ -31,6 +31,7 @@ import { InvalidVaultLockDelayError } from "../../errors/vault-session.errors";
 import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard/clipboard-clear-task-repository.port";
 import type { ClipboardPort } from "../../ports/clipboard/clipboard.port";
 import { ClipboardClearService } from "../../services/clipboard/clipboard-clear.service";
+import { VaultLifecycleCleanupService } from "../../services/session/vault-lifecycle-cleanup.service";
 import { LockVaultUseCase } from "../vault-lifecycle/lock-vault";
 import { PerformDeviceEnrollmentUseCase } from "./perform-device-enrollment";
 
@@ -133,6 +134,13 @@ function createContext(synced = false) {
     ports.clock,
     ports.crypto,
   );
+  const lifecycleCleanup = new VaultLifecycleCleanupService(
+    clipboardClear,
+    clipboardClearTasks,
+    ports.scheduledTasks,
+    ports.vaultLockTasks,
+    ports.sessionServices.unlockedVaultSession,
+  );
   const useCase = new PerformDeviceEnrollmentUseCase(
     ports.clock,
     ports.crypto,
@@ -142,8 +150,7 @@ function createContext(synced = false) {
     ports.sessionServices.unlockedVaultSession,
     ports.vaultDisplayName,
     ports.vaultLocalRepository,
-    clipboardClear,
-    clipboardClearTasks,
+    lifecycleCleanup,
     ports.scheduledTasks,
     ports.vaultLockTasks,
   );
@@ -161,8 +168,50 @@ function createContext(synced = false) {
     clipboard,
     clipboardClear,
     clipboardClearTasks,
+    lifecycleCleanup,
     useCase,
   };
+}
+
+async function expectEnrollmentOwnedBuffersWiped(
+  ctx: ReturnType<typeof createContext>,
+): Promise<void> {
+  const pendingRootKey = await vi.mocked(ctx.ports.crypto.deriveLocalRootKey)
+    .mock.results[0]!.value;
+  const nextRootKey = await vi.mocked(ctx.ports.crypto.deriveLocalRootKey).mock
+    .results[1]!.value;
+  const pendingProtectionKey = await vi.mocked(
+    ctx.ports.crypto.deriveDeviceEnrollmentPrivateStateProtectionKey,
+  ).mock.results[0]!.value;
+  const localProtectionKey = await vi.mocked(
+    ctx.ports.crypto.deriveLocalKeysProtectionKey,
+  ).mock.results[0]!.value;
+  const recoveryKey = await vi.mocked(ctx.ports.crypto.generateRecoveryKey).mock
+    .results[0]!.value;
+  const recoveryProtectionKey = await vi.mocked(
+    ctx.ports.crypto.deriveRecoveryLocalKeysProtectionKey,
+  ).mock.results[0]!.value;
+  const privateState = await vi.mocked(
+    ctx.ports.crypto.unwrapDeviceEnrollmentPrivateState,
+  ).mock.results[0]!.value;
+  const vaultMasterKey = await vi.mocked(
+    ctx.ports.crypto.openDeviceVaultKeyEnvelope,
+  ).mock.results[0]!.value;
+
+  for (const buffer of [
+    pendingRootKey,
+    nextRootKey,
+    pendingProtectionKey,
+    localProtectionKey,
+    recoveryKey,
+    recoveryProtectionKey,
+    privateState.devicePrivateSignKey,
+    privateState.devicePrivateVaultKey,
+    privateState.deviceLocalProtectionKey,
+    vaultMasterKey,
+  ]) {
+    expect(Array.from(new Uint8Array(buffer))).toEqual([0]);
+  }
 }
 
 describe("PerformDeviceEnrollmentUseCase", () => {
@@ -355,6 +404,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     ).not.toHaveBeenCalled();
     expect(ctx.ports.saved.localVaultDescriptor).toBeUndefined();
     expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
+    await expectEnrollmentOwnedBuffersWiped(ctx);
   });
 
   it("encrypts manually supplied sync credentials only in local storage", async () => {
@@ -475,8 +525,8 @@ describe("PerformDeviceEnrollmentUseCase", () => {
 
     expect(ctx.ports.saved.localVaultDescriptor).toBeUndefined();
     expect(
-      ctx.ports.vaultLocalRepository.removePersistedLocalVault,
-    ).toHaveBeenCalledWith(ctx.values.vaultId);
+      ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfSnapshotMatches,
+    ).toHaveBeenCalledWith(ctx.values.vaultId, ctx.values.vaultSnapshotDigest);
     expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
     expect(ctx.ports.scheduledTasks.cancelTask).toHaveBeenCalledWith({
       name: "lockVault",
@@ -485,6 +535,11 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     expect(
       ctx.ports.vaultLockTasks.removeIfActionIsActive,
     ).toHaveBeenCalledTimes(1);
+    await expectEnrollmentOwnedBuffersWiped(ctx);
+    const payloadKey = await vi.mocked(
+      ctx.ports.crypto.generateUnlockedVaultSessionPayloadKey,
+    ).mock.results[0]!.value;
+    expect(Array.from(new Uint8Array(payloadKey))).toEqual([0]);
   });
 
   it("preserves the activation error when local cleanup also fails", async () => {
@@ -495,7 +550,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
         .saveUnlockedVaultSessionMaterial,
     ).mockRejectedValueOnce(activationError);
     vi.mocked(
-      ctx.ports.vaultLocalRepository.removePersistedLocalVault,
+      ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfSnapshotMatches,
     ).mockRejectedValueOnce(new Error("local cleanup failed"));
 
     await expect(
@@ -573,6 +628,129 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
   });
 
+  it("preserves advanced session keys when rejected-upload rollback cannot read material", async () => {
+    const ctx = createContext(true);
+    let rejectUpload: (error: Error) => void = () => undefined;
+    let uploadStarted: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => {
+      uploadStarted = resolve;
+    });
+    vi.mocked(
+      ctx.ports.syncProvider.uploadVaultSnapshot,
+    ).mockImplementationOnce(
+      async () =>
+        new Promise<never>((_resolve, reject) => {
+          rejectUpload = reject;
+          uploadStarted();
+        }),
+    );
+
+    const execution = ctx.useCase.execute({
+      enrollmentResponse: ctx.response,
+      masterPassword: ctx.values.masterPassword,
+      deviceName: "New laptop",
+      lockAfterMs: 60_000,
+      syncConfig: ctx.values.syncConfigInput,
+    });
+
+    await started;
+    const activeSession = ctx.ports.saved.unlockedVaultSession;
+
+    if (activeSession === undefined) {
+      throw new Error("expected enrollment session to be active");
+    }
+
+    await ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot(
+      activeSession.sessionId,
+      activeSession.unlockedVault,
+      { [ctx.values.deviceId]: 3 },
+    );
+    vi.mocked(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .getUnlockedVaultSessionMaterial,
+    ).mockRejectedValueOnce(new Error("material read failed"));
+    rejectUpload(new RemoteVaultSnapshotChangedError(ctx.values.vaultId));
+
+    await expect(execution).rejects.toBeInstanceOf(
+      DeviceEnrollmentRollbackIncompleteError,
+    );
+    expect(ctx.ports.saved.localVaultDescriptor).toBeDefined();
+    expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
+    expect(ctx.ports.saved.unlockedVaultSession).toBeDefined();
+    for (const secret of [
+      activeSession.unlockedVault.vaultMasterKey,
+      activeSession.unlockedVault.devicePrivateSignKey,
+      activeSession.unlockedVault.devicePrivateVaultKey,
+      activeSession.unlockedVault.deviceLocalProtectionKey,
+    ]) {
+      expect(Array.from(new Uint8Array(secret))).not.toEqual([0]);
+    }
+  });
+
+  it("preserves shared keys owned by a replacement same-vault session", async () => {
+    const ctx = createContext(true);
+    let rejectUpload: (error: Error) => void = () => undefined;
+    let uploadStarted: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => {
+      uploadStarted = resolve;
+    });
+    vi.mocked(
+      ctx.ports.syncProvider.uploadVaultSnapshot,
+    ).mockImplementationOnce(
+      async () =>
+        new Promise<never>((_resolve, reject) => {
+          rejectUpload = reject;
+          uploadStarted();
+        }),
+    );
+
+    const execution = ctx.useCase.execute({
+      enrollmentResponse: ctx.response,
+      masterPassword: ctx.values.masterPassword,
+      deviceName: "New laptop",
+      lockAfterMs: 60_000,
+      syncConfig: ctx.values.syncConfigInput,
+    });
+
+    await started;
+    const activeSession = ctx.ports.saved.unlockedVaultSession;
+
+    if (activeSession === undefined) {
+      throw new Error("expected enrollment session to be active");
+    }
+
+    vi.mocked(ctx.ports.ids.generateId).mockResolvedValueOnce(
+      "replacement-session-id",
+    );
+    const activationGeneration =
+      await ctx.ports.sessionServices.unlockedVaultSession.requireVaultCanBeActivated(
+        ctx.values.vaultId,
+      );
+    await ctx.ports.sessionServices.unlockedVaultSession.activate(
+      activationGeneration,
+      activeSession.unlockedVault,
+      activeSession.sourceSnapshotVersionVector,
+    );
+    rejectUpload(new RemoteVaultSnapshotChangedError(ctx.values.vaultId));
+
+    await expect(execution).rejects.toBeInstanceOf(
+      DeviceEnrollmentRollbackIncompleteError,
+    );
+    expect(ctx.ports.saved.unlockedVaultSession?.sessionId).toBe(
+      "replacement-session-id",
+    );
+    expect(ctx.ports.saved.localVaultDescriptor).toBeDefined();
+    expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
+    for (const secret of [
+      activeSession.unlockedVault.vaultMasterKey,
+      activeSession.unlockedVault.devicePrivateSignKey,
+      activeSession.unlockedVault.devicePrivateVaultKey,
+      activeSession.unlockedVault.deviceLocalProtectionKey,
+    ]) {
+      expect(Array.from(new Uint8Array(secret))).not.toEqual([0]);
+    }
+  });
+
   it("does not report rejected enrollment upload as complete after concurrent lock", async () => {
     const ctx = createContext(true);
     let rejectUpload: (error: Error) => void = () => undefined;
@@ -589,13 +767,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
           uploadStarted();
         }),
     );
-    const lockVault = new LockVaultUseCase(
-      ctx.clipboardClear,
-      ctx.clipboardClearTasks,
-      ctx.ports.scheduledTasks,
-      ctx.ports.vaultLockTasks,
-      ctx.ports.sessionServices.unlockedVaultSession,
-    );
+    const lockVault = new LockVaultUseCase(ctx.lifecycleCleanup);
 
     const execution = ctx.useCase.execute({
       enrollmentResponse: ctx.response,

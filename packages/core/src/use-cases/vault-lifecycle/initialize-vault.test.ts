@@ -253,8 +253,8 @@ describe("InitializeVaultUseCase", () => {
     ).rejects.toThrow("session failed");
 
     expect(
-      ctx.ports.vaultLocalRepository.removePersistedLocalVault,
-    ).toHaveBeenCalledWith(ctx.values.vaultId);
+      ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfSnapshotMatches,
+    ).toHaveBeenCalledWith(ctx.values.vaultId, ctx.values.vaultSnapshotDigest);
     expect(ctx.ports.scheduledTasks.cancelTask).toHaveBeenCalledWith({
       name: "lockVault",
       actionId: ctx.values.vaultLockActionId,
@@ -262,5 +262,40 @@ describe("InitializeVaultUseCase", () => {
     expect(
       ctx.ports.vaultLockTasks.removeIfActionIsActive,
     ).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps initialized persistence and activation in one session operation", async () => {
+    const ctx = createInitializeVaultTestContext();
+    const saveInitializedLocalVault = vi.mocked(
+      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
+    );
+    const save = saveInitializedLocalVault.getMockImplementation();
+    let competingLease: Promise<number> | undefined;
+
+    if (save === undefined) {
+      throw new Error("Expected initialized-vault fixture implementation.");
+    }
+
+    saveInitializedLocalVault.mockImplementationOnce(async (params) => {
+      await save(params);
+      competingLease =
+        ctx.ports.sessionServices.unlockedVaultSession.requireVaultCanBeActivated(
+          ctx.values.vaultId,
+        );
+    });
+
+    await ctx.useCase.execute({
+      masterPassword: ctx.values.masterPassword,
+      deviceName: "Laptop",
+      lockAfterMs: 60_000,
+    });
+
+    if (competingLease === undefined) {
+      throw new Error("Expected a competing activation lease.");
+    }
+
+    await expect(competingLease).resolves.toBe(1);
+    expect(ctx.saved.localVaultDescriptor).toBeDefined();
+    expect(ctx.saved.unlockedVaultSession).toBeDefined();
   });
 });

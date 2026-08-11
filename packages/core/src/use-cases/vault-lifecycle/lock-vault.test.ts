@@ -9,6 +9,7 @@ import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard/cli
 import type { ClipboardPort } from "../../ports/clipboard/clipboard.port";
 import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
 import { ClipboardClearService } from "../../services/clipboard/clipboard-clear.service";
+import { VaultLifecycleCleanupService } from "../../services/session/vault-lifecycle-cleanup.service";
 import { UnlockedVaultSessionExpiredError } from "../../errors/vault-session.errors";
 import { LockVaultUseCase } from "./lock-vault";
 
@@ -40,13 +41,14 @@ function createContext() {
     clock,
     ports.crypto,
   );
-  const useCase = new LockVaultUseCase(
+  const lifecycleCleanup = new VaultLifecycleCleanupService(
     clipboardClear,
     clipboardClearTasks,
     scheduledTasks,
     ports.vaultLockTasks,
     ports.sessionServices.unlockedVaultSession,
   );
+  const useCase = new LockVaultUseCase(lifecycleCleanup);
 
   return {
     values,
@@ -137,6 +139,37 @@ describe("LockVaultUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
+  it("preserves the session when lock metadata advances during scheduled cleanup", async () => {
+    const ctx = createContext();
+    const newerLockTask = {
+      actionId: "newer-lock-action-id",
+      vaultId: ctx.values.vaultId,
+      expiresAt: ctx.values.timestamp + 120_000,
+    };
+    await ctx.ports.vaultLockTasks.save({
+      actionId: ctx.values.vaultLockActionId,
+      vaultId: ctx.values.vaultId,
+      expiresAt: ctx.values.timestamp + 60_000,
+    });
+    vi.mocked(ctx.scheduledTasks.cancelTask).mockImplementation(
+      async (task) => {
+        if (task.name === "lockVault") {
+          await ctx.ports.vaultLockTasks.save(newerLockTask);
+        }
+      },
+    );
+
+    await expect(
+      ctx.useCase.execute({ actionId: ctx.values.vaultLockActionId }),
+    ).resolves.toBeUndefined();
+
+    expect(
+      ctx.ports.vaultLockTasks.removeIfActionIsActive,
+    ).toHaveBeenCalledWith(ctx.values.vaultLockActionId);
+    await expect(ctx.ports.vaultLockTasks.get()).resolves.toBe(newerLockTask);
+    expect(ctx.ports.saved.unlockedVaultSession).toBeDefined();
+  });
+
   it("ignores scheduled vault lock when metadata is missing", async () => {
     const ctx = createContext();
 
@@ -159,7 +192,7 @@ describe("LockVaultUseCase", () => {
   it("cleans matching scheduled state when the session is already absent", async () => {
     const ctx = createContext();
     ctx.ports.saved.unlockedVaultSession = undefined;
-    vi.mocked(ctx.ports.vaultLockTasks.get).mockResolvedValueOnce({
+    await ctx.ports.vaultLockTasks.save({
       actionId: ctx.values.vaultLockActionId,
       vaultId: ctx.values.vaultId,
       expiresAt: ctx.values.timestamp + 60_000,
@@ -234,7 +267,7 @@ describe("LockVaultUseCase", () => {
 
   it("locks current session for matching scheduled vault lock action", async () => {
     const ctx = createContext();
-    vi.mocked(ctx.ports.vaultLockTasks.get).mockResolvedValueOnce({
+    await ctx.ports.vaultLockTasks.save({
       actionId: ctx.values.vaultLockActionId,
       vaultId: ctx.values.vaultId,
       expiresAt: ctx.values.timestamp + 60_000,
@@ -266,6 +299,12 @@ describe("LockVaultUseCase", () => {
       await ctx.ports.sessionServices.unlockedVaultSession.requireVaultCanBeActivated(
         ctx.values.vaultId,
       );
+    const activeLockTask = {
+      actionId: ctx.values.vaultLockActionId,
+      vaultId: ctx.values.vaultId,
+      expiresAt: ctx.values.timestamp + 60_000,
+    };
+    await ctx.ports.vaultLockTasks.save(activeLockTask);
     let cleanupCanContinue!: () => void;
     let cleanupStartedResolve!: () => void;
     const cleanupStarted = new Promise<void>((resolve) => {
@@ -277,11 +316,7 @@ describe("LockVaultUseCase", () => {
     vi.mocked(ctx.ports.vaultLockTasks.get).mockImplementationOnce(async () => {
       cleanupStartedResolve();
       await cleanupCanContinuePromise;
-      return {
-        actionId: ctx.values.vaultLockActionId,
-        vaultId: ctx.values.vaultId,
-        expiresAt: ctx.values.timestamp + 60_000,
-      };
+      return activeLockTask;
     });
 
     const cleanup = ctx.useCase.execute({
@@ -404,6 +439,11 @@ describe("LockVaultUseCase", () => {
   it("authenticates scheduled cleanup after reading active session material fails", async () => {
     const ctx = createContext();
     const error = new Error("session material unavailable");
+    await ctx.ports.vaultLockTasks.save({
+      actionId: ctx.values.vaultLockActionId,
+      vaultId: ctx.values.vaultId,
+      expiresAt: ctx.values.timestamp + 60_000,
+    });
     vi.mocked(
       ctx.ports.unlockedVaultSessionMaterialRepository
         .getUnlockedVaultSessionMaterial,
@@ -413,12 +453,6 @@ describe("LockVaultUseCase", () => {
       copiedValueHash: `hash:${singlePasswordEntry.password}`,
       expiresAt: ctx.values.timestamp + 60_000,
     });
-    vi.mocked(ctx.ports.vaultLockTasks.get).mockResolvedValueOnce({
-      actionId: ctx.values.vaultLockActionId,
-      vaultId: ctx.values.vaultId,
-      expiresAt: ctx.values.timestamp + 60_000,
-    });
-
     await expect(
       ctx.useCase.execute({ actionId: ctx.values.vaultLockActionId }),
     ).rejects.toBe(error);
@@ -469,6 +503,11 @@ describe("LockVaultUseCase", () => {
   it("continues scheduled cleanup after lock task metadata read fails", async () => {
     const ctx = createContext();
     const error = new Error("lock task metadata unavailable");
+    await ctx.ports.vaultLockTasks.save({
+      actionId: ctx.values.vaultLockActionId,
+      vaultId: ctx.values.vaultId,
+      expiresAt: ctx.values.timestamp + 60_000,
+    });
     vi.mocked(ctx.ports.vaultLockTasks.get).mockRejectedValueOnce(error);
     vi.mocked(ctx.clipboardClearTasks.get).mockResolvedValueOnce({
       actionId: "clipboard-action-id",

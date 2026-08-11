@@ -146,3 +146,27 @@ describe("createCoreTestPorts secret ownership", () => {
     );
   });
 });
+
+describe("createCoreTestPorts vault lock tasks", () => {
+  it("preserves the active task until its action ID matches removal", async () => {
+    const values = createCoreTestValues();
+    const ports = createCoreTestPorts(values);
+    const task = {
+      actionId: values.vaultLockActionId,
+      vaultId: values.vaultId,
+      expiresAt: values.timestamp + 60_000,
+    };
+
+    await ports.vaultLockTasks.save(task);
+
+    await expect(ports.vaultLockTasks.get()).resolves.toBe(task);
+    await expect(
+      ports.vaultLockTasks.removeIfActionIsActive("stale-action-id"),
+    ).resolves.toBe(false);
+    await expect(ports.vaultLockTasks.get()).resolves.toBe(task);
+    await expect(
+      ports.vaultLockTasks.removeIfActionIsActive(task.actionId),
+    ).resolves.toBe(true);
+    await expect(ports.vaultLockTasks.get()).resolves.toBeNull();
+  });
+});

@@ -3,11 +3,11 @@ import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import { DeleteLocalVaultUseCase } from "./delete-local-vault";
 import { VaultMustBeUnlockedForLocalDeletionError } from "../../errors/delete-local-vault.errors";
-import { UnlockedVaultSessionExpiredError } from "../../errors/vault-session.errors";
 import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard/clipboard-clear-task-repository.port";
 import type { ClipboardPort } from "../../ports/clipboard/clipboard.port";
 import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
 import { ClipboardClearService } from "../../services/clipboard/clipboard-clear.service";
+import { VaultLifecycleCleanupService } from "../../services/session/vault-lifecycle-cleanup.service";
 
 function createContext() {
   const values = createCoreTestValues();
@@ -31,13 +31,16 @@ function createContext() {
     ports.clock,
     ports.crypto,
   );
-  const useCase = new DeleteLocalVaultUseCase(
-    ports.vaultLocalRepository,
-    ports.sessionServices.unlockedVaultSession,
+  const lifecycleCleanup = new VaultLifecycleCleanupService(
     clipboardClear,
     clipboardClearTasks,
     scheduledTasks,
     ports.vaultLockTasks,
+    ports.sessionServices.unlockedVaultSession,
+  );
+  const useCase = new DeleteLocalVaultUseCase(
+    ports.vaultLocalRepository,
+    lifecycleCleanup,
   );
 
   ports.saved.unlockedVaultSession = {
@@ -214,18 +217,8 @@ describe("DeleteLocalVaultUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("serializes cleanup against a competing session activation", async () => {
+  it("does not grant a competing activation lease until deletion finishes", async () => {
     const ctx = createContext();
-    const activeSession = ctx.ports.saved.unlockedVaultSession;
-
-    if (activeSession === undefined) {
-      throw new Error("Expected an active test session.");
-    }
-
-    const activationGeneration =
-      await ctx.ports.sessionServices.unlockedVaultSession.requireVaultCanBeActivated(
-        ctx.values.vaultId,
-      );
     let cleanupCanContinue!: () => void;
     let cleanupStartedResolve!: () => void;
     const cleanupStarted = new Promise<void>((resolve) => {
@@ -239,28 +232,55 @@ describe("DeleteLocalVaultUseCase", () => {
       await cleanupCanContinuePromise;
       return null;
     });
+    const removePersistedLocalVault = vi.mocked(
+      ctx.ports.vaultLocalRepository.removePersistedLocalVault,
+    );
+    const removePersistedLocalVaultOriginal =
+      removePersistedLocalVault.getMockImplementation();
+
+    if (removePersistedLocalVaultOriginal === undefined) {
+      throw new Error("Expected a persisted-vault removal implementation.");
+    }
+
+    let deletionCanContinue!: () => void;
+    let persistedDeletionStartedResolve!: () => void;
+    const persistedDeletionStarted = new Promise<void>((resolve) => {
+      persistedDeletionStartedResolve = resolve;
+    });
+    const deletionCanContinuePromise = new Promise<void>((resolve) => {
+      deletionCanContinue = resolve;
+    });
+    removePersistedLocalVault.mockImplementationOnce(async (vaultId) => {
+      persistedDeletionStartedResolve();
+      await deletionCanContinuePromise;
+      await removePersistedLocalVaultOriginal(vaultId);
+    });
 
     const deletion = ctx.useCase.execute({ vaultId: ctx.values.vaultId });
     await cleanupStarted;
-    const competingActivation =
-      ctx.ports.sessionServices.unlockedVaultSession.activate(
-        activationGeneration,
-        activeSession.unlockedVault,
-        activeSession.sourceSnapshotVersionVector,
-      );
+    let activationLeaseGranted = false;
+    const competingActivationLease =
+      ctx.ports.sessionServices.unlockedVaultSession
+        .requireVaultCanBeActivated(ctx.values.vaultId)
+        .then((generation) => {
+          activationLeaseGranted = true;
+          return generation;
+        });
     cleanupCanContinue();
+    await persistedDeletionStarted;
+    await Promise.resolve();
+    expect(activationLeaseGranted).toBe(false);
+    deletionCanContinue();
 
     await expect(deletion).resolves.toBeUndefined();
-    await expect(competingActivation).rejects.toBeInstanceOf(
-      UnlockedVaultSessionExpiredError,
-    );
+    await expect(competingActivationLease).resolves.toEqual(expect.any(Number));
     expect(
       ctx.ports.vaultLocalRepository.removePersistedLocalVault,
     ).toHaveBeenCalledWith(ctx.values.vaultId);
     expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
   });
 
-  it("continues cleanup and withholds deletion after reading session material fails", async () => {
+  it("preserves an unverified active session when target-bound material reading fails", async () => {
     const ctx = createContext();
     const error = new Error("session material unavailable");
     vi.mocked(
@@ -279,26 +299,20 @@ describe("DeleteLocalVaultUseCase", () => {
     });
 
     await expect(
-      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+      ctx.useCase.execute({ vaultId: "other-vault-id" }),
     ).rejects.toBe(error);
 
-    expect(ctx.clipboard.writeText).toHaveBeenCalledWith("");
-    expect(ctx.scheduledTasks.cancelTask).toHaveBeenCalledWith({
-      name: "clearClipboard",
-      actionId: "clipboard-action-id",
-    });
-    expect(ctx.scheduledTasks.cancelTask).toHaveBeenCalledWith({
-      name: "lockVault",
-      actionId: ctx.values.vaultLockActionId,
-    });
+    expect(ctx.clipboard.writeText).not.toHaveBeenCalled();
+    expect(ctx.scheduledTasks.cancelTask).not.toHaveBeenCalled();
     expect(
       ctx.ports.unlockedVaultSessionMaterialRepository
         .removeUnlockedVaultSessionMaterial,
-    ).toHaveBeenCalledTimes(1);
+    ).not.toHaveBeenCalled();
     expect(
       ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
         .removeEncryptedUnlockedVaultSessionPayload,
-    ).toHaveBeenCalledTimes(1);
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.unlockedVaultSession).toBeDefined();
     expect(
       ctx.ports.vaultLocalRepository.removePersistedLocalVault,
     ).not.toHaveBeenCalled();
@@ -331,6 +345,7 @@ describe("DeleteLocalVaultUseCase", () => {
       name: "lockVault",
       actionId: ctx.values.vaultLockActionId,
     });
+    expect(ctx.clipboardClearTasks.remove).toHaveBeenCalledTimes(1);
     expect(
       ctx.ports.vaultLockTasks.removeIfActionIsActive,
     ).toHaveBeenCalledTimes(1);

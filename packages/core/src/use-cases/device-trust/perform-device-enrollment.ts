@@ -54,10 +54,8 @@ import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-rep
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
 import type { VaultLockTaskRepositoryPort } from "../../ports/vault/vault-lock-task-repository.port";
-import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard/clipboard-clear-task-repository.port";
 import type { VaultLockDelayMs } from "../../domain/scheduled-task/scheduled-task-delay.type";
-import type { ClipboardClearService } from "../../services/clipboard/clipboard-clear.service";
-import { VaultLifecycleCleanupService } from "../../services/session/vault-lifecycle-cleanup.service";
+import type { VaultLifecycleCleanupService } from "../../services/session/vault-lifecycle-cleanup.service";
 import { VaultSessionActivationService } from "../../services/session/vault-session-activation.service";
 import { bestEffortWipeArrayBuffers } from "../../lib/secure-wipe.utils";
 import { VaultTrustService } from "../../services/trust/vault-trust.service";
@@ -101,8 +99,7 @@ export class PerformDeviceEnrollmentUseCase {
     unlockedVaultSession: UnlockedVaultSessionService,
     vaultDisplayName: VaultDisplayNamePort,
     vaultLocalRepository: VaultLocalRepositoryPort,
-    clipboardClear: ClipboardClearService,
-    clipboardClearTasks: ClipboardClearTaskRepositoryPort,
+    lifecycleCleanup: VaultLifecycleCleanupService,
     scheduledTasks: ScheduledTaskPort,
     vaultLockTasks: VaultLockTaskRepositoryPort,
   ) {
@@ -122,13 +119,7 @@ export class PerformDeviceEnrollmentUseCase {
       vaultLockTasks,
       unlockedVaultSession,
     );
-    this.lifecycleCleanup = new VaultLifecycleCleanupService(
-      clipboardClear,
-      clipboardClearTasks,
-      scheduledTasks,
-      vaultLockTasks,
-      unlockedVaultSession,
-    );
+    this.lifecycleCleanup = lifecycleCleanup;
   }
 
   async execute(
@@ -450,41 +441,31 @@ export class PerformDeviceEnrollmentUseCase {
         vaultTrustAnchor: response.vaultTrustAnchor,
       };
 
-      await this.vaultLocalRepository.saveInitializedLocalVault({
-        descriptor,
-        deviceAccessMaterial,
-        deviceAccessRecoveryBackup,
-        snapshot,
-        checkpoint,
-        ...(encryptedSyncCredentialState === undefined
-          ? {}
-          : { syncCredentialState: encryptedSyncCredentialState }),
-      });
-
-      let sessionId: string;
-      let sessionGeneration: number;
-
-      try {
-        const activatedSession = await this.sessionActivation.activate({
-          activationGeneration,
-          unlockedVault,
-          sourceSnapshotVersionVector: snapshot.metadata.snapshotVersionVector,
-          lockAfterMs,
-        });
-        sessionId = activatedSession.sessionId;
-        sessionGeneration = activatedSession.generation;
-        sessionActivated = true;
-      } catch (error) {
-        try {
-          await this.vaultLocalRepository.removePersistedLocalVault(
+      const activatedSession = await this.sessionActivation.activate({
+        activationGeneration,
+        unlockedVault,
+        sourceSnapshotVersionVector: snapshot.metadata.snapshotVersionVector,
+        lockAfterMs,
+        prepareActivation: async () =>
+          this.vaultLocalRepository.saveInitializedLocalVault({
+            descriptor,
+            deviceAccessMaterial,
+            deviceAccessRecoveryBackup,
+            snapshot,
+            checkpoint,
+            ...(encryptedSyncCredentialState === undefined
+              ? {}
+              : { syncCredentialState: encryptedSyncCredentialState }),
+          }),
+        rollbackPreparedActivation: async () => {
+          await this.vaultLocalRepository.removePersistedLocalVaultIfSnapshotMatches(
             response.vaultId,
+            snapshotDigest,
           );
-        } catch {
-          // Preserve the activation failure as the root cause.
-        }
-
-        throw error;
-      }
+        },
+      });
+      const { sessionId, generation: sessionGeneration } = activatedSession;
+      sessionActivated = true;
 
       let syncUpload: "complete" | "pending" = "complete";
 
@@ -519,7 +500,10 @@ export class PerformDeviceEnrollmentUseCase {
                   ),
               );
 
-            if (rollbackResult !== "session_advanced") {
+            if (
+              rollbackResult !== "session_advanced" &&
+              rollbackResult !== "session_replaced"
+            ) {
               sessionActivated = false;
             }
 

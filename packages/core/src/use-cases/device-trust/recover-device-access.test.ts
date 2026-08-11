@@ -46,6 +46,32 @@ function deferRecoveryReplacement(ctx: ReturnType<typeof createContext>) {
     ctx.ports.crypto.generateRecoveryLocalKeysProtectionSalt,
   ).mockResolvedValue(ctx.values.rotatedRecoveryLocalKeysProtectionSalt);
 
+  const deriveRecoveryLocalKeysProtectionKey = vi.mocked(
+    ctx.ports.crypto.deriveRecoveryLocalKeysProtectionKey,
+  );
+  const defaultDeriveRecoveryLocalKeysProtectionKey =
+    deriveRecoveryLocalKeysProtectionKey.getMockImplementation();
+
+  if (defaultDeriveRecoveryLocalKeysProtectionKey === undefined) {
+    throw new Error("Expected a recovery-key derivation implementation.");
+  }
+
+  let rotatedRecoveryLocalKeysProtectionKey: ArrayBuffer | undefined;
+  deriveRecoveryLocalKeysProtectionKey.mockImplementation(
+    async (recoveryKey, salt) => {
+      const protectionKey = await defaultDeriveRecoveryLocalKeysProtectionKey(
+        recoveryKey,
+        salt,
+      );
+
+      if (salt === ctx.values.rotatedRecoveryLocalKeysProtectionSalt) {
+        rotatedRecoveryLocalKeysProtectionKey = protectionKey;
+      }
+
+      return protectionKey;
+    },
+  );
+
   const wrapLocalKeysPayload = vi.mocked(ctx.ports.crypto.wrapLocalKeysPayload);
   const defaultWrapLocalKeysPayload =
     wrapLocalKeysPayload.getMockImplementation();
@@ -67,6 +93,8 @@ function deferRecoveryReplacement(ctx: ReturnType<typeof createContext>) {
     wrapCallCount += 1;
 
     if (wrapCallCount === 2) {
+      expect(rotatedRecoveryLocalKeysProtectionKey).toBeDefined();
+      expect(protectionKey).toBe(rotatedRecoveryLocalKeysProtectionKey);
       markRecoveryWrappingStarted();
       await recoveryWrappingCanContinue;
     }

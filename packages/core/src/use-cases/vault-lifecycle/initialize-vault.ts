@@ -295,31 +295,28 @@ export class InitializeVaultUseCase {
         deviceSignKeyPair.privateKey,
       );
 
-      await this.vaultLocalRepository.saveInitializedLocalVault({
-        descriptor: localVaultDescriptor,
-        deviceAccessMaterial,
-        deviceAccessRecoveryBackup,
-        snapshot: vaultSnapshot,
-        checkpoint,
+      await this.sessionActivation.activate({
+        activationGeneration,
+        unlockedVault,
+        sourceSnapshotVersionVector:
+          vaultSnapshot.metadata.snapshotVersionVector,
+        lockAfterMs,
+        prepareActivation: async () =>
+          this.vaultLocalRepository.saveInitializedLocalVault({
+            descriptor: localVaultDescriptor,
+            deviceAccessMaterial,
+            deviceAccessRecoveryBackup,
+            snapshot: vaultSnapshot,
+            checkpoint,
+          }),
+        rollbackPreparedActivation: async () => {
+          await this.vaultLocalRepository.removePersistedLocalVaultIfSnapshotMatches(
+            vaultId,
+            unlockedVault.trustedSnapshotContext.snapshotDigest,
+          );
+        },
       });
-      try {
-        await this.sessionActivation.activate({
-          activationGeneration,
-          unlockedVault,
-          sourceSnapshotVersionVector:
-            vaultSnapshot.metadata.snapshotVersionVector,
-          lockAfterMs,
-        });
-        sessionActivated = true;
-      } catch (error) {
-        try {
-          await this.vaultLocalRepository.removePersistedLocalVault(vaultId);
-        } catch {
-          // Preserve the session activation failure as the root cause.
-        }
-
-        throw error;
-      }
+      sessionActivated = true;
 
       return {
         recoveryMnemonicKey,

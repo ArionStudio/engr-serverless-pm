@@ -20,6 +20,7 @@ import {
   ReplacementSyncTargetMismatchError,
   SyncConflictDetectedError,
 } from "../../errors/sync.errors";
+import { PersistedVaultRollbackIncompleteError } from "../../errors/vault-snapshot.errors";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { ClockPort } from "../../ports/system/clock.port";
@@ -306,27 +307,37 @@ export class RevokeDeviceUseCase {
           );
       }
 
-      const persistedSnapshot =
+      const { persistedSnapshot, preparedRestore } =
         await this.unlockedVaultSession.persistForActiveSession(
           sessionId,
           params.vaultId,
-          async () =>
-            this.vaultSnapshot.persistUnlockedVault(
-              params.vaultId,
-              rotatedUnlockedVault,
-              sourceSnapshotVersionVector,
-              {
-                vaultKeyGeneration,
-                keySlots: { deviceSlots },
-                nextTrust: {
-                  chain: nextTrust.chain,
-                  state: nextTrust.trust,
+          async () => {
+            const preparedRestore =
+              await this.vaultSnapshot.prepareLocalVaultSnapshotRestore(
+                currentSnapshot,
+                unlockedVault,
+                previousEncryptedCredentials,
+              );
+            const persistedSnapshot =
+              await this.vaultSnapshot.persistUnlockedVault(
+                params.vaultId,
+                rotatedUnlockedVault,
+                sourceSnapshotVersionVector,
+                {
+                  vaultKeyGeneration,
+                  keySlots: { deviceSlots },
+                  nextTrust: {
+                    chain: nextTrust.chain,
+                    state: nextTrust.trust,
+                  },
+                  ...(encryptedCredentialState === undefined
+                    ? {}
+                    : { syncCredentialState: encryptedCredentialState }),
                 },
-                ...(encryptedCredentialState === undefined
-                  ? {}
-                  : { syncCredentialState: encryptedCredentialState }),
-              },
-            ),
+              );
+
+            return { persistedSnapshot, preparedRestore };
+          },
         );
 
       try {
@@ -341,17 +352,24 @@ export class RevokeDeviceUseCase {
           );
         }
       } catch (error) {
-        await this.unlockedVaultSession.restorePersistedState(
-          sessionId,
-          params.vaultId,
-          async () =>
-            this.vaultSnapshot.restoreLocalVaultSnapshot(
-              currentSnapshot,
-              persistedSnapshot.snapshot,
-              unlockedVault,
-              previousEncryptedCredentials,
-            ),
-        );
+        const rollbackResult =
+          await this.unlockedVaultSession.restorePersistedState(
+            sessionId,
+            params.vaultId,
+            sourceSnapshotVersionVector,
+            async () =>
+              this.vaultSnapshot.restorePreparedLocalVaultSnapshot(
+                preparedRestore,
+                persistedSnapshot.trustedSnapshotContext.snapshotDigest,
+              ),
+          );
+
+        if (rollbackResult === "rollback_failed") {
+          throw new PersistedVaultRollbackIncompleteError(
+            params.vaultId,
+            error,
+          );
+        }
 
         if (error instanceof RemoteVaultSnapshotChangedError) {
           throw new SyncConflictDetectedError(params.vaultId);

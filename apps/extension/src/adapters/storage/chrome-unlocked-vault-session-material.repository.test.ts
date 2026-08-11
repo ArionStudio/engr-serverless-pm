@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   DeviceLocalProtectionKey,
   DevicePrivateSignKey,
@@ -35,6 +35,11 @@ vi.mock("@lfspm/core/lib", async (importOriginal) => {
     bestEffortWipeArrayBuffers: bestEffortWipeArrayBuffersSpy,
     secureWipe: secureWipeSpy,
   };
+});
+
+beforeEach(() => {
+  bestEffortWipeArrayBuffersSpy.mockClear();
+  secureWipeSpy.mockClear();
 });
 
 function createStorageArea(initialRecords: Record<string, unknown> = {}) {
@@ -166,7 +171,6 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
   });
 
   it("restores session material from storage", async () => {
-    secureWipeSpy.mockClear();
     const { storageArea } = createStorageArea({
       [UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY]: {
         sessionId: "session-id",
@@ -221,6 +225,69 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
     }
   });
 
+  it("returns one decoded material identity to concurrent cold readers", async () => {
+    const { storageArea } = createStorageArea();
+    const writer = new ChromeUnlockedVaultSessionMaterialRepository(
+      storageArea,
+    );
+    await writer.saveUnlockedVaultSessionMaterial(createMaterial());
+    const get = vi.fn(storageArea.get);
+    const reader = new ChromeUnlockedVaultSessionMaterialRepository({
+      ...storageArea,
+      get,
+    });
+
+    const [first, second] = await Promise.all([
+      reader.getUnlockedVaultSessionMaterial(),
+      reader.getUnlockedVaultSessionMaterial(),
+    ]);
+
+    expect(first).not.toBeNull();
+    expect(second).toBe(first);
+    expect(get).toHaveBeenCalledOnce();
+  });
+
+  it("does not let a delayed cold read repopulate material after removal", async () => {
+    const { storageArea } = createStorageArea();
+    const writer = new ChromeUnlockedVaultSessionMaterialRepository(
+      storageArea,
+    );
+    await writer.saveUnlockedVaultSessionMaterial(createMaterial());
+    const storedRecords = await storageArea.get(
+      UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY,
+    );
+    let markGetStarted!: () => void;
+    let resolveGet!: (records: Record<string, unknown>) => void;
+    const getStarted = new Promise<void>((resolve) => {
+      markGetStarted = resolve;
+    });
+    const delayedRecords = new Promise<Record<string, unknown>>((resolve) => {
+      resolveGet = resolve;
+    });
+    const get = vi.fn(async () => {
+      markGetStarted();
+      return delayedRecords;
+    });
+    const remove = vi.fn(storageArea.remove);
+    const reader = new ChromeUnlockedVaultSessionMaterialRepository({
+      ...storageArea,
+      get,
+      remove,
+    });
+
+    const pendingRead = reader.getUnlockedVaultSessionMaterial();
+    await getStarted;
+    const pendingRemoval = reader.removeUnlockedVaultSessionMaterial();
+
+    expect(remove).not.toHaveBeenCalled();
+    resolveGet(storedRecords);
+    await expect(pendingRead).resolves.not.toBeNull();
+    await expect(pendingRemoval).resolves.toBeUndefined();
+    await expect(reader.getUnlockedVaultSessionMaterial()).resolves.toBeNull();
+    expect(get).toHaveBeenCalledOnce();
+    expect(remove).toHaveBeenCalledOnce();
+  });
+
   it("returns null when session material is missing", async () => {
     const { storageArea } = createStorageArea();
     const repository = new ChromeUnlockedVaultSessionMaterialRepository(
@@ -258,8 +325,6 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
   });
 
   it("wipes decoded secret copies when a later secret cannot be decoded", async () => {
-    bestEffortWipeArrayBuffersSpy.mockClear();
-    secureWipeSpy.mockClear();
     const { storageArea } = createStorageArea({
       [UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY]: {
         sessionId: "session-id",
@@ -293,7 +358,9 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
       storageArea,
     );
 
-    await expect(repository.getUnlockedVaultSessionMaterial()).rejects.toThrow();
+    await expect(
+      repository.getUnlockedVaultSessionMaterial(),
+    ).rejects.toThrow();
 
     expect(secureWipeSpy).toHaveBeenCalledTimes(2);
     expect(bestEffortWipeArrayBuffersSpy).toHaveBeenCalledTimes(1);
@@ -320,6 +387,35 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
     await expect(
       repository.getUnlockedVaultSessionMaterial(),
     ).resolves.toBeNull();
+  });
+
+  it("keeps session material logically removed when storage removal fails", async () => {
+    const { getRecords, storageArea } = createStorageArea();
+    const get = vi.fn(storageArea.get);
+    const removeError = new Error("storage removal failed");
+    const failingStorageArea: ChromeStorageArea = {
+      ...storageArea,
+      get,
+      remove: vi.fn(async () => {
+        throw removeError;
+      }),
+    };
+    const repository = new ChromeUnlockedVaultSessionMaterialRepository(
+      failingStorageArea,
+    );
+    await repository.saveUnlockedVaultSessionMaterial(createMaterial());
+
+    await expect(repository.removeUnlockedVaultSessionMaterial()).rejects.toBe(
+      removeError,
+    );
+
+    expect(getRecords()).toHaveProperty(
+      UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY,
+    );
+    await expect(
+      repository.getUnlockedVaultSessionMaterial(),
+    ).resolves.toBeNull();
+    expect(get).not.toHaveBeenCalled();
   });
 });
 

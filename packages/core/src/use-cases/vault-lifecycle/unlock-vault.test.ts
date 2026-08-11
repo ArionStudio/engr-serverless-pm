@@ -11,6 +11,32 @@ import {
 import { DeviceAccessMaterialIdentityMismatchError } from "../../errors/vault-device.errors";
 import { ChangeMasterPasswordUseCase } from "./change-master-password";
 
+async function expectUnlockOwnedBuffersWiped(
+  ctx: ReturnType<typeof createUnlockVaultTestContext>,
+): Promise<void> {
+  const localRootKey = await vi.mocked(ctx.ports.crypto.deriveLocalRootKey).mock
+    .results[0]!.value;
+  const localKeysProtectionKey = await vi.mocked(
+    ctx.ports.crypto.deriveLocalKeysProtectionKey,
+  ).mock.results[0]!.value;
+  const localKeys = await vi.mocked(ctx.ports.crypto.unwrapLocalKeysPayload)
+    .mock.results[0]!.value;
+  const vaultMasterKey = await vi.mocked(
+    ctx.ports.crypto.openDeviceVaultKeyEnvelope,
+  ).mock.results[0]!.value;
+
+  for (const buffer of [
+    localRootKey,
+    localKeysProtectionKey,
+    localKeys.devicePrivateSignKey,
+    localKeys.devicePrivateVaultKey,
+    localKeys.deviceLocalProtectionKey,
+    vaultMasterKey,
+  ]) {
+    expect(Array.from(new Uint8Array(buffer))).toEqual([0]);
+  }
+}
+
 describe("UnlockVaultUseCase", () => {
   it("continues to attempt a current password below the new strength requirement", async () => {
     const ctx = createUnlockVaultTestContext();
@@ -310,8 +336,11 @@ describe("UnlockVaultUseCase", () => {
       }),
     ).rejects.toThrow("schedule failed");
 
-    expect(ctx.ports.vaultLockTasks.removeIfActionIsActive).toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLockTasks.removeIfActionIsActive,
+    ).toHaveBeenCalledWith(ctx.values.vaultLockActionId);
     expect(ctx.saved.unlockedVaultSession).toBeUndefined();
+    await expectUnlockOwnedBuffersWiped(ctx);
   });
 
   it("cancels the scheduled lock and removes metadata when activation fails", async () => {
@@ -337,7 +366,10 @@ describe("UnlockVaultUseCase", () => {
       name: "lockVault",
       actionId: ctx.values.vaultLockActionId,
     });
-    expect(ctx.ports.vaultLockTasks.removeIfActionIsActive).toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLockTasks.removeIfActionIsActive,
+    ).toHaveBeenCalledWith(ctx.values.vaultLockActionId);
     expect(ctx.saved.unlockedVaultSession).toBeUndefined();
+    await expectUnlockOwnedBuffersWiped(ctx);
   });
 });

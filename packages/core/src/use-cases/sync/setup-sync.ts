@@ -96,17 +96,27 @@ export class SetupSyncUseCase {
       },
     };
 
-    const persistedSnapshot =
+    const { persistedSnapshot, preparedRestore } =
       await this.unlockedVaultSession.persistForActiveSession(
         sessionId,
         params.vaultId,
-        async () =>
-          this.vaultSnapshot.persistUnlockedVault(
-            params.vaultId,
-            updatedUnlockedVault,
-            sourceSnapshotVersionVector,
-            { syncCredentialState: encryptedCredentialState },
-          ),
+        async () => {
+          const preparedRestore =
+            await this.vaultSnapshot.prepareLocalVaultSnapshotRestore(
+              syncState.localSnapshot,
+              unlockedVault,
+              null,
+            );
+          const persistedSnapshot =
+            await this.vaultSnapshot.persistUnlockedVault(
+              params.vaultId,
+              updatedUnlockedVault,
+              sourceSnapshotVersionVector,
+              { syncCredentialState: encryptedCredentialState },
+            );
+
+          return { persistedSnapshot, preparedRestore };
+        },
       );
 
     await this.vaultSyncGuard.uploadPersistedInitialSyncSnapshot(
@@ -114,7 +124,8 @@ export class SetupSyncUseCase {
       syncAccess,
       syncState.localSnapshot,
       persistedSnapshot.snapshot,
-      unlockedVault,
+      persistedSnapshot.trustedSnapshotContext.snapshotDigest,
+      preparedRestore,
       sessionId,
     );
 

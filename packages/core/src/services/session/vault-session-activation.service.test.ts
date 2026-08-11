@@ -75,9 +75,13 @@ describe("VaultSessionActivationService", () => {
       activationGeneration: firstGeneration,
     });
     await scheduleStarted;
+    const competingPrepare = vi.fn(async () => undefined);
+    const competingRollback = vi.fn(async () => undefined);
     const competingActivation = service.activate({
       ...params,
       activationGeneration: competingGeneration,
+      prepareActivation: competingPrepare,
+      rollbackPreparedActivation: competingRollback,
     });
     releaseSchedule();
 
@@ -90,6 +94,8 @@ describe("VaultSessionActivationService", () => {
     );
     expect(vaultLockTasks.save).toHaveBeenCalledTimes(1);
     expect(scheduledTasks.scheduleTask).toHaveBeenCalledTimes(1);
+    expect(competingPrepare).not.toHaveBeenCalled();
+    expect(competingRollback).not.toHaveBeenCalled();
     expect(activeLockTask).toMatchObject({
       actionId: values.vaultLockActionId,
       vaultId: values.vaultId,
@@ -132,12 +138,57 @@ describe("VaultSessionActivationService", () => {
       }),
       cancelTask: vi.fn(async () => undefined),
     };
-    vi.mocked(ports.ids.generateId).mockReset().mockResolvedValue("new-action-id");
+    vi.mocked(ports.ids.generateId)
+      .mockReset()
+      .mockResolvedValue("new-action-id");
     const service = new VaultSessionActivationService(
       ports.clock,
       ports.ids,
       scheduledTasks,
       vaultLockTasks,
+      ports.sessionServices.unlockedVaultSession,
+    );
+    const generation =
+      await ports.sessionServices.unlockedVaultSession.requireVaultCanBeActivated(
+        values.vaultId,
+      );
+    const prepareActivation = vi.fn(async () => undefined);
+    const rollbackPreparedActivation = vi.fn(async () => undefined);
+
+    await expect(
+      service.activate({
+        activationGeneration: generation,
+        unlockedVault,
+        sourceSnapshotVersionVector: { [values.deviceId]: 1 },
+        lockAfterMs: 60_000,
+        prepareActivation,
+        rollbackPreparedActivation,
+      }),
+    ).rejects.toBe(scheduleError);
+
+    expect(activeLockTask).toBeNull();
+    expect(scheduledTasks.cancelTask).toHaveBeenCalledWith({
+      name: "lockVault",
+      actionId: "new-action-id",
+    });
+    expect(rollbackPreparedActivation).toHaveBeenCalledOnce();
+    expect(ports.saved.unlockedVaultSession).toBeUndefined();
+  });
+
+  it("does not roll back persistence when activation preparation fails", async () => {
+    const values = createCoreTestValues();
+    const ports = createCoreTestPorts(values);
+    const unlockedVault = createUnlockedVaultWithEntries(values, []);
+    const prepareError = new Error("prepare failed");
+    const prepareActivation = vi.fn(async () => {
+      throw prepareError;
+    });
+    const rollbackPreparedActivation = vi.fn(async () => undefined);
+    const service = new VaultSessionActivationService(
+      ports.clock,
+      ports.ids,
+      ports.scheduledTasks,
+      ports.vaultLockTasks,
       ports.sessionServices.unlockedVaultSession,
     );
     const generation =
@@ -151,14 +202,14 @@ describe("VaultSessionActivationService", () => {
         unlockedVault,
         sourceSnapshotVersionVector: { [values.deviceId]: 1 },
         lockAfterMs: 60_000,
+        prepareActivation,
+        rollbackPreparedActivation,
       }),
-    ).rejects.toBe(scheduleError);
+    ).rejects.toBe(prepareError);
 
-    expect(activeLockTask).toBeNull();
-    expect(scheduledTasks.cancelTask).toHaveBeenCalledWith({
-      name: "lockVault",
-      actionId: "new-action-id",
-    });
+    expect(rollbackPreparedActivation).not.toHaveBeenCalled();
+    expect(ports.vaultLockTasks.save).not.toHaveBeenCalled();
+    expect(ports.scheduledTasks.scheduleTask).not.toHaveBeenCalled();
     expect(ports.saved.unlockedVaultSession).toBeUndefined();
   });
 
@@ -198,7 +249,9 @@ describe("VaultSessionActivationService", () => {
     vi.mocked(
       ports.crypto.encryptUnlockedVaultSessionPayload,
     ).mockRejectedValueOnce(protectionError);
-    vi.mocked(ports.ids.generateId).mockReset().mockResolvedValue("new-action-id");
+    vi.mocked(ports.ids.generateId)
+      .mockReset()
+      .mockResolvedValue("new-action-id");
     const service = new VaultSessionActivationService(
       ports.clock,
       ports.ids,
@@ -224,6 +277,78 @@ describe("VaultSessionActivationService", () => {
     expect(scheduledTasks.cancelTask).toHaveBeenCalledWith({
       name: "lockVault",
       actionId: "new-action-id",
+    });
+    expect(ports.saved.unlockedVaultSession).toBeUndefined();
+  });
+
+  it("preserves a newer lock action when activation rollback runs", async () => {
+    const values = createCoreTestValues();
+    const ports = createCoreTestPorts(values);
+    const unlockedVault = createUnlockedVaultWithEntries(values, []);
+    const failedActionId = "failed-action-id";
+    const newerLockTask: VaultLockTask = {
+      actionId: "newer-action-id",
+      vaultId: values.vaultId,
+      expiresAt: values.timestamp + 120_000,
+    };
+    let activeLockTask: VaultLockTask | null = null;
+    const vaultLockTasks: VaultLockTaskRepositoryPort = {
+      save: vi.fn(async (task) => {
+        activeLockTask = task;
+      }),
+      get: vi.fn(async () => activeLockTask),
+      removeIfActionIsActive: vi.fn(async (actionId) => {
+        if (activeLockTask?.actionId !== actionId) {
+          return false;
+        }
+
+        activeLockTask = null;
+        return true;
+      }),
+    };
+    const scheduledTasks: ScheduledTaskPort = {
+      scheduleTask: vi.fn(async () => undefined),
+      cancelTask: vi.fn(async () => undefined),
+    };
+    const protectionError = new Error("protection failed");
+    vi.mocked(
+      ports.crypto.encryptUnlockedVaultSessionPayload,
+    ).mockImplementationOnce(async () => {
+      activeLockTask = newerLockTask;
+      throw protectionError;
+    });
+    vi.mocked(ports.ids.generateId)
+      .mockReset()
+      .mockResolvedValueOnce(failedActionId)
+      .mockResolvedValueOnce(values.sessionId);
+    const service = new VaultSessionActivationService(
+      ports.clock,
+      ports.ids,
+      scheduledTasks,
+      vaultLockTasks,
+      ports.sessionServices.unlockedVaultSession,
+    );
+    const generation =
+      await ports.sessionServices.unlockedVaultSession.requireVaultCanBeActivated(
+        values.vaultId,
+      );
+
+    await expect(
+      service.activate({
+        activationGeneration: generation,
+        unlockedVault,
+        sourceSnapshotVersionVector: { [values.deviceId]: 1 },
+        lockAfterMs: 60_000,
+      }),
+    ).rejects.toBe(protectionError);
+
+    expect(vaultLockTasks.removeIfActionIsActive).toHaveBeenCalledWith(
+      failedActionId,
+    );
+    expect(activeLockTask).toBe(newerLockTask);
+    expect(scheduledTasks.cancelTask).toHaveBeenCalledWith({
+      name: "lockVault",
+      actionId: failedActionId,
     });
     expect(ports.saved.unlockedVaultSession).toBeUndefined();
   });

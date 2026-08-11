@@ -65,6 +65,18 @@ export class UnlockedVaultSessionService {
     vaultId: string,
     operation: string,
   ): Promise<UnlockedVaultSession> {
+    return this.runWithUnlockedVaultContext(
+      vaultId,
+      operation,
+      async (session) => session,
+    );
+  }
+
+  async runWithUnlockedVaultContext<T>(
+    vaultId: string,
+    operation: string,
+    run: (session: UnlockedVaultSession) => Promise<T>,
+  ): Promise<T> {
     return this.serializeSessionOperation(async () => {
       const unlockedVaultSession = await this.restoreSession();
 
@@ -75,7 +87,7 @@ export class UnlockedVaultSessionService {
         throw new VaultMustBeUnlockedError(vaultId, operation);
       }
 
-      return unlockedVaultSession;
+      return run(unlockedVaultSession);
     });
   }
 
@@ -90,6 +102,7 @@ export class UnlockedVaultSessionService {
         sessionId,
         vaultId,
       );
+      this.activationGeneration += 1;
 
       return operation();
     });
@@ -98,36 +111,50 @@ export class UnlockedVaultSessionService {
   async restorePersistedState(
     sessionId: string,
     vaultId: string,
+    sourceSnapshotVersionVector: VersionVector,
     restore: () => Promise<void>,
-  ): Promise<boolean> {
+  ): Promise<"restored" | "session_advanced" | "rollback_failed"> {
     return this.serializeSessionOperation(async () => {
+      let activeMaterial: UnlockedVaultSessionMaterial | null;
+
       try {
-        await restore();
-      } catch {
-        const activeMaterial = this.getActiveMaterial(
+        activeMaterial = this.getActiveMaterial(
           await this.materialRepository.getUnlockedVaultSessionMaterial(),
         );
-
-        if (activeMaterial?.vaultId === vaultId) {
-          await this.removeSessionRecordsPreservingRootCause(activeMaterial);
-        }
-
-        return false;
+      } catch {
+        return "rollback_failed";
       }
-
-      const activeMaterial = this.getActiveMaterial(
-        await this.materialRepository.getUnlockedVaultSessionMaterial(),
-      );
 
       if (
         activeMaterial !== null &&
         activeMaterial.vaultId === vaultId &&
-        !this.isActiveSession(activeMaterial, sessionId, vaultId)
+        (!this.isActiveSession(activeMaterial, sessionId, vaultId) ||
+          compareVersionVectors(
+            activeMaterial.sourceSnapshotVersionVector,
+            sourceSnapshotVersionVector,
+          ) !== "equal")
       ) {
-        await this.removeSessionRecordsPreservingRootCause(activeMaterial);
+        return "session_advanced";
       }
 
-      return true;
+      if (activeMaterial === null) {
+        this.activationGeneration += 1;
+      }
+
+      try {
+        await restore();
+      } catch {
+        if (
+          activeMaterial !== null &&
+          this.isActiveSession(activeMaterial, sessionId, vaultId)
+        ) {
+          await this.removeSessionRecordsPreservingRootCause(activeMaterial);
+        }
+
+        return "rollback_failed";
+      }
+
+      return "restored";
     });
   }
 
@@ -147,11 +174,27 @@ export class UnlockedVaultSessionService {
   > {
     return this.serializeSessionOperation(async () => {
       if (generation !== this.activationGeneration) {
-        return "session_replaced";
+        try {
+          const advancedMaterial =
+            await this.materialRepository.getUnlockedVaultSessionMaterial();
+
+          return advancedMaterial !== null &&
+            this.isActiveSession(advancedMaterial, sessionId, vaultId)
+            ? "session_advanced"
+            : "session_replaced";
+        } catch {
+          return "session_advanced";
+        }
       }
 
-      const activeMaterial =
-        await this.materialRepository.getUnlockedVaultSessionMaterial();
+      let activeMaterial: UnlockedVaultSessionMaterial | null;
+
+      try {
+        activeMaterial =
+          await this.materialRepository.getUnlockedVaultSessionMaterial();
+      } catch {
+        return "session_advanced";
+      }
 
       if (
         activeMaterial === null ||
@@ -219,7 +262,7 @@ export class UnlockedVaultSessionService {
     rollbackAutoLock: () => Promise<void>,
   ): Promise<{ readonly sessionId: string; readonly generation: number }> {
     return this.serializeSessionOperation(async () => {
-      let autoLockInstalled = false;
+      let activationPreparationStarted = false;
 
       try {
         return await this.activateWithinSessionOperation(
@@ -227,12 +270,12 @@ export class UnlockedVaultSessionService {
           unlockedVault,
           sourceSnapshotVersionVector,
           async () => {
+            activationPreparationStarted = true;
             await installAutoLock();
-            autoLockInstalled = true;
           },
         );
       } catch (error) {
-        if (autoLockInstalled) {
+        if (activationPreparationStarted) {
           try {
             await rollbackAutoLock();
           } catch {
@@ -272,13 +315,10 @@ export class UnlockedVaultSessionService {
     try {
       await beforeActivation?.();
 
-      const protectedSession = await this.protect(
-        {
-          unlockedVault,
-          sourceSnapshotVersionVector,
-        },
-        activeMaterial ?? undefined,
-      );
+      const protectedSession = await this.protect({
+        unlockedVault,
+        sourceSnapshotVersionVector,
+      });
 
       try {
         await this.persistProtectedSession(protectedSession);
@@ -335,6 +375,7 @@ export class UnlockedVaultSessionService {
         );
         await this.persistProtectedSession(protectedSession);
         this.wipeReplacedMaterial(activeMaterial, protectedSession.material);
+        this.activationGeneration += 1;
       } catch (error) {
         if (protectedSession !== undefined) {
           this.wipeMaterial(protectedSession.material);
@@ -361,6 +402,7 @@ export class UnlockedVaultSessionService {
         readonly generation: number;
       } | null,
     ) => Promise<boolean>,
+    afterRemoval?: () => Promise<void>,
   ): Promise<"removed" | "session_unavailable" | "stale_action"> {
     return this.serializeSessionOperation(async () => {
       let firstError: unknown;
@@ -374,6 +416,10 @@ export class UnlockedVaultSessionService {
       } catch (error) {
         firstError = error;
         materialReadFailed = true;
+      }
+
+      if (materialReadFailed && requiredVaultId !== undefined) {
+        throw firstError;
       }
 
       if (
@@ -417,6 +463,14 @@ export class UnlockedVaultSessionService {
           await this.removeSessionRecords(material ?? undefined);
         } catch (error) {
           firstError ??= error;
+        }
+      }
+
+      if (firstError === undefined && material !== null) {
+        try {
+          await afterRemoval?.();
+        } catch (error) {
+          firstError = error;
         }
       }
 

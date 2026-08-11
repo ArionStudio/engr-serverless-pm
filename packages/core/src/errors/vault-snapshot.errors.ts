@@ -38,6 +38,16 @@ export class LocalVaultSnapshotChangedError extends Error {
   }
 }
 
+export class PersistedVaultRollbackIncompleteError extends Error {
+  override readonly name = "PersistedVaultRollbackIncompleteError";
+
+  constructor(vaultId: string, cause: unknown) {
+    super(`Vault "${vaultId}" persisted-state rollback did not complete.`, {
+      cause,
+    });
+  }
+}
+
 export class SnapshotSigningDeviceNotTrustedError extends Error {
   constructor(vaultId: string, deviceId: string) {
     super(`Device "${deviceId}" is not trusted to sign vault "${vaultId}".`);

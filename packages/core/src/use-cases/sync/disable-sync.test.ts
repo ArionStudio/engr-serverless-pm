@@ -65,6 +65,75 @@ function createContext() {
   return { ...ctx, useCase };
 }
 
+function configureMultiDeviceSync(ctx: ReturnType<typeof createContext>): void {
+  const session = ctx.saved.unlockedVaultSession;
+
+  if (session === undefined) {
+    throw new Error("Expected an unlocked test session.");
+  }
+
+  const otherIdentity = {
+    deviceId: ctx.values.pendingDeviceId,
+    publicSignKey: ctx.values.pendingDevicePublicSignKey,
+    publicVaultKey: ctx.values.pendingDevicePublicVaultKey,
+  };
+  const trustedDevices = [
+    ...session.unlockedVault.trustedSnapshotContext.trust.trustedDevices,
+    otherIdentity,
+  ];
+  const trustChain: VaultTrustChain = {
+    certificates: [
+      ...ctx.vaultSnapshot.trustChain.certificates,
+      {
+        payload: {
+          version: 1,
+          vaultId: ctx.values.vaultId,
+          generation: 1,
+          vaultKeyGeneration: 1,
+          previousCertificateDigest: ctx.values.vaultTrustCertificateDigest,
+          authorizedByDeviceId: ctx.values.deviceId,
+          trustedDevices,
+        },
+        signature: ctx.values.vaultTrustCertificateSignature,
+      },
+    ],
+  };
+  const trust: VerifiedVaultTrustState = {
+    generation: 1,
+    vaultKeyGeneration: 1,
+    certificateDigest: ctx.values.vaultTrustCertificateDigest,
+    trustedDevices,
+  };
+  const snapshot = {
+    ...ctx.vaultSnapshot,
+    trustChain,
+    keySlots: {
+      deviceSlots: [
+        ...ctx.vaultSnapshot.keySlots.deviceSlots,
+        {
+          deviceId: ctx.values.pendingDeviceId,
+          vaultKeyGeneration: 1,
+          envelope: ctx.values.pendingDeviceVaultKeyEnvelope,
+        },
+      ],
+    },
+  };
+  ctx.saved.vaultSnapshot = snapshot;
+  ctx.saved.unlockedVaultSession = {
+    ...session,
+    unlockedVault: {
+      ...session.unlockedVault,
+      trustedSnapshotContext: {
+        ...session.unlockedVault.trustedSnapshotContext,
+        trust,
+      },
+    },
+  };
+  vi.mocked(
+    ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+  ).mockResolvedValue(toVaultSnapshotDescriptor(ctx.values.vaultId, snapshot));
+}
+
 describe("DisableSyncUseCase", () => {
   it("removes remote state, local target, and local credentials", async () => {
     const ctx = createContext();
@@ -107,7 +176,9 @@ describe("DisableSyncUseCase", () => {
     vi.mocked(ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor)
       .mockResolvedValueOnce(expectedRemoteSnapshotDescriptor)
       .mockResolvedValueOnce(remoteAheadDescriptor);
-    vi.mocked(ctx.ports.syncProvider.removeVaultSnapshots).mockRejectedValueOnce(
+    vi.mocked(
+      ctx.ports.syncProvider.removeVaultSnapshots,
+    ).mockRejectedValueOnce(
       new RemoteVaultSnapshotChangedError(ctx.values.vaultId),
     );
 
@@ -122,9 +193,9 @@ describe("DisableSyncUseCase", () => {
       ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncRemovalPending,
     ).toBeUndefined();
     expect(ctx.saved.vaultSnapshot).toEqual(ctx.vaultSnapshot);
-    expect(
-      ctx.saved.unlockedVaultSession?.sourceSnapshotVersionVector,
-    ).toEqual(ctx.vaultSnapshot.metadata.snapshotVersionVector);
+    expect(ctx.saved.unlockedVaultSession?.sourceSnapshotVersionVector).toEqual(
+      ctx.vaultSnapshot.metadata.snapshotVersionVector,
+    );
     expect(ctx.saved.deviceSyncCredentialState).toBe(
       ctx.values.encryptedDeviceSyncCredentialState,
     );
@@ -169,7 +240,9 @@ describe("DisableSyncUseCase", () => {
     expect(
       ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
     ).toHaveBeenCalledOnce();
-    expect(ctx.ports.syncProvider.removeVaultSnapshots).toHaveBeenCalledTimes(2);
+    expect(ctx.ports.syncProvider.removeVaultSnapshots).toHaveBeenCalledTimes(
+      2,
+    );
     expect(
       ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncTarget,
     ).toBeUndefined();
@@ -371,74 +444,7 @@ describe("DisableSyncUseCase", () => {
 
   it("rotates the vault key and rebuilds slots when disabling multi-device sync", async () => {
     const ctx = createContext();
-    const session = ctx.saved.unlockedVaultSession;
-
-    if (session === undefined) {
-      throw new Error("Expected an unlocked test session.");
-    }
-
-    const otherIdentity = {
-      deviceId: ctx.values.pendingDeviceId,
-      publicSignKey: ctx.values.pendingDevicePublicSignKey,
-      publicVaultKey: ctx.values.pendingDevicePublicVaultKey,
-    };
-    const trustedDevices = [
-      ...session.unlockedVault.trustedSnapshotContext.trust.trustedDevices,
-      otherIdentity,
-    ];
-    const trustChain: VaultTrustChain = {
-      certificates: [
-        ...ctx.vaultSnapshot.trustChain.certificates,
-        {
-          payload: {
-            version: 1,
-            vaultId: ctx.values.vaultId,
-            generation: 1,
-            vaultKeyGeneration: 1,
-            previousCertificateDigest: ctx.values.vaultTrustCertificateDigest,
-            authorizedByDeviceId: ctx.values.deviceId,
-            trustedDevices,
-          },
-          signature: ctx.values.vaultTrustCertificateSignature,
-        },
-      ],
-    };
-    const trust: VerifiedVaultTrustState = {
-      generation: 1,
-      vaultKeyGeneration: 1,
-      certificateDigest: ctx.values.vaultTrustCertificateDigest,
-      trustedDevices,
-    };
-    const snapshot = {
-      ...ctx.vaultSnapshot,
-      trustChain,
-      keySlots: {
-        deviceSlots: [
-          ...ctx.vaultSnapshot.keySlots.deviceSlots,
-          {
-            deviceId: ctx.values.pendingDeviceId,
-            vaultKeyGeneration: 1,
-            envelope: ctx.values.pendingDeviceVaultKeyEnvelope,
-          },
-        ],
-      },
-    };
-    ctx.saved.vaultSnapshot = snapshot;
-    ctx.saved.unlockedVaultSession = {
-      ...session,
-      unlockedVault: {
-        ...session.unlockedVault,
-        trustedSnapshotContext: {
-          ...session.unlockedVault.trustedSnapshotContext,
-          trust,
-        },
-      },
-    };
-    vi.mocked(
-      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
-    ).mockResolvedValue(
-      toVaultSnapshotDescriptor(ctx.values.vaultId, snapshot),
-    );
+    configureMultiDeviceSync(ctx);
 
     await ctx.useCase.execute({ vaultId: ctx.values.vaultId });
 
@@ -463,5 +469,26 @@ describe("DisableSyncUseCase", () => {
     expect(ctx.saved.unlockedVaultSession?.unlockedVault.vaultMasterKey).toBe(
       ctx.values.rotatedVaultMasterKey,
     );
+  });
+
+  it("wipes a generated vault key when multi-device disable persistence fails", async () => {
+    const ctx = createContext();
+    configureMultiDeviceSync(ctx);
+    vi.mocked(
+      ctx.ports.syncProvider.removeVaultSnapshots,
+    ).mockImplementationOnce(async () => {
+      vi.mocked(
+        ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+      ).mockRejectedValueOnce(new Error("snapshot persistence failed"));
+    });
+
+    await expect(
+      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toThrow("snapshot persistence failed");
+
+    const generatedVaultMasterKey = await vi.mocked(
+      ctx.ports.crypto.generateVaultMasterKey,
+    ).mock.results[0]!.value;
+    expect(Array.from(new Uint8Array(generatedVaultMasterKey))).toEqual([0]);
   });
 });

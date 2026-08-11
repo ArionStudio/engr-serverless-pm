@@ -11,6 +11,7 @@ import {
   VaultMustBeUnlockedForMasterPasswordChangeError,
 } from "../../errors/change-master-password.errors";
 import { InvalidNewMasterPasswordError } from "../../errors/master-password.errors";
+import { UnlockedVaultSessionExpiredError } from "../../errors/vault-session.errors";
 import {
   DeviceAccessMaterialChangedError,
   DeviceAccessMaterialIdentityMismatchError,
@@ -216,6 +217,34 @@ describe("ChangeMasterPasswordUseCase", () => {
     expect(
       ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
     ).toHaveBeenCalledTimes(1);
+  });
+
+  it("invalidates an activation lease captured before password rotation", async () => {
+    const ctx = createChangeMasterPasswordTestContext();
+    const activeSession = ctx.saved.unlockedVaultSession;
+
+    if (activeSession === undefined) {
+      throw new Error("Expected an unlocked test session.");
+    }
+
+    const activationGeneration =
+      await ctx.ports.sessionServices.unlockedVaultSession.requireVaultCanBeActivated(
+        ctx.values.vaultId,
+      );
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      currentMasterPassword: ctx.values.masterPassword,
+      newMasterPassword: ctx.values.newMasterPassword,
+    });
+
+    await expect(
+      ctx.ports.sessionServices.unlockedVaultSession.activate(
+        activationGeneration,
+        activeSession.unlockedVault,
+        activeSession.sourceSnapshotVersionVector,
+      ),
+    ).rejects.toBeInstanceOf(UnlockedVaultSessionExpiredError);
   });
 
   it("fails when the target vault is not unlocked", async () => {
