@@ -24,7 +24,7 @@ const maximumStrengthPassword = "mQ8#sW3!cH7@uJ5$eR9%";
 function createContext() {
   const values = createCoreTestValues();
   const ports = createCoreTestPorts(values);
-  const vaultSnapshot = createVaultSnapshotServiceMock(values);
+  const vaultSnapshot = createVaultSnapshotServiceMock(values, ports);
   const vaultSyncGuard = new VaultSyncGuardService(
     ports.syncProvider,
     vaultSnapshot,
