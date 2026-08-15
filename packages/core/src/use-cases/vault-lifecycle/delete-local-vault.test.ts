@@ -29,11 +29,16 @@ function createContext() {
     clipboard,
     clipboardClearTasks,
     ports.clock,
-    ports.crypto,
+    ports.clipboardSecretHash,
   );
+  const clipboardOperations = {
+    runExclusive: async <Result>(operation: () => Promise<Result>) =>
+      operation(),
+  };
   const lifecycleCleanup = new VaultLifecycleCleanupService(
     clipboardClear,
     clipboardClearTasks,
+    clipboardOperations,
     scheduledTasks,
     ports.vaultLockTasks,
     ports.sessionServices.unlockedVaultSession,
@@ -69,6 +74,7 @@ function createContext() {
     ports,
     clipboard,
     clipboardClearTasks,
+    clipboardOperations,
     scheduledTasks,
     lifecycleCleanup,
     useCase,
@@ -131,6 +137,28 @@ describe("DeleteLocalVaultUseCase", () => {
     expect(
       ctx.ports.vaultLockTasks.removeIfActionIsActive,
     ).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes hot session state but preserves the vault when clipboard coordination cannot start", async () => {
+    const ctx = createContext();
+    const error = new Error("clipboard coordination unavailable");
+    vi.spyOn(ctx.clipboardOperations, "runExclusive").mockRejectedValueOnce(
+      error,
+    );
+
+    await expect(
+      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toBe(error);
+
+    expect(ctx.clipboardClearTasks.get).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .removeUnlockedVaultSessionMaterial,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      ctx.ports.vaultLocalRepository.removePersistedLocalVault,
+    ).not.toHaveBeenCalled();
   });
 
   it("fails when no vault is unlocked", async () => {
@@ -353,7 +381,7 @@ describe("DeleteLocalVaultUseCase", () => {
       ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
     ).rejects.toBe(error);
 
-    expect(ctx.scheduledTasks.cancelTask).toHaveBeenCalledWith({
+    expect(ctx.scheduledTasks.cancelTask).not.toHaveBeenCalledWith({
       name: "clearClipboard",
       actionId: "clipboard-action-id",
     });
@@ -361,7 +389,7 @@ describe("DeleteLocalVaultUseCase", () => {
       name: "lockVault",
       actionId: ctx.values.vaultLockActionId,
     });
-    expect(ctx.clipboardClearTasks.remove).toHaveBeenCalledTimes(1);
+    expect(ctx.clipboardClearTasks.remove).not.toHaveBeenCalled();
     expect(
       ctx.ports.vaultLockTasks.removeIfActionIsActive,
     ).toHaveBeenCalledTimes(1);

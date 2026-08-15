@@ -8,11 +8,12 @@ import type {
   UnlockedVaultSessionPayloadKey,
   VaultMasterKey,
 } from "@lfspm/core";
+import { createChromeStorageArea } from "../../__tests__/fixtures/chrome-storage-area";
 import {
   ChromeUnlockedVaultSessionMaterialRepository,
-  type ChromeStorageArea,
   UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY,
 } from "./chrome-unlocked-vault-session-material.repository";
+import type { ChromeStorageArea } from "./chrome-storage-area";
 
 const { bestEffortWipeArrayBuffersSpy, secureWipeSpy } = vi.hoisted(() => ({
   bestEffortWipeArrayBuffersSpy: vi.fn(
@@ -41,43 +42,6 @@ beforeEach(() => {
   bestEffortWipeArrayBuffersSpy.mockClear();
   secureWipeSpy.mockClear();
 });
-
-function createStorageArea(initialRecords: Record<string, unknown> = {}) {
-  let records = { ...initialRecords };
-  const storageArea: ChromeStorageArea = {
-    async get(keys?: unknown) {
-      if (typeof keys === "string") {
-        return { [keys]: records[keys] };
-      }
-
-      if (Array.isArray(keys)) {
-        return Object.fromEntries(keys.map((key) => [key, records[key]]));
-      }
-
-      return { ...records };
-    },
-    async set(items: Record<string, unknown>) {
-      records = {
-        ...records,
-        ...items,
-      };
-    },
-    async remove(keys: string | string[]) {
-      const keysToRemove = new Set(Array.isArray(keys) ? keys : [keys]);
-      records = Object.fromEntries(
-        Object.entries(records).filter(
-          ([recordKey]) => !keysToRemove.has(recordKey),
-        ),
-      );
-    },
-  };
-
-  return {
-    getRecords: () => records,
-    storageArea,
-  };
-}
-
 function createMaterial() {
   return {
     sessionId: "session-id",
@@ -122,7 +86,7 @@ function createMaterial() {
 
 describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
   it("saves session material as storage-safe strings", async () => {
-    const { getRecords, storageArea } = createStorageArea();
+    const { getRecords, storageArea } = createChromeStorageArea();
     const repository = new ChromeUnlockedVaultSessionMaterialRepository(
       storageArea,
     );
@@ -171,7 +135,7 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
   });
 
   it("restores session material from storage", async () => {
-    const { storageArea } = createStorageArea({
+    const { storageArea } = createChromeStorageArea({
       [UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY]: {
         sessionId: "session-id",
         vaultId: "vault-id",
@@ -226,7 +190,7 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
   });
 
   it("returns one decoded material identity to concurrent cold readers", async () => {
-    const { storageArea } = createStorageArea();
+    const { storageArea } = createChromeStorageArea();
     const writer = new ChromeUnlockedVaultSessionMaterialRepository(
       storageArea,
     );
@@ -248,7 +212,7 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
   });
 
   it("does not let a delayed cold read repopulate material after removal", async () => {
-    const { storageArea } = createStorageArea();
+    const { storageArea } = createChromeStorageArea();
     const writer = new ChromeUnlockedVaultSessionMaterialRepository(
       storageArea,
     );
@@ -289,7 +253,7 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
   });
 
   it("returns null when session material is missing", async () => {
-    const { storageArea } = createStorageArea();
+    const { storageArea } = createChromeStorageArea();
     const repository = new ChromeUnlockedVaultSessionMaterialRepository(
       storageArea,
     );
@@ -300,7 +264,7 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
   });
 
   it("names the malformed field when stored material is corrupted", async () => {
-    const { storageArea } = createStorageArea({
+    const { storageArea } = createChromeStorageArea({
       [UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY]: {
         sessionId: "session-id",
         vaultId: "vault-id",
@@ -325,7 +289,7 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
   });
 
   it("wipes decoded secret copies when a later secret cannot be decoded", async () => {
-    const { storageArea } = createStorageArea({
+    const { storageArea } = createChromeStorageArea({
       [UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY]: {
         sessionId: "session-id",
         vaultId: "vault-id",
@@ -372,7 +336,7 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
   });
 
   it("removes session material", async () => {
-    const { getRecords, storageArea } = createStorageArea();
+    const { getRecords, storageArea } = createChromeStorageArea();
     const repository = new ChromeUnlockedVaultSessionMaterialRepository(
       storageArea,
     );
@@ -390,7 +354,7 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
   });
 
   it("keeps session material logically removed when storage removal fails", async () => {
-    const { getRecords, storageArea } = createStorageArea();
+    const { getRecords, storageArea } = createChromeStorageArea();
     const get = vi.fn(storageArea.get);
     const removeError = new Error("storage removal failed");
     const failingStorageArea: ChromeStorageArea = {

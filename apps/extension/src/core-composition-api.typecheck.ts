@@ -10,7 +10,9 @@ import {
 import type {
   Bip39Port,
   ClipboardClearTaskRepositoryPort,
+  ClipboardOperationCoordinatorPort,
   ClipboardPort,
+  ClipboardSecretHashPort,
   ClockPort,
   CryptoPort,
   EncryptedUnlockedVaultSessionPayloadRepositoryPort,
@@ -34,6 +36,8 @@ type CoreCompositionPorts = {
   readonly bip39: Bip39Port;
   readonly clipboard: ClipboardPort;
   readonly clipboardClearTasks: ClipboardClearTaskRepositoryPort;
+  readonly clipboardOperations: ClipboardOperationCoordinatorPort;
+  readonly clipboardSecretHash: ClipboardSecretHashPort;
   readonly clock: ClockPort;
   readonly crypto: CryptoPort;
   readonly encryptedSessionPayloads: EncryptedUnlockedVaultSessionPayloadRepositoryPort;
@@ -69,11 +73,12 @@ export function composeCoreApi(ports: CoreCompositionPorts) {
     ports.clipboard,
     ports.clipboardClearTasks,
     ports.clock,
-    ports.crypto,
+    ports.clipboardSecretHash,
   );
   const lifecycleCleanup = new VaultLifecycleCleanupService(
     clipboardClear,
     ports.clipboardClearTasks,
+    ports.clipboardOperations,
     ports.scheduledTasks,
     ports.vaultLockTasks,
     unlockedVaultSession,
@@ -118,7 +123,8 @@ export function composeCoreApi(ports: CoreCompositionPorts) {
     clipboard: new CopyEntryPasswordUseCase(
       ports.clipboard,
       clipboardClear,
-      ports.crypto,
+      ports.clipboardOperations,
+      ports.clipboardSecretHash,
       ports.ids,
       ports.clipboardClearTasks,
       ports.scheduledTasks,

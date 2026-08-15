@@ -8,7 +8,8 @@ export type ClipboardClearTask = {
  * Stores short-lived clipboard clear metadata.
  *
  * The task must not be persisted long term and must not contain the copied
- * plaintext password value.
+ * plaintext password value. Ownership-changing sequences must run through the
+ * shared ClipboardOperationCoordinatorPort.
  */
 export interface ClipboardClearTaskRepositoryPort {
   save: (task: ClipboardClearTask) => Promise<void>;

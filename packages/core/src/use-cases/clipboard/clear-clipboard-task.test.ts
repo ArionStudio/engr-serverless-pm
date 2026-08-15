@@ -10,6 +10,7 @@ import type {
   ClipboardClearTask,
   ClipboardClearTaskRepositoryPort,
 } from "../../ports/clipboard/clipboard-clear-task-repository.port";
+import type { ClipboardOperationCoordinatorPort } from "../../ports/clipboard/clipboard-operation-coordinator.port";
 import { ClearClipboardTaskUseCase } from "./clear-clipboard-task";
 import { ClipboardClearService } from "../../services/clipboard/clipboard-clear.service";
 
@@ -34,6 +35,9 @@ function createContext(
     get: vi.fn(async () => clipboardClearTask),
     remove: vi.fn(async () => undefined),
   };
+  const clipboardOperations: ClipboardOperationCoordinatorPort = {
+    runExclusive: async (operation) => operation(),
+  };
   const clock = {
     now: vi.fn(() => 1_000),
   };
@@ -49,8 +53,9 @@ function createContext(
         clipboard,
         clipboardClearTasks,
         clock,
-        ports.crypto,
+        ports.clipboardSecretHash,
       ),
+      clipboardOperations,
     ),
   };
 }

@@ -27,6 +27,7 @@ import type {
 import type { Vault } from "../../domain/vault/vault";
 import type { Bip39Port } from "../../ports/crypto/bip39.port";
 import type { ClockPort } from "../../ports/system/clock.port";
+import type { ClipboardSecretHashPort } from "../../ports/clipboard/clipboard-secret-hash.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { EncryptedUnlockedVaultSessionPayloadRepositoryPort } from "../../ports/session/encrypted-unlocked-vault-session-payload-repository.port";
 import type { IdPort } from "../../ports/system/id.port";
@@ -193,8 +194,6 @@ export function createCoreTestPorts(
     generateRandomBytes: vi.fn(
       async (byteLength: number) => new ArrayBuffer(byteLength) as RandomBytes,
     ),
-    hashSecretValue: vi.fn(async (value) => `hash:${value}`),
-    compareSecretValueHash: vi.fn(async (left, right) => left === right),
     generateDeviceSignKeyPair: vi.fn(
       async (): Promise<DeviceSignKeyPair> => ({
         publicKey: freshBuffer(values.devicePublicSignKey),
@@ -207,17 +206,19 @@ export function createCoreTestPorts(
         privateKey: freshBuffer(values.devicePrivateVaultKey),
       }),
     ),
-    generateDeviceLocalProtectionKey: vi.fn(
-      async () => freshBuffer(values.deviceLocalProtectionKey),
+    generateDeviceLocalProtectionKey: vi.fn(async () =>
+      freshBuffer(values.deviceLocalProtectionKey),
     ),
-    generateVaultMasterKey: vi.fn(async () => freshBuffer(values.vaultMasterKey)),
+    generateVaultMasterKey: vi.fn(async () =>
+      freshBuffer(values.vaultMasterKey),
+    ),
     generateRecoveryKey: vi.fn(async () => {
       const recoveryKey = freshBuffer(values.recoverySecretKey);
       recoveryKeyKinds.set(recoveryKey, "current");
       return recoveryKey;
     }),
-    generateUnlockedVaultSessionPayloadKey: vi.fn(
-      async () => freshBuffer(values.unlockedVaultSessionPayloadKey),
+    generateUnlockedVaultSessionPayloadKey: vi.fn(async () =>
+      freshBuffer(values.unlockedVaultSessionPayloadKey),
     ),
     generateMasterPasswordSalt: vi
       .fn()
@@ -240,7 +241,9 @@ export function createCoreTestPorts(
     deriveLocalKeysProtectionKey: vi.fn(async (_localRootKey, salt) => {
       const isNew = salt === values.newLocalKeysProtectionSalt;
       const protectionKey = freshBuffer(
-        isNew ? values.newLocalKeysProtectionKey : values.localKeysProtectionKey,
+        isNew
+          ? values.newLocalKeysProtectionKey
+          : values.localKeysProtectionKey,
       );
       protectionKeyKinds.set(protectionKey, isNew ? "new_local" : "local");
       return protectionKey;
@@ -258,8 +261,8 @@ export function createCoreTestPorts(
       );
       return protectionKey;
     }),
-    deriveDeviceEnrollmentPrivateStateProtectionKey: vi.fn(
-      async () => freshBuffer(values.pendingEnrollmentProtectionKey),
+    deriveDeviceEnrollmentPrivateStateProtectionKey: vi.fn(async () =>
+      freshBuffer(values.pendingEnrollmentProtectionKey),
     ),
     wrapLocalKeysPayload: vi.fn(async (_localKeysPayload, protectionKey) => {
       const protectionKeyKind = protectionKeyKinds.get(protectionKey);
@@ -394,6 +397,11 @@ export function createCoreTestPorts(
     ),
   };
 
+  const clipboardSecretHash: ClipboardSecretHashPort = {
+    hashSecretValue: vi.fn(async (value) => `hash:${value}`),
+    compareSecretValueHash: vi.fn(async (left, right) => left === right),
+  };
+
   const bip39: Bip39Port = {
     recoveryKeyToMnemonic: vi.fn(async (recoveryKey) =>
       recoveryKey === values.rotatedRecoverySecretKey ||
@@ -402,7 +410,8 @@ export function createCoreTestPorts(
         : values.recoveryMnemonicKey,
     ),
     mnemonicToRecoveryKey: vi.fn(async (recoveryMnemonicKey) => {
-      const isRotated = recoveryMnemonicKey === values.rotatedRecoveryMnemonicKey;
+      const isRotated =
+        recoveryMnemonicKey === values.rotatedRecoveryMnemonicKey;
       const recoveryKey = freshBuffer(
         isRotated ? values.rotatedRecoverySecretKey : values.recoverySecretKey,
       );
@@ -922,6 +931,7 @@ export function createCoreTestPorts(
 
   return {
     crypto,
+    clipboardSecretHash,
     bip39,
     vaultLocalRepository,
     unlockedVaultSessionMaterialRepository,

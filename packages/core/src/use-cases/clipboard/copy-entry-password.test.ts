@@ -10,6 +10,7 @@ import type {
   ClipboardClearTask,
   ClipboardClearTaskRepositoryPort,
 } from "../../ports/clipboard/clipboard-clear-task-repository.port";
+import type { ClipboardOperationCoordinatorPort } from "../../ports/clipboard/clipboard-operation-coordinator.port";
 import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
 import { InvalidClipboardClearDelayError } from "../../errors/clipboard.errors";
 import { PasswordEntryNotFoundError } from "../../errors/vault-entry.errors";
@@ -47,6 +48,9 @@ function createContext() {
       activeClipboardClearTask = null;
     }),
   };
+  const clipboardOperations: ClipboardOperationCoordinatorPort = {
+    runExclusive: async (operation) => operation(),
+  };
   const scheduledTasks: ScheduledTaskPort = {
     scheduleTask: vi.fn(async () => undefined),
     cancelTask: vi.fn(async () => undefined),
@@ -58,7 +62,7 @@ function createContext() {
     clipboard,
     clipboardClearTasks,
     clock,
-    ports.crypto,
+    ports.clipboardSecretHash,
   );
 
   return {
@@ -67,13 +71,15 @@ function createContext() {
     clipboard,
     clipboardClear,
     clipboardClearTasks,
+    clipboardOperations,
     getClipboardText: () => clipboardText,
     scheduledTasks,
     clock,
     useCase: new CopyEntryPasswordUseCase(
       clipboard,
       clipboardClear,
-      ports.crypto,
+      clipboardOperations,
+      ports.clipboardSecretHash,
       ports.ids,
       clipboardClearTasks,
       scheduledTasks,
@@ -87,6 +93,7 @@ function createLockVaultUseCase(ctx: ReturnType<typeof createContext>) {
   const lifecycleCleanup = new VaultLifecycleCleanupService(
     ctx.clipboardClear,
     ctx.clipboardClearTasks,
+    ctx.clipboardOperations,
     ctx.scheduledTasks,
     ctx.ports.vaultLockTasks,
     ctx.ports.sessionServices.unlockedVaultSession,
@@ -342,10 +349,20 @@ describe("CopyEntryPasswordUseCase", () => {
     expect(ctx.clipboard.writeText).not.toHaveBeenCalled();
   });
 
-  it("removes pending clipboard clear and cancels scheduled clear when clipboard write fails", async () => {
+  it("retains ownership when clipboard write commits before rejecting", async () => {
     const ctx = createContext();
     const error = new Error("clipboard failed");
-    vi.mocked(ctx.clipboard.writeText).mockRejectedValueOnce(error);
+    const writeText = vi.mocked(ctx.clipboard.writeText);
+    const writeTextImplementation = writeText.getMockImplementation();
+
+    if (writeTextImplementation === undefined) {
+      throw new Error("Expected clipboard write fixture implementation.");
+    }
+
+    writeText.mockImplementationOnce(async (value) => {
+      await writeTextImplementation(value);
+      throw error;
+    });
 
     await expect(
       ctx.useCase.execute({
@@ -355,33 +372,17 @@ describe("CopyEntryPasswordUseCase", () => {
       }),
     ).rejects.toThrow(error);
 
-    expect(ctx.scheduledTasks.cancelTask).toHaveBeenCalledWith({
-      name: "clearClipboard",
-      actionId: "clipboard-action-id",
-    });
-    expect(ctx.clipboardClearTasks.remove).toHaveBeenCalledTimes(1);
-  });
-
-  it("removes pending clipboard clear when canceling scheduled clear fails", async () => {
-    const ctx = createContext();
-    const clipboardError = new Error("clipboard failed");
-    const cancelError = new Error("cancel failed");
-
-    vi.mocked(ctx.clipboard.writeText).mockRejectedValueOnce(clipboardError);
-    vi.mocked(ctx.scheduledTasks.cancelTask).mockRejectedValueOnce(cancelError);
+    expect(ctx.scheduledTasks.cancelTask).not.toHaveBeenCalled();
+    expect(ctx.clipboardClearTasks.remove).not.toHaveBeenCalled();
+    expect(ctx.getClipboardText()).toBe(singlePasswordEntry.password);
 
     await expect(
-      ctx.useCase.execute({
-        vaultId: ctx.values.vaultId,
-        entryId: singlePasswordEntry.id,
-        clearAfterMs: 60_000,
+      ctx.clipboardClear.clearTask({
+        actionId: "clipboard-action-id",
+        requireExpired: false,
       }),
-    ).rejects.toThrow(clipboardError);
-
-    expect(ctx.scheduledTasks.cancelTask).toHaveBeenCalledWith({
-      name: "clearClipboard",
-      actionId: "clipboard-action-id",
-    });
+    ).resolves.toEqual({ cleared: true });
+    expect(ctx.getClipboardText()).toBe("");
     expect(ctx.clipboardClearTasks.remove).toHaveBeenCalledTimes(1);
   });
 
@@ -422,7 +423,7 @@ describe("CopyEntryPasswordUseCase", () => {
     );
   });
 
-  it("cancels previous scheduled clear when previous clipboard cleanup fails", async () => {
+  it("preserves previous scheduled clear when clipboard cleanup fails", async () => {
     const ctx = createContext();
     const error = new Error("clipboard unavailable");
     const previousClipboardClearTask = {
@@ -444,10 +445,7 @@ describe("CopyEntryPasswordUseCase", () => {
       }),
     ).rejects.toThrow(error);
 
-    expect(ctx.scheduledTasks.cancelTask).toHaveBeenCalledWith({
-      name: "clearClipboard",
-      actionId: "previous-action-id",
-    });
+    expect(ctx.scheduledTasks.cancelTask).not.toHaveBeenCalled();
     expect(ctx.clipboardClearTasks.save).not.toHaveBeenCalled();
     expect(ctx.clipboard.writeText).not.toHaveBeenCalledWith(
       singlePasswordEntry.password,

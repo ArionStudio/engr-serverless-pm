@@ -6,15 +6,10 @@ import {
   deserializeUnlockedVaultSessionMaterial,
   serializeUnlockedVaultSessionMaterial,
 } from "./unlocked-vault-session-material.codec";
+import type { ChromeStorageArea } from "./chrome-storage-area";
 
 export const UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY =
   "unlockedVaultSessionMaterial";
-
-export type ChromeStorageArea = {
-  get: (keys?: unknown) => Promise<Record<string, unknown>>;
-  set: (items: Record<string, unknown>) => Promise<void>;
-  remove: (keys: string | string[]) => Promise<void>;
-};
 
 export class ChromeUnlockedVaultSessionMaterialRepository implements UnlockedVaultSessionMaterialRepositoryPort {
   private readonly storageArea: ChromeStorageArea;

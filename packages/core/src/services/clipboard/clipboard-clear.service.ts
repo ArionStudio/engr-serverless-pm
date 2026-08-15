@@ -3,25 +3,25 @@ import type {
   ClipboardClearTaskRepositoryPort,
 } from "../../ports/clipboard/clipboard-clear-task-repository.port";
 import type { ClipboardPort } from "../../ports/clipboard/clipboard.port";
+import type { ClipboardSecretHashPort } from "../../ports/clipboard/clipboard-secret-hash.port";
 import type { ClockPort } from "../../ports/system/clock.port";
-import type { CryptoPort } from "../../ports/crypto/crypto.port";
 
 export class ClipboardClearService {
   private readonly clipboard: ClipboardPort;
   private readonly clipboardClearTasks: ClipboardClearTaskRepositoryPort;
   private readonly clock: ClockPort;
-  private readonly crypto: CryptoPort;
+  private readonly secretHash: ClipboardSecretHashPort;
 
   constructor(
     clipboard: ClipboardPort,
     clipboardClearTasks: ClipboardClearTaskRepositoryPort,
     clock: ClockPort,
-    crypto: CryptoPort,
+    secretHash: ClipboardSecretHashPort,
   ) {
     this.clipboard = clipboard;
     this.clipboardClearTasks = clipboardClearTasks;
     this.clock = clock;
-    this.crypto = crypto;
+    this.secretHash = secretHash;
   }
 
   async clearTask(params: {
@@ -68,14 +68,15 @@ export class ClipboardClearService {
     }
 
     const currentClipboardValue = await this.clipboard.readText();
-    const currentClipboardValueHash = await this.crypto.hashSecretValue(
+    const currentClipboardValueHash = await this.secretHash.hashSecretValue(
       currentClipboardValue,
     );
 
-    const isCopiedValueStillPresent = await this.crypto.compareSecretValueHash(
-      currentClipboardValueHash,
-      task.copiedValueHash,
-    );
+    const isCopiedValueStillPresent =
+      await this.secretHash.compareSecretValueHash(
+        currentClipboardValueHash,
+        task.copiedValueHash,
+      );
 
     if (!isCopiedValueStillPresent) {
       await this.clipboardClearTasks.remove();
