@@ -10,7 +10,7 @@ skinparam activity {
 }
 
 start
-:Input:\nvaultId, entry {password, login, tags, url};
+:Input:\nvaultId, optional allowWeakPassword,\nentry {password, login, tags, url};
 :Source:\npackages/core/src/use-cases/vault-entries/add-entry.ts;
 :Require unlocked vault context for "add entry";
 :Sanitize entry.url;
@@ -21,6 +21,10 @@ endif
 :Validate password, login, tags, sanitizedUrl;
 if (entry invalid?) then (yes)
   :Throw InvalidPasswordEntryError;
+  stop
+endif
+if (password score below 4 and\nallowWeakPassword is not true?) then (yes)
+  :Throw PasswordEntryStrengthRequirementNotMetError;
   stop
 endif
 :Prepare local mutation with VaultSyncGuardService;

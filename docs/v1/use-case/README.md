@@ -30,7 +30,7 @@ must include the [accepted rollback limitation](../../security/security-specific
 - `overview.component.puml`: high-level component relationships.
 - `clipboard/`: clipboard copy and clear task behavior.
 - `device-trust/`: device lifecycle, enrollment, local recovery, and revocation.
-- `password-tools/`: generated password and username flows.
+- `password-tools/`: password-strength checking and generated password and username flows.
 - `session/`: vault session status reporting.
 - `sync/`: sync setup, upload, review, resolution, and disable flows.
 - `vault-entries/`: entry read, search, mutation, and password retrieval flows.

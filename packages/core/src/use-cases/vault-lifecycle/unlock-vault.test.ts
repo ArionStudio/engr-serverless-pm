@@ -1,13 +1,59 @@
 import { describe, expect, it, vi } from "vitest";
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
 import { singlePasswordEntry } from "../../__tests__/fixtures/vault-entries";
+import type { RawMasterPassword } from "../../domain/master-password";
 import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
 import {
+  DeviceAccessMaterialNotFoundError,
   DeviceKeySlotNotFoundError,
   DeviceKeySlotVerificationFailedError,
 } from "../../errors/unlock-vault.errors";
+import { DeviceAccessMaterialIdentityMismatchError } from "../../errors/vault-device.errors";
+import { ChangeMasterPasswordUseCase } from "./change-master-password";
+
+async function expectUnlockOwnedBuffersWiped(
+  ctx: ReturnType<typeof createUnlockVaultTestContext>,
+): Promise<void> {
+  const localRootKey = await vi.mocked(ctx.ports.crypto.deriveLocalRootKey).mock
+    .results[0]!.value;
+  const localKeysProtectionKey = await vi.mocked(
+    ctx.ports.crypto.deriveLocalKeysProtectionKey,
+  ).mock.results[0]!.value;
+  const localKeys = await vi.mocked(ctx.ports.crypto.unwrapLocalKeysPayload)
+    .mock.results[0]!.value;
+  const vaultMasterKey = await vi.mocked(
+    ctx.ports.crypto.openDeviceVaultKeyEnvelope,
+  ).mock.results[0]!.value;
+
+  for (const buffer of [
+    localRootKey,
+    localKeysProtectionKey,
+    localKeys.devicePrivateSignKey,
+    localKeys.devicePrivateVaultKey,
+    localKeys.deviceLocalProtectionKey,
+    vaultMasterKey,
+  ]) {
+    expect(Array.from(new Uint8Array(buffer))).toEqual([0]);
+  }
+}
 
 describe("UnlockVaultUseCase", () => {
+  it("continues to attempt a current password below the new strength requirement", async () => {
+    const ctx = createUnlockVaultTestContext();
+    const masterPassword = "12345678901" as RawMasterPassword;
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      masterPassword,
+      lockAfterMs: 60_000,
+    });
+
+    expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenCalledWith(
+      masterPassword,
+      ctx.values.masterPasswordSalt,
+    );
+  });
+
   it("returns status and visible vault fields without stored secrets", async () => {
     const ctx = createUnlockVaultTestContext();
     vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
@@ -110,6 +156,124 @@ describe("UnlockVaultUseCase", () => {
     expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
   });
 
+  it("rejects device access material for another vault before reading the snapshot", async () => {
+    const ctx = createUnlockVaultTestContext();
+    vi.mocked(
+      ctx.ports.vaultLocalRepository.getDeviceAccessRecords,
+    ).mockResolvedValueOnce({
+      deviceAccessMaterial: {
+        ...ctx.deviceAccessMaterial,
+        vaultId: "another-vault-id",
+      },
+      deviceAccessRecoveryBackup: ctx.deviceAccessRecoveryBackup,
+    });
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 60_000,
+      }),
+    ).rejects.toBeInstanceOf(DeviceAccessMaterialIdentityMismatchError);
+
+    expect(
+      ctx.ports.vaultLocalRepository.getVaultSnapshot,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.vaultLockTasks.save).not.toHaveBeenCalled();
+  });
+
+  it("rejects missing device access material before reading the snapshot", async () => {
+    const ctx = createUnlockVaultTestContext();
+    ctx.saved.deviceAccessMaterial = undefined;
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 60_000,
+      }),
+    ).rejects.toBeInstanceOf(DeviceAccessMaterialNotFoundError);
+
+    expect(
+      ctx.ports.vaultLocalRepository.getVaultSnapshot,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+  });
+
+  it("rejects material without a matching recovery companion before password derivation", async () => {
+    const ctx = createUnlockVaultTestContext();
+    ctx.saved.deviceAccessRecoveryBackup = undefined;
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 60_000,
+      }),
+    ).rejects.toBeInstanceOf(DeviceAccessMaterialIdentityMismatchError);
+
+    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.getVaultSnapshot,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("rejects replayed pre-change material after a master-password rotation", async () => {
+    const ctx = createUnlockVaultTestContext();
+    const preChangeDeviceAccessMaterial = ctx.deviceAccessMaterial;
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      masterPassword: ctx.values.masterPassword,
+      lockAfterMs: 60_000,
+    });
+
+    vi.mocked(ctx.ports.ids.generateId).mockReset();
+    vi.mocked(ctx.ports.ids.generateId).mockResolvedValue(
+      ctx.values.replacementLocalAccessGenerationId,
+    );
+    vi.mocked(ctx.ports.crypto.generateMasterPasswordSalt).mockResolvedValue(
+      ctx.values.newMasterPasswordSalt,
+    );
+    vi.mocked(
+      ctx.ports.crypto.generateLocalKeysProtectionSalt,
+    ).mockResolvedValue(ctx.values.newLocalKeysProtectionSalt);
+
+    const changeMasterPassword = new ChangeMasterPasswordUseCase(
+      ctx.ports.crypto,
+      ctx.ports.vaultLocalRepository,
+      ctx.ports.sessionServices.unlockedVaultSession,
+      ctx.ports.ids,
+    );
+    await changeMasterPassword.execute({
+      vaultId: ctx.values.vaultId,
+      currentMasterPassword: ctx.values.masterPassword,
+      newMasterPassword: ctx.values.newMasterPassword,
+    });
+    await ctx.ports.sessionServices.unlockedVaultSession.remove();
+
+    ctx.saved.deviceAccessMaterial = preChangeDeviceAccessMaterial;
+    vi.mocked(ctx.ports.crypto.deriveLocalRootKey).mockClear();
+    vi.mocked(ctx.ports.vaultLocalRepository.getVaultSnapshot).mockClear();
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 60_000,
+      }),
+    ).rejects.toBeInstanceOf(DeviceAccessMaterialIdentityMismatchError);
+
+    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.getVaultSnapshot,
+    ).not.toHaveBeenCalled();
+  });
+
   it.each(["signing", "wrapping"] as const)(
     "rejects a mismatched %s key pair before opening the envelope",
     async (keyKind) => {
@@ -172,13 +336,19 @@ describe("UnlockVaultUseCase", () => {
       }),
     ).rejects.toThrow("schedule failed");
 
-    expect(ctx.ports.vaultLockTasks.remove).toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLockTasks.removeIfActionIsActive,
+    ).toHaveBeenCalledWith(ctx.values.vaultLockActionId);
     expect(ctx.saved.unlockedVaultSession).toBeUndefined();
+    await expectUnlockOwnedBuffersWiped(ctx);
   });
 
   it("cancels the scheduled lock and removes metadata when activation fails", async () => {
     const ctx = createUnlockVaultTestContext();
     const activationError = new Error("session activation failed");
+    vi.mocked(ctx.ports.scheduledTasks.cancelTask).mockRejectedValueOnce(
+      new Error("cancel failed"),
+    );
     vi.mocked(
       ctx.ports.unlockedVaultSessionMaterialRepository
         .saveUnlockedVaultSessionMaterial,
@@ -196,7 +366,10 @@ describe("UnlockVaultUseCase", () => {
       name: "lockVault",
       actionId: ctx.values.vaultLockActionId,
     });
-    expect(ctx.ports.vaultLockTasks.remove).toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLockTasks.removeIfActionIsActive,
+    ).toHaveBeenCalledWith(ctx.values.vaultLockActionId);
     expect(ctx.saved.unlockedVaultSession).toBeUndefined();
+    await expectUnlockOwnedBuffersWiped(ctx);
   });
 });

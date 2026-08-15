@@ -22,7 +22,14 @@ participant "ScheduledTaskPort" as Tasks
 Caller -> UC : execute(vaultId, masterPassword, lockAfterMs)
 UC -> UC : validate lockAfterMs
 UC -> Session : requireVaultCanBeActivated(vaultId)
-UC -> LocalRepo : getDeviceAccessMaterial(vaultId)
+UC -> LocalRepo : getDeviceAccessRecords(vaultId)
+break material missing
+  UC --> Caller : throw DeviceAccessMaterialNotFoundError
+end
+UC -> UC : verify companion-bound vault, device,\nalgorithm, public keys, and generation
+break material/backup identity mismatch
+  UC --> Caller : throw DeviceAccessMaterialIdentityMismatchError
+end
 UC -> LocalRepo : getVaultSnapshot(vaultId)
 UC -> UC : check algorithm suites, vault id, signer, device slot
 UC -> Crypto : verifyVaultSnapshotSignature(snapshot, signerSlot.publicSignKey)
@@ -34,16 +41,18 @@ UC -> Crypto : verifyDeviceSignKeyPair(material.publicSignKey, privateKey)
 UC -> Crypto : deriveDeviceSlotVaultMasterKeyProtectionKey(deviceSlotKey)
 UC -> Crypto : unwrapVaultMasterKey(protectedVaultMasterKey, protectionKey)
 UC -> Crypto : decryptVaultSnapshotContent(content, vaultMasterKey)
+UC -> Session : enter serialized auto-lock activation boundary
 UC -> LockRepo : save(actionId, vaultId, expiresAt)
 UC -> Tasks : scheduleTask(lockVault, runAt)
 alt scheduling fails
-  UC -> LockRepo : remove()
+  UC -> Tasks : cancelTask(lockVault)
+  UC -> LockRepo : removeIfActionIsActive(actionId)
   UC --> Caller : throw schedule failure
 else scheduled
   UC -> Session : commit(unlockedVault, snapshotVersionVector)
   alt commit fails
     UC -> Tasks : cancelTask(lockVault)
-    UC -> LockRepo : remove()
+    UC -> LockRepo : removeIfActionIsActive(actionId)
     UC --> Caller : throw commit failure
   else committed
     UC --> Caller : visible vault projection, vaultId, deviceId,\nsnapshotVersionVector, revisionTimestamp

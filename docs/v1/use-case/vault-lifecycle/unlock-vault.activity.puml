@@ -19,9 +19,13 @@ if (invalid delay?) then (yes)
 endif
 
 :Require vault can be activated;
-:Load device access material;
-if (missing?) then (yes)
+:Atomically load device access material\nand its recovery backup;
+if (material missing?) then (yes)
   :Throw DeviceAccessMaterialNotFoundError;
+  stop
+endif
+if (backup missing or pair vault, device, algorithm,\npublic keys, or generation differ?) then (yes)
+  :Throw DeviceAccessMaterialIdentityMismatchError;
   stop
 endif
 
@@ -79,6 +83,7 @@ endif
 :Unwrap vaultMasterKey;
 :Decrypt snapshot content into vault;
 :Build unlocked vault session object;
+:Enter serialized session activation boundary;
 :Generate lock task actionId;
 :Compute lockScheduledAt = now + lockAfterMs;
 :Save vault lock task metadata;
@@ -86,7 +91,8 @@ endif
 if (schedule lock task succeeds?) then (yes)
   :Continue;
 else (no)
-  :Best effort remove lock task metadata;
+  :Best effort cancel scheduled lock task;
+  :Best effort remove matching lock task metadata;
   :Throw schedule failure;
   stop
 endif
@@ -96,7 +102,7 @@ if (commit unlocked session succeeds?) then (yes)
   stop
 else (no)
   :Best effort cancel scheduled lock task;
-  :Best effort remove lock task metadata;
+  :Best effort remove matching lock task metadata;
   :Throw original session commit failure;
   stop
 endif

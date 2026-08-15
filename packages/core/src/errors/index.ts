@@ -7,6 +7,7 @@ export * from "./device-enrollment.errors";
 export * from "./device-revocation.errors";
 export * from "./generate-password.errors";
 export * from "./generate-username.errors";
+export * from "./master-password.errors";
 export * from "./randomness.errors";
 export * from "./sync.errors";
 export * from "./unlock-vault.errors";

@@ -74,10 +74,11 @@ cryptographic primitives. Arbitrary mixing of algorithms is not permitted.
 
 ### 3.2.1 Master Password Requirements
 
-- **Minimum requirement:** at least **12 characters**.
-- **Recommended requirement:** at least **16 characters**, or a passphrase of **5 or more random words**.
+- **Required strength:** the local password-strength calculator MUST return its maximum score, **4/4**, for every new or replacement master password. This requirement cannot be bypassed.
+- **Local evaluation:** the calculator evaluates Unicode code-point length, a pinned common-password list, bounded common-password variants, repeated content, dominant predictable sequences, and character diversity. Passwords are never sent to a remote strength service.
 - **Uniqueness:** the master password **MUST NOT** be reused from any other site, app, or account.
-- **Rationale:** in this serverless, client-side, open-source design there is no server-held secret protecting the vault. Resistance to offline guessing depends primarily on the password strength, the random salt, and the PBKDF2 cost factor.
+- **Existing vaults:** unlock and current-password verification MUST continue to attempt the supplied password regardless of its score. The score requirement applies only when establishing a new master password.
+- **Rationale:** in this serverless, client-side, open-source design there is no server-held secret protecting the vault. Resistance to offline guessing depends primarily on the password strength, the random salt, and the PBKDF2 cost factor. A local score is a policy heuristic, not a guarantee of cryptographic entropy.
 
 ### 3.3 Payload Encryption (Data Lock)
 
@@ -294,13 +295,96 @@ Each device records its location on every unlock/sync operation, appending to it
 - **Purpose:** User recognition only — allows users to verify "was this access from me?" Not used for security enforcement.
 - **New device detection:** On sync download, diff local vs remote `deviceRegistry.devices`. If new `deviceId`s appear, show notification with device name, environment info, and registration location.
 
-### 7.3 Memory Wiping (Critical) — New
+### 7.3 Best-Effort Secret Buffer Wiping
 
-Since JS Garbage Collection is unpredictable:
+JavaScript cannot guarantee erasure of immutable strings, engine copies,
+WebCrypto-internal state, or browser storage history. LFSPM therefore treats
+wiping as best-effort memory hygiene for mutable, caller-owned buffers rather
+than as a security boundary.
 
-- **TypedArrays:** Use Uint8Array for all keys/passwords (avoid Strings).
-- **Overwrite:** Immediately after use (or on logout), execute `buffer.fill(0)` on the array.
-- **Release:** Set references to `null` after filling.
+`CryptoPort` results containing raw secret bytes are fresh buffers owned by the
+caller. Implementations must not retain or alias them. Ownership is assigned as
+follows:
+
+| Secret buffer                                                                                          | Last owner                                                                                               | End of ownership                                                                                                                                                                                                   |
+| ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Derived root, local-protection, device-slot-protection, enrollment-protection, and recovery keys       | Creating lifecycle use case                                                                              | Wiped in `finally` after the last crypto operation on success or failure                                                                                                                                           |
+| Newly generated signing/wrapping private keys and local key-protection keys                            | Creating lifecycle use case, then unlocked session on successful activation                              | Wiped by the use case if activation fails; otherwise transferred to the session owner                                                                                                                              |
+| Vault master key returned by generation, unwrap, enrollment, recovery, or device-revocation processing | Creating use case or revocation-candidate service, then unlocked session on successful activation/commit | Wiped when validation fails or ownership is not transferred; prepare-only review wipes its candidate after building the review; an activated/committed key is wiped by the session owner                           |
+| Unlocked-session vault, signing, wrapping, local-protection, and payload keys                          | `UnlockedVaultSessionService`                                                                            | Wiped inside serialized removal or when an owned generation is replaced/invalidated; conditional removal checks session ID, vault ID, and activation generation so a stale identity never wipes a newer generation |
+| Temporary base64-decoded bytes and partially decoded secret material                                   | Chrome session-material codec                                                                            | Temporary arrays are wiped after copying; owned secret copies are wiped if later decoding fails                                                                                                                    |
+
+The session-material repository retains one stable mutable material identity per
+active generation. A successful save transfers custody of the exact buffers to
+that repository instance while the serialized session service remains their
+wipe owner; a cold-start read decodes and caches one identity. Repeated reads
+therefore share the buffers that session removal wipes before it removes the
+repository record. Chrome storage still contains immutable encoded strings, and
+worker termination can only leave their former mutable buffers to garbage
+collection rather than guarantee overwriting them. The Chrome repository
+serializes cold reads, saves, and removals so concurrent readers cannot create
+competing decoded secret identities or republish a read after logical removal.
+
+Repository removal is still attempted when wiping fails, and wiping is still
+attempted when repository removal fails. Public-key buffers are not secret and
+are outside this wiping inventory. Master passwords, recovery mnemonics, and
+serialized base64 values are strings at API or storage boundaries and cannot be
+reliably overwritten.
+
+Auto-lock installation and session activation share the session owner's
+serialized lifecycle boundary. New-vault persistence for initialization and
+enrollment is prepared inside that boundary and conditionally rolled back there
+on failure, so a competing activation cannot win between persistence and
+cleanup. Cleanup enters that same boundary before reading or canceling task
+metadata, so activation cannot advance during cleanup. A
+scheduled action is authenticated against current metadata, including through
+atomic action-ID removal when a metadata read fails, before safe clipboard,
+task, and session cleanup continues. Manual cleanup also invalidates an
+already-authorized activation when no stored session remains. Target-bound
+cleanup, including local deletion, fails closed before destructive cleanup when
+the active vault identity cannot be read; it cannot safely infer that an
+unreadable session belongs to the requested vault.
+Active-session persistence advances the activation generation before its
+callback can change local state, so an activation lease captured before a
+mutation or password rotation cannot later install stale vault or access
+material. Successful snapshot commits advance it again. Every activation,
+including same-vault reactivation, mints a fresh session ID and payload key;
+work authorized under the replaced identity therefore cannot persist or commit
+after reactivation. Ordinary snapshot commits retain the active identity while
+advancing its generation.
+Persisted-state rollback is likewise authenticated against its originating
+session ID and source snapshot vector before it runs, so an upload failure from
+stale work cannot roll back or wipe a replacement or advanced session. A
+rollback with no active material advances the generation before persistence is
+restored, invalidating activation leases that may have read the replaced state.
+Before each fallible remote upload, the snapshot owner signs and retains the
+previous snapshot's rollback checkpoint inside the same serialized session
+operation that persists its replacement, while the session signing key is
+still live and authenticated. The later conditional restore uses that
+non-secret prepared artifact and the persisted replacement digest, so lock-time
+wiping cannot break rollback. If session ownership cannot be read, callers
+preserve potentially active secret buffers and surface an explicit incomplete-
+rollback error. If a conditional restore fails for the known matching session,
+the session owner invalidates and wipes that session before callers surface the
+same explicit error. Neither case masks uncertain local state with only the
+upload error.
+
+Password copy revalidates its session and performs clipboard task replacement,
+scheduling, and the plaintext write inside that same serialized boundary. A
+completed lock therefore prevents a paused copy from writing afterward; when a
+copy enters first, lock waits and then clears its resulting clipboard task.
+
+Local-vault deletion removes persisted vault records after successful session
+cleanup but before releasing the same lifecycle boundary. A queued unlock cannot
+obtain an activation lease until deletion has completed, so it subsequently
+observes the removed local records instead of racing their removal.
+
+These in-memory serialization guarantees require one shared core composition
+per storage namespace. Extension UI contexts must route lifecycle and secret-
+using operations through that long-lived background owner; independently
+constructing session services in popup, options, and background contexts is not
+a supported composition because JavaScript object locks do not coordinate
+across contexts.
 
 ---
 
@@ -308,7 +392,7 @@ Since JS Garbage Collection is unpredictable:
 
 ### 8.1 Setup (Genesis)
 
-1.  **Strength Check:** Enforce the minimum master-password policy and warn when the password does not meet the recommended strength guidance.
+1.  **Strength Check:** Require the local password-strength calculator's maximum score (4/4). Do not offer a bypass for a master password.
 2.  **Derivation:** MasterKEK = PBKDF2(Password, Salt, 600k).
 3.  **Generation:** Create the initial Vault Key, Ed25519 pair, ECDH P-256
     pair, and device-local protection key.
@@ -424,10 +508,14 @@ A new device joins through a two-file, asynchronous exchange:
 6.  **Persistence:** Access material, recovery backup, snapshot, checkpoint, and
     optional local credentials are initialized together. Pending request state
     is removed only after success. If session activation fails, the initialized
-    local records are removed and the pending request remains retryable. A
+    local records are conditionally removed inside the serialized activation
+    boundary and the pending request remains retryable. A
     later remote compare-and-set rollback may remove those records only while
     both the active session version and persisted snapshot digest still match
-    the enrollment snapshot.
+    the enrollment snapshot. That rollback uses the shared lifecycle owner to
+    clear clipboard and auto-lock state before invalidating the matching
+    session, and wipes the enrollment operation's original secret buffers when
+    their ownership is no longer transferred to a live session.
 
 The devices never need to be connected simultaneously. Neither transported
 artifact contains private device keys or provider credentials.
@@ -488,7 +576,10 @@ Keep only unwrapped keys (`extractable:false`) and decrypted state.
 
 ### 10.2 Memory wiping (Hardened)
 
-**Rule:** Any Uint8Array holding password material or raw key bits must be overwritten with `.fill(0)` before scope exit.
+**Rule:** Every mutable, caller-owned buffer holding raw secret key material is
+best-effort overwritten after its final consumer or when its active session
+generation is removed. Wiping failures must not prevent remaining lifecycle
+cleanup.
 
 ### 10.3 Auto-lock
 
@@ -517,7 +608,7 @@ Strict CSP required in manifest.json:
 - [ ] **Dual Key Pairs:** Every device generates two distinct pairs: Ed25519 (Identity) and ECDH P-256 (Key Exchange).
 - [ ] **IV Uniqueness:** All AES-GCM operations use a fresh, random 12-byte IV. Never reuse an IV for the same key.
 - [ ] **Salt Strength:** All salts are random and >= 32 bytes (upgraded from 16 bytes).
-- [ ] **Master Password Policy:** Enforce the documented minimum length and present the recommended stronger passphrase guidance during setup.
+- [ ] **Master Password Policy:** Require the local maximum strength score (4/4) for every new or replacement master password, without a bypass, while preserving unlock of existing passwords.
 - [ ] **KDF Safety:** ECDH raw key bits are never used directly. HKDF-SHA-256
       derives the AES-256 wrapping key.
 - [ ] **Ephemeral Envelopes:** Every recipient envelope uses a fresh ephemeral

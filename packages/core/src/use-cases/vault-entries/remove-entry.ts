@@ -65,25 +65,40 @@ export class RemoveEntryUseCase {
         this.clock.now(),
       ),
     };
-
-    const persistedSnapshot =
+    const { persistedSnapshot, preparedRestore } =
       await this.unlockedVaultSession.persistForActiveSession(
         sessionId,
         params.vaultId,
-        async () =>
-          this.vaultSnapshot.persistUnlockedVault(
-            params.vaultId,
-            updatedUnlockedVault,
-            sourceSnapshotVersionVector,
-          ),
+        async () => {
+          const preparedRestore =
+            syncState.syncAccess === undefined
+              ? undefined
+              : await this.vaultSnapshot.prepareLocalVaultSnapshotRestore(
+                  syncState.localSnapshot,
+                  unlockedVault,
+                );
+          const persistedSnapshot =
+            await this.vaultSnapshot.persistUnlockedVault(
+              params.vaultId,
+              updatedUnlockedVault,
+              sourceSnapshotVersionVector,
+            );
+
+          return { persistedSnapshot, preparedRestore };
+        },
       );
 
     if (syncState.syncAccess !== undefined) {
+      if (preparedRestore === undefined) {
+        throw new Error("Synchronized mutation rollback was not prepared.");
+      }
+
       await this.vaultSyncGuard.uploadPersistedLocalMutation(
         params.vaultId,
         syncState,
         persistedSnapshot.snapshot,
-        updatedUnlockedVault,
+        persistedSnapshot.trustedSnapshotContext.snapshotDigest,
+        preparedRestore,
         sessionId,
       );
     }

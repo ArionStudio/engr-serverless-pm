@@ -4,6 +4,8 @@ import type { LocalKeysPayload } from "./local-protection.type";
 import type { DevicePublicSignKey, DeviceVaultPublicKey } from "./brand-keys";
 
 export type DeviceAccessMaterial = {
+  readonly revision: number;
+  readonly localAccessGenerationId: string;
   readonly vaultId: string;
   readonly deviceId: string;
   readonly algorithmSuiteId: string;

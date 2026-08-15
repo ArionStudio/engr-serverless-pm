@@ -12,13 +12,19 @@ skinparam activity {
 start
 :Input:\nvaultId, recoveryMnemonicKey, newMasterPassword;
 :Source:\npackages/core/src/use-cases/device-trust/recover-device-access.ts;
+:Calculate newMasterPassword strength;
+if (password score below 4?) then (yes)
+  :Throw InvalidNewMasterPasswordError;
+  stop
+endif
 :Require vault can be activated locally;
 if (another vault is active?) then (yes)
   :Throw activation error from session service;
   stop
 endif
 
-:Read local device access recovery backup;
+:Atomically read current device access material and recovery backup;
+:Capture both revisions, both generations, or material absence;
 if (backup missing?) then (yes)
   :Throw DeviceAccessRecoveryBackupNotFoundError;
   stop
@@ -29,6 +35,22 @@ if (backup vault id differs?) then (yes)
 endif
 if (backup algorithm unsupported?) then (yes)
   :Throw UnsupportedAlgorithmSuiteError;
+  stop
+endif
+if (present material and backup vault, device, algorithm,\npublic keys, or localAccessGenerationId differ?) then (yes)
+  :Throw DeviceAccessMaterialChangedError;
+  stop
+endif
+:Validate present material and backup revisions are
+positive safe integers with available exact successors;
+if (either revision invalid or exhausted?) then (yes)
+  :Throw DeviceAccessMaterialChangedError;
+  stop
+endif
+:Generate a fresh localAccessGenerationId;
+:Validate the generated generation ID;
+if (generation ID invalid or reused?) then (yes)
+  :Throw DeviceAccessMaterialChangedError;
   stop
 endif
 
@@ -77,6 +99,14 @@ endif
 
 :Open vaultMasterKey from current device envelope\nwith recovered devicePrivateVaultKey;
 :Decrypt snapshot content to prove recovered keys still unlock this vault;
+if (snapshot is newer than the local checkpoint?) then (yes)
+  :Digest snapshot and create an advanced checkpoint;
+  :Atomically compare-and-save snapshot and checkpoint;
+  if (snapshot changed first?) then (yes)
+    :Throw LocalVaultSnapshotChangedError\nwithout changing snapshot or checkpoint;
+    stop
+  endif
+endif
 
 :Generate new master-password salt and local-keys protection salt;
 :Derive localRootKey from newMasterPassword;
@@ -89,9 +119,12 @@ endif
 :Derive replacement recovery local-keys protection key;
 :Wrap same local keys payload for replacement recovery backup;
 
-:Build DeviceAccessMaterial;
-:Build replacement DeviceAccessRecoveryBackup;
-:Atomically save recovered device access material and recovery backup;
+:Build both replacements with next revisions\nand the selected localAccessGenerationId;
+:Atomically compare-and-save both records using the\ncaptured revisions and localAccessGenerationId;
+if (either persisted revision or generation changed first?) then (yes)
+  :Throw DeviceAccessMaterialChangedError\nwithout changing either record;
+  stop
+endif
 :Return deviceId and replacement recoveryMnemonicKey;
 note right
 The returned words protect only the current local backup.

@@ -3,16 +3,19 @@ import { sanitizeEntryUrl } from "../../domain/entry/sanitized-entry-url.utils";
 import { updatePasswordEntryInVault } from "../../domain/vault/vault-entry.mutations";
 import {
   InvalidPasswordEntryError,
+  PasswordEntryStrengthRequirementNotMetError,
   PasswordEntryNotFoundError,
 } from "../../errors/vault-entry.errors";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import type { VersionVector } from "../../domain/versioning/version-vector.type";
 import type { VaultSyncGuardService } from "../../services/sync";
+import { calculatePasswordStrength } from "../../lib/password-strength/password-strength.utils";
 
 export type UpdateEntryCommandParams = {
   vaultId: string;
   entryId: string;
+  allowWeakPassword?: boolean;
   entry: {
     password: string;
     login: string;
@@ -76,6 +79,13 @@ export class UpdateEntryUseCase {
       throw new InvalidPasswordEntryError(entryPayloadResult.error);
     }
 
+    if (
+      params.allowWeakPassword !== true &&
+      calculatePasswordStrength(entryPayloadResult.data.password).score !== 4
+    ) {
+      throw new PasswordEntryStrengthRequirementNotMetError();
+    }
+
     const syncState = await this.vaultSyncGuard.prepareLocalMutation(
       params.vaultId,
       unlockedVault,
@@ -91,25 +101,40 @@ export class UpdateEntryUseCase {
         unlockedVault.deviceId,
       ),
     };
-
-    const persistedSnapshot =
+    const { persistedSnapshot, preparedRestore } =
       await this.unlockedVaultSession.persistForActiveSession(
         sessionId,
         params.vaultId,
-        async () =>
-          this.vaultSnapshot.persistUnlockedVault(
-            params.vaultId,
-            updatedUnlockedVault,
-            sourceSnapshotVersionVector,
-          ),
+        async () => {
+          const preparedRestore =
+            syncState.syncAccess === undefined
+              ? undefined
+              : await this.vaultSnapshot.prepareLocalVaultSnapshotRestore(
+                  syncState.localSnapshot,
+                  unlockedVault,
+                );
+          const persistedSnapshot =
+            await this.vaultSnapshot.persistUnlockedVault(
+              params.vaultId,
+              updatedUnlockedVault,
+              sourceSnapshotVersionVector,
+            );
+
+          return { persistedSnapshot, preparedRestore };
+        },
       );
 
     if (syncState.syncAccess !== undefined) {
+      if (preparedRestore === undefined) {
+        throw new Error("Synchronized mutation rollback was not prepared.");
+      }
+
       await this.vaultSyncGuard.uploadPersistedLocalMutation(
         params.vaultId,
         syncState,
         persistedSnapshot.snapshot,
-        updatedUnlockedVault,
+        persistedSnapshot.trustedSnapshotContext.snapshotDigest,
+        preparedRestore,
         sessionId,
       );
     }

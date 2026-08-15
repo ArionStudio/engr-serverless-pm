@@ -1,12 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { UnsupportedEntryUrlProtocolError } from "../../errors/vault-entry.errors";
+import { objectGraphContainsString } from "../../__tests__/fixtures/error-inspection";
+import {
+  InvalidEntryUrlError,
+  UnsupportedEntryUrlProtocolError,
+} from "../../errors/vault-entry.errors";
 import { sanitizeEntryUrl } from "./sanitized-entry-url.utils";
 
+function captureError(action: () => void): unknown {
+  try {
+    action();
+  } catch (error) {
+    return error;
+  }
+
+  throw new Error("Expected action to throw.");
+}
+
 describe("sanitizeEntryUrl", () => {
-  it("removes query string and hash from entry urls", () => {
+  it("removes credentials, query string, and hash from entry urls", () => {
     expect(
       sanitizeEntryUrl(
-        "https://example.com/login?session=secret&utm_source=test#section",
+        "https://user:password@example.com/login?session=secret&utm_source=test#section",
       ),
     ).toBe("https://example.com/login");
   });
@@ -17,10 +31,16 @@ describe("sanitizeEntryUrl", () => {
     );
   });
 
-  it("removes credentials from entry urls", () => {
-    expect(
-      sanitizeEntryUrl("https://user:password@example.com/accounts/login"),
-    ).toBe("https://example.com/accounts/login");
+  it("redacts malformed entry urls from parse errors", () => {
+    const credentialSecret = "credential-secret";
+    const querySecret = "query-secret";
+    const malformedUrl = `https://user:${credentialSecret}@?token=${querySecret}`;
+
+    const error = captureError(() => sanitizeEntryUrl(malformedUrl));
+
+    expect(error).toBeInstanceOf(InvalidEntryUrlError);
+    expect(objectGraphContainsString(error, credentialSecret)).toBe(false);
+    expect(objectGraphContainsString(error, querySecret)).toBe(false);
   });
 
   it("rejects javascript entry urls", () => {
@@ -35,5 +55,23 @@ describe("sanitizeEntryUrl", () => {
 
     expect(action).toThrow(UnsupportedEntryUrlProtocolError);
     expect(action).toThrow('Unsupported entry URL protocol "data:".');
+  });
+
+  it("reports only the protocol for unsupported ftp entry urls", () => {
+    const credentialSecret = "credential-secret";
+    const querySecret = "query-secret";
+    const fragmentSecret = "fragment-secret";
+    const unsupportedUrl = `ftp://user:${credentialSecret}@example.com/path?token=${querySecret}#${fragmentSecret}`;
+
+    const error = captureError(() => sanitizeEntryUrl(unsupportedUrl));
+
+    expect(error).toBeInstanceOf(UnsupportedEntryUrlProtocolError);
+    expect(error).toHaveProperty(
+      "message",
+      'Unsupported entry URL protocol "ftp:".',
+    );
+    expect(objectGraphContainsString(error, credentialSecret)).toBe(false);
+    expect(objectGraphContainsString(error, querySecret)).toBe(false);
+    expect(objectGraphContainsString(error, fragmentSecret)).toBe(false);
   });
 });

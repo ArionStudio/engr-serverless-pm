@@ -44,7 +44,8 @@ import type {
 import type { Vault } from "../../domain/vault/vault";
 import type { Base64URLString } from "../../lib/base64Url.type";
 
-export const bytes = <T extends ArrayBuffer>() => new ArrayBuffer(1) as T;
+export const bytes = <T extends ArrayBuffer>() =>
+  new Uint8Array([2]).buffer as T;
 export const b64 = (value: string) => value as Base64URLString;
 
 export type CoreTestValues = ReturnType<typeof createCoreTestValues>;
@@ -214,13 +215,18 @@ export function createCoreTestValues() {
   } satisfies DeviceEnrollmentPrivateState;
 
   return {
-    masterPassword: "master-password" as RawMasterPassword,
-    newMasterPassword: "new-master-password" as RawMasterPassword,
+    masterPassword: "vN7#qL2!xP9@rT4$zK6&" as RawMasterPassword,
+    newMasterPassword: "mQ8#sW3!cH7@uJ5$eR9%" as RawMasterPassword,
     vaultId: "vault-id",
     sessionId: "session-id",
     vaultLockActionId: "vault-lock-action-id",
     vaultDisplayName: "blue-river-4821",
     deviceId: "device-id",
+    localAccessGenerationId: "local-access-generation-id",
+    replacementLocalAccessGenerationId:
+      "replacement-local-access-generation-id",
+    secondReplacementLocalAccessGenerationId:
+      "second-replacement-local-access-generation-id",
     enrollmentId: "enrollment-id",
     requestId: "enrollment-request-id",
     pendingDeviceId: "pending-device-id",

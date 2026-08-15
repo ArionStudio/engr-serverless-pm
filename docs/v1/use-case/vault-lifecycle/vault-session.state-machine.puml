@@ -14,18 +14,22 @@ state "NoActiveSession" as NoActiveSession
 [*] --> NoActiveSession
 
 NoActiveSession --> Initializing : InitializeVaultUseCase
-Initializing --> Unlocked : save local vault + commit session
-Initializing --> NoActiveSession : commit fails / remove local vault
+Initializing --> Unlocked : save local vault + schedule lock + activate session
+Initializing --> NoActiveSession : schedule or activation fails / remove local vault
+
+NoActiveSession --> Enrolling : PerformDeviceEnrollmentUseCase
+Enrolling --> Unlocked : save local vault + schedule lock + activate session
+Enrolling --> NoActiveSession : schedule or activation fails / remove local vault
 
 NoActiveSession --> Unlocking : UnlockVaultUseCase
 Unlocking --> Unlocked : verify snapshot + decrypt + schedule lock + commit
 Unlocking --> NoActiveSession : validation, crypto, schedule, or commit failure
 
-Unlocked --> NoActiveSession : LockVaultUseCase removes unlocked session
+Unlocked --> NoActiveSession : LockVaultUseCase runs shared lifecycle cleanup
 Unlocked --> Unlocked : stale lock actionId ignored
-Unlocked --> NoLocalVault : DeleteLocalVaultUseCase removes session and local vault
+Unlocked --> NoLocalVault : DeleteLocalVaultUseCase runs shared cleanup, then removes local vault
 Unlocked --> Unlocked : ChangeMasterPasswordUseCase rewraps local keys
-Unlocked --> Unlocked : Entry, sync, and trust mutations commit persisted snapshot
+Unlocked --> Unlocked : Entry, sync, and trust mutations commit persisted snapshot\nand advance activation generation
 
 NoLocalVault --> [*]
 
@@ -37,6 +41,7 @@ end note
 
 note right of Unlocked
 Hot secrets live in unlocked session material/payload.
+Each activation mints a fresh session ID and payload key.
 Use cases commit or remove session through UnlockedVaultSessionService.
 end note
 

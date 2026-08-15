@@ -35,6 +35,7 @@ import { LocalVaultSnapshotChangedError } from "../../errors/vault-snapshot.erro
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
+import { bestEffortWipeArrayBuffers } from "../../lib/secure-wipe.utils";
 import type { VaultSnapshotService } from "../snapshot/vault-snapshot.service";
 import { VaultTrustService } from "./vault-trust.service";
 
@@ -260,102 +261,115 @@ export class DeviceRevocationConsumptionService {
         algorithmSuiteId: remoteSnapshot.metadata.algorithmSuiteId,
       },
     );
-    const remoteVault = await this.crypto.decryptVaultSnapshotContent(
-      remoteSnapshot.content,
-      vaultMasterKey,
-    );
-
-    if (
-      !areJsonEqual(remoteVault.syncTarget, syncTarget) ||
-      !areJsonEqual(
-        remoteVault.syncRemovalPending,
-        params.unlockedVault.vault.syncRemovalPending,
-      )
-    ) {
-      throw new InvalidDeviceRevocationTransitionError(
-        params.vaultId,
-        "the revocation snapshot changed the sync target or removal state",
-      );
-    }
-
-    const providerCredentialRevocationPending =
-      remoteVault.providerCredentialRevocationPending;
-    const finalTransition = transitions.at(-1);
-
-    if (
-      providerCredentialRevocationPending !== undefined &&
-      (finalTransition?.type !== "revocation" ||
-        providerCredentialRevocationPending.vaultKeyGeneration !==
-          remoteSnapshot.metadata.vaultKeyGeneration ||
-        providerCredentialRevocationPending.revokedDeviceIds.length !== 1 ||
-        providerCredentialRevocationPending.revokedDeviceIds[0] !==
-          finalTransition.revokedDeviceId)
-    ) {
-      throw new InvalidDeviceRevocationTransitionError(
-        params.vaultId,
-        "the provider credential revocation marker does not match the final trust transition",
-      );
-    }
+    let vaultMasterKeyTransferred = false;
 
     try {
-      requireDeviceProfilesMatchTrust(
-        params.unlockedVault.vault,
-        new Set(
-          params.unlockedVault.trustedSnapshotContext.trust.trustedDevices.map(
-            (device) => device.deviceId,
-          ),
-        ),
-        new Set(
-          localSnapshot.trustChain.certificates.flatMap((certificate) =>
-            certificate.payload.trustedDevices.map((device) => device.deviceId),
-          ),
-        ),
+      const remoteVault = await this.crypto.decryptVaultSnapshotContent(
+        remoteSnapshot.content,
+        vaultMasterKey,
       );
-      requireDeviceProfilesMatchTrust(
+
+      if (
+        !areJsonEqual(remoteVault.syncTarget, syncTarget) ||
+        !areJsonEqual(
+          remoteVault.syncRemovalPending,
+          params.unlockedVault.vault.syncRemovalPending,
+        )
+      ) {
+        throw new InvalidDeviceRevocationTransitionError(
+          params.vaultId,
+          "the revocation snapshot changed the sync target or removal state",
+        );
+      }
+
+      const providerCredentialRevocationPending =
+        remoteVault.providerCredentialRevocationPending;
+      const finalTransition = transitions.at(-1);
+
+      if (
+        providerCredentialRevocationPending !== undefined &&
+        (finalTransition?.type !== "revocation" ||
+          providerCredentialRevocationPending.vaultKeyGeneration !==
+            remoteSnapshot.metadata.vaultKeyGeneration ||
+          providerCredentialRevocationPending.revokedDeviceIds.length !== 1 ||
+          providerCredentialRevocationPending.revokedDeviceIds[0] !==
+            finalTransition.revokedDeviceId)
+      ) {
+        throw new InvalidDeviceRevocationTransitionError(
+          params.vaultId,
+          "the provider credential revocation marker does not match the final trust transition",
+        );
+      }
+
+      try {
+        requireDeviceProfilesMatchTrust(
+          params.unlockedVault.vault,
+          new Set(
+            params.unlockedVault.trustedSnapshotContext.trust.trustedDevices.map(
+              (device) => device.deviceId,
+            ),
+          ),
+          new Set(
+            localSnapshot.trustChain.certificates.flatMap((certificate) =>
+              certificate.payload.trustedDevices.map(
+                (device) => device.deviceId,
+              ),
+            ),
+          ),
+        );
+        requireDeviceProfilesMatchTrust(
+          remoteVault,
+          new Set(
+            remoteTrust.state.trustedDevices.map((device) => device.deviceId),
+          ),
+          new Set(
+            remoteTrust.chain.certificates.flatMap((certificate) =>
+              certificate.payload.trustedDevices.map(
+                (device) => device.deviceId,
+              ),
+            ),
+          ),
+        );
+      } catch (error) {
+        throw new InvalidDeviceRevocationTransitionError(
+          params.vaultId,
+          "device profiles do not match the trusted identities",
+          { cause: error },
+        );
+      }
+
+      const trustTransitionBaseline = this.buildTrustTransitionBaseline(
+        params.vaultId,
+        params.unlockedVault.vault,
         remoteVault,
+        transitions,
         new Set(
           remoteTrust.state.trustedDevices.map((device) => device.deviceId),
         ),
-        new Set(
-          remoteTrust.chain.certificates.flatMap((certificate) =>
-            certificate.payload.trustedDevices.map((device) => device.deviceId),
-          ),
-        ),
       );
-    } catch (error) {
-      throw new InvalidDeviceRevocationTransitionError(
-        params.vaultId,
-        "device profiles do not match the trusted identities",
-        { cause: error },
-      );
+
+      vaultMasterKeyTransferred = true;
+      return {
+        replacementAccess,
+        previousEncryptedState,
+        previousState,
+        credentialContext,
+        localSnapshot,
+        remoteSnapshotDescriptor,
+        remoteSnapshot,
+        remoteTrust,
+        transitions,
+        revocations,
+        enrollments,
+        remoteVault,
+        trustTransitionBaseline,
+        vaultMasterKey,
+      };
+    } finally {
+      if (!vaultMasterKeyTransferred) {
+        bestEffortWipeArrayBuffers([vaultMasterKey]);
+      }
     }
-
-    const trustTransitionBaseline = this.buildTrustTransitionBaseline(
-      params.vaultId,
-      params.unlockedVault.vault,
-      remoteVault,
-      transitions,
-      new Set(
-        remoteTrust.state.trustedDevices.map((device) => device.deviceId),
-      ),
-    );
-
-    return {
-      replacementAccess,
-      previousEncryptedState,
-      previousState,
-      credentialContext,
-      localSnapshot,
-      remoteSnapshotDescriptor,
-      remoteSnapshot,
-      remoteTrust,
-      transitions,
-      revocations,
-      enrollments,
-      remoteVault,
-      trustTransitionBaseline,
-      vaultMasterKey,
-    };
   }
 
   private buildTrustTransitionBaseline(

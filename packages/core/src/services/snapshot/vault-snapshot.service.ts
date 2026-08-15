@@ -1,4 +1,5 @@
 import type {
+  LocalVaultTrustCheckpoint,
   VaultTrustChain,
   VerifiedVaultTrustState,
 } from "../../domain/device-trust";
@@ -28,6 +29,12 @@ import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { ClockPort } from "../../ports/system/clock.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import { VaultTrustService } from "../trust/vault-trust.service";
+
+export type PreparedLocalVaultSnapshotRestore = {
+  readonly snapshot: VaultSnapshot;
+  readonly checkpoint: LocalVaultTrustCheckpoint;
+  readonly syncCredentialState?: EncryptedDeviceSyncCredentialState | null;
+};
 
 export class VaultSnapshotService {
   private readonly crypto: CryptoPort;
@@ -197,17 +204,47 @@ export class VaultSnapshotService {
     unlockedVault: UnlockedVault,
     syncCredentialState?: EncryptedDeviceSyncCredentialState | null,
   ): Promise<void> {
-    await this.vaultLocalRepository.saveVaultSnapshotWithCheckpoint({
-      expectedSnapshotDigest:
-        await this.crypto.digestVaultSnapshot(replacedSnapshot),
+    const preparedRestore = await this.prepareLocalVaultSnapshotRestore(
       snapshot,
-      checkpoint: await this.vaultTrust.createCheckpoint(
-        snapshot,
-        unlockedVault.trustedSnapshotContext.trust,
-        unlockedVault.deviceId,
-        unlockedVault.devicePrivateSignKey,
-      ),
+      unlockedVault,
+      syncCredentialState,
+    );
+    await this.restorePreparedLocalVaultSnapshot(
+      preparedRestore,
+      await this.crypto.digestVaultSnapshot(replacedSnapshot),
+    );
+  }
+
+  async prepareLocalVaultSnapshotRestore(
+    snapshot: VaultSnapshot,
+    unlockedVault: UnlockedVault,
+    syncCredentialState?: EncryptedDeviceSyncCredentialState | null,
+  ): Promise<PreparedLocalVaultSnapshotRestore> {
+    const checkpoint = await this.vaultTrust.createCheckpoint(
+      snapshot,
+      unlockedVault.trustedSnapshotContext.trust,
+      unlockedVault.deviceId,
+      unlockedVault.devicePrivateSignKey,
+    );
+
+    return {
+      snapshot,
+      checkpoint,
       ...(syncCredentialState === undefined ? {} : { syncCredentialState }),
+    };
+  }
+
+  async restorePreparedLocalVaultSnapshot(
+    preparedRestore: PreparedLocalVaultSnapshotRestore,
+    expectedSnapshotDigest: string,
+  ): Promise<void> {
+    await this.vaultLocalRepository.saveVaultSnapshotWithCheckpoint({
+      expectedSnapshotDigest,
+      snapshot: preparedRestore.snapshot,
+      checkpoint: preparedRestore.checkpoint,
+      ...(preparedRestore.syncCredentialState === undefined
+        ? {}
+        : { syncCredentialState: preparedRestore.syncCredentialState }),
     });
   }
 

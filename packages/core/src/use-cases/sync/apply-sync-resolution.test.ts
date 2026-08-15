@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
+import { replaceVaultSnapshotAfterNextSave } from "../../__tests__/fixtures/ports";
 import {
   createUnlockedVaultWithEntries,
   singlePasswordEntry,
@@ -13,6 +14,7 @@ import {
   InvalidVaultSyncReviewError,
   RemoteVaultSnapshotChangedError,
   RemoteVaultSnapshotIntegrityError,
+  SyncTrustChangeRequiresDeviceTrustFlowError,
 } from "../../errors/sync.errors";
 import { LocalVaultSnapshotChangedError } from "../../errors/vault-snapshot.errors";
 import { VaultTrustStateInvalidError } from "../../errors/vault-trust.errors";
@@ -94,6 +96,36 @@ function createContext() {
 }
 
 describe("ApplySyncResolutionUseCase", () => {
+  it("uploads the signed resolution even when local storage replaces it after save", async () => {
+    const ctx = createContext();
+    const getPersistedSnapshot = replaceVaultSnapshotAfterNextSave(
+      ctx.ports,
+      ctx.vaultSnapshot,
+    );
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      reviewedSnapshotDescriptors: {
+        local: ctx.localDescriptor,
+        remote: ctx.remoteDescriptor,
+      },
+      resolution: {
+        entryResolutions: [
+          { entryId: singlePasswordEntry.id, action: "use_remote" },
+        ],
+        tagResolutions: [],
+        deviceProfileResolutions: [],
+      },
+    });
+
+    const uploadedSnapshot = vi.mocked(
+      ctx.ports.syncProvider.uploadVaultSnapshot,
+    ).mock.calls[0]?.[1];
+    expect(uploadedSnapshot).toBe(getPersistedSnapshot());
+    expect(uploadedSnapshot).not.toBe(ctx.ports.saved.vaultSnapshot);
+    expect(ctx.ports.saved.vaultSnapshot).toBe(ctx.vaultSnapshot);
+  });
+
   it("applies ordinary content resolution with local credentials", async () => {
     const ctx = createContext();
 
@@ -185,6 +217,67 @@ describe("ApplySyncResolutionUseCase", () => {
         },
       }),
     ).rejects.toBeInstanceOf(VaultTrustStateInvalidError);
+  });
+
+  it("routes a signed trust transition away from generic resolution", async () => {
+    const ctx = createContext();
+    vi.mocked(ctx.ports.syncProvider.downloadVaultSnapshot).mockResolvedValue({
+      ...ctx.remoteSnapshot,
+      trustChain: {
+        certificates: [
+          ...ctx.remoteSnapshot.trustChain.certificates,
+          {
+            payload: {
+              version: 1,
+              vaultId: ctx.values.vaultId,
+              generation: 1,
+              vaultKeyGeneration: 1,
+              previousCertificateDigest:
+                ctx.values.vaultTrustCertificateDigest,
+              authorizedByDeviceId: ctx.values.deviceId,
+              trustedDevices: [
+                ...ctx.values.verifiedVaultTrustState.trustedDevices,
+                {
+                  deviceId: ctx.values.pendingDeviceId,
+                  publicSignKey: ctx.values.pendingDevicePublicSignKey,
+                  publicVaultKey: ctx.values.pendingDevicePublicVaultKey,
+                },
+              ],
+            },
+            signature: ctx.values.vaultTrustCertificateSignature,
+          },
+        ],
+      },
+      keySlots: {
+        deviceSlots: [
+          ...ctx.remoteSnapshot.keySlots.deviceSlots,
+          {
+            deviceId: ctx.values.pendingDeviceId,
+            vaultKeyGeneration: 1,
+            envelope: ctx.values.pendingDeviceVaultKeyEnvelope,
+          },
+        ],
+      },
+    });
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        reviewedSnapshotDescriptors: {
+          local: ctx.localDescriptor,
+          remote: ctx.remoteDescriptor,
+        },
+        resolution: {
+          entryResolutions: [
+            { entryId: singlePasswordEntry.id, action: "use_remote" },
+          ],
+          tagResolutions: [],
+          deviceProfileResolutions: [],
+        },
+      }),
+    ).rejects.toBeInstanceOf(SyncTrustChangeRequiresDeviceTrustFlowError);
+
+    expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
   });
 
   it("rejects when the remote descriptor changes after review", async () => {

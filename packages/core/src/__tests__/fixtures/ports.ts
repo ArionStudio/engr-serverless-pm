@@ -7,6 +7,16 @@ import type {
 } from "../../domain/device-trust/brand-keys";
 import type { DeviceAccessMaterial } from "../../domain/device-trust/device-access-material";
 import type { DeviceAccessRecoveryBackup } from "../../domain/device-trust/device-access-recovery-backup";
+import {
+  getNextDeviceAccessRevision,
+  INITIAL_DEVICE_ACCESS_REVISION,
+} from "../../domain/device-trust/device-access-revision";
+import {
+  areDeviceAccessRecordsConsistent,
+  haveSameDeviceAccessIdentity,
+  isValidDeviceAccessRecordIdentity,
+  isValidLocalAccessGenerationId,
+} from "../../domain/device-trust/device-access-records";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import type { LocalVaultDescriptor } from "../../domain/vault/local-vault-descriptor";
 import type {
@@ -23,7 +33,10 @@ import type { IdPort } from "../../ports/system/id.port";
 import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { VaultDisplayNamePort } from "../../ports/vault/vault-display-name.port";
-import type { VaultLockTaskRepositoryPort } from "../../ports/vault/vault-lock-task-repository.port";
+import type {
+  VaultLockTask,
+  VaultLockTaskRepositoryPort,
+} from "../../ports/vault/vault-lock-task-repository.port";
 import type { UnlockedVaultSessionMaterialRepositoryPort } from "../../ports/session/unlocked-vault-session-material-repository.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
@@ -33,6 +46,7 @@ import type { EncryptedDeviceSyncCredentialState } from "../../domain/sync";
 import type { PendingDeviceEnrollment } from "../../domain/device-trust";
 import { LocalVaultSnapshotChangedError } from "../../errors/vault-snapshot.errors";
 import { LocalVaultAlreadyInitializedError } from "../../errors/vault-lifecycle.errors";
+import { DeviceAccessMaterialChangedError } from "../../errors/vault-device.errors";
 
 export type SavedCoreRecords = {
   localVaultDescriptor?: LocalVaultDescriptor;
@@ -53,9 +67,72 @@ export type SavedCoreRecords = {
 
 export type CoreTestPorts = ReturnType<typeof createCoreTestPorts>;
 
+function requirePersistedSnapshot(
+  snapshot: VaultSnapshot | undefined,
+): VaultSnapshot {
+  if (snapshot === undefined) {
+    throw new Error("Expected the workflow to persist a vault snapshot.");
+  }
+
+  return snapshot;
+}
+
+export function replaceVaultSnapshotAfterNextSave(
+  ports: CoreTestPorts,
+  replacement: VaultSnapshot,
+): () => VaultSnapshot {
+  const save = vi.mocked(
+    ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+  );
+  const saveImplementation = save.getMockImplementation();
+  let persistedSnapshot: VaultSnapshot | undefined;
+
+  if (saveImplementation === undefined) {
+    throw new Error("Expected the local snapshot save fixture implementation.");
+  }
+
+  save.mockImplementationOnce(async (params) => {
+    await saveImplementation(params);
+    persistedSnapshot = params.snapshot;
+    ports.saved.vaultSnapshot = replacement;
+  });
+
+  return () => requirePersistedSnapshot(persistedSnapshot);
+}
+
+export function replaceVaultSnapshotAfterNextInitializedSave(
+  ports: CoreTestPorts,
+  replacement: VaultSnapshot,
+): () => VaultSnapshot {
+  const save = vi.mocked(ports.vaultLocalRepository.saveInitializedLocalVault);
+  const saveImplementation = save.getMockImplementation();
+  let persistedSnapshot: VaultSnapshot | undefined;
+
+  if (saveImplementation === undefined) {
+    throw new Error(
+      "Expected the initialized vault save fixture implementation.",
+    );
+  }
+
+  save.mockImplementationOnce(async (params) => {
+    await saveImplementation(params);
+    persistedSnapshot = params.snapshot;
+    ports.saved.vaultSnapshot = replacement;
+  });
+
+  return () => requirePersistedSnapshot(persistedSnapshot);
+}
+
 export function createCoreTestPorts(
   values: CoreTestValues = createCoreTestValues(),
 ) {
+  const protectionKeyKinds = new WeakMap<
+    ArrayBuffer,
+    "local" | "new_local" | "recovery" | "rotated_recovery"
+  >();
+  const recoveryKeyKinds = new WeakMap<ArrayBuffer, "current" | "rotated">();
+  const freshBuffer = <T extends ArrayBuffer>(buffer: T): T =>
+    buffer.slice(0) as T;
   const saved: SavedCoreRecords = {
     vaultSnapshotDigest: values.vaultSnapshotDigest,
     deviceSyncCredentialState: values.encryptedDeviceSyncCredentialState,
@@ -111,15 +188,6 @@ export function createCoreTestPorts(
     },
   });
 
-  const deviceSignKeyPair: DeviceSignKeyPair = {
-    publicKey: values.devicePublicSignKey,
-    privateKey: values.devicePrivateSignKey,
-  };
-  const deviceVaultKeyPair: DeviceVaultKeyPair = {
-    publicKey: values.devicePublicVaultKey,
-    privateKey: values.devicePrivateVaultKey,
-  };
-
   const crypto: CryptoPort = {
     algorithmSuite: CURRENT_ALGORITHM_SUITE,
     generateRandomBytes: vi.fn(
@@ -127,15 +195,29 @@ export function createCoreTestPorts(
     ),
     hashSecretValue: vi.fn(async (value) => `hash:${value}`),
     compareSecretValueHash: vi.fn(async (left, right) => left === right),
-    generateDeviceSignKeyPair: vi.fn(async () => deviceSignKeyPair),
-    generateDeviceVaultKeyPair: vi.fn(async () => deviceVaultKeyPair),
-    generateDeviceLocalProtectionKey: vi.fn(
-      async () => values.deviceLocalProtectionKey,
+    generateDeviceSignKeyPair: vi.fn(
+      async (): Promise<DeviceSignKeyPair> => ({
+        publicKey: freshBuffer(values.devicePublicSignKey),
+        privateKey: freshBuffer(values.devicePrivateSignKey),
+      }),
     ),
-    generateVaultMasterKey: vi.fn(async () => values.vaultMasterKey),
-    generateRecoveryKey: vi.fn(async () => values.recoverySecretKey),
+    generateDeviceVaultKeyPair: vi.fn(
+      async (): Promise<DeviceVaultKeyPair> => ({
+        publicKey: freshBuffer(values.devicePublicVaultKey),
+        privateKey: freshBuffer(values.devicePrivateVaultKey),
+      }),
+    ),
+    generateDeviceLocalProtectionKey: vi.fn(
+      async () => freshBuffer(values.deviceLocalProtectionKey),
+    ),
+    generateVaultMasterKey: vi.fn(async () => freshBuffer(values.vaultMasterKey)),
+    generateRecoveryKey: vi.fn(async () => {
+      const recoveryKey = freshBuffer(values.recoverySecretKey);
+      recoveryKeyKinds.set(recoveryKey, "current");
+      return recoveryKey;
+    }),
     generateUnlockedVaultSessionPayloadKey: vi.fn(
-      async () => values.unlockedVaultSessionPayloadKey,
+      async () => freshBuffer(values.unlockedVaultSessionPayloadKey),
     ),
     generateMasterPasswordSalt: vi
       .fn()
@@ -148,50 +230,90 @@ export function createCoreTestPorts(
     generateRecoveryLocalKeysProtectionSalt: vi.fn(
       async () => values.recoveryLocalKeysProtectionSalt,
     ),
-    deriveLocalRootKey: vi
-      .fn()
-      .mockResolvedValueOnce(values.localRootKey)
-      .mockResolvedValue(values.newLocalRootKey),
-    deriveLocalKeysProtectionKey: vi.fn(async (_localRootKey, salt) =>
-      salt === values.newLocalKeysProtectionSalt
-        ? values.newLocalKeysProtectionKey
-        : values.localKeysProtectionKey,
+    deriveLocalRootKey: vi.fn(async (_masterPassword, salt) =>
+      freshBuffer(
+        salt === values.masterPasswordSalt
+          ? values.localRootKey
+          : values.newLocalRootKey,
+      ),
     ),
-    deriveRecoveryLocalKeysProtectionKey: vi.fn(async (_recoveryKey, salt) =>
-      salt === values.rotatedRecoveryLocalKeysProtectionSalt
-        ? values.rotatedRecoveryLocalKeysProtectionKey
-        : values.recoveryLocalKeysProtectionKey,
-    ),
+    deriveLocalKeysProtectionKey: vi.fn(async (_localRootKey, salt) => {
+      const isNew = salt === values.newLocalKeysProtectionSalt;
+      const protectionKey = freshBuffer(
+        isNew ? values.newLocalKeysProtectionKey : values.localKeysProtectionKey,
+      );
+      protectionKeyKinds.set(protectionKey, isNew ? "new_local" : "local");
+      return protectionKey;
+    }),
+    deriveRecoveryLocalKeysProtectionKey: vi.fn(async (_recoveryKey, salt) => {
+      const isRotated = salt === values.rotatedRecoveryLocalKeysProtectionSalt;
+      const protectionKey = freshBuffer(
+        isRotated
+          ? values.rotatedRecoveryLocalKeysProtectionKey
+          : values.recoveryLocalKeysProtectionKey,
+      );
+      protectionKeyKinds.set(
+        protectionKey,
+        isRotated ? "rotated_recovery" : "recovery",
+      );
+      return protectionKey;
+    }),
     deriveDeviceEnrollmentPrivateStateProtectionKey: vi.fn(
-      async () => values.pendingEnrollmentProtectionKey,
+      async () => freshBuffer(values.pendingEnrollmentProtectionKey),
     ),
     wrapLocalKeysPayload: vi.fn(async (_localKeysPayload, protectionKey) => {
-      if (protectionKey === values.newLocalKeysProtectionKey) {
+      const protectionKeyKind = protectionKeyKinds.get(protectionKey);
+
+      if (
+        protectionKey === values.newLocalKeysProtectionKey ||
+        protectionKeyKind === "new_local"
+      ) {
         return values.reprotectedLocalKeys;
       }
 
-      if (protectionKey === values.recoveryLocalKeysProtectionKey) {
+      if (
+        protectionKey === values.recoveryLocalKeysProtectionKey ||
+        protectionKeyKind === "recovery"
+      ) {
         return values.recoveryProtectedLocalKeys;
       }
 
-      if (protectionKey === values.rotatedRecoveryLocalKeysProtectionKey) {
+      if (
+        protectionKey === values.rotatedRecoveryLocalKeysProtectionKey ||
+        protectionKeyKind === "rotated_recovery"
+      ) {
         return values.rotatedRecoveryProtectedLocalKeys;
       }
 
       return values.protectedLocalKeys;
     }),
     unwrapLocalKeysPayload: vi.fn(async () => ({
-      devicePrivateSignKey: values.devicePrivateSignKey,
-      devicePrivateVaultKey: values.devicePrivateVaultKey,
-      deviceLocalProtectionKey: values.deviceLocalProtectionKey,
+      devicePrivateSignKey: values.devicePrivateSignKey.slice(
+        0,
+      ) as typeof values.devicePrivateSignKey,
+      devicePrivateVaultKey: values.devicePrivateVaultKey.slice(
+        0,
+      ) as typeof values.devicePrivateVaultKey,
+      deviceLocalProtectionKey: values.deviceLocalProtectionKey.slice(
+        0,
+      ) as typeof values.deviceLocalProtectionKey,
       vaultTrustAnchor: values.vaultTrustAnchor,
     })),
     wrapDeviceEnrollmentPrivateState: vi.fn(
       async () => values.protectedPendingDeviceEnrollment,
     ),
-    unwrapDeviceEnrollmentPrivateState: vi.fn(
-      async () => values.pendingDeviceEnrollmentPrivateState,
-    ),
+    unwrapDeviceEnrollmentPrivateState: vi.fn(async () => ({
+      ...values.pendingDeviceEnrollmentPrivateState,
+      devicePrivateSignKey: values.pendingDevicePrivateSignKey.slice(
+        0,
+      ) as typeof values.pendingDevicePrivateSignKey,
+      devicePrivateVaultKey: values.pendingDevicePrivateVaultKey.slice(
+        0,
+      ) as typeof values.pendingDevicePrivateVaultKey,
+      deviceLocalProtectionKey: values.pendingDeviceLocalProtectionKey.slice(
+        0,
+      ) as typeof values.pendingDeviceLocalProtectionKey,
+    })),
     createDeviceVaultKeyEnvelope: vi.fn(
       async (_vaultMasterKey, recipientPublicKey, context) =>
         recipientPublicKey === values.pendingDevicePublicVaultKey
@@ -206,7 +328,10 @@ export function createCoreTestPorts(
               vaultKeyGeneration: context.vaultKeyGeneration,
             },
     ),
-    openDeviceVaultKeyEnvelope: vi.fn(async () => values.vaultMasterKey),
+    openDeviceVaultKeyEnvelope: vi.fn(
+      async () =>
+        values.vaultMasterKey.slice(0) as typeof values.vaultMasterKey,
+    ),
     digestDevicePublicSignKey: vi.fn(async (publicKey) =>
       publicKey === values.pendingDevicePublicSignKey
         ? values.pendingDevicePublicSignKeyDigest
@@ -271,15 +396,19 @@ export function createCoreTestPorts(
 
   const bip39: Bip39Port = {
     recoveryKeyToMnemonic: vi.fn(async (recoveryKey) =>
-      recoveryKey === values.rotatedRecoverySecretKey
+      recoveryKey === values.rotatedRecoverySecretKey ||
+      recoveryKeyKinds.get(recoveryKey) === "rotated"
         ? values.rotatedRecoveryMnemonicKey
         : values.recoveryMnemonicKey,
     ),
-    mnemonicToRecoveryKey: vi.fn(async (recoveryMnemonicKey) =>
-      recoveryMnemonicKey === values.rotatedRecoveryMnemonicKey
-        ? values.rotatedRecoverySecretKey
-        : values.recoverySecretKey,
-    ),
+    mnemonicToRecoveryKey: vi.fn(async (recoveryMnemonicKey) => {
+      const isRotated = recoveryMnemonicKey === values.rotatedRecoveryMnemonicKey;
+      const recoveryKey = freshBuffer(
+        isRotated ? values.rotatedRecoverySecretKey : values.recoverySecretKey,
+      );
+      recoveryKeyKinds.set(recoveryKey, isRotated ? "rotated" : "current");
+      return recoveryKey;
+    }),
   };
 
   const vaultLocalRepository: VaultLocalRepositoryPort = {
@@ -300,6 +429,18 @@ export function createCoreTestPorts(
           saved.localVaultTrustCheckpoint !== undefined
         ) {
           throw new LocalVaultAlreadyInitializedError(descriptor.vaultId);
+        }
+
+        if (
+          deviceAccessMaterial.revision !== INITIAL_DEVICE_ACCESS_REVISION ||
+          deviceAccessRecoveryBackup.revision !==
+            INITIAL_DEVICE_ACCESS_REVISION ||
+          !areDeviceAccessRecordsConsistent(
+            deviceAccessMaterial,
+            deviceAccessRecoveryBackup,
+          )
+        ) {
+          throw new DeviceAccessMaterialChangedError(descriptor.vaultId);
         }
 
         saved.localVaultDescriptor = descriptor;
@@ -351,15 +492,114 @@ export function createCoreTestPorts(
     }),
     listLocalVaultDescriptors: vi.fn(),
     removeLocalVaultDescriptor: vi.fn(),
-    saveDeviceAccessMaterial: vi.fn(async (deviceAccessMaterial) => {
-      saved.deviceAccessMaterial = deviceAccessMaterial;
-    }),
-    saveRecoveredDeviceAccess: vi.fn(
-      async (deviceAccessMaterial, deviceAccessRecoveryBackup) => {
+    saveDeviceAccessRecords: vi.fn(
+      async ({
+        expectedDeviceAccessMaterialRevision,
+        expectedDeviceAccessMaterialGenerationId,
+        expectedDeviceAccessRecoveryBackupRevision,
+        expectedDeviceAccessRecoveryBackupGenerationId,
+        deviceAccessMaterial,
+        deviceAccessRecoveryBackup,
+      }) => {
+        const currentDeviceAccessMaterial = saved.deviceAccessMaterial;
+        const currentDeviceAccessRecoveryBackup =
+          saved.deviceAccessRecoveryBackup;
+        const currentDeviceAccessMaterialRevision =
+          currentDeviceAccessMaterial === undefined ||
+          currentDeviceAccessMaterial.vaultId !== deviceAccessMaterial.vaultId
+            ? null
+            : currentDeviceAccessMaterial.revision;
+        const currentDeviceAccessMaterialGenerationId =
+          currentDeviceAccessMaterial === undefined ||
+          currentDeviceAccessMaterial.vaultId !== deviceAccessMaterial.vaultId
+            ? null
+            : currentDeviceAccessMaterial.localAccessGenerationId;
+        const nextDeviceAccessMaterialRevision =
+          expectedDeviceAccessMaterialRevision === null
+            ? INITIAL_DEVICE_ACCESS_REVISION
+            : getNextDeviceAccessRevision(expectedDeviceAccessMaterialRevision);
+        const nextDeviceAccessRecoveryBackupRevision =
+          getNextDeviceAccessRevision(
+            expectedDeviceAccessRecoveryBackupRevision,
+          );
+        const isExpectedMaterialAbsent =
+          expectedDeviceAccessMaterialRevision === null &&
+          expectedDeviceAccessMaterialGenerationId === null;
+        const hasSplitMaterialExpectation =
+          (expectedDeviceAccessMaterialRevision === null) !==
+          (expectedDeviceAccessMaterialGenerationId === null);
+        const isCurrentMaterialAbsent =
+          currentDeviceAccessMaterial === undefined;
+
+        if (
+          nextDeviceAccessMaterialRevision === null ||
+          nextDeviceAccessRecoveryBackupRevision === null ||
+          hasSplitMaterialExpectation ||
+          currentDeviceAccessRecoveryBackup === undefined ||
+          isCurrentMaterialAbsent !== isExpectedMaterialAbsent ||
+          !isValidLocalAccessGenerationId(
+            expectedDeviceAccessRecoveryBackupGenerationId,
+          ) ||
+          (expectedDeviceAccessMaterialGenerationId !== null &&
+            !isValidLocalAccessGenerationId(
+              expectedDeviceAccessMaterialGenerationId,
+            )) ||
+          !isValidDeviceAccessRecordIdentity(
+            currentDeviceAccessRecoveryBackup,
+          ) ||
+          (currentDeviceAccessMaterial !== undefined &&
+            !areDeviceAccessRecordsConsistent(
+              currentDeviceAccessMaterial,
+              currentDeviceAccessRecoveryBackup,
+            )) ||
+          !areDeviceAccessRecordsConsistent(
+            deviceAccessMaterial,
+            deviceAccessRecoveryBackup,
+          ) ||
+          !haveSameDeviceAccessIdentity(
+            currentDeviceAccessRecoveryBackup,
+            deviceAccessRecoveryBackup,
+          ) ||
+          currentDeviceAccessMaterialRevision !==
+            expectedDeviceAccessMaterialRevision ||
+          currentDeviceAccessMaterialGenerationId !==
+            expectedDeviceAccessMaterialGenerationId ||
+          currentDeviceAccessRecoveryBackup?.localAccessGenerationId !==
+            expectedDeviceAccessRecoveryBackupGenerationId ||
+          currentDeviceAccessRecoveryBackup?.revision !==
+            expectedDeviceAccessRecoveryBackupRevision ||
+          deviceAccessMaterial.localAccessGenerationId ===
+            expectedDeviceAccessRecoveryBackupGenerationId ||
+          deviceAccessMaterial.revision !== nextDeviceAccessMaterialRevision ||
+          deviceAccessRecoveryBackup.revision !==
+            nextDeviceAccessRecoveryBackupRevision
+        ) {
+          throw new DeviceAccessMaterialChangedError(
+            deviceAccessMaterial.vaultId,
+          );
+        }
+
         saved.deviceAccessMaterial = deviceAccessMaterial;
         saved.deviceAccessRecoveryBackup = deviceAccessRecoveryBackup;
       },
     ),
+    getDeviceAccessRecords: vi.fn(async (vaultId) => {
+      const deviceAccessMaterial = saved.deviceAccessMaterial;
+      const deviceAccessRecoveryBackup = saved.deviceAccessRecoveryBackup;
+
+      return {
+        deviceAccessMaterial:
+          deviceAccessMaterial !== undefined &&
+          deviceAccessMaterial.vaultId === vaultId
+            ? deviceAccessMaterial
+            : null,
+        deviceAccessRecoveryBackup:
+          deviceAccessRecoveryBackup !== undefined &&
+          deviceAccessRecoveryBackup.vaultId === vaultId
+            ? deviceAccessRecoveryBackup
+            : null,
+      };
+    }),
     getDeviceAccessMaterial: vi.fn(async (vaultId) => {
       const deviceAccessMaterial = saved.deviceAccessMaterial;
 
@@ -374,11 +614,6 @@ export function createCoreTestPorts(
     removeDeviceAccessMaterial: vi.fn(async () => {
       saved.deviceAccessMaterial = undefined;
     }),
-    saveDeviceAccessRecoveryBackup: vi.fn(
-      async (deviceAccessRecoveryBackup) => {
-        saved.deviceAccessRecoveryBackup = deviceAccessRecoveryBackup;
-      },
-    ),
     getDeviceAccessRecoveryBackup: vi.fn(async (vaultId) => {
       const deviceAccessRecoveryBackup = saved.deviceAccessRecoveryBackup;
 
@@ -502,6 +737,7 @@ export function createCoreTestPorts(
       .fn()
       .mockResolvedValueOnce(values.vaultId)
       .mockResolvedValueOnce(values.deviceId)
+      .mockResolvedValueOnce(values.localAccessGenerationId)
       .mockResolvedValue(values.sessionId),
   };
 
@@ -519,6 +755,10 @@ export function createCoreTestPorts(
     sessionServices.unlockedVaultSession.activate.bind(
       sessionServices.unlockedVaultSession,
     );
+  const activateSessionWithAutoLockOriginal =
+    sessionServices.unlockedVaultSession.activateWithAutoLock.bind(
+      sessionServices.unlockedVaultSession,
+    );
   const getSessionOriginal = sessionServices.unlockedVaultSession.get.bind(
     sessionServices.unlockedVaultSession,
   );
@@ -528,6 +768,10 @@ export function createCoreTestPorts(
     );
   const removeSessionOriginal =
     sessionServices.unlockedVaultSession.remove.bind(
+      sessionServices.unlockedVaultSession,
+    );
+  const cleanupActiveSessionOriginal =
+    sessionServices.unlockedVaultSession.cleanupActiveSession.bind(
       sessionServices.unlockedVaultSession,
     );
 
@@ -549,6 +793,33 @@ export function createCoreTestPorts(
       };
 
       return sessionId;
+    },
+  );
+  vi.spyOn(
+    sessionServices.unlockedVaultSession,
+    "activateWithAutoLock",
+  ).mockImplementation(
+    async (
+      activationGeneration,
+      unlockedVault,
+      sourceSnapshotVersionVector,
+      installAutoLock,
+      rollbackAutoLock,
+    ) => {
+      const activatedSession = await activateSessionWithAutoLockOriginal(
+        activationGeneration,
+        unlockedVault,
+        sourceSnapshotVersionVector,
+        installAutoLock,
+        rollbackAutoLock,
+      );
+      unlockedVaultSessionMirror = {
+        sessionId: activatedSession.sessionId,
+        unlockedVault,
+        sourceSnapshotVersionVector,
+      };
+
+      return activatedSession;
     },
   );
   vi.spyOn(
@@ -582,6 +853,30 @@ export function createCoreTestPorts(
       unlockedVaultSessionMirror = undefined;
     },
   );
+  vi.spyOn(
+    sessionServices.unlockedVaultSession,
+    "cleanupActiveSession",
+  ).mockImplementation(
+    async (
+      requiredVaultId,
+      invalidateWhenUnavailable,
+      beforeRemoval,
+      afterRemoval,
+    ) => {
+      const result = await cleanupActiveSessionOriginal(
+        requiredVaultId,
+        invalidateWhenUnavailable,
+        beforeRemoval,
+        afterRemoval,
+      );
+
+      if (result === "removed") {
+        unlockedVaultSessionMirror = undefined;
+      }
+
+      return result;
+    },
+  );
 
   const clock: ClockPort = {
     now: vi.fn(() => values.timestamp),
@@ -605,10 +900,20 @@ export function createCoreTestPorts(
     checkVaultAccess: vi.fn(async () => "authentication_rejected" as const),
   };
 
+  let activeVaultLockTask: VaultLockTask | null = null;
   const vaultLockTasks: VaultLockTaskRepositoryPort = {
-    save: vi.fn(async () => undefined),
-    get: vi.fn(async () => null),
-    remove: vi.fn(async () => undefined),
+    save: vi.fn(async (task) => {
+      activeVaultLockTask = task;
+    }),
+    get: vi.fn(async () => activeVaultLockTask),
+    removeIfActionIsActive: vi.fn(async (actionId) => {
+      if (activeVaultLockTask?.actionId !== actionId) {
+        return false;
+      }
+
+      activeVaultLockTask = null;
+      return true;
+    }),
   };
 
   const vaultDisplayName: VaultDisplayNamePort = {

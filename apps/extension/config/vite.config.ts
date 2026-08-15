@@ -81,8 +81,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": resolve(__dirname, "..", "src"),
-      "@lfspm/core": resolve(coreSourceRoot, "index.ts"),
-      "@lfspm/core/": `${coreSourceRoot}/`,
+      "@lfspm/core": coreSourceRoot,
     },
   },
   optimizeDeps: {

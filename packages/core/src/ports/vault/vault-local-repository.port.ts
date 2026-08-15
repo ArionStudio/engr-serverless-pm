@@ -11,7 +11,9 @@ export interface VaultLocalRepositoryPort {
    * Atomically creates all local records for a new vault. Implementations must
    * reject when any local record already exists for the vault and avoid
    * leaving a partial descriptor/material/recovery-backup/snapshot set when
-   * this rejects.
+   * this rejects. Access material and its recovery backup must carry the same
+   * vault, device, algorithm suite, public-key identity, and freshly generated
+   * `localAccessGenerationId`. Both revisions must start at one.
    */
   saveInitializedLocalVault: (params: {
     readonly descriptor: LocalVaultDescriptor;
@@ -39,27 +41,59 @@ export interface VaultLocalRepositoryPort {
   listLocalVaultDescriptors: () => Promise<LocalVaultDescriptor[]>;
   removeLocalVaultDescriptor: (vaultId: string) => Promise<void>;
 
-  saveDeviceAccessMaterial: (
-    deviceAccessMaterial: DeviceAccessMaterial,
-  ) => Promise<void>;
   /**
-   * Atomically replaces local device trust material and its recovery backup.
-   * Implementations must avoid leaving only one side updated when this rejects.
+   * Atomically compares and replaces local device trust material and its
+   * recovery backup. Expected material revision and generation must either
+   * both be `null` when access material is absent or both identify the present
+   * material. All other combinations are conflicts.
+   * Both replacements must use the same fresh generation ID, distinct from
+   * both persisted generations.
+   * Revisions are positive safe integers. Each replacement revision must be
+   * exactly its expected revision plus one; absent material starts at revision
+   * one. Exhausted or invalid revisions are conflicts.
+   * Implementations must reject with
+   * `DeviceAccessMaterialChangedError` without changing either record when an
+   * expected revision, generation ID, or device identity no longer matches.
+   * The persisted recovery backup and both replacements must carry the same
+   * vault ID, device ID, algorithm suite, public signing key, and public vault
+   * key, including when material is absent. When material is present, it must
+   * share that identity and generation with the persisted backup. The
+   * replacement pair may change only the generation and local-protection
+   * fields, not the device identity.
    * Retained copies of the previous backup remain usable with their original
    * recovery words while the recovered device identity remains trusted.
    */
-  saveRecoveredDeviceAccess: (
-    deviceAccessMaterial: DeviceAccessMaterial,
-    deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup,
+  saveDeviceAccessRecords: (
+    params: (
+      | {
+          readonly expectedDeviceAccessMaterialRevision: null;
+          readonly expectedDeviceAccessMaterialGenerationId: null;
+        }
+      | {
+          readonly expectedDeviceAccessMaterialRevision: number;
+          readonly expectedDeviceAccessMaterialGenerationId: string;
+        }
+    ) & {
+      readonly expectedDeviceAccessRecoveryBackupRevision: number;
+      readonly expectedDeviceAccessRecoveryBackupGenerationId: string;
+      readonly deviceAccessMaterial: DeviceAccessMaterial;
+      readonly deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup;
+    },
   ) => Promise<void>;
+  /**
+   * Atomically reads the local access material and recovery backup from one
+   * repository snapshot. Each field is `null` only when that record is absent
+   * for `vaultId`.
+   */
+  getDeviceAccessRecords: (vaultId: string) => Promise<{
+    readonly deviceAccessMaterial: DeviceAccessMaterial | null;
+    readonly deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup | null;
+  }>;
   getDeviceAccessMaterial: (
     vaultId: string,
   ) => Promise<DeviceAccessMaterial | null>;
   removeDeviceAccessMaterial: (vaultId: string) => Promise<void>;
 
-  saveDeviceAccessRecoveryBackup: (
-    deviceAccessRecoveryBackup: DeviceAccessRecoveryBackup,
-  ) => Promise<void>;
   getDeviceAccessRecoveryBackup: (
     vaultId: string,
   ) => Promise<DeviceAccessRecoveryBackup | null>;

@@ -17,6 +17,7 @@ import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-rep
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import { DeviceRevocationConsumptionService } from "../../services/trust/device-revocation-consumption.service";
+import { bestEffortWipeArrayBuffers } from "../../lib/secure-wipe.utils";
 
 export type PrepareDeviceRevocationConsumptionCommandParams = {
   readonly vaultId: string;
@@ -70,37 +71,42 @@ export class PrepareDeviceRevocationConsumptionUseCase {
       sourceSnapshotVersionVector,
     });
 
-    return {
-      reviewedSnapshotDescriptors: {
-        local: toVaultSnapshotDescriptor(
-          params.vaultId,
-          candidate.localSnapshot,
+    try {
+      return {
+        reviewedSnapshotDescriptors: {
+          local: toVaultSnapshotDescriptor(
+            params.vaultId,
+            candidate.localSnapshot,
+          ),
+          remote: cloneVaultSnapshotDescriptor(
+            candidate.remoteSnapshotDescriptor,
+          ),
+        },
+        revokedDeviceIds: candidate.revocations.map(
+          (transition) => transition.revokedDeviceId,
         ),
-        remote: cloneVaultSnapshotDescriptor(
-          candidate.remoteSnapshotDescriptor,
+        enrolledDeviceIds: candidate.enrollments.map(
+          (transition) => transition.enrolledDeviceId,
         ),
-      },
-      revokedDeviceIds: candidate.revocations.map(
-        (transition) => transition.revokedDeviceId,
-      ),
-      enrolledDeviceIds: candidate.enrollments.map(
-        (transition) => transition.enrolledDeviceId,
-      ),
-      vaultKeyGeneration: candidate.remoteSnapshot.metadata.vaultKeyGeneration,
-      review: {
-        entryReviews: findChangedEntries(
-          candidate.trustTransitionBaseline,
-          candidate.remoteVault,
-        ).map(toVisibleEntryReviewItem),
-        tagReviews: findChangedTags(
-          candidate.trustTransitionBaseline,
-          candidate.remoteVault,
-        ),
-        deviceProfileReviews: findChangedDeviceProfiles(
-          candidate.trustTransitionBaseline,
-          candidate.remoteVault,
-        ),
-      },
-    };
+        vaultKeyGeneration:
+          candidate.remoteSnapshot.metadata.vaultKeyGeneration,
+        review: {
+          entryReviews: findChangedEntries(
+            candidate.trustTransitionBaseline,
+            candidate.remoteVault,
+          ).map(toVisibleEntryReviewItem),
+          tagReviews: findChangedTags(
+            candidate.trustTransitionBaseline,
+            candidate.remoteVault,
+          ),
+          deviceProfileReviews: findChangedDeviceProfiles(
+            candidate.trustTransitionBaseline,
+            candidate.remoteVault,
+          ),
+        },
+      };
+    } finally {
+      bestEffortWipeArrayBuffers([candidate.vaultMasterKey]);
+    }
   }
 }

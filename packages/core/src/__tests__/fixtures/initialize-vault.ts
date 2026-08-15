@@ -1,3 +1,4 @@
+import { vi } from "vitest";
 import { InitializeVaultUseCase } from "../../use-cases/vault-lifecycle/initialize-vault";
 import { createCoreTestPorts } from "./ports";
 import { createCoreTestValues } from "./values";
@@ -13,7 +14,17 @@ export function createInitializeVaultTestContext() {
     ports.ids,
     ports.clock,
     ports.vaultDisplayName,
+    ports.scheduledTasks,
+    ports.vaultLockTasks,
   );
+
+  vi.mocked(ports.ids.generateId).mockReset();
+  vi.mocked(ports.ids.generateId)
+    .mockResolvedValueOnce(values.vaultId)
+    .mockResolvedValueOnce(values.deviceId)
+    .mockResolvedValueOnce(values.localAccessGenerationId)
+    .mockResolvedValueOnce(values.vaultLockActionId)
+    .mockResolvedValue(values.sessionId);
 
   return {
     values,

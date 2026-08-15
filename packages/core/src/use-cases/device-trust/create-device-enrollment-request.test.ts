@@ -1,9 +1,58 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
+import type { RawMasterPassword } from "../../domain/master-password";
+import { InvalidNewMasterPasswordError } from "../../errors/master-password.errors";
 import { CreateDeviceEnrollmentRequestUseCase } from "./create-device-enrollment-request";
 
 describe("CreateDeviceEnrollmentRequestUseCase", () => {
+  it("rejects a password below maximum strength before generating the request identity", async () => {
+    const values = createCoreTestValues();
+    const ports = createCoreTestPorts(values);
+    const useCase = new CreateDeviceEnrollmentRequestUseCase(
+      ports.crypto,
+      ports.ids,
+      ports.vaultLocalRepository,
+    );
+
+    await expect(
+      useCase.execute({
+        vaultId: values.vaultId,
+        expectedGenesisCertificateDigest:
+          values.vaultTrustAnchor.genesisCertificateDigest,
+        masterPassword: "correcthorsebatterystaple" as RawMasterPassword,
+      }),
+    ).rejects.toBeInstanceOf(InvalidNewMasterPasswordError);
+
+    expect(ports.ids.generateId).not.toHaveBeenCalled();
+    expect(
+      ports.vaultLocalRepository.savePendingDeviceEnrollment,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("accepts a maximum-strength password", async () => {
+    const values = createCoreTestValues();
+    const ports = createCoreTestPorts(values);
+    const useCase = new CreateDeviceEnrollmentRequestUseCase(
+      ports.crypto,
+      ports.ids,
+      ports.vaultLocalRepository,
+    );
+    const masterPassword = "vN7#qL2!xP9@rT4$zK6&" as RawMasterPassword;
+
+    await useCase.execute({
+      vaultId: values.vaultId,
+      expectedGenesisCertificateDigest:
+        values.vaultTrustAnchor.genesisCertificateDigest,
+      masterPassword,
+    });
+
+    expect(ports.crypto.deriveLocalRootKey).toHaveBeenCalledWith(
+      masterPassword,
+      values.masterPasswordSalt,
+    );
+  });
+
   it("stores private request state locally and returns only the signed public request", async () => {
     const values = createCoreTestValues();
     const ports = createCoreTestPorts(values);
@@ -34,5 +83,28 @@ describe("CreateDeviceEnrollmentRequestUseCase", () => {
     expect(request).not.toHaveProperty("devicePrivateSignKey");
     expect(request).not.toHaveProperty("devicePrivateVaultKey");
     expect(request).not.toHaveProperty("deviceLocalProtectionKey");
+    const signKeyPair = await vi.mocked(ports.crypto.generateDeviceSignKeyPair)
+      .mock.results[0]!.value;
+    const vaultKeyPair = await vi.mocked(
+      ports.crypto.generateDeviceVaultKeyPair,
+    ).mock.results[0]!.value;
+    const deviceLocalProtectionKey = await vi.mocked(
+      ports.crypto.generateDeviceLocalProtectionKey,
+    ).mock.results[0]!.value;
+    const localRootKey = await vi.mocked(ports.crypto.deriveLocalRootKey).mock
+      .results[0]!.value;
+    const pendingEnrollmentProtectionKey = await vi.mocked(
+      ports.crypto.deriveDeviceEnrollmentPrivateStateProtectionKey,
+    ).mock.results[0]!.value;
+    for (const buffer of [
+      signKeyPair.privateKey,
+      vaultKeyPair.privateKey,
+      deviceLocalProtectionKey,
+      localRootKey,
+      pendingEnrollmentProtectionKey,
+    ]) {
+      expect(Array.from(new Uint8Array(buffer))).toEqual([0]);
+    }
+    expect(Array.from(new Uint8Array(values.localRootKey))).toEqual([2]);
   });
 });

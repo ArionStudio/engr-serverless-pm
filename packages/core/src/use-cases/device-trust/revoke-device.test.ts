@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
+import {
+  createCoreTestPorts,
+  replaceVaultSnapshotAfterNextSave,
+} from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import { singlePasswordEntry } from "../../__tests__/fixtures/vault-entries";
 import type {
@@ -10,6 +13,7 @@ import type { UnlockedVault } from "../../domain/session";
 import type { VaultSnapshot } from "../../domain/snapshot";
 import { toVaultSnapshotDescriptor } from "../../domain/snapshot";
 import { InvalidDeviceRevocationTransitionError } from "../../errors/device-revocation.errors";
+import { PersistedVaultRollbackIncompleteError } from "../../errors/vault-snapshot.errors";
 import {
   ProviderCredentialRevocationPendingError,
   ReplacementSyncCredentialsRequiredError,
@@ -159,7 +163,38 @@ function createContext() {
   return { values, ports, snapshot, useCase };
 }
 
+async function expectGeneratedVaultMasterKeyWiped(
+  ctx: ReturnType<typeof createContext>,
+): Promise<void> {
+  const generatedVaultMasterKey = await vi.mocked(
+    ctx.ports.crypto.generateVaultMasterKey,
+  ).mock.results[0]!.value;
+
+  expect(Array.from(new Uint8Array(generatedVaultMasterKey))).toEqual([0]);
+}
+
 describe("RevokeDeviceUseCase", () => {
+  it("uploads the signed revocation even when local storage replaces it after save", async () => {
+    const ctx = createContext();
+    const getPersistedSnapshot = replaceVaultSnapshotAfterNextSave(
+      ctx.ports,
+      ctx.snapshot,
+    );
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      deviceId: ctx.values.pendingDeviceId,
+      replacementSyncConfig: ctx.values.replacementSyncConfigInput,
+    });
+
+    const uploadedSnapshot = vi.mocked(
+      ctx.ports.syncProvider.uploadVaultSnapshot,
+    ).mock.calls[0]?.[1];
+    expect(uploadedSnapshot).toBe(getPersistedSnapshot());
+    expect(uploadedSnapshot).not.toBe(ctx.ports.saved.vaultSnapshot);
+    expect(ctx.ports.saved.vaultSnapshot).toBe(ctx.snapshot);
+  });
+
   it("rotates the vault key and creates envelopes only for survivors", async () => {
     const ctx = createContext();
 
@@ -321,10 +356,19 @@ describe("RevokeDeviceUseCase", () => {
     expect(
       ctx.ports.saved.unlockedVaultSession?.unlockedVault.vaultMasterKey,
     ).toBe(ctx.values.vaultMasterKey);
+    await expectGeneratedVaultMasterKeyWiped(ctx);
   });
 
   it("restores the old state when the session expires during upload", async () => {
     const ctx = createContext();
+    vi.mocked(
+      ctx.ports.crypto.signLocalVaultTrustCheckpoint,
+    ).mockImplementation(async (_payload, privateKey) => {
+      expect(
+        Array.from(new Uint8Array(privateKey)).some((byte) => byte !== 0),
+      ).toBe(true);
+      return ctx.values.localVaultTrustCheckpoint.signature;
+    });
     vi.mocked(
       ctx.ports.syncProvider.uploadVaultSnapshot,
     ).mockImplementationOnce(async () => {
@@ -345,6 +389,14 @@ describe("RevokeDeviceUseCase", () => {
       ctx.values.encryptedDeviceSyncCredentialState,
     );
     expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
+    const checkpointSignCalls = vi.mocked(
+      ctx.ports.crypto.signLocalVaultTrustCheckpoint,
+    ).mock.invocationCallOrder;
+    expect(checkpointSignCalls.at(-1)).toBeLessThan(
+      vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mock
+        .invocationCallOrder[0]!,
+    );
+    await expectGeneratedVaultMasterKeyWiped(ctx);
   });
 
   it.each([
@@ -373,6 +425,9 @@ describe("RevokeDeviceUseCase", () => {
       expect(
         ctx.ports.saved.unlockedVaultSession?.unlockedVault.vaultMasterKey,
       ).toBe(ctx.values.vaultMasterKey);
+      if (method === "createDeviceVaultKeyEnvelope") {
+        await expectGeneratedVaultMasterKeyWiped(ctx);
+      }
     },
   );
 
@@ -394,6 +449,7 @@ describe("RevokeDeviceUseCase", () => {
     expect(ctx.ports.saved.deviceSyncCredentialState).toBe(
       ctx.values.encryptedDeviceSyncCredentialState,
     );
+    await expectGeneratedVaultMasterKeyWiped(ctx);
   });
 
   it("invalidates the session when upload rollback cannot be persisted", async () => {
@@ -411,9 +467,10 @@ describe("RevokeDeviceUseCase", () => {
         deviceId: ctx.values.pendingDeviceId,
         replacementSyncConfig: ctx.values.replacementSyncConfigInput,
       }),
-    ).rejects.toThrow("upload failed");
+    ).rejects.toBeInstanceOf(PersistedVaultRollbackIncompleteError);
 
     expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
+    await expectGeneratedVaultMasterKeyWiped(ctx);
   });
 
   it("retains the rotated state and invalidates the session when post-upload session commit fails", async () => {
@@ -436,6 +493,7 @@ describe("RevokeDeviceUseCase", () => {
       ctx.values.replacementEncryptedDeviceSyncCredentialState,
     );
     expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
+    await expectGeneratedVaultMasterKeyWiped(ctx);
   });
 
   it("can revoke an authorized device that has not created a profile yet", async () => {
