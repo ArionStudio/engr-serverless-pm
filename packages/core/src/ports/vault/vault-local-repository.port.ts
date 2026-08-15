@@ -45,6 +45,8 @@ export interface VaultLocalRepositoryPort {
   /**
    * Atomically replaces local device trust material and its recovery backup.
    * Implementations must avoid leaving only one side updated when this rejects.
+   * Retained copies of the previous backup remain usable with their original
+   * recovery words while the recovered device identity remains trusted.
    */
   saveRecoveredDeviceAccess: (
     deviceAccessMaterial: DeviceAccessMaterial,

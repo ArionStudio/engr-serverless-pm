@@ -33,6 +33,10 @@ export type RecoverDeviceAccessCommandParams = {
 
 export type RecoverDeviceAccessResult = {
   readonly deviceId: string;
+  /**
+   * Protects the replacement recovery backup stored on this device. It does not
+   * invalidate recovery words for retained copies of an older backup.
+   */
   readonly recoveryMnemonicKey: RecoveryKeyMnemonic;
 };
 

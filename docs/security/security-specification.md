@@ -13,6 +13,8 @@ A serverless password manager where **confidentiality and tamper-detection** are
 - S3 objects and IndexedDB are **public and attacker-modifiable** (read/write/rollback/delete).
 - Attacker can perform **offline brute-force attacks** on the stored vaults.
 - Only **RAM of the currently running extension instance** is trusted.
+- Replacing a recovery backup cannot revoke retained older copies under this
+  storage model; see the [device-access recovery limitation](#86-device-access-recovery).
 
 ### 1.2 Goals
 
@@ -442,6 +444,31 @@ public identities, and have a matching added device envelope. Existing
 envelopes cannot change. A completed target's active profile is mandatory and a
 tombstone for a newly trusted identity is rejected. Other ordinary vault
 changes accompanying the enrollment use the normal prepare/apply review.
+
+### 8.6 Device-Access Recovery
+
+Device-access recovery restores an existing, still-trusted device identity. The
+provided words decrypt the current local recovery backup, and the recovered
+private keys must match both that backup and the current signed trust chain.
+Recovery then protects the same local key payload with a new master password and
+a newly generated mnemonic, and atomically replaces the current local access
+material and recovery backup. It does not mutate the signed vault snapshot,
+change device trust, or upload a sync update.
+
+The returned words protect only the replacement backup stored on this device.
+They do not revoke words for a copied older backup. An attacker who retains an
+older backup and its words, or who rolls all local protected records back
+together, can restore that same device identity while it remains trusted. User
+instructions must warn about this limitation and must not report older words as
+invalidated.
+
+Invalidating a retained recovery credential requires a fresh device identity,
+an authorized trust transition that removes the old identity, vault-key and
+envelope rotation, and convergence on surviving devices. Preventing coordinated
+rollback additionally requires an independent monotonic witness or another
+device that remembers the newer trust state. The current product contract
+accepts this residual limitation rather than claiming local backup replacement
+is credential revocation. See the [recovery instructions](../design/multi-device-setup.md#recovery).
 
 ---
 

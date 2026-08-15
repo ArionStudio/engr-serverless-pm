@@ -6,9 +6,9 @@ import type { LocalKeysPayload } from "./local-protection.type";
 /**
  * Encrypted local backup of one device's trust material.
  *
- * Recovery rotation replaces the current persisted backup only. A copied backup
- * or hostile local-storage rollback can still be decrypted with the recovery
- * words that protected that older backup.
+ * Replacing the recovery backup affects the current persisted copy only. A
+ * copied backup or hostile local-storage rollback can still be decrypted with
+ * the recovery words that protected that older backup.
  */
 export type DeviceAccessRecoveryBackup = {
   readonly vaultId: string;
