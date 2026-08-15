@@ -14,62 +14,99 @@ skinparam sequence {
 actor "New device caller" as Caller
 participant "PerformDeviceEnrollmentUseCase" as UC
 participant "UnlockedVaultSessionService" as Session
+participant "VaultSessionActivationService" as Activation
+participant "VaultLifecycleCleanupService" as Lifecycle
+participant "VaultTrustService" as Trust
 participant "SyncProviderPort" as Sync
-participant "CryptoPort" as Crypto
-participant "IdPort" as Ids
+participant "CryptoPort / Bip39Port" as Crypto
+participant "IdPort / ClockPort" as System
 participant "VaultDisplayNamePort" as Names
 database "VaultLocalRepositoryPort" as LocalRepo
-participant "Domain device mutation" as Domain
+database "VaultLockTaskRepositoryPort" as LockRepo
+participant "ScheduledTaskPort" as Tasks
+participant "ClipboardClearService" as Clipboard
 
-Caller -> UC : execute(enrollmentBundle, masterPassword, deviceName)
-UC -> UC : calculate masterPassword strength
-break password score below 4
-  UC --> Caller : throw InvalidNewMasterPasswordError
+Caller -> UC : execute(enrollmentResponse, masterPassword,\ndeviceName, optional syncConfig, lockAfterMs)
+UC -> Activation : requireValidLockDelay(lockAfterMs)
+UC -> UC : assertNewMasterPasswordMeetsPolicy(masterPassword)
+UC -> LocalRepo : getPendingDeviceEnrollment(response.requestId)
+UC -> UC : validate response/pending identity, version, and suite
+UC -> LocalRepo : getLocalVaultDescriptor(vaultId)\ngetDeviceAccessMaterial(vaultId)
+UC -> Session : requireVaultCanBeActivated(vaultId)
+
+UC -> Crypto : derive pending-state protection\nand unwrap private device state
+UC -> Crypto : verify enrollment request and both device key pairs
+UC -> Trust : verifyTrustChain(anchor, response.snapshot.trustChain)
+UC -> Trust : verifySnapshot(response.snapshot, verifiedTrust)
+UC -> Crypto : verify target identity digests and\nopen target vault-key envelope
+UC -> Crypto : decrypt authorized snapshot content
+UC -> UC : add new device profile
+
+opt encrypted vault contains sync target
+  UC -> Sync : setup(syncConfig)
+  UC -> Sync : getLatestVaultSnapshotDescriptor(syncAccess, vaultId)
+  UC -> UC : require target and descriptor match authorized snapshot
 end
-UC -> Session : requireVaultCanBeActivated(bundle.vaultId)
-UC -> Sync : getLatestVaultSnapshotDescriptor(bundle.syncConfig, vaultId)
-UC -> UC : compare remote descriptor with bundle descriptor
-UC -> Sync : downloadVaultSnapshot(bundle.syncConfig, descriptor)
-UC -> Crypto : verifyVaultSnapshotSignature(remoteSnapshot, bundle.signerPublicKey)
-UC -> UC : validate enrollment slot, completion, digests, authorizer
-UC -> Crypto : verifyDeviceEnrollmentAuthorizationSignature(...)
-UC -> Crypto : deriveEnrollmentVaultMasterKeyProtectionKey(bundle.secret)
-UC -> Crypto : unwrapVaultMasterKey(enrollmentSlot.protectedVaultMasterKey, key)
-UC -> Crypto : decryptVaultSnapshotContent(remoteSnapshot.content, vaultMasterKey)
+
+UC -> Crypto : encrypt, sign, and verify registered snapshot
+UC -> Crypto : generate recovery/local-protection material\nand wrap local keys
+UC -> System : generate localAccessGenerationId
 UC -> Names : generateVaultDisplayName()
-UC -> Crypto : generate local salts, deviceSlotKey, wrap local keys
-UC -> Crypto : generate recovery key, derive recovery protection, wrap local keys
-UC -> Crypto : wrapVaultMasterKey(vaultMasterKey, deviceSlotProtectionKey)
-UC -> Domain : addDeviceProfileToVault(vault, pendingDeviceId, deviceName, now)
-UC -> Crypto : encryptVaultSnapshotContent(registeredVault, vaultMasterKey)
-UC -> Crypto : signVaultSnapshot(unsignedSnapshot, pendingPrivateSignKey)
-UC -> Crypto : verifyVaultSnapshotSignature(registeredSnapshot, pendingPublicSignKey)
-UC -> Ids : generateId() for fresh localAccessGenerationId
-UC -> UC : validate localAccessGenerationId
-UC -> LocalRepo : saveInitializedLocalVault(descriptor, accessMaterial, recoveryBackup, registeredSnapshot)
-UC -> Session : commit(unlockedVault, registeredSnapshot.vector)
-alt commit fails
-  UC -> LocalRepo : removePersistedLocalVault(vaultId)
-  UC --> Caller : throw commit failure
-else committed
-  UC -> Sync : uploadVaultSnapshot(syncConfig, registeredSnapshot, remoteDescriptor)
-  alt remote snapshot changed
-    UC -> Session : discardIfSessionIsActive(...)
-    alt session advanced
-      UC --> Caller : visible vault projection, vector, timestamp, deviceId, recoveryMnemonicKey, syncUpload=complete
-    else session current
-      UC -> LocalRepo : removePersistedLocalVaultIfSnapshotMatches(...)
-      alt rollback completed
-        UC --> Caller : throw remote-changed error
-      else rollback incomplete
-        UC --> Caller : throw rollback-incomplete error
+UC -> Trust : createCheckpoint(registered snapshot)
+UC -> Crypto : digest snapshot and optionally encrypt sync credentials
+
+UC -> Activation : activate(lease, unlockedVault, registered vector,\nlockAfterMs, prepare, rollback)
+Activation -> Session : activateWithAutoLock(...)
+Session -> Activation : invoke install-auto-lock callback
+Activation -> LocalRepo : prepare: saveInitializedLocalVault(...)
+Activation -> LockRepo : save(actionId, vaultId, expiresAt)
+Activation -> Tasks : scheduleTask(lockVault, actionId, expiresAt)
+alt scheduling or session activation fails
+  Session -> Activation : invoke rollback callback
+  Activation -> Tasks : best effort cancelTask(lockVault, actionId)
+  Activation -> LockRepo : best effort removeIfActionIsActive(actionId)
+  Activation -> LocalRepo : best effort removePersistedLocalVaultIfSnapshotMatches(...)
+  UC --> Caller : throw original activation failure
+else activated with fresh session identity
+  opt sync access exists
+    UC -> Sync : uploadVaultSnapshot(syncAccess, registeredSnapshot,\nauthorizedDescriptor)
+    alt remote snapshot changed
+      UC -> Lifecycle : discardIfSessionIsActive(sessionId, generation, vector)
+      Lifecycle -> Session : enter serialized conditional discard
+      alt originating session is current
+        Session -> Lifecycle : run cleanup callback
+        Lifecycle -> Clipboard : clear matching clipboard task
+        Lifecycle -> Tasks : cancel matching clipboard and lock tasks
+        Lifecycle -> LockRepo : removeIfActionIsActive(lockActionId)
+        Session -> Session : wipe and remove matching session records
+        alt cleanup and session removal completed
+          Session -> LocalRepo : removePersistedLocalVaultIfSnapshotMatches(...)
+          alt local discard completed
+            UC --> Caller : throw DeviceEnrollmentRemoteSnapshotChangedError
+          else local discard incomplete
+            UC -> UC : wipe original buffers after session custody ended
+            UC --> Caller : throw DeviceEnrollmentRollbackIncompleteError
+          end
+        else cleanup or session removal incomplete
+          UC -> UC : wipe original buffers after session custody ended
+          UC --> Caller : throw DeviceEnrollmentRollbackIncompleteError
+        end
+      else session advanced, replaced, or ownership unreadable
+        Session --> UC : non-discard outcome
+        UC -> UC : preserve potentially active session-key custody and local state
+        UC --> Caller : throw DeviceEnrollmentRollbackIncompleteError
+      else originating session unavailable
+        Session --> UC : session_unavailable
+        UC -> UC : wipe original buffers; preserve local state
+        UC --> Caller : throw DeviceEnrollmentRollbackIncompleteError
       end
+    else other upload failure
+      UC -> UC : keep local enrollment; syncUpload = pending
     end
-  else other upload failure
-    UC --> Caller : visible vault projection, vector, timestamp, deviceId, recoveryMnemonicKey, syncUpload=pending
-  else uploaded
-    UC --> Caller : visible vault projection, vector, timestamp, deviceId, recoveryMnemonicKey, syncUpload=complete
   end
+  UC -> LocalRepo : best effort removePendingDeviceEnrollment(requestId)
+  UC -> UC : wipe ephemeral buffers; retain transferred session buffers
+  UC --> Caller : visible vault, deviceId, recovery mnemonic,\nvector/timestamp, syncUpload status
 end
 
 @enduml

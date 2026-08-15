@@ -10,135 +10,93 @@ skinparam activity {
 }
 
 start
-:Input:\nenrollmentBundle, masterPassword, deviceName;
-:Source:\npackages/core/src/use-cases/device-trust/perform-device-enrollment.ts;
-:Calculate masterPassword strength;
-if (password score below 4?) then (yes)
+:Input:\nenrollmentResponse, masterPassword, deviceName,\noptional syncConfig, lockAfterMs;
+:Validate lockAfterMs before pending-enrollment reads or crypto work;
+if (invalid delay?) then (yes)
+  :Throw InvalidVaultLockDelayError;
+  stop
+endif
+:Validate the new master-password policy;
+if (password invalid?) then (yes)
   :Throw InvalidNewMasterPasswordError;
   stop
 endif
-:Require bundle vault can be activated locally;
-:Read latest remote snapshot descriptor with bundle syncConfig;
-if (remote descriptor missing?) then (yes)
-  :Throw RemoteVaultSnapshotNotFoundError;
+
+:Read pending enrollment by response.requestId;
+if (pending request missing or response identity/version mismatches?) then (yes)
+  :Throw pending-enrollment error;
   stop
 endif
-:Build expected descriptor from bundle vector and timestamp;
-if (remote descriptor differs from bundle descriptor?) then (yes)
-  :Throw DeviceEnrollmentRemoteSnapshotChangedError;
-  stop
+:Require no existing local vault/access material;
+:Acquire activation lease for response.vaultId;
+
+:Derive pending-state protection from the master password;
+:Unwrap pending private device state;
+:Verify request signature, request identity, and both private/public key pairs;
+:Validate authorized snapshot vault/schema/algorithm and request trust anchor;
+:Verify trust chain and authorized snapshot signature;
+:Require exactly one trusted target identity and matching vault-key envelope;
+:Open the target envelope and decrypt the authorized vault;
+:Add the new device profile;
+
+if (authorized vault has a sync target?) then (yes)
+  :Require and normalize syncConfig;
+  :Require its target to match the encrypted vault target;
+  :Require latest remote descriptor to equal the authorized snapshot;
 endif
 
-:Download remote enrollment snapshot;
-if (snapshot vault id differs?) then (yes)
-  :Throw DeviceEnrollmentSnapshotMismatchError;
-  stop
-endif
-if (snapshot algorithm unsupported?) then (yes)
-  :Throw UnsupportedAlgorithmSuiteError;
-  stop
-endif
-:Verify snapshot signature with bundle snapshotSignerPublicKey;
-if (signature invalid?) then (yes)
-  :Throw VaultSnapshotSignatureVerificationFailedError;
-  stop
-endif
+:Build, encrypt, sign, and verify the registered snapshot;
+:Generate recovery/local-protection material;
+:Build device access material and recovery backup\nwith one localAccessGenerationId;
+:Build local descriptor, trust checkpoint, digest,\nand optional encrypted sync credentials;
 
-:Read enrollmentKeySlot from remote snapshot;
-if (enrollment slot missing?) then (yes)
-  :Throw DeviceEnrollmentKeySlotNotFoundError;
+:Enter serialized activation boundary;
+:Save initialized local state as activation preparation;
+:Save lock metadata and schedule lockVault;
+if (scheduling or activation fails?) then (yes)
+  :Best effort cancel the matching scheduled lock;
+  :Best effort remove matching lock metadata;
+  :Best effort remove prepared local state\nonly if the snapshot digest still matches;
+  :Throw the original failure;
   stop
 endif
-if (enrollment already completed or pending device already trusted?) then (yes)
-  :Throw DeviceEnrollmentAlreadyCompletedError;
-  stop
-endif
+:Activate a fresh session identity and transfer session-key custody;
 
-:Verify pending public key digest;
-if (digest mismatch?) then (yes)
-  :Throw DeviceEnrollmentIntegrityError;
-  stop
-endif
-:Verify protected vault master key digest;
-if (digest mismatch?) then (yes)
-  :Throw DeviceEnrollmentIntegrityError;
-  stop
-endif
-:Find authorizer device slot;
-if (authorizer is not trusted?) then (yes)
-  :Throw DeviceEnrollmentIntegrityError;
-  stop
-endif
-:Verify enrollment authorization signature;
-if (authorization invalid?) then (yes)
-  :Throw DeviceEnrollmentIntegrityError;
-  stop
-endif
-
-:Derive enrollment protection key from bundle enrollmentSecret;
-:Unwrap vaultMasterKey from enrollment slot;
-:Decrypt remote snapshot content into vault;
-:Verify downloaded descriptor still equals remote descriptor;
-if (descriptor changed?) then (yes)
-  :Throw RemoteVaultSnapshotChangedError;
-  stop
-endif
-
-:Use pendingDeviceId and pending public/private signing keys;
-:Generate local vault display name;
-:Generate deviceSlotKey and local protection salts;
-:Derive localRootKey from new masterPassword;
-:Derive localKeysProtectionKey;
-:Wrap local keys payload for this device;
-:Generate recovery key and recovery mnemonic for this device;
-:Generate recovery local-keys protection salt;
-:Derive recovery local-keys protection key;
-:Wrap local keys payload for this device recovery backup;
-:Wrap vaultMasterKey for this device slot;
-:Add device profile to decrypted vault;
-:Build completed enrollment proof;
-:Build registered snapshot with new device slot and completed proof;
-:Encrypt registered vault content;
-:Sign registered snapshot with pending device private key;
-:Verify registered snapshot signature with pending public key;
-if (signature verification fails?) then (yes)
-  :Throw DeviceEnrollmentIntegrityError;
-  stop
-endif
-
-:Generate fresh localAccessGenerationId;
-if (localAccessGenerationId invalid?) then (yes)
-  :Throw DeviceAccessMaterialChangedError;
-  stop
-endif
-:Build device access material and recovery backup\nwith revision 1 and the same localAccessGenerationId;
-:Build local vault descriptor;
-:Save initialized local vault for new device\nincluding recovery backup;
-if (commit unlocked session succeeds?) then (yes)
-  :Continue;
-else (no)
-  :Best effort remove persisted local vault;
-  :Throw original session activation failure;
-  stop
-endif
-
-if (upload registered snapshot succeeds?) then (yes)
-  :Return visible vault projection, snapshotVersionVector,\nrevisionTimestamp, deviceId,\nrecoveryMnemonicKey, syncUpload = complete;
-  stop
-else (no)
-  if (failure is RemoteVaultSnapshotChangedError?) then (yes)
-    :Discard session and local snapshot\nonly if they still match this enrollment;
-    if (session advanced?) then (yes)
-      :Return visible vault projection, snapshotVersionVector,\nrevisionTimestamp, deviceId,\nrecoveryMnemonicKey, syncUpload = complete;
-      stop
+if (sync access exists?) then (yes)
+  :Upload registered snapshot against the authorized descriptor;
+  if (remote snapshot changed?) then (yes)
+    :Enter shared lifecycle cleanup and conditional-discard owner;
+    :Authenticate session ID, activation generation,\nvault ID, and source version;
+    if (originating session is current and cleanup succeeds?) then (yes)
+      :Clear clipboard/task state, wipe and remove session records;
+      :Remove local state by snapshot-digest CAS;
+      if (local discard completed?) then (yes)
+        :Throw DeviceEnrollmentRemoteSnapshotChangedError;
+        stop
+      else (no)
+        :Wipe original enrollment session buffers\nafter session custody ended;
+        :Throw DeviceEnrollmentRollbackIncompleteError;
+        stop
+      endif
     else (no)
-      :Throw DeviceEnrollmentRemoteSnapshotChangedError\nor DeviceEnrollmentRollbackIncompleteError;
-      stop
+      if (session advanced, replaced, or ownership unreadable?) then (yes)
+        :Preserve potentially active session-key custody and local state;
+        :Throw DeviceEnrollmentRollbackIncompleteError;
+        stop
+      else (unavailable or cleanup failed)
+        :Wipe original enrollment buffers after custody ended;
+        :Preserve local state and throw DeviceEnrollmentRollbackIncompleteError;
+        stop
+      endif
     endif
-  else (no)
-    :Retain the committed local enrollment;
-    :Return visible vault projection, snapshotVersionVector,\nrevisionTimestamp, deviceId,\nrecoveryMnemonicKey, syncUpload = pending;
-    stop
+  elseif (other upload failure?) then (yes)
+    :Keep committed local enrollment and mark syncUpload pending;
   endif
 endif
+
+:Best effort remove the pending enrollment request;
+:Always wipe ephemeral derivation/recovery buffers;
+:Wipe session buffers only when custody was not transferred\nor the originating session was definitively discarded;
+:Return visible vault projection, deviceId, recovery mnemonic,\nsnapshot vector/timestamp, and syncUpload status;
+stop
 @enduml

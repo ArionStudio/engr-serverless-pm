@@ -12,43 +12,33 @@ skinparam activity {
 start
 :Input:\noptional actionId;
 :Source:\npackages/core/src/use-cases/vault-lifecycle/lock-vault.ts;
-:Initialize executionError, sessionRemovalError,\nshouldRemoveSession = true;
-:Load pending vault lock task metadata;
+:Enter serialized session cleanup boundary;
+:Read active session material, preserving the first failure;
+:Load pending vault lock task metadata inside cleanup boundary;
 
-if (actionId provided and stored task actionId differs?) then (yes)
-  :Mark shouldRemoveSession = false;
-  :Skip cleanup body and continue to finally logic;
+if (scheduled action does not match current task or required vault?) then (yes)
+  :Return without cleanup as stale action;
+  stop
 else (no)
   :Load pending clipboard clear task;
-  :Try clipboardClear.clearTask(requireExpired = false);
+  :Attempt clipboardClear.clearTask(requireExpired = false);
   if (clipboard task existed?) then (yes)
-    :Try cancel scheduled clearClipboard task;
+    :Attempt cancellation of scheduled clearClipboard task;
   endif
-  :Remember clipboard cleanup error if any;
+  :Attempt clipboard task metadata removal after read/clear failure;
 
   if (vault lock task exists?) then (yes)
-    :Cancel scheduled lockVault task;
-    :Remove vault lock task metadata in finally;
+    :Attempt cancellation of scheduled lockVault task;
   endif
-
-  if (clipboard cleanup failed?) then (yes)
-    :Set executionError;
-  endif
+  :Attempt atomic vault lock task metadata removal\nonly if captured actionId is still active;
 endif
 
-if (shouldRemoveSession?) then (yes)
-  :Remove unlocked vault session;
-  if (session removal failed and no executionError?) then (yes)
-    :Set sessionRemovalError;
-  endif
-endif
+:Wipe known session material and remove both session records;
+:For manual lock with no stored session, invalidate any\nalready-authorized competing activation;
+:Continue every cleanup phase after failure;
 
-if (executionError exists?) then (yes)
-  :Throw executionError;
-  stop
-endif
-if (sessionRemovalError exists?) then (yes)
-  :Throw sessionRemovalError;
+if (any cleanup failed?) then (yes)
+  :Throw first meaningful failure;
   stop
 endif
 :Return void;

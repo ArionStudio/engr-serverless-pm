@@ -7,5 +7,6 @@ export type VaultLockTask = {
 export interface VaultLockTaskRepositoryPort {
   save: (task: VaultLockTask) => Promise<void>;
   get: () => Promise<VaultLockTask | null>;
-  remove: () => Promise<void>;
+  /** Atomically removes only the task whose current action ID matches. */
+  removeIfActionIsActive: (actionId: string) => Promise<boolean>;
 }

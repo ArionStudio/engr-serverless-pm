@@ -1,6 +1,6 @@
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import { VaultMustBeUnlockedForLocalDeletionError } from "../../errors/delete-local-vault.errors";
-import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
+import type { VaultLifecycleCleanupService } from "../../services/session/vault-lifecycle-cleanup.service";
 
 export type DeleteLocalVaultCommandParams = {
   vaultId: string;
@@ -8,25 +8,28 @@ export type DeleteLocalVaultCommandParams = {
 
 export class DeleteLocalVaultUseCase {
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
-  private readonly unlockedVaultSession: UnlockedVaultSessionService;
+  private readonly lifecycleCleanup: VaultLifecycleCleanupService;
 
   constructor(
     vaultLocalRepository: VaultLocalRepositoryPort,
-    unlockedVaultSession: UnlockedVaultSessionService,
+    lifecycleCleanup: VaultLifecycleCleanupService,
   ) {
     this.vaultLocalRepository = vaultLocalRepository;
-    this.unlockedVaultSession = unlockedVaultSession;
+    this.lifecycleCleanup = lifecycleCleanup;
   }
 
   async execute(params: DeleteLocalVaultCommandParams): Promise<void> {
-    const unlockedVaultSession = await this.unlockedVaultSession.get();
-    const unlockedVault = unlockedVaultSession?.unlockedVault;
+    const cleanupResult = await this.lifecycleCleanup.cleanup({
+      afterSessionRemoval: async () => {
+        await this.vaultLocalRepository.removePersistedLocalVault(
+          params.vaultId,
+        );
+      },
+      requiredVaultId: params.vaultId,
+    });
 
-    if (unlockedVault?.vaultId !== params.vaultId) {
+    if (cleanupResult !== "cleaned") {
       throw new VaultMustBeUnlockedForLocalDeletionError(params.vaultId);
     }
-
-    await this.unlockedVaultSession.remove();
-    await this.vaultLocalRepository.removePersistedLocalVault(params.vaultId);
   }
 }

@@ -35,7 +35,10 @@ import {
   SyncResolutionIncompleteError,
   SyncTrustChangeRequiresDeviceTrustFlowError,
 } from "../../errors/sync.errors";
-import { LocalVaultSnapshotChangedError } from "../../errors/vault-snapshot.errors";
+import {
+  LocalVaultSnapshotChangedError,
+  PersistedVaultRollbackIncompleteError,
+} from "../../errors/vault-snapshot.errors";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
@@ -352,22 +355,31 @@ export class ApplySyncResolutionUseCase {
       ...unlockedVault,
       vault: resolvedVault,
     };
-    const persistedSnapshot =
+    const { persistedSnapshot, preparedRestore } =
       await this.unlockedVaultSession.persistForActiveSession(
         sessionId,
         params.vaultId,
-        async () =>
-          this.vaultSnapshot.persistUnlockedVault(
-            params.vaultId,
-            updatedUnlockedVault,
-            sourceSnapshotVersionVector,
-            {
-              baseSnapshotVersionVector: mergeVersionVectors(
-                localSnapshot.metadata.snapshotVersionVector,
-                remoteSnapshotDescriptor.snapshotVersionVector,
-              ),
-            },
-          ),
+        async () => {
+          const preparedRestore =
+            await this.vaultSnapshot.prepareLocalVaultSnapshotRestore(
+              localSnapshot,
+              unlockedVault,
+            );
+          const persistedSnapshot =
+            await this.vaultSnapshot.persistUnlockedVault(
+              params.vaultId,
+              updatedUnlockedVault,
+              sourceSnapshotVersionVector,
+              {
+                baseSnapshotVersionVector: mergeVersionVectors(
+                  localSnapshot.metadata.snapshotVersionVector,
+                  remoteSnapshotDescriptor.snapshotVersionVector,
+                ),
+              },
+            );
+
+          return { persistedSnapshot, preparedRestore };
+        },
       );
 
     try {
@@ -377,17 +389,22 @@ export class ApplySyncResolutionUseCase {
         cloneVaultSnapshotDescriptor(remoteSnapshotDescriptor),
       );
     } catch (error) {
-      await this.unlockedVaultSession.restorePersistedState(
-        sessionId,
-        params.vaultId,
-        async () => {
-          await this.vaultSnapshot.restoreLocalVaultSnapshot(
-            localSnapshot,
-            persistedSnapshot.snapshot,
-            unlockedVault,
-          );
-        },
-      );
+      const rollbackResult =
+        await this.unlockedVaultSession.restorePersistedState(
+          sessionId,
+          params.vaultId,
+          sourceSnapshotVersionVector,
+          async () => {
+            await this.vaultSnapshot.restorePreparedLocalVaultSnapshot(
+              preparedRestore,
+              persistedSnapshot.trustedSnapshotContext.snapshotDigest,
+            );
+          },
+        );
+
+      if (rollbackResult === "rollback_failed") {
+        throw new PersistedVaultRollbackIncompleteError(params.vaultId, error);
+      }
 
       if (error instanceof RemoteVaultSnapshotChangedError) {
         throw new SyncConflictDetectedError(params.vaultId);

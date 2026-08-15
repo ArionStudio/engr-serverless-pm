@@ -99,6 +99,37 @@ describe("VaultSnapshotService", () => {
     ).rejects.toBeInstanceOf(VaultSnapshotDigestMismatchError);
   });
 
+  it("restores from a checkpoint prepared before private session material is wiped", async () => {
+    const ctx = createContext();
+    const preparedRestore = await ctx.service.prepareLocalVaultSnapshotRestore(
+      ctx.vaultSnapshot,
+      ctx.unlockedVault,
+      null,
+    );
+    const signCallCount = vi.mocked(
+      ctx.ports.crypto.signLocalVaultTrustCheckpoint,
+    ).mock.calls.length;
+    new Uint8Array(ctx.unlockedVault.devicePrivateSignKey).fill(0);
+    ctx.ports.saved.vaultSnapshotDigest = "replacement-snapshot-digest";
+
+    await ctx.service.restorePreparedLocalVaultSnapshot(
+      preparedRestore,
+      "replacement-snapshot-digest",
+    );
+
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).toHaveBeenLastCalledWith({
+      expectedSnapshotDigest: "replacement-snapshot-digest",
+      snapshot: ctx.vaultSnapshot,
+      checkpoint: preparedRestore.checkpoint,
+      syncCredentialState: null,
+    });
+    expect(
+      ctx.ports.crypto.signLocalVaultTrustCheckpoint,
+    ).toHaveBeenCalledTimes(signCallCount);
+  });
+
   it("does not save when encryption fails", async () => {
     const ctx = createContext();
     vi.mocked(ctx.ports.crypto.encryptVaultSnapshotContent).mockRejectedValue(

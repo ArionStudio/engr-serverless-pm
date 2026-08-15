@@ -10,8 +10,13 @@ skinparam activity {
 }
 
 start
-:Input:\nmasterPassword, deviceName;
+:Input:\nmasterPassword, deviceName, lockAfterMs;
 :Source:\npackages/core/src/use-cases/vault-lifecycle/initialize-vault.ts;
+:Validate lockAfterMs before IDs, secrets, or persistence;
+if (invalid delay?) then (yes)
+  :Throw InvalidVaultLockDelayError;
+  stop
+endif
 :Calculate masterPassword strength;
 if (password score below 4?) then (yes)
   :Throw InvalidNewMasterPasswordError;
@@ -49,14 +54,28 @@ endif
 :Build device access material and recovery backup\nwith revision 1 and the same localAccessGenerationId;
 :Build local vault descriptor;
 :Build unlocked vault session object;
+:Enter serialized session activation boundary;
 :saveInitializedLocalVault(descriptor,\naccess material, recovery backup, snapshot);
+:Save vault lock task metadata;
 
-if (commit unlocked session succeeds?) then (yes)
+if (schedule lock task succeeds?) then (yes)
+  :Continue;
+else (no)
+  :Best effort cancel scheduled lock task;
+  :Best effort remove matching lock task metadata;
+  :Best effort removePersistedLocalVaultIfSnapshotMatches(vaultId, snapshotDigest);
+  :Throw schedule failure;
+  stop
+endif
+
+if (activate unlocked session succeeds?) then (yes)
   :Return recoveryMnemonicKey and vaultDisplayName;
   stop
 else (no)
-  :Best effort removePersistedLocalVault(vaultId);
-  :Throw original session commit error;
+  :Best effort cancel scheduled lock task;
+  :Best effort remove matching lock task metadata;
+  :Best effort removePersistedLocalVaultIfSnapshotMatches(vaultId, snapshotDigest);
+  :Throw original session activation error;
   stop
 endif
 @enduml

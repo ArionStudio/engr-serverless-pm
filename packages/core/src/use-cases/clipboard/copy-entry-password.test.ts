@@ -6,12 +6,17 @@ import {
   singlePasswordEntry,
 } from "../../__tests__/fixtures/vault-entries";
 import type { ClipboardPort } from "../../ports/clipboard/clipboard.port";
-import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard/clipboard-clear-task-repository.port";
+import type {
+  ClipboardClearTask,
+  ClipboardClearTaskRepositoryPort,
+} from "../../ports/clipboard/clipboard-clear-task-repository.port";
 import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
 import { InvalidClipboardClearDelayError } from "../../errors/clipboard.errors";
 import { PasswordEntryNotFoundError } from "../../errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 import { ClipboardClearService } from "../../services/clipboard/clipboard-clear.service";
+import { VaultLifecycleCleanupService } from "../../services/session/vault-lifecycle-cleanup.service";
+import { LockVaultUseCase } from "../vault-lifecycle/lock-vault";
 import {
   CopyEntryPasswordUseCase,
   type CopyEntryPasswordCommandParams,
@@ -25,14 +30,22 @@ function createContext() {
   vi.mocked(ports.ids.generateId).mockReset();
   vi.mocked(ports.ids.generateId).mockResolvedValue("clipboard-action-id");
 
+  let clipboardText = "";
   const clipboard: ClipboardPort = {
-    readText: vi.fn(async () => ""),
-    writeText: vi.fn(async () => undefined),
+    readText: vi.fn(async () => clipboardText),
+    writeText: vi.fn(async (value) => {
+      clipboardText = value;
+    }),
   };
+  let activeClipboardClearTask: ClipboardClearTask | null = null;
   const clipboardClearTasks: ClipboardClearTaskRepositoryPort = {
-    save: vi.fn(async () => undefined),
-    get: vi.fn(async () => null),
-    remove: vi.fn(async () => undefined),
+    save: vi.fn(async (task) => {
+      activeClipboardClearTask = task;
+    }),
+    get: vi.fn(async () => activeClipboardClearTask),
+    remove: vi.fn(async () => {
+      activeClipboardClearTask = null;
+    }),
   };
   const scheduledTasks: ScheduledTaskPort = {
     scheduleTask: vi.fn(async () => undefined),
@@ -52,7 +65,9 @@ function createContext() {
     values,
     ports,
     clipboard,
+    clipboardClear,
     clipboardClearTasks,
+    getClipboardText: () => clipboardText,
     scheduledTasks,
     clock,
     useCase: new CopyEntryPasswordUseCase(
@@ -66,6 +81,18 @@ function createContext() {
       ports.sessionServices.unlockedVaultSession,
     ),
   };
+}
+
+function createLockVaultUseCase(ctx: ReturnType<typeof createContext>) {
+  const lifecycleCleanup = new VaultLifecycleCleanupService(
+    ctx.clipboardClear,
+    ctx.clipboardClearTasks,
+    ctx.scheduledTasks,
+    ctx.ports.vaultLockTasks,
+    ctx.ports.sessionServices.unlockedVaultSession,
+  );
+
+  return new LockVaultUseCase(lifecycleCleanup);
 }
 
 describe("CopyEntryPasswordUseCase", () => {
@@ -113,6 +140,149 @@ describe("CopyEntryPasswordUseCase", () => {
     expect(ctx.clipboardClearTasks.save).not.toHaveBeenCalled();
     expect(ctx.scheduledTasks.scheduleTask).not.toHaveBeenCalled();
     expect(ctx.clipboard.writeText).not.toHaveBeenCalled();
+  });
+
+  it("does not copy a password after a concurrent lock wins", async () => {
+    const ctx = createContext();
+    let continueLock!: () => void;
+    let markLockStarted!: () => void;
+    const lockStarted = new Promise<void>((resolve) => {
+      markLockStarted = resolve;
+    });
+    const lockCanContinue = new Promise<void>((resolve) => {
+      continueLock = resolve;
+    });
+    vi.mocked(ctx.ports.vaultLockTasks.get).mockImplementationOnce(async () => {
+      markLockStarted();
+      await lockCanContinue;
+      return null;
+    });
+
+    const lock = createLockVaultUseCase(ctx).execute();
+    await lockStarted;
+    const copy = ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      entryId: singlePasswordEntry.id,
+      clearAfterMs: 60_000,
+    });
+    continueLock();
+
+    await expect(lock).resolves.toBeUndefined();
+    await expect(copy).rejects.toBeInstanceOf(VaultMustBeUnlockedError);
+    expect(ctx.clipboardClearTasks.save).not.toHaveBeenCalled();
+    expect(ctx.scheduledTasks.scheduleTask).not.toHaveBeenCalled();
+    expect(ctx.clipboard.writeText).not.toHaveBeenCalledWith(
+      singlePasswordEntry.password,
+    );
+    expect(ctx.getClipboardText()).toBe("");
+  });
+
+  it("waits for a concurrent copy and then clears it while locking", async () => {
+    const ctx = createContext();
+    let continueCopy!: () => void;
+    let markCopyStarted!: () => void;
+    const copyStarted = new Promise<void>((resolve) => {
+      markCopyStarted = resolve;
+    });
+    const copyCanContinue = new Promise<void>((resolve) => {
+      continueCopy = resolve;
+    });
+    vi.mocked(ctx.ports.ids.generateId).mockImplementationOnce(async () => {
+      markCopyStarted();
+      await copyCanContinue;
+      return "clipboard-action-id";
+    });
+
+    const copy = ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      entryId: singlePasswordEntry.id,
+      clearAfterMs: 60_000,
+    });
+    await copyStarted;
+    let lockCompleted = false;
+    const lock = createLockVaultUseCase(ctx)
+      .execute()
+      .then(() => {
+        lockCompleted = true;
+      });
+    await Promise.resolve();
+    expect(lockCompleted).toBe(false);
+    continueCopy();
+
+    await expect(copy).resolves.toEqual({ copied: true });
+    await expect(lock).resolves.toBeUndefined();
+    expect(ctx.clipboard.writeText).toHaveBeenCalledWith(
+      singlePasswordEntry.password,
+    );
+    expect(ctx.clipboard.writeText).toHaveBeenLastCalledWith("");
+    expect(ctx.scheduledTasks.cancelTask).toHaveBeenCalledWith({
+      name: "clearClipboard",
+      actionId: "clipboard-action-id",
+    });
+    await expect(ctx.clipboardClearTasks.get()).resolves.toBeNull();
+    expect(ctx.getClipboardText()).toBe("");
+    expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
+  });
+
+  it("reads the current entry after a queued snapshot commit", async () => {
+    const ctx = createContext();
+    const activeSession = ctx.ports.saved.unlockedVaultSession;
+
+    if (activeSession === undefined) {
+      throw new Error("Expected an active test session.");
+    }
+
+    const saveEncryptedPayload = vi.mocked(
+      ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
+        .saveEncryptedUnlockedVaultSessionPayload,
+    );
+    const saveEncryptedPayloadOriginal =
+      saveEncryptedPayload.getMockImplementation();
+
+    if (saveEncryptedPayloadOriginal === undefined) {
+      throw new Error("Expected a session-payload save implementation.");
+    }
+
+    let continueCommit!: () => void;
+    let markCommitStarted!: () => void;
+    const commitStarted = new Promise<void>((resolve) => {
+      markCommitStarted = resolve;
+    });
+    const commitCanContinue = new Promise<void>((resolve) => {
+      continueCommit = resolve;
+    });
+    saveEncryptedPayload.mockImplementationOnce(async (payload) => {
+      markCommitStarted();
+      await commitCanContinue;
+      await saveEncryptedPayloadOriginal(payload);
+    });
+    const commit =
+      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot(
+        activeSession.sessionId,
+        {
+          ...activeSession.unlockedVault,
+          vault: {
+            ...activeSession.unlockedVault.vault,
+            entries: [],
+          },
+        },
+        { [ctx.values.deviceId]: 2 },
+      );
+    await commitStarted;
+
+    const copy = ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      entryId: singlePasswordEntry.id,
+      clearAfterMs: 60_000,
+    });
+    continueCommit();
+
+    await expect(commit).resolves.toBeUndefined();
+    await expect(copy).rejects.toBeInstanceOf(PasswordEntryNotFoundError);
+    expect(ctx.clipboardClearTasks.save).not.toHaveBeenCalled();
+    expect(ctx.clipboard.writeText).not.toHaveBeenCalledWith(
+      singlePasswordEntry.password,
+    );
   });
 
   it("does not write to the clipboard when requested entry does not exist", async () => {

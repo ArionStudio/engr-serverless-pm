@@ -191,35 +191,45 @@ export class InitializeDeviceEnrollmentUseCase {
         },
       ),
     };
-    const persistedSnapshot =
+    const { persistedSnapshot, preparedRestore } =
       await this.unlockedVaultSession.persistForActiveSession(
         sessionId,
         params.vaultId,
-        async () =>
-          this.vaultSnapshot.persistUnlockedVault(
-            params.vaultId,
-            unlockedVault,
-            sourceSnapshotVersionVector,
-            {
-              keySlots: {
-                deviceSlots: [
-                  ...currentSnapshot.keySlots.deviceSlots,
-                  targetSlot,
-                ],
+        async () => {
+          const preparedRestore =
+            await this.vaultSnapshot.prepareLocalVaultSnapshotRestore(
+              currentSnapshot,
+              unlockedVault,
+            );
+          const persistedSnapshot =
+            await this.vaultSnapshot.persistUnlockedVault(
+              params.vaultId,
+              unlockedVault,
+              sourceSnapshotVersionVector,
+              {
+                keySlots: {
+                  deviceSlots: [
+                    ...currentSnapshot.keySlots.deviceSlots,
+                    targetSlot,
+                  ],
+                },
+                nextTrust: {
+                  chain: nextTrust.chain,
+                  state: nextTrust.trust,
+                },
               },
-              nextTrust: {
-                chain: nextTrust.chain,
-                state: nextTrust.trust,
-              },
-            },
-          ),
+            );
+
+          return { persistedSnapshot, preparedRestore };
+        },
       );
 
     await this.vaultSyncGuard.uploadPersistedLocalMutation(
       params.vaultId,
       syncState,
       persistedSnapshot.snapshot,
-      unlockedVault,
+      persistedSnapshot.trustedSnapshotContext.snapshotDigest,
+      preparedRestore,
       sessionId,
     );
 

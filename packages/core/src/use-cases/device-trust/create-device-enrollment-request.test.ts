@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import type { RawMasterPassword } from "../../domain/master-password";
@@ -83,5 +83,28 @@ describe("CreateDeviceEnrollmentRequestUseCase", () => {
     expect(request).not.toHaveProperty("devicePrivateSignKey");
     expect(request).not.toHaveProperty("devicePrivateVaultKey");
     expect(request).not.toHaveProperty("deviceLocalProtectionKey");
+    const signKeyPair = await vi.mocked(ports.crypto.generateDeviceSignKeyPair)
+      .mock.results[0]!.value;
+    const vaultKeyPair = await vi.mocked(
+      ports.crypto.generateDeviceVaultKeyPair,
+    ).mock.results[0]!.value;
+    const deviceLocalProtectionKey = await vi.mocked(
+      ports.crypto.generateDeviceLocalProtectionKey,
+    ).mock.results[0]!.value;
+    const localRootKey = await vi.mocked(ports.crypto.deriveLocalRootKey).mock
+      .results[0]!.value;
+    const pendingEnrollmentProtectionKey = await vi.mocked(
+      ports.crypto.deriveDeviceEnrollmentPrivateStateProtectionKey,
+    ).mock.results[0]!.value;
+    for (const buffer of [
+      signKeyPair.privateKey,
+      vaultKeyPair.privateKey,
+      deviceLocalProtectionKey,
+      localRootKey,
+      pendingEnrollmentProtectionKey,
+    ]) {
+      expect(Array.from(new Uint8Array(buffer))).toEqual([0]);
+    }
+    expect(Array.from(new Uint8Array(values.localRootKey))).toEqual([2]);
   });
 });

@@ -1,6 +1,8 @@
 import {
   decodeBase64Url,
   encodeBase64Url,
+  bestEffortWipeArrayBuffers,
+  secureWipe,
   type Base64URLString,
 } from "@lfspm/core/lib";
 import type {
@@ -92,52 +94,68 @@ export function deserializeUnlockedVaultSessionMaterial(
   material: unknown,
 ): UnlockedVaultSessionMaterial {
   assertStoredMaterial(material);
+  const decodedSecrets: ArrayBuffer[] = [];
 
-  return {
-    sessionId: material.sessionId,
-    vaultId: material.vaultId,
-    sourceSnapshotVersionVector: material.sourceSnapshotVersionVector,
-    deviceId: material.deviceId,
-    vaultMasterKey: base64UrlToArrayBuffer(
-      material.vaultMasterKey,
-    ) as UnlockedVaultSessionMaterial["vaultMasterKey"],
-    devicePrivateSignKey: base64UrlToArrayBuffer(
+  try {
+    const vaultMasterKey = base64UrlToArrayBuffer(material.vaultMasterKey);
+    decodedSecrets.push(vaultMasterKey);
+    const devicePrivateSignKey = base64UrlToArrayBuffer(
       material.devicePrivateSignKey,
-    ) as UnlockedVaultSessionMaterial["devicePrivateSignKey"],
-    devicePrivateVaultKey: base64UrlToArrayBuffer(
+    );
+    decodedSecrets.push(devicePrivateSignKey);
+    const devicePrivateVaultKey = base64UrlToArrayBuffer(
       material.devicePrivateVaultKey,
-    ) as DeviceVaultPrivateKey,
-    deviceLocalProtectionKey: base64UrlToArrayBuffer(
+    );
+    decodedSecrets.push(devicePrivateVaultKey);
+    const deviceLocalProtectionKey = base64UrlToArrayBuffer(
       material.deviceLocalProtectionKey,
-    ) as DeviceLocalProtectionKey,
-    payloadKey: base64UrlToArrayBuffer(
-      material.payloadKey,
-    ) as UnlockedVaultSessionMaterial["payloadKey"],
-    trustedSnapshotContext: {
-      ...material.trustedSnapshotContext,
-      trust: {
-        ...material.trustedSnapshotContext.trust,
-        trustedDevices:
-          material.trustedSnapshotContext.trust.trustedDevices.map(
-            (device) => ({
-              deviceId: device.deviceId,
-              publicSignKey: base64UrlToArrayBuffer(
-                device.publicSignKey,
-              ) as DevicePublicSignKey,
-              publicVaultKey: base64UrlToArrayBuffer(
-                device.publicVaultKey,
-              ) as DeviceVaultPublicKey,
-            }),
-          ),
+    );
+    decodedSecrets.push(deviceLocalProtectionKey);
+    const payloadKey = base64UrlToArrayBuffer(material.payloadKey);
+    decodedSecrets.push(payloadKey);
+
+    return {
+      sessionId: material.sessionId,
+      vaultId: material.vaultId,
+      sourceSnapshotVersionVector: material.sourceSnapshotVersionVector,
+      deviceId: material.deviceId,
+      vaultMasterKey:
+        vaultMasterKey as UnlockedVaultSessionMaterial["vaultMasterKey"],
+      devicePrivateSignKey:
+        devicePrivateSignKey as UnlockedVaultSessionMaterial["devicePrivateSignKey"],
+      devicePrivateVaultKey: devicePrivateVaultKey as DeviceVaultPrivateKey,
+      deviceLocalProtectionKey:
+        deviceLocalProtectionKey as DeviceLocalProtectionKey,
+      payloadKey: payloadKey as UnlockedVaultSessionMaterial["payloadKey"],
+      trustedSnapshotContext: {
+        ...material.trustedSnapshotContext,
+        trust: {
+          ...material.trustedSnapshotContext.trust,
+          trustedDevices:
+            material.trustedSnapshotContext.trust.trustedDevices.map(
+              (device) => ({
+                deviceId: device.deviceId,
+                publicSignKey: base64UrlToArrayBuffer(
+                  device.publicSignKey,
+                ) as DevicePublicSignKey,
+                publicVaultKey: base64UrlToArrayBuffer(
+                  device.publicVaultKey,
+                ) as DeviceVaultPublicKey,
+              }),
+            ),
+        },
       },
-    },
-    vaultTrustAnchor: {
-      ...material.vaultTrustAnchor,
-      genesisPublicSignKey: base64UrlToArrayBuffer(
-        material.vaultTrustAnchor.genesisPublicSignKey,
-      ) as DevicePublicSignKey,
-    },
-  };
+      vaultTrustAnchor: {
+        ...material.vaultTrustAnchor,
+        genesisPublicSignKey: base64UrlToArrayBuffer(
+          material.vaultTrustAnchor.genesisPublicSignKey,
+        ) as DevicePublicSignKey,
+      },
+    };
+  } catch (error) {
+    bestEffortWipeArrayBuffers(decodedSecrets);
+    throw error;
+  }
 }
 
 function arrayBufferToBase64Url(buffer: ArrayBuffer): Base64URLString {
@@ -146,7 +164,12 @@ function arrayBufferToBase64Url(buffer: ArrayBuffer): Base64URLString {
 
 function base64UrlToArrayBuffer(value: Base64URLString): ArrayBuffer {
   const bytes = decodeBase64Url(value);
-  return bytes.slice().buffer;
+
+  try {
+    return bytes.slice().buffer;
+  } finally {
+    secureWipe(bytes);
+  }
 }
 
 function assertStoredMaterial(

@@ -160,26 +160,35 @@ export class ConsumeDeviceEnrollmentUseCase {
         ...unlockedVault,
         vault: resolvedVault,
       };
-      const persistedSnapshot =
+      const { persistedSnapshot, preparedRestore } =
         await this.unlockedVaultSession.persistForActiveSession(
           sessionId,
           params.vaultId,
-          async () =>
-            this.vaultSnapshot.persistUnlockedVault(
-              params.vaultId,
-              updatedUnlockedVault,
-              sourceSnapshotVersionVector,
-              {
-                baseSnapshotVersionVector: mergeVersionVectors(
-                  candidate.localSnapshot.metadata.snapshotVersionVector,
-                  candidate.remoteSnapshot.metadata.snapshotVersionVector,
-                ),
-                keySlots: candidate.remoteSnapshot.keySlots,
-                vaultKeyGeneration:
-                  candidate.remoteSnapshot.metadata.vaultKeyGeneration,
-                nextTrust: candidate.remoteTrust,
-              },
-            ),
+          async () => {
+            const preparedRestore =
+              await this.vaultSnapshot.prepareLocalVaultSnapshotRestore(
+                candidate.localSnapshot,
+                unlockedVault,
+              );
+            const persistedSnapshot =
+              await this.vaultSnapshot.persistUnlockedVault(
+                params.vaultId,
+                updatedUnlockedVault,
+                sourceSnapshotVersionVector,
+                {
+                  baseSnapshotVersionVector: mergeVersionVectors(
+                    candidate.localSnapshot.metadata.snapshotVersionVector,
+                    candidate.remoteSnapshot.metadata.snapshotVersionVector,
+                  ),
+                  keySlots: candidate.remoteSnapshot.keySlots,
+                  vaultKeyGeneration:
+                    candidate.remoteSnapshot.metadata.vaultKeyGeneration,
+                  nextTrust: candidate.remoteTrust,
+                },
+              );
+
+            return { persistedSnapshot, preparedRestore };
+          },
         );
 
       await this.vaultSyncGuard.uploadPersistedLocalMutation(
@@ -192,7 +201,8 @@ export class ConsumeDeviceEnrollmentUseCase {
           ),
         },
         persistedSnapshot.snapshot,
-        unlockedVault,
+        persistedSnapshot.trustedSnapshotContext.snapshotDigest,
+        preparedRestore,
         sessionId,
       );
 

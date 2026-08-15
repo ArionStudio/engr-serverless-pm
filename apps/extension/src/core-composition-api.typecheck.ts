@@ -1,7 +1,10 @@
 import {
   AddEntryUseCase,
   CopyEntryPasswordUseCase,
+  DeleteLocalVaultUseCase,
   InitializeVaultUseCase,
+  LockVaultUseCase,
+  PerformDeviceEnrollmentUseCase,
   SyncUploadUseCase,
 } from "@lfspm/core";
 import type {
@@ -16,11 +19,13 @@ import type {
   SyncProviderPort,
   UnlockedVaultSessionMaterialRepositoryPort,
   VaultDisplayNamePort,
+  VaultLockTaskRepositoryPort,
   VaultLocalRepositoryPort,
 } from "@lfspm/core";
 import {
   ClipboardClearService,
   UnlockedVaultSessionService,
+  VaultLifecycleCleanupService,
   VaultSnapshotService,
   VaultSyncGuardService,
 } from "@lfspm/core/services";
@@ -37,6 +42,7 @@ type CoreCompositionPorts = {
   readonly sessionMaterials: UnlockedVaultSessionMaterialRepositoryPort;
   readonly syncProvider: SyncProviderPort;
   readonly vaultDisplayName: VaultDisplayNamePort;
+  readonly vaultLockTasks: VaultLockTaskRepositoryPort;
   readonly vaults: VaultLocalRepositoryPort;
 };
 
@@ -65,6 +71,13 @@ export function composeCoreApi(ports: CoreCompositionPorts) {
     ports.clock,
     ports.crypto,
   );
+  const lifecycleCleanup = new VaultLifecycleCleanupService(
+    clipboardClear,
+    ports.clipboardClearTasks,
+    ports.scheduledTasks,
+    ports.vaultLockTasks,
+    unlockedVaultSession,
+  );
 
   return {
     vaultLifecycle: new InitializeVaultUseCase(
@@ -75,6 +88,26 @@ export function composeCoreApi(ports: CoreCompositionPorts) {
       ports.ids,
       ports.clock,
       ports.vaultDisplayName,
+      ports.scheduledTasks,
+      ports.vaultLockTasks,
+    ),
+    lockVault: new LockVaultUseCase(lifecycleCleanup),
+    deleteLocalVault: new DeleteLocalVaultUseCase(
+      ports.vaults,
+      lifecycleCleanup,
+    ),
+    performDeviceEnrollment: new PerformDeviceEnrollmentUseCase(
+      ports.clock,
+      ports.crypto,
+      ports.ids,
+      ports.bip39,
+      ports.syncProvider,
+      unlockedVaultSession,
+      ports.vaultDisplayName,
+      ports.vaults,
+      lifecycleCleanup,
+      ports.scheduledTasks,
+      ports.vaultLockTasks,
     ),
     vaultEntry: new AddEntryUseCase(
       ports.ids,
