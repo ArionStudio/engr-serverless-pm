@@ -157,6 +157,14 @@ device's private signing key, private wrapping key, local-protection key, and
 vault trust anchor. Recovery therefore restores an existing surviving identity.
 It does not create a new trusted identity.
 
+Recovery atomically replaces the current local access material and recovery
+backup and returns replacement words for that current backup. It does not revoke
+retained older backup copies: copied or rolled-back backups remain usable with
+their older words while the restored identity remains trusted. The recovery UI
+must warn users about this accepted limitation and must not claim that the
+replacement words invalidate older copies. See the
+[threat-model explanation](../security/security-specification.md#86-device-access-recovery).
+
 After revocation, a recovered copy of the revoked private key remains unable to
 open the current snapshot because no envelope is addressed to it.
 

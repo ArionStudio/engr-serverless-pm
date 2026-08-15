@@ -68,50 +68,56 @@ if (snapshot algorithm unsupported?) then (yes)
   stop
 endif
 
-:Find snapshot signer device slot;
-if (signer not trusted?) then (yes)
-  :Throw VaultSnapshotSignerNotTrustedError;
-  stop
-endif
-:Find recovered device slot from backup deviceId;
-if (recovered device not trusted?) then (yes)
+:Find recovered device envelope from backup deviceId;
+if (device envelope missing?) then (yes)
   :Throw DeviceKeySlotNotFoundError;
-  stop
-endif
-:Verify snapshot signature before using recovery words;
-if (signature invalid?) then (yes)
-  :Throw VaultSnapshotSignatureVerificationFailedError;
   stop
 endif
 
 :Convert recovery mnemonic into recoverySecretKey;
 :Derive recovery local-keys protection key;
-:Unwrap backed-up local keys payload\n(deviceSlotKey + devicePrivateSignKey);
-:Verify recovered private signing key matches device slot public key;
-if (private key does not match slot?) then (yes)
+:Unwrap backed-up local keys payload\n(devicePrivateSignKey + devicePrivateVaultKey +\ndeviceLocalProtectionKey + vaultTrustAnchor);
+:Verify recovered private signing and vault keys\nmatch backup public keys;
+if (private keys do not match backup?) then (yes)
   :Throw DeviceKeySlotVerificationFailedError;
   stop
 endif
-:Verify recovered private signing key matches backup public key;
-if (private key does not match backup?) then (yes)
-  :Throw DeviceKeySlotVerificationFailedError;
+:Require snapshot trust chain and local trust checkpoint;
+:Verify checkpoint for the backup device identity;
+:Verify trust chain with recovered vaultTrustAnchor;
+:Verify recovered private signing and vault keys\nmatch current trusted-device public keys;
+if (private keys do not match trusted identity?) then (yes)
+  :Throw VaultTrustStateInvalidError;
   stop
 endif
+:Verify snapshot signer, signature, and trust state;
+if (snapshot trust verification fails?) then (yes)
+  :Throw snapshot trust verification error;
+  stop
+endif
+:Require snapshot is not older than the local checkpoint;
 
-:Derive device-slot vault-master-key protection key;
-:Unwrap vaultMasterKey from current device slot;
+:Open vaultMasterKey from current device envelope\nwith recovered devicePrivateVaultKey;
 :Decrypt snapshot content to prove recovered keys still unlock this vault;
+if (snapshot is newer than the local checkpoint?) then (yes)
+  :Digest snapshot and create an advanced checkpoint;
+  :Atomically compare-and-save snapshot and checkpoint;
+  if (snapshot changed first?) then (yes)
+    :Throw LocalVaultSnapshotChangedError\nwithout changing snapshot or checkpoint;
+    stop
+  endif
+endif
 
 :Generate new master-password salt and local-keys protection salt;
 :Derive localRootKey from newMasterPassword;
 :Derive localKeysProtectionKey;
 :Wrap local keys payload for new master password;
 
-:Generate fresh recoverySecretKey;
-:Convert fresh recovery key to new mnemonic;
-:Generate fresh recovery local-keys protection salt;
-:Derive fresh recovery local-keys protection key;
-:Wrap same local keys payload for new recovery backup;
+:Generate replacement recoverySecretKey;
+:Convert replacement recovery key to replacement mnemonic;
+:Generate replacement recovery local-keys protection salt;
+:Derive replacement recovery local-keys protection key;
+:Wrap same local keys payload for replacement recovery backup;
 
 :Build both replacements with next revisions\nand the selected localAccessGenerationId;
 :Atomically compare-and-save both records using the\ncaptured revisions and localAccessGenerationId;
@@ -119,6 +125,12 @@ if (either persisted revision or generation changed first?) then (yes)
   :Throw DeviceAccessMaterialChangedError\nwithout changing either record;
   stop
 endif
-:Return deviceId and fresh recoveryMnemonicKey;
+:Return deviceId and replacement recoveryMnemonicKey;
+note right
+The returned words protect only the current local backup.
+Retained older backup copies remain usable with their original words
+while this device identity remains trusted. See the security spec,
+section 8.6, for the accepted rollback limitation.
+end note
 stop
 @enduml

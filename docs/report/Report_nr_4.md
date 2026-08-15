@@ -2,21 +2,22 @@
 
 ## 1. Vault Access Recovery With Sync Enabled
 
-### Problem
+### Current Design
 
-`vault access recovery` allows the user to recover access to the `vault master key` when the user has lost the master password.
+`vault access recovery` allows the user to recover access when the master
+password is lost. The recovery backup protects the complete local key payload,
+including the current device's private signing and wrapping keys, so recovery
+restores the existing surviving device identity rather than enrolling a fresh
+identity.
 
-The problem is that the master password protects local device access material, not only the `device slot key` but also the `device private signing key`. Those two are needed to use the vault as a trusted device.
+Recovery re-protects that payload with the new master password and a replacement
+recovery mnemonic, then atomically replaces the current local access material
+and recovery backup. It does not change the signed trust state or start a sync
+update.
 
-So after losing the master password, the recovery key can recover the `vault master key`, but it does not recover the current device as a trusted signing device. Because of that, recovery cannot safely create normal synced vault updates.
-
-### Proposed Solution
-
-Rework recovery as recovery-authorized device enrollment.
-
-In this model, the recovery key is used to recover the `vault master key`, and then the current device is added again as a trusted device with fresh local device access material.
-
-The important flaw is that recovery is not only recovery. It is also an enrollment/trust update operation.
+This replacement does not revoke retained older backup copies or their words.
+Those copies remain usable while the restored identity remains trusted; see the
+[accepted recovery limitation](../security/security-specification.md#86-device-access-recovery).
 
 ## 2. Session Vault Storage Budget
 

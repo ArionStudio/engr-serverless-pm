@@ -22,9 +22,9 @@ DeviceRevoked --> SyncedTrustedDevice : upload and session commit complete
 SyncedTrustedDevice --> LocalOnlyCurrentDevice : DisableSyncUseCase\nremoves syncConfig, remote snapshots,\nother device profiles, and other device slots
 LocalOnlyCurrentDevice --> SyncedTrustedDevice : SetupSyncUseCase may configure sync again
 
-SingleTrustedDevice --> SingleTrustedDevice : RecoverDeviceAccessUseCase\nrewraps local device material and rotates recovery words
+SingleTrustedDevice --> SingleTrustedDevice : RecoverDeviceAccessUseCase\nrewraps local material and replaces current recovery backup
 SyncedTrustedDevice --> SyncedTrustedDevice : RecoverDeviceAccessUseCase\nlocal-only recovery, no snapshot mutation or sync upload
-LocalOnlyCurrentDevice --> LocalOnlyCurrentDevice : RecoverDeviceAccessUseCase\nrewraps current device material and rotates recovery words
+LocalOnlyCurrentDevice --> LocalOnlyCurrentDevice : RecoverDeviceAccessUseCase\nrewraps local material and replaces current recovery backup
 
 EnrollmentPending --> SyncedTrustedDevice : initialization upload fails\nrollback to previous snapshot/session
 EnrollmentPending --> SyncedTrustedDevice : enrollment is superseded\nfuture mutation must resolve state
@@ -39,6 +39,8 @@ note right of SingleTrustedDevice
 Each local device has its own DeviceAccessRecoveryBackup.
 Recovery proves the existing device slot still unlocks the local snapshot,
 then replaces local device access material and recovery backup atomically.
+Retained older backup copies remain usable with their original words while
+that device identity remains trusted; replacement is not word revocation.
 end note
 
 @enduml

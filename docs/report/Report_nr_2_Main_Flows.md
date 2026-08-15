@@ -288,11 +288,11 @@
     4. `options page` sends recovery request to `extension service worker`
     5. `extension service worker` loads local vault state from `indexedDB`
     6. `extension service worker` converts the `recovery mnemonic key` back to recovery key source material and uses it to recover access to the `vault master key`
-    7. `extension service worker` creates fresh local device private key material for the current device and protects it with keys derived from the new local master password
-    8. `extension service worker` updates local vault state so the current device has valid access again
-    9. `extension service worker` stores updated local state in `indexedDB`
-    10. [ if sync is enabled ] `extension service worker` may start "Send update to sync layer"
-    11. `options page` informs `user` that local access was recovered
+    7. `extension service worker` restores the existing surviving device identity and protects the same local key payload with keys derived from the new local master password
+    8. `extension service worker` creates a replacement local recovery backup and replacement recovery mnemonic key
+    9. `extension service worker` atomically replaces the local device access material and current recovery backup in `indexedDB`; the signed vault and trust state are unchanged
+    10. `options page` informs `user` that local access was recovered and displays the replacement recovery mnemonic key
+    11. `options page` warns `user` that copied or rolled-back older backups remain usable with their older words while this device identity remains trusted; see the [security limitation](../security/security-specification.md#86-device-access-recovery)
 
 18. [x] Change master password
     - starts from: `user`

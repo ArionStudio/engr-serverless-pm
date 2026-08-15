@@ -60,6 +60,8 @@ export interface VaultLocalRepositoryPort {
    * share that identity and generation with the persisted backup. The
    * replacement pair may change only the generation and local-protection
    * fields, not the device identity.
+   * Retained copies of the previous backup remain usable with their original
+   * recovery words while the recovered device identity remains trusted.
    */
   saveDeviceAccessRecords: (
     params: (

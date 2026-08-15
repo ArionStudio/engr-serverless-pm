@@ -146,35 +146,84 @@ describe("RecoverDeviceAccessUseCase", () => {
     );
   });
 
-  it("recovers the wrapping key and re-protects the complete local identity", async () => {
+  it("replaces the current local backup without changing the trusted identity", async () => {
     const ctx = createContext();
     const recoveredVaultMasterKey = new Uint8Array([7])
       .buffer as VaultMasterKey;
+    vi.mocked(ctx.ports.crypto.generateMasterPasswordSalt)
+      .mockReset()
+      .mockResolvedValue(ctx.values.newMasterPasswordSalt);
+    vi.mocked(
+      ctx.ports.crypto.generateLocalKeysProtectionSalt,
+    )
+      .mockReset()
+      .mockResolvedValue(ctx.values.newLocalKeysProtectionSalt);
+    vi.mocked(ctx.ports.crypto.generateRecoveryKey).mockResolvedValueOnce(
+      ctx.values.rotatedRecoverySecretKey,
+    );
+    vi.mocked(
+      ctx.ports.crypto.generateRecoveryLocalKeysProtectionSalt,
+    ).mockResolvedValueOnce(ctx.values.rotatedRecoveryLocalKeysProtectionSalt);
     vi.mocked(
       ctx.ports.crypto.openDeviceVaultKeyEnvelope,
     ).mockResolvedValueOnce(recoveredVaultMasterKey);
 
-    await ctx.useCase.execute({
+    const result = await ctx.useCase.execute({
       vaultId: ctx.values.vaultId,
       recoveryMnemonicKey: ctx.values.recoveryMnemonicKey,
       newMasterPassword: ctx.values.newMasterPassword,
     });
 
+    expect(result).toEqual({
+      deviceId: ctx.values.deviceId,
+      recoveryMnemonicKey: ctx.values.rotatedRecoveryMnemonicKey,
+    });
     expect(ctx.ports.crypto.verifyDeviceVaultKeyPair).toHaveBeenCalledWith(
       ctx.values.devicePublicVaultKey,
       ctx.values.devicePrivateVaultKey,
     );
     expect(ctx.ports.crypto.openDeviceVaultKeyEnvelope).toHaveBeenCalled();
+    expect(
+      ctx.ports.crypto.deriveRecoveryLocalKeysProtectionKey,
+    ).toHaveBeenNthCalledWith(
+      2,
+      ctx.values.rotatedRecoverySecretKey,
+      ctx.values.rotatedRecoveryLocalKeysProtectionSalt,
+    );
+    const wrapLocalKeysPayload = vi.mocked(
+      ctx.ports.crypto.wrapLocalKeysPayload,
+    );
+    expect(wrapLocalKeysPayload).toHaveBeenCalledTimes(2);
+    expect(wrapLocalKeysPayload.mock.calls[0]![0]).toBe(
+      wrapLocalKeysPayload.mock.calls[1]![0],
+    );
+    expect(Object.keys(wrapLocalKeysPayload.mock.calls[0]![0])).toEqual([
+      "devicePrivateSignKey",
+      "devicePrivateVaultKey",
+      "deviceLocalProtectionKey",
+      "vaultTrustAnchor",
+    ]);
     expect(ctx.saved.deviceAccessMaterial).toMatchObject({
       revision: ctx.deviceAccessMaterial.revision + 1,
       localAccessGenerationId: ctx.values.replacementLocalAccessGenerationId,
+      masterPasswordSalt: ctx.values.newMasterPasswordSalt,
+      localKeysProtectionSalt: ctx.values.newLocalKeysProtectionSalt,
       devicePublicSignKey: ctx.values.devicePublicSignKey,
       devicePublicVaultKey: ctx.values.devicePublicVaultKey,
+      protectedLocalKeys: ctx.values.reprotectedLocalKeys,
     });
     expect(ctx.saved.deviceAccessRecoveryBackup).toMatchObject({
       revision: ctx.backup.revision + 1,
       localAccessGenerationId: ctx.values.replacementLocalAccessGenerationId,
+      recoveryLocalKeysProtectionSalt:
+        ctx.values.rotatedRecoveryLocalKeysProtectionSalt,
+      devicePublicSignKey: ctx.values.devicePublicSignKey,
+      devicePublicVaultKey: ctx.values.devicePublicVaultKey,
+      protectedLocalKeys: ctx.values.rotatedRecoveryProtectedLocalKeys,
     });
+    expect(
+      ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
+    ).toHaveBeenCalledOnce();
     const recoverySecretKey = await vi.mocked(
       ctx.ports.bip39.mnemonicToRecoveryKey,
     ).mock.results[0]!.value;
@@ -185,7 +234,7 @@ describe("RecoverDeviceAccessUseCase", () => {
     ]);
   });
 
-  it("rejects the old backup after a successful recovery rotation", async () => {
+  it("rejects an old backup replay without matching access material", async () => {
     const ctx = createContext();
     const replayedRecoveryBackup = ctx.backup;
 
@@ -196,11 +245,11 @@ describe("RecoverDeviceAccessUseCase", () => {
     });
 
     const recoveredDeviceAccessMaterial = ctx.saved.deviceAccessMaterial;
-    const rotatedRecoveryBackup = ctx.saved.deviceAccessRecoveryBackup;
+    const replacementRecoveryBackup = ctx.saved.deviceAccessRecoveryBackup;
     expect(recoveredDeviceAccessMaterial).toMatchObject({
       localAccessGenerationId: ctx.values.replacementLocalAccessGenerationId,
     });
-    expect(rotatedRecoveryBackup).toMatchObject({
+    expect(replacementRecoveryBackup).toMatchObject({
       localAccessGenerationId: ctx.values.replacementLocalAccessGenerationId,
     });
 
