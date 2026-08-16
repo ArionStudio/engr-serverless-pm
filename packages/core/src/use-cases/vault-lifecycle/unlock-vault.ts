@@ -29,6 +29,7 @@ import { LocalVaultTrustCheckpointNotFoundError } from "../../errors/vault-trust
 import { VaultTrustStateInvalidError } from "../../errors/vault-trust.errors";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import { bestEffortWipeArrayBuffers } from "../../lib/secure-wipe.utils";
+import type { ClipboardOperationCoordinatorPort } from "../../ports/clipboard/clipboard-operation-coordinator.port";
 
 export type UnlockVaultCommandParams = {
   vaultId: string;
@@ -59,6 +60,7 @@ export class UnlockVaultUseCase {
     vaultLocalRepository: VaultLocalRepositoryPort,
     vaultLockTasks: VaultLockTaskRepositoryPort,
     unlockedVaultSession: UnlockedVaultSessionService,
+    clipboardOperations: ClipboardOperationCoordinatorPort,
   ) {
     this.crypto = crypto;
     this.vaultLocalRepository = vaultLocalRepository;
@@ -69,6 +71,7 @@ export class UnlockVaultUseCase {
       scheduledTasks,
       vaultLockTasks,
       unlockedVaultSession,
+      clipboardOperations,
     );
     this.vaultTrust = new VaultTrustService(crypto);
   }

@@ -13,6 +13,7 @@ skinparam sequence {
 
 actor "New device caller" as Caller
 participant "PerformDeviceEnrollmentUseCase" as UC
+participant "ClipboardOperationCoordinatorPort" as Coordinator
 participant "UnlockedVaultSessionService" as Session
 participant "VaultSessionActivationService" as Activation
 participant "VaultLifecycleCleanupService" as Lifecycle
@@ -56,7 +57,8 @@ UC -> Trust : createCheckpoint(registered snapshot)
 UC -> Crypto : digest snapshot and optionally encrypt sync credentials
 
 UC -> Activation : activate(lease, unlockedVault, registered vector,\nlockAfterMs, prepare, rollback)
-Activation -> Session : activateWithAutoLock(...)
+Activation -> Coordinator : runExclusive(activation transition)
+Coordinator -> Session : activateWithAutoLock(...)
 Session -> Activation : invoke install-auto-lock callback
 Activation -> LocalRepo : prepare: saveInitializedLocalVault(...)
 Activation -> LockRepo : save(actionId, vaultId, expiresAt)

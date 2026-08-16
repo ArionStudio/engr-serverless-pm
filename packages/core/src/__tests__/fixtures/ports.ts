@@ -27,6 +27,10 @@ import type {
 import type { Vault } from "../../domain/vault/vault";
 import type { Bip39Port } from "../../ports/crypto/bip39.port";
 import type { ClockPort } from "../../ports/system/clock.port";
+import type {
+  ClipboardOperationCoordinatorPort,
+  ClipboardOperationLease,
+} from "../../ports/clipboard/clipboard-operation-coordinator.port";
 import type { ClipboardSecretHashPort } from "../../ports/clipboard/clipboard-secret-hash.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { EncryptedUnlockedVaultSessionPayloadRepositoryPort } from "../../ports/session/encrypted-unlocked-vault-session-payload-repository.port";
@@ -402,6 +406,23 @@ export function createCoreTestPorts(
     compareSecretValueHash: vi.fn(async (left, right) => left === right),
   };
 
+  const activeClipboardOperationLeases = new WeakSet<ClipboardOperationLease>();
+  const clipboardOperations: ClipboardOperationCoordinatorPort = {
+    isLeaseActive: (lease) => activeClipboardOperationLeases.has(lease),
+    runExclusive: async <Result>(
+      operation: (lease: ClipboardOperationLease) => Promise<Result>,
+    ) => {
+      const lease = Object.freeze({}) as ClipboardOperationLease;
+      activeClipboardOperationLeases.add(lease);
+
+      try {
+        return await operation(lease);
+      } finally {
+        activeClipboardOperationLeases.delete(lease);
+      }
+    },
+  };
+
   const bip39: Bip39Port = {
     recoveryKeyToMnemonic: vi.fn(async (recoveryKey) =>
       recoveryKey === values.rotatedRecoverySecretKey ||
@@ -719,6 +740,17 @@ export function createCoreTestPorts(
       getUnlockedVaultSessionMaterial: vi.fn(
         async () => saved.unlockedVaultSessionMaterial ?? null,
       ),
+      getPersistedUnlockedVaultSessionIdentity: vi.fn(async () => {
+        const material = saved.unlockedVaultSessionMaterial;
+        return material === undefined
+          ? null
+          : {
+              sessionId: material.sessionId,
+              vaultId: material.vaultId,
+              sourceSnapshotVersionVector: material.sourceSnapshotVersionVector,
+            };
+      }),
+      evictCachedUnlockedVaultSessionMaterial: vi.fn(async () => undefined),
       removeUnlockedVaultSessionMaterial: vi.fn(async () => {
         saved.unlockedVaultSessionMaterial = undefined;
         unlockedVaultSessionMirror = undefined;
@@ -755,6 +787,7 @@ export function createCoreTestPorts(
     encryptedUnlockedVaultSessionPayloadRepository,
     crypto,
     ids,
+    clipboardOperations,
   );
   const sessionServices = {
     unlockedVaultSession,
@@ -789,11 +822,13 @@ export function createCoreTestPorts(
       activationGeneration,
       unlockedVault,
       sourceSnapshotVersionVector,
+      coordinationLease,
     ) => {
       const sessionId = await activateSessionOriginal(
         activationGeneration,
         unlockedVault,
         sourceSnapshotVersionVector,
+        coordinationLease,
       );
       unlockedVaultSessionMirror = {
         sessionId,
@@ -814,6 +849,7 @@ export function createCoreTestPorts(
       sourceSnapshotVersionVector,
       installAutoLock,
       rollbackAutoLock,
+      coordinationLease,
     ) => {
       const activatedSession = await activateSessionWithAutoLockOriginal(
         activationGeneration,
@@ -821,6 +857,7 @@ export function createCoreTestPorts(
         sourceSnapshotVersionVector,
         installAutoLock,
         rollbackAutoLock,
+        coordinationLease,
       );
       unlockedVaultSessionMirror = {
         sessionId: activatedSession.sessionId,
@@ -835,11 +872,17 @@ export function createCoreTestPorts(
     sessionServices.unlockedVaultSession,
     "commitPersistedSnapshot",
   ).mockImplementation(
-    async (sessionId, unlockedVault, sourceSnapshotVersionVector) => {
+    async (
+      sessionId,
+      unlockedVault,
+      sourceSnapshotVersionVector,
+      coordinationLease,
+    ) => {
       await commitPersistedSnapshotOriginal(
         sessionId,
         unlockedVault,
         sourceSnapshotVersionVector,
+        coordinationLease,
       );
       unlockedVaultSessionMirror = {
         sessionId,
@@ -871,12 +914,14 @@ export function createCoreTestPorts(
       invalidateWhenUnavailable,
       beforeRemoval,
       afterRemoval,
+      coordinationLease,
     ) => {
       const result = await cleanupActiveSessionOriginal(
         requiredVaultId,
         invalidateWhenUnavailable,
         beforeRemoval,
         afterRemoval,
+        coordinationLease,
       );
 
       if (result === "removed") {
@@ -931,6 +976,7 @@ export function createCoreTestPorts(
 
   return {
     crypto,
+    clipboardOperations,
     clipboardSecretHash,
     bip39,
     vaultLocalRepository,

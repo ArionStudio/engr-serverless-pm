@@ -50,7 +50,12 @@ endif
 :Build device access material and recovery backup\nwith one localAccessGenerationId;
 :Build local descriptor, trust checkpoint, digest,\nand optional encrypted sync credentials;
 
-:Enter serialized activation boundary;
+:Enter shared cross-context clipboard/lifecycle coordinator;
+if (coordination cannot start?) then (yes)
+  :Throw coordination failure without persisting initialized local or session state;
+  stop
+endif
+:Within it, enter serialized activation boundary;
 :Save initialized local state as activation preparation;
 :Save lock metadata and schedule lockVault;
 if (scheduling or activation fails?) then (yes)

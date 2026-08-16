@@ -10,7 +10,6 @@ import type {
   ClipboardClearTask,
   ClipboardClearTaskRepositoryPort,
 } from "../../ports/clipboard/clipboard-clear-task-repository.port";
-import type { ClipboardOperationCoordinatorPort } from "../../ports/clipboard/clipboard-operation-coordinator.port";
 import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
 import { InvalidClipboardClearDelayError } from "../../errors/clipboard.errors";
 import { PasswordEntryNotFoundError } from "../../errors/vault-entry.errors";
@@ -48,9 +47,7 @@ function createContext() {
       activeClipboardClearTask = null;
     }),
   };
-  const clipboardOperations: ClipboardOperationCoordinatorPort = {
-    runExclusive: async (operation) => operation(),
-  };
+  const clipboardOperations = ports.clipboardOperations;
   const scheduledTasks: ScheduledTaskPort = {
     scheduleTask: vi.fn(async () => undefined),
     cancelTask: vi.fn(async () => undefined),

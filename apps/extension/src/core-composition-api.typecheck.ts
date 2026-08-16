@@ -56,6 +56,7 @@ export function composeCoreApi(ports: CoreCompositionPorts) {
     ports.encryptedSessionPayloads,
     ports.crypto,
     ports.ids,
+    ports.clipboardOperations,
   );
   const vaultSnapshot = new VaultSnapshotService(
     ports.crypto,
@@ -95,6 +96,7 @@ export function composeCoreApi(ports: CoreCompositionPorts) {
       ports.vaultDisplayName,
       ports.scheduledTasks,
       ports.vaultLockTasks,
+      ports.clipboardOperations,
     ),
     lockVault: new LockVaultUseCase(lifecycleCleanup),
     deleteLocalVault: new DeleteLocalVaultUseCase(
@@ -113,6 +115,7 @@ export function composeCoreApi(ports: CoreCompositionPorts) {
       lifecycleCleanup,
       ports.scheduledTasks,
       ports.vaultLockTasks,
+      ports.clipboardOperations,
     ),
     vaultEntry: new AddEntryUseCase(
       ports.ids,

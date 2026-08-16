@@ -13,6 +13,7 @@ skinparam sequence {
 
 actor Caller
 participant "UnlockVaultUseCase" as UC
+participant "ClipboardOperationCoordinatorPort" as Coordinator
 participant "UnlockedVaultSessionService" as Session
 database "VaultLocalRepositoryPort" as LocalRepo
 participant "CryptoPort" as Crypto
@@ -41,7 +42,8 @@ UC -> Crypto : verifyDeviceSignKeyPair(material.publicSignKey, privateKey)
 UC -> Crypto : deriveDeviceSlotVaultMasterKeyProtectionKey(deviceSlotKey)
 UC -> Crypto : unwrapVaultMasterKey(protectedVaultMasterKey, protectionKey)
 UC -> Crypto : decryptVaultSnapshotContent(content, vaultMasterKey)
-UC -> Session : enter serialized auto-lock activation boundary
+UC -> Coordinator : runExclusive(auto-lock activation transition)
+Coordinator -> Session : enter serialized auto-lock activation boundary
 UC -> LockRepo : save(actionId, vaultId, expiresAt)
 UC -> Tasks : scheduleTask(lockVault, runAt)
 alt scheduling fails

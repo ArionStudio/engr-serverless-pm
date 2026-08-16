@@ -6,7 +6,6 @@ import {
   singlePasswordEntry,
 } from "../../__tests__/fixtures/vault-entries";
 import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard/clipboard-clear-task-repository.port";
-import type { ClipboardOperationCoordinatorPort } from "../../ports/clipboard/clipboard-operation-coordinator.port";
 import type { ClipboardPort } from "../../ports/clipboard/clipboard.port";
 import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
 import { ClipboardClearService } from "../../services/clipboard/clipboard-clear.service";
@@ -29,9 +28,7 @@ function createContext() {
     get: vi.fn(async () => null),
     remove: vi.fn(async () => undefined),
   };
-  const clipboardOperations: ClipboardOperationCoordinatorPort = {
-    runExclusive: async (operation) => operation(),
-  };
+  const clipboardOperations = ports.clipboardOperations;
   const clock = {
     now: vi.fn(() => values.timestamp),
   };
@@ -77,7 +74,7 @@ describe("LockVaultUseCase", () => {
     ).toHaveBeenCalledTimes(1);
   });
 
-  it("removes hot session state when clipboard coordination cannot start", async () => {
+  it("preserves shared lifecycle state when clipboard coordination cannot start", async () => {
     const ctx = createContext();
     const error = new Error("clipboard coordination unavailable");
     vi.spyOn(ctx.clipboardOperations, "runExclusive").mockRejectedValueOnce(
@@ -87,40 +84,15 @@ describe("LockVaultUseCase", () => {
     await expect(ctx.useCase.execute()).rejects.toBe(error);
 
     expect(ctx.clipboardClearTasks.get).not.toHaveBeenCalled();
-    expect(ctx.ports.vaultLockTasks.get).toHaveBeenCalledTimes(1);
-    expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
+    expect(ctx.ports.vaultLockTasks.get).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.unlockedVaultSession).toBeDefined();
     expect(
       ctx.ports.unlockedVaultSessionMaterialRepository
         .removeUnlockedVaultSessionMaterial,
-    ).toHaveBeenCalledTimes(1);
+    ).not.toHaveBeenCalled();
   });
 
-  it("preserves the coordination error when session material reading also fails", async () => {
-    const ctx = createContext();
-    const coordinationError = new Error("clipboard coordination unavailable");
-    const sessionReadError = new Error("session material unavailable");
-    vi.spyOn(ctx.clipboardOperations, "runExclusive").mockRejectedValueOnce(
-      coordinationError,
-    );
-    vi.mocked(
-      ctx.ports.unlockedVaultSessionMaterialRepository
-        .getUnlockedVaultSessionMaterial,
-    ).mockRejectedValueOnce(sessionReadError);
-
-    await expect(ctx.useCase.execute()).rejects.toBe(coordinationError);
-
-    expect(ctx.clipboardClearTasks.get).not.toHaveBeenCalled();
-    expect(
-      ctx.ports.unlockedVaultSessionMaterialRepository
-        .removeUnlockedVaultSessionMaterial,
-    ).toHaveBeenCalledTimes(1);
-    expect(
-      ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
-        .removeEncryptedUnlockedVaultSessionPayload,
-    ).toHaveBeenCalledTimes(1);
-  });
-
-  it("preserves the coordination error when a scheduled action is stale", async () => {
+  it("does not authenticate a scheduled action when coordination cannot start", async () => {
     const ctx = createContext();
     const coordinationError = new Error("clipboard coordination unavailable");
     vi.spyOn(ctx.clipboardOperations, "runExclusive").mockRejectedValueOnce(
@@ -138,6 +110,7 @@ describe("LockVaultUseCase", () => {
 
     expect(ctx.ports.saved.unlockedVaultSession).toBeDefined();
     expect(ctx.clipboardClearTasks.get).not.toHaveBeenCalled();
+    expect(ctx.ports.vaultLockTasks.get).not.toHaveBeenCalled();
     expect(
       ctx.ports.unlockedVaultSessionMaterialRepository
         .removeUnlockedVaultSessionMaterial,
@@ -744,6 +717,55 @@ describe("LockVaultUseCase", () => {
       ctx.ports.sessionServices.unlockedVaultSession.cleanupActiveSession,
     ).toHaveBeenCalledTimes(1);
   });
+
+  it.each([undefined, "scheduled"] as const)(
+    "continues every cleanup phase when persisted session identity is unreadable (%s)",
+    async (mode) => {
+      const ctx = createContext();
+      const error = new Error("persisted session identity unavailable");
+      const actionId =
+        mode === "scheduled" ? ctx.values.vaultLockActionId : undefined;
+      vi.mocked(
+        ctx.ports.unlockedVaultSessionMaterialRepository
+          .getPersistedUnlockedVaultSessionIdentity,
+      ).mockRejectedValueOnce(error);
+      await ctx.ports.vaultLockTasks.save({
+        actionId: ctx.values.vaultLockActionId,
+        vaultId: ctx.values.vaultId,
+        expiresAt: ctx.values.timestamp + 60_000,
+      });
+      vi.mocked(ctx.clipboardClearTasks.get).mockResolvedValueOnce({
+        actionId: "clipboard-action-id",
+        copiedValueHash: `hash:${singlePasswordEntry.password}`,
+        expiresAt: ctx.values.timestamp + 60_000,
+      });
+
+      await expect(ctx.useCase.execute({ actionId })).rejects.toBe(error);
+
+      expect(ctx.clipboard.writeText).toHaveBeenCalledWith("");
+      expect(ctx.scheduledTasks.cancelTask).toHaveBeenCalledWith({
+        name: "clearClipboard",
+        actionId: "clipboard-action-id",
+      });
+      expect(ctx.scheduledTasks.cancelTask).toHaveBeenCalledWith({
+        name: "lockVault",
+        actionId: ctx.values.vaultLockActionId,
+      });
+      expect(ctx.clipboardClearTasks.remove).toHaveBeenCalledTimes(1);
+      expect(
+        ctx.ports.vaultLockTasks.removeIfActionIsActive,
+      ).toHaveBeenCalledWith(ctx.values.vaultLockActionId);
+      expect(
+        ctx.ports.unlockedVaultSessionMaterialRepository
+          .removeUnlockedVaultSessionMaterial,
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
+          .removeEncryptedUnlockedVaultSessionPayload,
+      ).toHaveBeenCalledTimes(1);
+      expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
+    },
+  );
 
   it("preserves clipboard cleanup error when unlocked vault state removal also fails", async () => {
     const ctx = createContext();

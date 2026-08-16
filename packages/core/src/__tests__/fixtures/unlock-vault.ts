@@ -56,6 +56,7 @@ export function createUnlockVaultTestContext() {
     ports.vaultLocalRepository,
     ports.vaultLockTasks,
     ports.sessionServices.unlockedVaultSession,
+    ports.clipboardOperations,
   );
 
   return {

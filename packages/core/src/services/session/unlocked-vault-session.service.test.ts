@@ -15,6 +15,7 @@ import type {
   EncryptedUnlockedVaultSessionPayload,
   UnlockedVaultSessionMaterial,
 } from "../../domain/session/unlocked-vault-session.type";
+import type { ClipboardOperationLease } from "../../ports/clipboard/clipboard-operation-coordinator.port";
 import { UnlockedVaultSessionService } from "./unlocked-vault-session.service";
 
 function createContext() {
@@ -33,6 +34,7 @@ function createContext() {
     ports.encryptedUnlockedVaultSessionPayloadRepository,
     ports.crypto,
     ports.ids,
+    ports.clipboardOperations,
   );
 
   vi.mocked(ports.ids.generateId)
@@ -797,6 +799,51 @@ describe("UnlockedVaultSessionService", () => {
     ).toBe("new-session-id");
   });
 
+  it("wipes stale cached material without restoring over persisted replacement ownership", async () => {
+    const ctx = createContext();
+    const staleMaterial = createMaterial(ctx);
+    ctx.ports.saved.unlockedVaultSessionMaterial = staleMaterial;
+    ctx.ports.saved.encryptedUnlockedVaultSessionPayload =
+      createEncryptedPayload(ctx);
+    vi.mocked(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .getPersistedUnlockedVaultSessionIdentity,
+    ).mockResolvedValue({
+      sessionId: "replacement-session-id",
+      vaultId: ctx.values.vaultId,
+      sourceSnapshotVersionVector: { [ctx.values.deviceId]: 8 },
+    });
+    const restore = vi.fn(async () => undefined);
+
+    await expect(
+      ctx.service.restorePersistedState(
+        ctx.values.sessionId,
+        ctx.values.vaultId,
+        ctx.sourceSnapshotVersionVector,
+        restore,
+      ),
+    ).resolves.toBe("session_advanced");
+
+    expect(restore).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .evictCachedUnlockedVaultSessionMaterial,
+    ).toHaveBeenCalledWith(ctx.values.sessionId);
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .removeUnlockedVaultSessionMaterial,
+    ).not.toHaveBeenCalled();
+    for (const secret of [
+      staleMaterial.vaultMasterKey,
+      staleMaterial.devicePrivateSignKey,
+      staleMaterial.devicePrivateVaultKey,
+      staleMaterial.deviceLocalProtectionKey,
+      staleMaterial.payloadKey,
+    ]) {
+      expect(Array.from(new Uint8Array(secret))).toEqual([0]);
+    }
+  });
+
   it("does not restore state or invalidate an advanced session", async () => {
     const ctx = createContext();
     ctx.ports.saved.unlockedVaultSessionMaterial = createMaterial(ctx);
@@ -850,6 +897,26 @@ describe("UnlockedVaultSessionService", () => {
     expect(restore).not.toHaveBeenCalled();
     expect(ctx.ports.saved.unlockedVaultSessionMaterial).toBe(material);
     expect(ctx.ports.saved.encryptedUnlockedVaultSessionPayload).toBeDefined();
+  });
+
+  it("reports rollback failure when cross-context coordination cannot start", async () => {
+    const ctx = createContext();
+    const restore = vi.fn(async () => undefined);
+    vi.spyOn(
+      ctx.ports.clipboardOperations,
+      "runExclusive",
+    ).mockRejectedValueOnce(new Error("coordination unavailable"));
+
+    await expect(
+      ctx.service.restorePersistedState(
+        ctx.values.sessionId,
+        ctx.values.vaultId,
+        ctx.sourceSnapshotVersionVector,
+        restore,
+      ),
+    ).resolves.toBe("rollback_failed");
+
+    expect(restore).not.toHaveBeenCalled();
   });
 
   it("invalidates a pending activation lease before restoring without active material", async () => {
@@ -1152,6 +1219,90 @@ describe("UnlockedVaultSessionService", () => {
     expect(discard).not.toHaveBeenCalled();
   });
 
+  it("withholds targeted cleanup after reconciling stale cached ownership", async () => {
+    const ctx = createContext();
+    const staleMaterial = createMaterial(ctx);
+    ctx.ports.saved.unlockedVaultSessionMaterial = staleMaterial;
+    ctx.ports.saved.encryptedUnlockedVaultSessionPayload =
+      createEncryptedPayload(ctx);
+    vi.mocked(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .getPersistedUnlockedVaultSessionIdentity,
+    ).mockResolvedValue({
+      sessionId: "replacement-session-id",
+      vaultId: ctx.values.vaultId,
+      sourceSnapshotVersionVector: { [ctx.values.deviceId]: 8 },
+    });
+    const beforeRemoval = vi.fn(async () => true);
+    const afterRemoval = vi.fn(async () => undefined);
+
+    await expect(
+      ctx.service.cleanupActiveSession(
+        ctx.values.vaultId,
+        false,
+        beforeRemoval,
+        afterRemoval,
+      ),
+    ).resolves.toBe("session_unavailable");
+
+    expect(beforeRemoval).not.toHaveBeenCalled();
+    expect(afterRemoval).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .removeUnlockedVaultSessionMaterial,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
+        .removeEncryptedUnlockedVaultSessionPayload,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .evictCachedUnlockedVaultSessionMaterial,
+    ).toHaveBeenCalledWith(ctx.values.sessionId);
+  });
+
+  it("allows targeted cleanup after the same session advances", async () => {
+    const ctx = createContext();
+    const staleMaterial = createMaterial(ctx);
+    ctx.ports.saved.unlockedVaultSessionMaterial = staleMaterial;
+    ctx.ports.saved.encryptedUnlockedVaultSessionPayload =
+      createEncryptedPayload(ctx);
+    vi.mocked(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .getPersistedUnlockedVaultSessionIdentity,
+    ).mockResolvedValue({
+      sessionId: ctx.values.sessionId,
+      vaultId: ctx.values.vaultId,
+      sourceSnapshotVersionVector: { [ctx.values.deviceId]: 8 },
+    });
+    const beforeRemoval = vi.fn(async () => true);
+    const afterRemoval = vi.fn(async () => undefined);
+
+    await expect(
+      ctx.service.cleanupActiveSession(
+        ctx.values.vaultId,
+        false,
+        beforeRemoval,
+        afterRemoval,
+      ),
+    ).resolves.toBe("removed");
+
+    expect(beforeRemoval).toHaveBeenCalledWith({
+      sessionId: ctx.values.sessionId,
+      vaultId: ctx.values.vaultId,
+      generation: 1,
+    });
+    expect(afterRemoval).toHaveBeenCalledTimes(1);
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .removeUnlockedVaultSessionMaterial,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
+        .removeEncryptedUnlockedVaultSessionPayload,
+    ).toHaveBeenCalledTimes(1);
+  });
+
   it("does not invalidate another active vault after persisted snapshot commit mismatch", async () => {
     const ctx = createContext();
     ctx.ports.saved.unlockedVaultSessionMaterial = createActiveMaterial(
@@ -1200,6 +1351,25 @@ describe("UnlockedVaultSessionService", () => {
     ]) {
       expect(Array.from(new Uint8Array(buffer))).toEqual([0]);
     }
+  });
+
+  it("rejects an expired coordination lease without mutating session state", async () => {
+    const ctx = createContext();
+    const material = createMaterial(ctx);
+    ctx.ports.saved.unlockedVaultSessionMaterial = material;
+    ctx.ports.saved.encryptedUnlockedVaultSessionPayload =
+      createEncryptedPayload(ctx);
+    let expiredLease!: ClipboardOperationLease;
+    await ctx.ports.clipboardOperations.runExclusive(async (lease) => {
+      expiredLease = lease;
+    });
+
+    await expect(ctx.service.remove(expiredLease)).rejects.toThrow(
+      "Clipboard operation lease is not active for this coordinator.",
+    );
+
+    expect(ctx.ports.saved.unlockedVaultSessionMaterial).toBe(material);
+    expect(ctx.ports.saved.encryptedUnlockedVaultSessionPayload).toBeDefined();
   });
 
   it("continues wiping and repository cleanup after a buffer cannot be wiped", async () => {

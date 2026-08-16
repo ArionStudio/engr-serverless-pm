@@ -29,6 +29,7 @@ import { VaultSessionActivationService } from "../../services/session/vault-sess
 import { bestEffortWipeArrayBuffers } from "../../lib/secure-wipe.utils";
 import { VaultTrustService } from "../../services/trust/vault-trust.service";
 import { DeviceAccessMaterialChangedError } from "../../errors/vault-device.errors";
+import type { ClipboardOperationCoordinatorPort } from "../../ports/clipboard/clipboard-operation-coordinator.port";
 
 export type InitializeVaultCommandParams = {
   masterPassword: RawMasterPassword;
@@ -62,6 +63,7 @@ export class InitializeVaultUseCase {
     vaultDisplayName: VaultDisplayNamePort,
     scheduledTasks: ScheduledTaskPort,
     vaultLockTasks: VaultLockTaskRepositoryPort,
+    clipboardOperations: ClipboardOperationCoordinatorPort,
   ) {
     this.crypto = crypto;
     this.bip39 = bip39;
@@ -77,6 +79,7 @@ export class InitializeVaultUseCase {
       scheduledTasks,
       vaultLockTasks,
       unlockedVaultSession,
+      clipboardOperations,
     );
   }
 

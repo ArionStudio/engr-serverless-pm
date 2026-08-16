@@ -3,6 +3,7 @@ import type {
   UnlockedVaultSessionMaterialRepositoryPort,
 } from "@lfspm/core";
 import {
+  deserializeUnlockedVaultSessionIdentity,
   deserializeUnlockedVaultSessionMaterial,
   serializeUnlockedVaultSessionMaterial,
 } from "./unlocked-vault-session-material.codec";
@@ -53,6 +54,30 @@ export class ChromeUnlockedVaultSessionMaterialRepository implements UnlockedVau
       const decodedMaterial = deserializeUnlockedVaultSessionMaterial(material);
       this.cachedMaterial = decodedMaterial;
       return decodedMaterial;
+    });
+  }
+
+  async getPersistedUnlockedVaultSessionIdentity(): Promise<Pick<
+    UnlockedVaultSessionMaterial,
+    "sessionId" | "vaultId" | "sourceSnapshotVersionVector"
+  > | null> {
+    return this.serializeOperation(async () => {
+      const storedRecords = await this.storageArea.get(this.storageKey);
+      const material = storedRecords[this.storageKey];
+
+      return material === undefined
+        ? null
+        : deserializeUnlockedVaultSessionIdentity(material);
+    });
+  }
+
+  async evictCachedUnlockedVaultSessionMaterial(
+    sessionId: string,
+  ): Promise<void> {
+    await this.serializeOperation(async () => {
+      if (this.cachedMaterial?.sessionId === sessionId) {
+        this.cachedMaterial = undefined;
+      }
     });
   }
 

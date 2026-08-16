@@ -16,6 +16,7 @@ export function createInitializeVaultTestContext() {
     ports.vaultDisplayName,
     ports.scheduledTasks,
     ports.vaultLockTasks,
+    ports.clipboardOperations,
   );
 
   vi.mocked(ports.ids.generateId).mockReset();

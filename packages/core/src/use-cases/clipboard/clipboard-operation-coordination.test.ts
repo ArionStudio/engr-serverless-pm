@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import {
+  createUnlockedVaultWithEntries,
   saveUnlockedVaultWithEntries,
   singlePasswordEntry,
 } from "../../__tests__/fixtures/vault-entries";
@@ -10,26 +11,53 @@ import type {
   ClipboardClearTask,
   ClipboardClearTaskRepositoryPort,
 } from "../../ports/clipboard/clipboard-clear-task-repository.port";
-import type { ClipboardOperationCoordinatorPort } from "../../ports/clipboard/clipboard-operation-coordinator.port";
+import type {
+  ClipboardOperationCoordinatorPort,
+  ClipboardOperationLease,
+} from "../../ports/clipboard/clipboard-operation-coordinator.port";
 import type { ClipboardPort } from "../../ports/clipboard/clipboard.port";
 import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
+import type {
+  VaultLockTask,
+  VaultLockTaskRepositoryPort,
+} from "../../ports/vault/vault-lock-task-repository.port";
 import { ClipboardClearService } from "../../services/clipboard/clipboard-clear.service";
+import { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import { VaultLifecycleCleanupService } from "../../services/session/vault-lifecycle-cleanup.service";
+import { VaultSessionActivationService } from "../../services/session/vault-session-activation.service";
 import { LockVaultUseCase } from "../vault-lifecycle/lock-vault";
 import { ClearClipboardTaskUseCase } from "./clear-clipboard-task";
 import { CopyEntryPasswordUseCase } from "./copy-entry-password";
 
 class SerializedClipboardOperationCoordinator implements ClipboardOperationCoordinatorPort {
   private tail: Promise<void> = Promise.resolve();
+  private readonly activeLeases = new WeakSet<ClipboardOperationLease>();
 
-  runExclusive<T>(operation: () => Promise<T>): Promise<T> {
+  isLeaseActive(lease: ClipboardOperationLease): boolean {
+    return this.activeLeases.has(lease);
+  }
+
+  runExclusive<T>(
+    operation: (lease: ClipboardOperationLease) => Promise<T>,
+  ): Promise<T> {
     const previous = this.tail;
     let release = (): void => undefined;
     this.tail = new Promise<void>((resolve) => {
       release = resolve;
     });
 
-    return previous.then(operation).finally(release);
+    return previous
+      .then(async () => {
+        const lease = Object.freeze({}) as ClipboardOperationLease;
+        this.activeLeases.add(lease);
+
+        try {
+          return await operation(lease);
+        } finally {
+          this.activeLeases.delete(lease);
+        }
+      })
+      .finally(release);
   }
 }
 
@@ -140,6 +168,13 @@ function createContext() {
     }),
   };
   const clipboardOperations = new SerializedClipboardOperationCoordinator();
+  const unlockedVaultSession = new UnlockedVaultSessionService(
+    ports.unlockedVaultSessionMaterialRepository,
+    ports.encryptedUnlockedVaultSessionPayloadRepository,
+    ports.crypto,
+    ports.ids,
+    clipboardOperations,
+  );
   const clock = {
     now: vi.fn(() => 1_000),
   };
@@ -174,7 +209,7 @@ function createContext() {
       clipboardClearTasks,
       scheduledTasks,
       clock,
-      ports.sessionServices.unlockedVaultSession,
+      unlockedVaultSession,
     );
 
   return {
@@ -194,7 +229,7 @@ function createContext() {
         clipboardOperations,
         scheduledTasks,
         ports.vaultLockTasks,
-        ports.sessionServices.unlockedVaultSession,
+        unlockedVaultSession,
       ),
     ),
     getClipboardValue: () => clipboardValue,
@@ -380,5 +415,121 @@ describe("clipboard operation coordination", () => {
     expect(ctx.getClipboardValue()).toBe("");
     expect(ctx.getCurrentTask()).toBeNull();
     expect(ctx.getScheduledActionIds()).toEqual(new Set());
+  });
+
+  it("finishes scheduled cleanup before another context activates a replacement session", async () => {
+    const values = createCoreTestValues();
+    const ports = createCoreTestPorts(values);
+    const unlockedVault = createUnlockedVaultWithEntries(values, []);
+    saveUnlockedVaultWithEntries(ports, values, []);
+
+    const lockActionId = "scheduled-lock-action";
+    const replacementActionId = "replacement-lock-action";
+    const replacementSessionId = "replacement-session";
+    let activeLockTask: VaultLockTask | null = {
+      actionId: lockActionId,
+      vaultId: values.vaultId,
+      expiresAt: values.timestamp,
+    };
+    const removalReached = createDeferred();
+    const removalCanFinish = createDeferred();
+    const vaultLockTasks: VaultLockTaskRepositoryPort = {
+      save: vi.fn(async (task) => {
+        activeLockTask = task;
+      }),
+      get: vi.fn(async () => activeLockTask),
+      removeIfActionIsActive: vi.fn(async (actionId) => {
+        if (activeLockTask?.actionId !== actionId) {
+          return false;
+        }
+
+        activeLockTask = null;
+        removalReached.resolve();
+        await removalCanFinish.promise;
+        return true;
+      }),
+    };
+    const clipboard: ClipboardPort = {
+      readText: vi.fn(async () => ""),
+      writeText: vi.fn(async () => undefined),
+    };
+    const clipboardClearTasks: ClipboardClearTaskRepositoryPort = {
+      save: vi.fn(async () => undefined),
+      get: vi.fn(async () => null),
+      remove: vi.fn(async () => undefined),
+    };
+    const clipboardClear = new ClipboardClearService(
+      clipboard,
+      clipboardClearTasks,
+      ports.clock,
+      ports.clipboardSecretHash,
+    );
+    const clipboardOperations = new SerializedClipboardOperationCoordinator();
+    const activationSession = new UnlockedVaultSessionService(
+      ports.unlockedVaultSessionMaterialRepository,
+      ports.encryptedUnlockedVaultSessionPayloadRepository,
+      ports.crypto,
+      ports.ids,
+      clipboardOperations,
+    );
+    const cleanupSession = new UnlockedVaultSessionService(
+      ports.unlockedVaultSessionMaterialRepository,
+      ports.encryptedUnlockedVaultSessionPayloadRepository,
+      ports.crypto,
+      ports.ids,
+      clipboardOperations,
+    );
+    const activationGeneration =
+      await activationSession.requireVaultCanBeActivated(values.vaultId);
+    vi.mocked(ports.ids.generateId)
+      .mockReset()
+      .mockResolvedValueOnce(replacementActionId)
+      .mockResolvedValueOnce(replacementSessionId);
+    const lock = new LockVaultUseCase(
+      new VaultLifecycleCleanupService(
+        clipboardClear,
+        clipboardClearTasks,
+        clipboardOperations,
+        ports.scheduledTasks,
+        vaultLockTasks,
+        cleanupSession,
+      ),
+    );
+    const activation = new VaultSessionActivationService(
+      ports.clock,
+      ports.ids,
+      ports.scheduledTasks,
+      vaultLockTasks,
+      activationSession,
+      clipboardOperations,
+    );
+
+    const cleanup = lock.execute({ actionId: lockActionId });
+    await removalReached.promise;
+    const replacement = activation.activate({
+      activationGeneration,
+      unlockedVault,
+      sourceSnapshotVersionVector: { [values.deviceId]: 2 },
+      lockAfterMs: 60_000,
+    });
+
+    await Promise.resolve();
+    expect(vaultLockTasks.save).not.toHaveBeenCalled();
+
+    removalCanFinish.resolve();
+    await expect(cleanup).resolves.toBeUndefined();
+    await expect(replacement).resolves.toEqual({
+      sessionId: replacementSessionId,
+      generation: 1,
+    });
+
+    await expect(activationSession.get()).resolves.toMatchObject({
+      sessionId: replacementSessionId,
+      sourceSnapshotVersionVector: { [values.deviceId]: 2 },
+    });
+    expect(activeLockTask).toMatchObject({
+      actionId: replacementActionId,
+      vaultId: values.vaultId,
+    });
   });
 });

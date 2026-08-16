@@ -211,6 +211,63 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
     expect(get).toHaveBeenCalledOnce();
   });
 
+  it("reads the shared identity without trusting a cached absence", async () => {
+    const { storageArea } = createChromeStorageArea();
+    const reader = new ChromeUnlockedVaultSessionMaterialRepository(
+      storageArea,
+    );
+    const writer = new ChromeUnlockedVaultSessionMaterialRepository(
+      storageArea,
+    );
+
+    await reader.removeUnlockedVaultSessionMaterial();
+    await writer.saveUnlockedVaultSessionMaterial(createMaterial());
+
+    await expect(
+      reader.getPersistedUnlockedVaultSessionIdentity(),
+    ).resolves.toEqual({
+      sessionId: "session-id",
+      vaultId: "vault-id",
+      sourceSnapshotVersionVector: { "device-id": 7 },
+    });
+    await expect(reader.getUnlockedVaultSessionMaterial()).resolves.toBeNull();
+  });
+
+  it("evicts only the matching local cache and reloads shared material", async () => {
+    const { storageArea } = createChromeStorageArea();
+    const writer = new ChromeUnlockedVaultSessionMaterialRepository(
+      storageArea,
+    );
+    const reader = new ChromeUnlockedVaultSessionMaterialRepository(
+      storageArea,
+    );
+    await writer.saveUnlockedVaultSessionMaterial(createMaterial());
+    const cachedMaterial = await reader.getUnlockedVaultSessionMaterial();
+    const replacementMaterial = {
+      ...createMaterial(),
+      sessionId: "replacement-session-id",
+      sourceSnapshotVersionVector: { "device-id": 8 },
+    };
+    await writer.saveUnlockedVaultSessionMaterial(replacementMaterial);
+
+    await reader.evictCachedUnlockedVaultSessionMaterial("session-id");
+
+    const reloadedMaterial = await reader.getUnlockedVaultSessionMaterial();
+    expect(reloadedMaterial).toEqual(replacementMaterial);
+    await reader.evictCachedUnlockedVaultSessionMaterial("session-id");
+    await expect(reader.getUnlockedVaultSessionMaterial()).resolves.toBe(
+      reloadedMaterial,
+    );
+    expect(cachedMaterial?.sessionId).toBe("session-id");
+    await expect(
+      reader.getPersistedUnlockedVaultSessionIdentity(),
+    ).resolves.toEqual({
+      sessionId: "replacement-session-id",
+      vaultId: "vault-id",
+      sourceSnapshotVersionVector: { "device-id": 8 },
+    });
+  });
+
   it("does not let a delayed cold read repopulate material after removal", async () => {
     const { storageArea } = createChromeStorageArea();
     const writer = new ChromeUnlockedVaultSessionMaterialRepository(

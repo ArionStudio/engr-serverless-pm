@@ -1,7 +1,17 @@
+declare const clipboardOperationLeaseBrand: unique symbol;
+
+export type ClipboardOperationLease = {
+  readonly [clipboardOperationLeaseBrand]: true;
+};
+
 /**
- * Serializes clipboard ownership transitions across every runtime context that
- * shares the clipboard clear task repository.
+ * Serializes clipboard ownership and vault-session activation/cleanup
+ * transitions across runtime contexts that share lifecycle state.
  */
 export interface ClipboardOperationCoordinatorPort {
-  runExclusive: <T>(operation: () => Promise<T>) => Promise<T>;
+  /** Rejects escaped or foreign leases after the owning callback ends. */
+  isLeaseActive: (lease: ClipboardOperationLease) => boolean;
+  runExclusive: <T>(
+    operation: (lease: ClipboardOperationLease) => Promise<T>,
+  ) => Promise<T>;
 }

@@ -134,10 +134,7 @@ function createContext(synced = false) {
     ports.clock,
     ports.clipboardSecretHash,
   );
-  const clipboardOperations = {
-    runExclusive: async <Result>(operation: () => Promise<Result>) =>
-      operation(),
-  };
+  const clipboardOperations = ports.clipboardOperations;
   const lifecycleCleanup = new VaultLifecycleCleanupService(
     clipboardClear,
     clipboardClearTasks,
@@ -158,6 +155,7 @@ function createContext(synced = false) {
     lifecycleCleanup,
     ports.scheduledTasks,
     ports.vaultLockTasks,
+    clipboardOperations,
   );
 
   vi.mocked(ports.ids.generateId).mockReset();
@@ -920,15 +918,18 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
   });
 
-  it("removes the hot session but retains local enrollment when rollback coordination is unavailable", async () => {
+  it("preserves the active session and local enrollment when rollback coordination is unavailable", async () => {
     const ctx = createContext(true);
     const coordinationError = new Error("clipboard coordination unavailable");
     vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockRejectedValueOnce(
       new RemoteVaultSnapshotChangedError(ctx.values.vaultId),
     );
-    vi.spyOn(ctx.clipboardOperations, "runExclusive").mockRejectedValueOnce(
-      coordinationError,
+    const runExclusive = ctx.clipboardOperations.runExclusive.bind(
+      ctx.clipboardOperations,
     );
+    vi.spyOn(ctx.clipboardOperations, "runExclusive")
+      .mockImplementationOnce(runExclusive)
+      .mockRejectedValueOnce(coordinationError);
 
     await expect(
       ctx.useCase.execute({
@@ -946,25 +947,24 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     });
 
     expect(ctx.clipboardClearTasks.get).not.toHaveBeenCalled();
-    expect(ctx.ports.vaultLockTasks.get).toHaveBeenCalled();
+    expect(ctx.ports.vaultLockTasks.get).not.toHaveBeenCalled();
     expect(
       ctx.ports.vaultLockTasks.removeIfActionIsActive,
-    ).toHaveBeenCalledWith(ctx.values.vaultLockActionId);
-    expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.unlockedVaultSession).toBeDefined();
     expect(
       ctx.ports.unlockedVaultSessionMaterialRepository
         .removeUnlockedVaultSessionMaterial,
-    ).toHaveBeenCalledOnce();
+    ).not.toHaveBeenCalled();
     expect(
       ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
         .removeEncryptedUnlockedVaultSessionPayload,
-    ).toHaveBeenCalledOnce();
+    ).not.toHaveBeenCalled();
     expect(
       ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfSnapshotMatches,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.saved.localVaultDescriptor).toBeDefined();
     expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
-    await expectEnrollmentOwnedBuffersWiped(ctx);
   });
 
   it("rolls back local state after a definitive compare-and-set rejection", async () => {

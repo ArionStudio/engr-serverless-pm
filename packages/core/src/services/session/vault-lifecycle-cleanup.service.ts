@@ -5,6 +5,7 @@ import type { VaultLockTaskRepositoryPort } from "../../ports/vault/vault-lock-t
 import type { ClipboardClearService } from "../clipboard/clipboard-clear.service";
 import type { UnlockedVaultSessionService } from "./unlocked-vault-session.service";
 import type { VersionVector } from "../../domain/versioning/version-vector.type";
+import type { ClipboardOperationLease } from "../../ports/clipboard/clipboard-operation-coordinator.port";
 
 export type VaultLifecycleCleanupParams = {
   readonly actionId?: string;
@@ -46,30 +47,14 @@ export class VaultLifecycleCleanupService {
   async cleanup(
     params: VaultLifecycleCleanupParams = {},
   ): Promise<"cleaned" | "session_unavailable" | "stale_action"> {
-    return this.runWithClipboardCoordination(
-      () => this.cleanupExclusive(params),
-      (coordinationError) =>
-        this.cleanupAfterCoordinationFailure(params, coordinationError),
+    return this.clipboardOperations.runExclusive((coordinationLease) =>
+      this.cleanupExclusive(params, coordinationLease),
     );
-  }
-
-  private async cleanupAfterCoordinationFailure(
-    params: VaultLifecycleCleanupParams,
-    coordinationError: unknown,
-  ): Promise<"cleaned" | "session_unavailable" | "stale_action"> {
-    try {
-      await this.cleanupExclusive(params, false, coordinationError);
-    } catch {
-      // The acquisition failure is still the earliest error.
-    }
-
-    throw coordinationError;
   }
 
   private async cleanupExclusive(
     params: VaultLifecycleCleanupParams,
-    clipboardCleanupEnabled = true,
-    initialError?: unknown,
+    coordinationLease: ClipboardOperationLease,
   ): Promise<"cleaned" | "session_unavailable" | "stale_action"> {
     let staleAction = false;
     let staleActionError: unknown;
@@ -80,8 +65,6 @@ export class VaultLifecycleCleanupService {
         const taskCleanup = await this.cleanupTasks(
           params.actionId,
           activeSession?.vaultId ?? params.requiredVaultId,
-          clipboardCleanupEnabled,
-          initialError,
         );
         if (taskCleanup.status === "stale_action") {
           staleAction = true;
@@ -90,6 +73,7 @@ export class VaultLifecycleCleanupService {
         return !staleAction;
       },
       params.afterSessionRemoval,
+      coordinationLease,
     );
 
     if (staleActionError !== undefined) {
@@ -112,11 +96,22 @@ export class VaultLifecycleCleanupService {
     },
     discard: () => Promise<boolean>,
   ): Promise<SessionDiscardResult> {
-    return this.runWithClipboardCoordination(
-      () => this.discardExclusive(params, discard),
-      (coordinationError) =>
-        this.discardExclusive(params, discard, false, coordinationError),
-    );
+    let operationStarted = false;
+
+    try {
+      return await this.clipboardOperations.runExclusive(
+        (coordinationLease) => {
+          operationStarted = true;
+          return this.discardExclusive(params, discard, coordinationLease);
+        },
+      );
+    } catch (error) {
+      if (operationStarted) {
+        throw error;
+      }
+
+      return "rollback_failed";
+    }
   }
 
   private async discardExclusive(
@@ -127,8 +122,7 @@ export class VaultLifecycleCleanupService {
       readonly sourceSnapshotVersionVector: VersionVector;
     },
     discard: () => Promise<boolean>,
-    clipboardCleanupEnabled = true,
-    initialError?: unknown,
+    coordinationLease: ClipboardOperationLease,
   ): Promise<SessionDiscardResult> {
     return this.unlockedVaultSession.discardIfSessionIsActive(
       params.sessionId,
@@ -136,47 +130,21 @@ export class VaultLifecycleCleanupService {
       params.generation,
       params.sourceSnapshotVersionVector,
       async () => {
-        await this.cleanupTasks(
-          undefined,
-          params.vaultId,
-          clipboardCleanupEnabled,
-          initialError,
-        );
+        await this.cleanupTasks(undefined, params.vaultId);
       },
       discard,
+      coordinationLease,
     );
-  }
-
-  private async runWithClipboardCoordination<Result>(
-    operation: () => Promise<Result>,
-    onAcquisitionFailure: (error: unknown) => Promise<Result>,
-  ): Promise<Result> {
-    let operationStarted = false;
-
-    try {
-      return await this.clipboardOperations.runExclusive(() => {
-        operationStarted = true;
-        return operation();
-      });
-    } catch (error) {
-      if (operationStarted) {
-        throw error;
-      }
-
-      return onAcquisitionFailure(error);
-    }
   }
 
   private async cleanupTasks(
     actionId: string | undefined,
     expectedVaultId: string | undefined,
-    clipboardCleanupEnabled = true,
-    initialError?: unknown,
   ): Promise<
     | { readonly status: "cleaned" }
     | { readonly status: "stale_action"; readonly error?: unknown }
   > {
-    let firstError = initialError;
+    let firstError: unknown;
     let vaultLockTask: Awaited<ReturnType<VaultLockTaskRepositoryPort["get"]>>;
     let lockMetadataRemoved = false;
     let scheduledActionAuthenticationFailed = false;
@@ -220,39 +188,37 @@ export class VaultLifecycleCleanupService {
       return { status: "stale_action" };
     }
 
-    if (clipboardCleanupEnabled) {
-      let clipboardClearTask: Awaited<
-        ReturnType<ClipboardClearTaskRepositoryPort["get"]>
-      >;
+    let clipboardClearTask: Awaited<
+      ReturnType<ClipboardClearTaskRepositoryPort["get"]>
+    >;
+    try {
+      clipboardClearTask = await this.clipboardClearTasks.get();
+    } catch (error) {
+      firstError ??= error;
+      clipboardClearTask = null;
+    }
+
+    if (clipboardClearTask !== null) {
+      let clipboardOwnershipReleased = false;
+
       try {
-        clipboardClearTask = await this.clipboardClearTasks.get();
+        await this.clipboardClear.clearTask({
+          task: clipboardClearTask,
+          requireExpired: false,
+        });
+        clipboardOwnershipReleased = true;
       } catch (error) {
         firstError ??= error;
-        clipboardClearTask = null;
       }
 
-      if (clipboardClearTask !== null) {
-        let clipboardOwnershipReleased = false;
-
+      if (clipboardOwnershipReleased) {
         try {
-          await this.clipboardClear.clearTask({
-            task: clipboardClearTask,
-            requireExpired: false,
+          await this.scheduledTasks.cancelTask({
+            name: "clearClipboard",
+            actionId: clipboardClearTask.actionId,
           });
-          clipboardOwnershipReleased = true;
         } catch (error) {
           firstError ??= error;
-        }
-
-        if (clipboardOwnershipReleased) {
-          try {
-            await this.scheduledTasks.cancelTask({
-              name: "clearClipboard",
-              actionId: clipboardClearTask.actionId,
-            });
-          } catch (error) {
-            firstError ??= error;
-          }
         }
       }
     }

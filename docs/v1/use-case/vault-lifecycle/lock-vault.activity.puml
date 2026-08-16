@@ -13,7 +13,21 @@ start
 :Input:\noptional actionId;
 :Source:\npackages/core/src/use-cases/vault-lifecycle/lock-vault.ts;
 :Enter shared cross-context clipboard operation coordinator;
+if (coordination cannot start?) then (yes)
+  :Preserve shared clipboard, task, and session state;
+  :Throw coordination failure for retry;
+  stop
+endif
 :Within it, enter serialized session cleanup boundary;
+:Read authoritative persisted session identity;
+if (identity read fails for targeted deletion?) then (yes)
+  :Preserve task, session, and local vault state;
+  :Throw the identity failure;
+  stop
+else (no)
+  :For manual or authenticated scheduled lock,
+  preserve the identity failure and continue with cached material;
+endif
 :Read active session material, preserving the first failure;
 :Load pending vault lock task metadata inside cleanup boundary;
 

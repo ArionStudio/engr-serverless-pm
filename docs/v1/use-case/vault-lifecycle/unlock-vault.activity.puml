@@ -83,7 +83,12 @@ endif
 :Unwrap vaultMasterKey;
 :Decrypt snapshot content into vault;
 :Build unlocked vault session object;
-:Enter serialized session activation boundary;
+:Enter shared cross-context clipboard/lifecycle coordinator;
+if (coordination cannot start?) then (yes)
+  :Throw coordination failure without installing lock metadata or session state;
+  stop
+endif
+:Within it, enter serialized session activation boundary;
 :Generate lock task actionId;
 :Compute lockScheduledAt = now + lockAfterMs;
 :Save vault lock task metadata;

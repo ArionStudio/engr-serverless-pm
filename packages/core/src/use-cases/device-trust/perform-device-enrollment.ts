@@ -56,6 +56,7 @@ import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
 import type { VaultLockTaskRepositoryPort } from "../../ports/vault/vault-lock-task-repository.port";
 import type { VaultLockDelayMs } from "../../domain/scheduled-task/scheduled-task-delay.type";
 import type { VaultLifecycleCleanupService } from "../../services/session/vault-lifecycle-cleanup.service";
+import type { ClipboardOperationCoordinatorPort } from "../../ports/clipboard/clipboard-operation-coordinator.port";
 import { VaultSessionActivationService } from "../../services/session/vault-session-activation.service";
 import { bestEffortWipeArrayBuffers } from "../../lib/secure-wipe.utils";
 import { VaultTrustService } from "../../services/trust/vault-trust.service";
@@ -102,6 +103,7 @@ export class PerformDeviceEnrollmentUseCase {
     lifecycleCleanup: VaultLifecycleCleanupService,
     scheduledTasks: ScheduledTaskPort,
     vaultLockTasks: VaultLockTaskRepositoryPort,
+    clipboardOperations: ClipboardOperationCoordinatorPort,
   ) {
     this.bip39 = bip39;
     this.clock = clock;
@@ -118,6 +120,7 @@ export class PerformDeviceEnrollmentUseCase {
       scheduledTasks,
       vaultLockTasks,
       unlockedVaultSession,
+      clipboardOperations,
     );
     this.lifecycleCleanup = lifecycleCleanup;
   }

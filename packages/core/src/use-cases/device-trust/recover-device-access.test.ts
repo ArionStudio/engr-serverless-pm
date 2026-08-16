@@ -153,9 +153,7 @@ describe("RecoverDeviceAccessUseCase", () => {
     vi.mocked(ctx.ports.crypto.generateMasterPasswordSalt)
       .mockReset()
       .mockResolvedValue(ctx.values.newMasterPasswordSalt);
-    vi.mocked(
-      ctx.ports.crypto.generateLocalKeysProtectionSalt,
-    )
+    vi.mocked(ctx.ports.crypto.generateLocalKeysProtectionSalt)
       .mockReset()
       .mockResolvedValue(ctx.values.newLocalKeysProtectionSalt);
     vi.mocked(ctx.ports.crypto.generateRecoveryKey).mockResolvedValueOnce(
@@ -307,6 +305,7 @@ describe("RecoverDeviceAccessUseCase", () => {
       ctx.ports.vaultLocalRepository,
       ctx.ports.vaultLockTasks,
       ctx.ports.sessionServices.unlockedVaultSession,
+      ctx.ports.clipboardOperations,
     );
 
     await expect(

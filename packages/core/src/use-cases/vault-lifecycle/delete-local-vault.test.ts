@@ -31,10 +31,7 @@ function createContext() {
     ports.clock,
     ports.clipboardSecretHash,
   );
-  const clipboardOperations = {
-    runExclusive: async <Result>(operation: () => Promise<Result>) =>
-      operation(),
-  };
+  const clipboardOperations = ports.clipboardOperations;
   const lifecycleCleanup = new VaultLifecycleCleanupService(
     clipboardClear,
     clipboardClearTasks,
@@ -139,7 +136,7 @@ describe("DeleteLocalVaultUseCase", () => {
     ).toHaveBeenCalledTimes(1);
   });
 
-  it("removes hot session state but preserves the vault when clipboard coordination cannot start", async () => {
+  it("preserves shared session and vault state when clipboard coordination cannot start", async () => {
     const ctx = createContext();
     const error = new Error("clipboard coordination unavailable");
     vi.spyOn(ctx.clipboardOperations, "runExclusive").mockRejectedValueOnce(
@@ -151,11 +148,11 @@ describe("DeleteLocalVaultUseCase", () => {
     ).rejects.toBe(error);
 
     expect(ctx.clipboardClearTasks.get).not.toHaveBeenCalled();
-    expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
+    expect(ctx.ports.saved.unlockedVaultSession).toBeDefined();
     expect(
       ctx.ports.unlockedVaultSessionMaterialRepository
         .removeUnlockedVaultSessionMaterial,
-    ).toHaveBeenCalledTimes(1);
+    ).not.toHaveBeenCalled();
     expect(
       ctx.ports.vaultLocalRepository.removePersistedLocalVault,
     ).not.toHaveBeenCalled();
@@ -259,6 +256,34 @@ describe("DeleteLocalVaultUseCase", () => {
     expect(
       ctx.ports.vaultLockTasks.removeIfActionIsActive,
     ).not.toHaveBeenCalled();
+  });
+
+  it("preserves all state when targeted session identity is unreadable", async () => {
+    const ctx = createContext();
+    const error = new Error("persisted session identity unavailable");
+    vi.mocked(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .getPersistedUnlockedVaultSessionIdentity,
+    ).mockRejectedValueOnce(error);
+
+    await expect(
+      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toBe(error);
+
+    expect(ctx.ports.vaultLockTasks.get).not.toHaveBeenCalled();
+    expect(ctx.clipboardClearTasks.get).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .removeUnlockedVaultSessionMaterial,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
+        .removeEncryptedUnlockedVaultSessionPayload,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.removePersistedLocalVault,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.unlockedVaultSession).toBeDefined();
   });
 
   it("does not grant a competing activation lease until deletion finishes", async () => {

@@ -42,7 +42,9 @@ end note
 note right of Unlocked
 Hot secrets live in unlocked session material/payload.
 Each activation mints a fresh session ID and payload key.
-Use cases commit or remove session through UnlockedVaultSessionService.
+Session writers validate and mutate shared records while holding
+the same cross-context coordinator as activation and cleanup.
+The in-context session queue orders operations inside that lease.
 end note
 
 @enduml
