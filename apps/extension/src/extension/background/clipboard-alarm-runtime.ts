@@ -6,7 +6,7 @@ import {
   WebCryptoClipboardSecretHash,
   WebLocksClipboardOperationCoordinator,
 } from "../../adapters/clipboard";
-import { ChromeClipboardClearTaskRepository } from "../../adapters/storage";
+import { ChromeClipboardClearTaskRepository } from "../../adapters/storage/chrome-clipboard-clear-task.repository";
 import {
   ChromeAlarmsScheduledTask,
   parseScheduledTask,
