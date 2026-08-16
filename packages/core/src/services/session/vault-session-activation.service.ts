@@ -8,7 +8,10 @@ import type { ClockPort } from "../../ports/system/clock.port";
 import type { IdPort } from "../../ports/system/id.port";
 import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
 import type { VaultLockTaskRepositoryPort } from "../../ports/vault/vault-lock-task-repository.port";
-import type { UnlockedVaultSessionService } from "./unlocked-vault-session.service";
+import type {
+  UnlockedVaultSessionService,
+  VaultSessionActivationAuthorization,
+} from "./unlocked-vault-session.service";
 
 export class VaultSessionActivationService {
   private readonly clock: ClockPort;
@@ -45,7 +48,7 @@ export class VaultSessionActivationService {
   }
 
   async activate(params: {
-    readonly activationGeneration: number;
+    readonly activationAuthorization: VaultSessionActivationAuthorization;
     readonly unlockedVault: UnlockedVault;
     readonly sourceSnapshotVersionVector: VersionVector;
     readonly lockAfterMs: VaultLockDelayMs;
@@ -57,7 +60,7 @@ export class VaultSessionActivationService {
 
     return this.clipboardOperations.runExclusive((coordinationLease) =>
       this.unlockedVaultSession.activateWithAutoLock(
-        params.activationGeneration,
+        params.activationAuthorization,
         params.unlockedVault,
         params.sourceSnapshotVersionVector,
         async () => {

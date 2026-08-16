@@ -93,7 +93,7 @@ export class InitializeVaultUseCase {
       initializeVaultCommandParams.masterPassword,
     );
     const vaultId = await this.ids.generateId();
-    const activationGeneration =
+    const activationAuthorization =
       await this.unlockedVaultSession.requireVaultCanBeActivated(vaultId);
 
     const deviceId = await this.ids.generateId();
@@ -299,7 +299,7 @@ export class InitializeVaultUseCase {
       );
 
       await this.sessionActivation.activate({
-        activationGeneration,
+        activationAuthorization,
         unlockedVault,
         sourceSnapshotVersionVector:
           vaultSnapshot.metadata.snapshotVersionVector,

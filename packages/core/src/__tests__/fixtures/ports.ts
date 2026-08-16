@@ -54,6 +54,7 @@ import { LocalVaultAlreadyInitializedError } from "../../errors/vault-lifecycle.
 import { DeviceAccessMaterialChangedError } from "../../errors/vault-device.errors";
 
 export type SavedCoreRecords = {
+  unlockedVaultSessionEpoch: number;
   localVaultDescriptor?: LocalVaultDescriptor;
   deviceAccessMaterial?: DeviceAccessMaterial;
   deviceAccessRecoveryBackup?: DeviceAccessRecoveryBackup;
@@ -139,6 +140,7 @@ export function createCoreTestPorts(
   const freshBuffer = <T extends ArrayBuffer>(buffer: T): T =>
     buffer.slice(0) as T;
   const saved: SavedCoreRecords = {
+    unlockedVaultSessionEpoch: 0,
     vaultSnapshotDigest: values.vaultSnapshotDigest,
     deviceSyncCredentialState: values.encryptedDeviceSyncCredentialState,
   };
@@ -734,6 +736,12 @@ export function createCoreTestPorts(
 
   const unlockedVaultSessionMaterialRepository: UnlockedVaultSessionMaterialRepositoryPort =
     {
+      getUnlockedVaultSessionEpoch: vi.fn(
+        async () => saved.unlockedVaultSessionEpoch,
+      ),
+      advanceUnlockedVaultSessionEpoch: vi.fn(async () => {
+        saved.unlockedVaultSessionEpoch += 1;
+      }),
       saveUnlockedVaultSessionMaterial: vi.fn(async (material) => {
         saved.unlockedVaultSessionMaterial = material;
       }),
@@ -819,13 +827,13 @@ export function createCoreTestPorts(
 
   vi.spyOn(sessionServices.unlockedVaultSession, "activate").mockImplementation(
     async (
-      activationGeneration,
+      activationAuthorization,
       unlockedVault,
       sourceSnapshotVersionVector,
       coordinationLease,
     ) => {
       const sessionId = await activateSessionOriginal(
-        activationGeneration,
+        activationAuthorization,
         unlockedVault,
         sourceSnapshotVersionVector,
         coordinationLease,
@@ -844,7 +852,7 @@ export function createCoreTestPorts(
     "activateWithAutoLock",
   ).mockImplementation(
     async (
-      activationGeneration,
+      activationAuthorization,
       unlockedVault,
       sourceSnapshotVersionVector,
       installAutoLock,
@@ -852,7 +860,7 @@ export function createCoreTestPorts(
       coordinationLease,
     ) => {
       const activatedSession = await activateSessionWithAutoLockOriginal(
-        activationGeneration,
+        activationAuthorization,
         unlockedVault,
         sourceSnapshotVersionVector,
         installAutoLock,

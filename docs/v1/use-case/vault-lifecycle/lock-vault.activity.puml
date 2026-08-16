@@ -31,6 +31,11 @@ endif
 :Read active session material, preserving the first failure;
 :Load pending vault lock task metadata inside cleanup boundary;
 
+if (manual cleanup?) then (yes)
+  :Advance the volatile shared session epoch to revoke
+  cross-context activation authorizations;
+endif
+
 if (scheduled action does not match current task or required vault?) then (yes)
   :Return without cleanup as stale action;
   stop
@@ -47,10 +52,12 @@ else (no)
     :Attempt cancellation of scheduled lockVault task;
   endif
   :Attempt atomic vault lock task metadata removal\nonly if captured actionId is still active;
+  :After scheduled-action authentication, advance the shared
+  session epoch before removing session records;
 endif
 
 :Wipe known session material and remove both session records;
-:For manual lock with no stored session, invalidate any\nalready-authorized competing activation;
+:The shared epoch invalidates already-authorized competing activation\neven when no stored session existed;
 :Continue every cleanup phase after failure;
 
 if (any cleanup failed?) then (yes)

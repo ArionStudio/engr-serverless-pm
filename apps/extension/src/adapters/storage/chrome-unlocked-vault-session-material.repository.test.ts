@@ -11,6 +11,7 @@ import type {
 import { createChromeStorageArea } from "../../__tests__/fixtures/chrome-storage-area";
 import {
   ChromeUnlockedVaultSessionMaterialRepository,
+  UNLOCKED_VAULT_SESSION_EPOCH_STORAGE_KEY,
   UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY,
 } from "./chrome-unlocked-vault-session-material.repository";
 import type { ChromeStorageArea } from "./chrome-storage-area";
@@ -231,6 +232,88 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
       sourceSnapshotVersionVector: { "device-id": 7 },
     });
     await expect(reader.getUnlockedVaultSessionMaterial()).resolves.toBeNull();
+
+    await reader.evictCachedUnlockedVaultSessionMaterial(null);
+    await expect(reader.getUnlockedVaultSessionMaterial()).resolves.toEqual(
+      createMaterial(),
+    );
+  });
+
+  it("shares a volatile lifecycle epoch across repository instances", async () => {
+    const { getRecords, storageArea } = createChromeStorageArea();
+    const first = new ChromeUnlockedVaultSessionMaterialRepository(storageArea);
+    const second = new ChromeUnlockedVaultSessionMaterialRepository(
+      storageArea,
+    );
+
+    await expect(first.getUnlockedVaultSessionEpoch()).resolves.toBe(0);
+    await first.advanceUnlockedVaultSessionEpoch();
+
+    await expect(second.getUnlockedVaultSessionEpoch()).resolves.toBe(1);
+    expect(getRecords()[UNLOCKED_VAULT_SESSION_EPOCH_STORAGE_KEY]).toBe(1);
+  });
+
+  it("preserves the lifecycle epoch when session material is removed", async () => {
+    const { storageArea } = createChromeStorageArea({
+      [UNLOCKED_VAULT_SESSION_EPOCH_STORAGE_KEY]: 7,
+    });
+    const repository = new ChromeUnlockedVaultSessionMaterialRepository(
+      storageArea,
+    );
+    await repository.saveUnlockedVaultSessionMaterial(createMaterial());
+
+    await repository.removeUnlockedVaultSessionMaterial();
+
+    await expect(repository.getUnlockedVaultSessionEpoch()).resolves.toBe(7);
+  });
+
+  it.each([-1, 1.5, Number.MAX_SAFE_INTEGER + 1, "1", null])(
+    "rejects malformed lifecycle epoch metadata: %s",
+    async (epoch) => {
+      const { storageArea } = createChromeStorageArea({
+        [UNLOCKED_VAULT_SESSION_EPOCH_STORAGE_KEY]: epoch,
+      });
+      const repository = new ChromeUnlockedVaultSessionMaterialRepository(
+        storageArea,
+      );
+
+      await expect(repository.getUnlockedVaultSessionEpoch()).rejects.toThrow(
+        "Unlocked vault session epoch is malformed.",
+      );
+    },
+  );
+
+  it("fails closed when the lifecycle epoch is exhausted", async () => {
+    const { storageArea } = createChromeStorageArea({
+      [UNLOCKED_VAULT_SESSION_EPOCH_STORAGE_KEY]: Number.MAX_SAFE_INTEGER,
+    });
+    const repository = new ChromeUnlockedVaultSessionMaterialRepository(
+      storageArea,
+    );
+
+    await expect(repository.advanceUnlockedVaultSessionEpoch()).rejects.toThrow(
+      "Unlocked vault session epoch is exhausted.",
+    );
+  });
+
+  it("does not roll back an epoch that storage committed before rejecting", async () => {
+    const { storageArea } = createChromeStorageArea();
+    const setError = new Error("storage acknowledgement failed");
+    const writer = new ChromeUnlockedVaultSessionMaterialRepository({
+      ...storageArea,
+      set: vi.fn(async (items) => {
+        await storageArea.set(items);
+        throw setError;
+      }),
+    });
+    const reader = new ChromeUnlockedVaultSessionMaterialRepository(
+      storageArea,
+    );
+
+    await expect(writer.advanceUnlockedVaultSessionEpoch()).rejects.toBe(
+      setError,
+    );
+    await expect(reader.getUnlockedVaultSessionEpoch()).resolves.toBe(1);
   });
 
   it("evicts only the matching local cache and reloads shared material", async () => {
@@ -254,6 +337,10 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
 
     const reloadedMaterial = await reader.getUnlockedVaultSessionMaterial();
     expect(reloadedMaterial).toEqual(replacementMaterial);
+    await reader.evictCachedUnlockedVaultSessionMaterial(null);
+    await expect(reader.getUnlockedVaultSessionMaterial()).resolves.toBe(
+      reloadedMaterial,
+    );
     await reader.evictCachedUnlockedVaultSessionMaterial("session-id");
     await expect(reader.getUnlockedVaultSessionMaterial()).resolves.toBe(
       reloadedMaterial,

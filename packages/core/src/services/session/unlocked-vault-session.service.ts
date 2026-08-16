@@ -29,6 +29,19 @@ type PersistedUnlockedVaultSessionIdentity = Awaited<
   >
 >;
 
+export type VaultSessionActivationAuthorization = {
+  readonly localGeneration: number;
+  readonly sharedEpoch: number;
+};
+
+type SessionInvalidationState =
+  | { readonly kind: "none" }
+  | { readonly kind: "known"; readonly sessionId: string }
+  | {
+      readonly kind: "unknown";
+      readonly materialRemovalSucceeded: boolean;
+    };
+
 export class UnlockedVaultSessionService {
   private readonly materialRepository: UnlockedVaultSessionMaterialRepositoryPort;
   private readonly encryptedPayloadRepository: EncryptedUnlockedVaultSessionPayloadRepositoryPort;
@@ -37,7 +50,7 @@ export class UnlockedVaultSessionService {
   private readonly clipboardOperations: ClipboardOperationCoordinatorPort;
   private pendingSessionOperation: Promise<void> = Promise.resolve();
   private activationGeneration = 0;
-  private sessionIsInvalidated = false;
+  private invalidationState: SessionInvalidationState = { kind: "none" };
 
   constructor(
     materialRepository: UnlockedVaultSessionMaterialRepositoryPort,
@@ -53,8 +66,12 @@ export class UnlockedVaultSessionService {
     this.clipboardOperations = clipboardOperations;
   }
 
-  async requireVaultCanBeActivated(vaultId: string): Promise<number> {
-    return this.serializeSessionOperation(async () => {
+  async requireVaultCanBeActivated(
+    vaultId: string,
+  ): Promise<VaultSessionActivationAuthorization> {
+    return this.runCoordinatedSessionMutation(undefined, async () => {
+      const sharedEpoch =
+        await this.materialRepository.getUnlockedVaultSessionEpoch();
       const persistedIdentity =
         await this.materialRepository.getPersistedUnlockedVaultSessionIdentity();
       await this.reconcileActiveMaterial(persistedIdentity);
@@ -66,22 +83,61 @@ export class UnlockedVaultSessionService {
         );
       }
 
-      return this.activationGeneration;
+      return {
+        localGeneration: this.activationGeneration,
+        sharedEpoch,
+      };
     });
   }
 
-  async get(): Promise<UnlockedVaultSession | null> {
-    return this.serializeSessionOperation(async () => this.restoreSession());
+  async get(
+    coordinationLease?: ClipboardOperationLease,
+  ): Promise<UnlockedVaultSession | null> {
+    return this.runCoordinatedSessionMutation(coordinationLease, async () =>
+      this.restoreSession(),
+    );
+  }
+
+  async getActiveVaultId(
+    coordinationLease?: ClipboardOperationLease,
+  ): Promise<string | null> {
+    return this.runCoordinatedSessionMutation(coordinationLease, async () => {
+      const persistedIdentity =
+        await this.materialRepository.getPersistedUnlockedVaultSessionIdentity();
+      const { material, reconciled } =
+        await this.reconcileActiveMaterial(persistedIdentity);
+
+      if (material !== null) {
+        return material.vaultId;
+      }
+
+      if (
+        persistedIdentity === null ||
+        this.invalidationState.kind !== "none"
+      ) {
+        return null;
+      }
+
+      if (!reconciled) {
+        await this.materialRepository.evictCachedUnlockedVaultSessionMaterial(
+          null,
+        );
+      }
+
+      return persistedIdentity.vaultId;
+    });
   }
 
   async requireUnlockedVaultContext(
     vaultId: string,
     operation: string,
+    coordinationLease?: ClipboardOperationLease,
   ): Promise<UnlockedVaultSession> {
     return this.runWithUnlockedVaultContext(
       vaultId,
       operation,
       async (session) => session,
+      coordinationLease,
     );
   }
 
@@ -89,8 +145,9 @@ export class UnlockedVaultSessionService {
     vaultId: string,
     operation: string,
     run: (session: UnlockedVaultSession) => Promise<T>,
+    coordinationLease?: ClipboardOperationLease,
   ): Promise<T> {
-    return this.serializeSessionOperation(async () => {
+    return this.runCoordinatedSessionMutation(coordinationLease, async () => {
       const unlockedVaultSession = await this.restoreSession();
 
       if (
@@ -116,6 +173,7 @@ export class UnlockedVaultSessionService {
       const { material } =
         await this.reconcileActiveMaterial(persistedIdentity);
       this.requireActiveSession(material, sessionId, vaultId);
+      await this.materialRepository.advanceUnlockedVaultSessionEpoch();
       this.activationGeneration += 1;
 
       return operation();
@@ -176,6 +234,11 @@ export class UnlockedVaultSessionService {
           }
 
           if (activeMaterial === null) {
+            try {
+              await this.materialRepository.advanceUnlockedVaultSessionEpoch();
+            } catch {
+              return "rollback_failed";
+            }
             this.activationGeneration += 1;
           }
 
@@ -186,7 +249,7 @@ export class UnlockedVaultSessionService {
               activeMaterial !== null &&
               this.isActiveSession(activeMaterial, sessionId, vaultId)
             ) {
-              await this.removeSessionRecordsPreservingRootCause(
+              await this.revokeAuthorizationsAndRemoveSessionRecordsPreservingRootCause(
                 activeMaterial,
               );
             }
@@ -282,7 +345,7 @@ export class UnlockedVaultSessionService {
       }
 
       try {
-        await this.removeSessionRecords(activeMaterial);
+        await this.revokeAuthorizationsAndRemoveSessionRecords(activeMaterial);
       } catch {
         return "rollback_failed";
       }
@@ -300,7 +363,7 @@ export class UnlockedVaultSessionService {
   }
 
   async activate(
-    activationGeneration: number,
+    activationAuthorization: VaultSessionActivationAuthorization,
     unlockedVault: UnlockedVault,
     sourceSnapshotVersionVector: VersionVector,
     coordinationLease?: ClipboardOperationLease,
@@ -309,7 +372,7 @@ export class UnlockedVaultSessionService {
       coordinationLease,
       async () =>
         this.activateWithinSessionOperation(
-          activationGeneration,
+          activationAuthorization,
           unlockedVault,
           sourceSnapshotVersionVector,
         ),
@@ -319,7 +382,7 @@ export class UnlockedVaultSessionService {
   }
 
   async activateWithAutoLock(
-    activationGeneration: number,
+    activationAuthorization: VaultSessionActivationAuthorization,
     unlockedVault: UnlockedVault,
     sourceSnapshotVersionVector: VersionVector,
     installAutoLock: () => Promise<void>,
@@ -331,7 +394,7 @@ export class UnlockedVaultSessionService {
 
       try {
         return await this.activateWithinSessionOperation(
-          activationGeneration,
+          activationAuthorization,
           unlockedVault,
           sourceSnapshotVersionVector,
           async () => {
@@ -354,12 +417,19 @@ export class UnlockedVaultSessionService {
   }
 
   private async activateWithinSessionOperation(
-    activationGeneration: number,
+    activationAuthorization: VaultSessionActivationAuthorization,
     unlockedVault: UnlockedVault,
     sourceSnapshotVersionVector: VersionVector,
     beforeActivation?: () => Promise<void>,
   ): Promise<{ readonly sessionId: string; readonly generation: number }> {
-    if (activationGeneration !== this.activationGeneration) {
+    if (activationAuthorization.localGeneration !== this.activationGeneration) {
+      throw new UnlockedVaultSessionExpiredError(unlockedVault.vaultId);
+    }
+
+    const sharedEpoch =
+      await this.materialRepository.getUnlockedVaultSessionEpoch();
+
+    if (activationAuthorization.sharedEpoch !== sharedEpoch) {
       throw new UnlockedVaultSessionExpiredError(unlockedVault.vaultId);
     }
 
@@ -396,6 +466,8 @@ export class UnlockedVaultSessionService {
       );
     }
 
+    await this.materialRepository.advanceUnlockedVaultSessionEpoch();
+
     try {
       await beforeActivation?.();
 
@@ -418,14 +490,14 @@ export class UnlockedVaultSessionService {
         this.wipeReplacedMaterial(activeMaterial, protectedSession.material);
       }
 
-      this.sessionIsInvalidated = false;
+      this.invalidationState = { kind: "none" };
       this.activationGeneration += 1;
       return {
         sessionId: protectedSession.material.sessionId,
         generation: this.activationGeneration,
       };
     } catch (error) {
-      if (activeMaterial !== null && !this.sessionIsInvalidated) {
+      if (activeMaterial !== null && this.invalidationState.kind === "none") {
         await this.removeSessionRecordsPreservingRootCause(activeMaterial);
       }
 
@@ -463,13 +535,16 @@ export class UnlockedVaultSessionService {
           activeMaterial,
         );
         await this.persistProtectedSession(protectedSession);
+        await this.materialRepository.advanceUnlockedVaultSessionEpoch();
         this.wipeReplacedMaterial(activeMaterial, protectedSession.material);
         this.activationGeneration += 1;
       } catch (error) {
         if (protectedSession !== undefined) {
           this.wipeMaterial(protectedSession.material);
         }
-        await this.removeSessionRecordsPreservingRootCause(activeMaterial);
+        await this.revokeAuthorizationsAndRemoveSessionRecordsPreservingRootCause(
+          activeMaterial,
+        );
         throw error;
       }
     });
@@ -477,7 +552,7 @@ export class UnlockedVaultSessionService {
 
   async remove(coordinationLease?: ClipboardOperationLease): Promise<void> {
     await this.runCoordinatedSessionMutation(coordinationLease, async () => {
-      await this.removeSessionRecords();
+      await this.revokeAuthorizationsAndRemoveSessionRecords();
     });
   }
 
@@ -517,9 +592,10 @@ export class UnlockedVaultSessionService {
 
       try {
         if (persistedIdentityReadFailed) {
-          material = this.sessionIsInvalidated
-            ? null
-            : await this.materialRepository.getUnlockedVaultSessionMaterial();
+          material =
+            this.invalidationState.kind !== "none"
+              ? null
+              : await this.materialRepository.getUnlockedVaultSessionMaterial();
         } else {
           ({
             material,
@@ -545,6 +621,14 @@ export class UnlockedVaultSessionService {
         return "session_unavailable";
       }
 
+      if (invalidateWhenUnavailable) {
+        try {
+          await this.materialRepository.advanceUnlockedVaultSessionEpoch();
+        } catch (error) {
+          firstError ??= error;
+        }
+      }
+
       const activeIdentity = persistedIdentity ?? material;
       const activeSession =
         activeIdentity === null
@@ -568,6 +652,14 @@ export class UnlockedVaultSessionService {
         }
 
         return "stale_action";
+      }
+
+      if (!invalidateWhenUnavailable) {
+        try {
+          await this.materialRepository.advanceUnlockedVaultSessionEpoch();
+        } catch (error) {
+          firstError ??= error;
+        }
       }
 
       if (
@@ -605,15 +697,17 @@ export class UnlockedVaultSessionService {
   }
 
   private async restoreSession(): Promise<UnlockedVaultSession | null> {
-    const persistedIdentity =
-      await this.materialRepository.getPersistedUnlockedVaultSessionIdentity();
-    const { material } = await this.reconcileActiveMaterial(persistedIdentity);
-
-    if (material === null) {
-      return null;
-    }
+    let material: UnlockedVaultSessionMaterial | null | undefined;
 
     try {
+      const persistedIdentity =
+        await this.materialRepository.getPersistedUnlockedVaultSessionIdentity();
+      ({ material } = await this.reconcileActiveMaterial(persistedIdentity));
+
+      if (material === null) {
+        return null;
+      }
+
       const encryptedPayload =
         await this.encryptedPayloadRepository.getEncryptedUnlockedVaultSessionPayload();
 
@@ -625,7 +719,9 @@ export class UnlockedVaultSessionService {
 
       return await this.restore(material, encryptedPayload);
     } catch (error) {
-      await this.removeSessionRecordsPreservingRootCause(material);
+      await this.revokeAuthorizationsAndRemoveSessionRecordsPreservingRootCause(
+        material ?? undefined,
+      );
       throw error;
     }
   }
@@ -640,12 +736,28 @@ export class UnlockedVaultSessionService {
     readonly reconciled: boolean;
     readonly activeSessionAdvanced: boolean;
   }> {
-    if (this.sessionIsInvalidated) {
-      return {
-        material: null,
-        reconciled: false,
-        activeSessionAdvanced: false,
-      };
+    const invalidationState = this.invalidationState;
+
+    if (invalidationState.kind !== "none") {
+      if (
+        persistedIdentity === null ||
+        (invalidationState.kind === "known" &&
+          persistedIdentity.sessionId === invalidationState.sessionId) ||
+        (invalidationState.kind === "unknown" &&
+          !invalidationState.materialRemovalSucceeded)
+      ) {
+        return {
+          material: null,
+          reconciled: false,
+          activeSessionAdvanced: false,
+        };
+      }
+
+      await this.materialRepository.evictCachedUnlockedVaultSessionMaterial(
+        invalidationState.kind === "known" ? invalidationState.sessionId : null,
+      );
+      this.invalidationState = { kind: "none" };
+      return this.reconcileActiveMaterial(persistedIdentity);
     }
 
     const material =
@@ -682,10 +794,14 @@ export class UnlockedVaultSessionService {
 
     this.wipeMaterial(material);
     this.activationGeneration += 1;
-    this.sessionIsInvalidated = true;
+    this.invalidationState = {
+      kind: "known",
+      sessionId: material.sessionId,
+    };
     await this.materialRepository.evictCachedUnlockedVaultSessionMaterial(
       material.sessionId,
     );
+    this.invalidationState = { kind: "none" };
     return { material: null, reconciled: true, activeSessionAdvanced };
   }
 
@@ -693,7 +809,10 @@ export class UnlockedVaultSessionService {
     knownMaterial?: UnlockedVaultSessionMaterial,
   ): Promise<void> {
     this.activationGeneration += 1;
-    this.sessionIsInvalidated = true;
+    this.invalidationState =
+      knownMaterial === undefined
+        ? { kind: "unknown", materialRemovalSucceeded: false }
+        : { kind: "known", sessionId: knownMaterial.sessionId };
 
     let removalError: unknown;
     let materialReadError: unknown;
@@ -710,11 +829,21 @@ export class UnlockedVaultSessionService {
     }
 
     if (material !== undefined) {
+      this.invalidationState = {
+        kind: "known",
+        sessionId: material.sessionId,
+      };
       this.wipeMaterial(material);
     }
 
     try {
       await this.materialRepository.removeUnlockedVaultSessionMaterial();
+      if (this.invalidationState.kind === "unknown") {
+        this.invalidationState = {
+          kind: "unknown",
+          materialRemovalSucceeded: true,
+        };
+      }
     } catch (error) {
       removalError = error;
     }
@@ -733,6 +862,28 @@ export class UnlockedVaultSessionService {
 
     if (materialReadError !== undefined) {
       throw materialReadError;
+    }
+  }
+
+  private async revokeAuthorizationsAndRemoveSessionRecords(
+    knownMaterial?: UnlockedVaultSessionMaterial,
+  ): Promise<void> {
+    let firstError: unknown;
+
+    try {
+      await this.materialRepository.advanceUnlockedVaultSessionEpoch();
+    } catch (error) {
+      firstError = error;
+    }
+
+    try {
+      await this.removeSessionRecords(knownMaterial);
+    } catch (error) {
+      firstError ??= error;
+    }
+
+    if (firstError !== undefined) {
+      throw firstError;
     }
   }
 
@@ -865,6 +1016,16 @@ export class UnlockedVaultSessionService {
     }
   }
 
+  private async revokeAuthorizationsAndRemoveSessionRecordsPreservingRootCause(
+    knownMaterial?: UnlockedVaultSessionMaterial,
+  ): Promise<void> {
+    try {
+      await this.revokeAuthorizationsAndRemoveSessionRecords(knownMaterial);
+    } catch {
+      // Preserve the original failure as the root cause.
+    }
+  }
+
   private wipeMaterial(material: UnlockedVaultSessionMaterial): void {
     bestEffortWipeArrayBuffers([
       material.vaultMasterKey,
@@ -957,7 +1118,7 @@ export class UnlockedVaultSessionService {
   ): boolean {
     return (
       activeMaterial !== null &&
-      !this.sessionIsInvalidated &&
+      this.invalidationState.kind === "none" &&
       activeMaterial.sessionId === sessionId &&
       activeMaterial.vaultId === vaultId
     );

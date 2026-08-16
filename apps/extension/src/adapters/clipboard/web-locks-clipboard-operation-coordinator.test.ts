@@ -148,7 +148,7 @@ describe("WebLocksClipboardOperationCoordinator", () => {
     expect(coordinator.isLeaseActive(capturedLease!)).toBe(false);
   });
 
-  it("rejects an activation whose independent material cache missed the active session", async () => {
+  it("rejects an independently authorized activation after another context activates", async () => {
     const values = createCoreTestValues();
     const portsA = createCoreTestPorts(values);
     const portsB = createCoreTestPorts(values);
@@ -213,7 +213,7 @@ describe("WebLocksClipboardOperationCoordinator", () => {
 
     await expect(
       activationA.activate({
-        activationGeneration: generationA,
+        activationAuthorization: generationA,
         unlockedVault: vaultA,
         sourceSnapshotVersionVector: { [values.deviceId]: 1 },
         lockAfterMs: 60_000,
@@ -221,12 +221,12 @@ describe("WebLocksClipboardOperationCoordinator", () => {
     ).resolves.toEqual({ sessionId: "session-a", generation: 1 });
     await expect(
       activationB.activate({
-        activationGeneration: generationB,
+        activationAuthorization: generationB,
         unlockedVault: vaultB,
         sourceSnapshotVersionVector: { [values.deviceId]: 1 },
         lockAfterMs: 60_000,
       }),
-    ).rejects.toMatchObject({ name: "ActiveUnlockedVaultMismatchError" });
+    ).rejects.toMatchObject({ name: "UnlockedVaultSessionExpiredError" });
 
     expect(portsB.vaultLockTasks.save).not.toHaveBeenCalled();
     await expect(sessionA.get()).resolves.toMatchObject({
@@ -234,6 +234,96 @@ describe("WebLocksClipboardOperationCoordinator", () => {
       unlockedVault: { vaultId: values.vaultId },
     });
     expect(lockManager.requestedNames).toEqual([
+      CLIPBOARD_OPERATION_LOCK_NAME,
+      CLIPBOARD_OPERATION_LOCK_NAME,
+      CLIPBOARD_OPERATION_LOCK_NAME,
+      CLIPBOARD_OPERATION_LOCK_NAME,
+      CLIPBOARD_OPERATION_LOCK_NAME,
+    ]);
+  });
+
+  it("revokes an independently authorized activation when another context locks", async () => {
+    const values = createCoreTestValues();
+    const ports = createCoreTestPorts(values);
+    const lockManager = new SerializedWebLockManager();
+    const activationCoordinator = new WebLocksClipboardOperationCoordinator(
+      lockManager,
+    );
+    const cleanupCoordinator = new WebLocksClipboardOperationCoordinator(
+      lockManager,
+    );
+    const { storageArea } = createChromeStorageArea();
+    const activationMaterial = new ChromeUnlockedVaultSessionMaterialRepository(
+      storageArea,
+    );
+    const cleanupMaterial = new ChromeUnlockedVaultSessionMaterialRepository(
+      storageArea,
+    );
+    const activationSession = new UnlockedVaultSessionService(
+      activationMaterial,
+      ports.encryptedUnlockedVaultSessionPayloadRepository,
+      ports.crypto,
+      ports.ids,
+      activationCoordinator,
+    );
+    const cleanupSession = new UnlockedVaultSessionService(
+      cleanupMaterial,
+      ports.encryptedUnlockedVaultSessionPayloadRepository,
+      ports.crypto,
+      ports.ids,
+      cleanupCoordinator,
+    );
+    const activationAuthorization =
+      await activationSession.requireVaultCanBeActivated(values.vaultId);
+    const clipboardTasks = new ChromeClipboardClearTaskRepository(storageArea);
+    const cleanup = new LockVaultUseCase(
+      new VaultLifecycleCleanupService(
+        new ClipboardClearService(
+          {
+            readText: vi.fn(async () => ""),
+            writeText: vi.fn(async () => undefined),
+          },
+          clipboardTasks,
+          ports.clock,
+          new WebCryptoClipboardSecretHash(),
+        ),
+        clipboardTasks,
+        cleanupCoordinator,
+        ports.scheduledTasks,
+        ports.vaultLockTasks,
+        cleanupSession,
+      ),
+    );
+    const activation = new VaultSessionActivationService(
+      ports.clock,
+      ports.ids,
+      ports.scheduledTasks,
+      ports.vaultLockTasks,
+      activationSession,
+      activationCoordinator,
+    );
+    const unlockedVault = createUnlockedVaultWithEntries(values, []);
+
+    await expect(cleanup.execute()).resolves.toBeUndefined();
+    await expect(
+      activation.activate({
+        activationAuthorization,
+        unlockedVault,
+        sourceSnapshotVersionVector: { [values.deviceId]: 1 },
+        lockAfterMs: 60_000,
+      }),
+    ).rejects.toMatchObject({ name: "UnlockedVaultSessionExpiredError" });
+
+    expect(ports.vaultLockTasks.save).not.toHaveBeenCalled();
+    expect(ports.scheduledTasks.scheduleTask).not.toHaveBeenCalled();
+    await expect(
+      activationMaterial.getPersistedUnlockedVaultSessionIdentity(),
+    ).resolves.toBeNull();
+    await expect(
+      ports.encryptedUnlockedVaultSessionPayloadRepository.getEncryptedUnlockedVaultSessionPayload(),
+    ).resolves.toBeNull();
+    expect(lockManager.requestedNames).toEqual([
+      CLIPBOARD_OPERATION_LOCK_NAME,
       CLIPBOARD_OPERATION_LOCK_NAME,
       CLIPBOARD_OPERATION_LOCK_NAME,
     ]);
@@ -272,7 +362,7 @@ describe("WebLocksClipboardOperationCoordinator", () => {
       cleanupCoordinator,
     );
     const unlockedVault = createUnlockedVaultWithEntries(values, []);
-    const activationGeneration =
+    const activationAuthorization =
       await activationSession.requireVaultCanBeActivated(values.vaultId);
     vi.mocked(ports.ids.generateId)
       .mockReset()
@@ -309,7 +399,7 @@ describe("WebLocksClipboardOperationCoordinator", () => {
 
     await expect(
       activation.activate({
-        activationGeneration,
+        activationAuthorization,
         unlockedVault,
         sourceSnapshotVersionVector: { [values.deviceId]: 1 },
         lockAfterMs: 60_000,
@@ -331,6 +421,8 @@ describe("WebLocksClipboardOperationCoordinator", () => {
       Array.from({ length: unlockedVault.vaultMasterKey.byteLength }, () => 0),
     );
     expect(lockManager.requestedNames).toEqual([
+      CLIPBOARD_OPERATION_LOCK_NAME,
+      CLIPBOARD_OPERATION_LOCK_NAME,
       CLIPBOARD_OPERATION_LOCK_NAME,
       CLIPBOARD_OPERATION_LOCK_NAME,
     ]);
@@ -366,7 +458,7 @@ describe("WebLocksClipboardOperationCoordinator", () => {
       session,
       coordinator,
     ).activate({
-      activationGeneration: generation,
+      activationAuthorization: generation,
       unlockedVault,
       sourceSnapshotVersionVector: { [values.deviceId]: 1 },
       lockAfterMs: 60_000,
@@ -455,7 +547,7 @@ describe("WebLocksClipboardOperationCoordinator", () => {
       coordinatorA,
     );
     const activeA = await activationA.activate({
-      activationGeneration: generationA,
+      activationAuthorization: generationA,
       unlockedVault: vaultA,
       sourceSnapshotVersionVector: { [valuesA.deviceId]: 1 },
       lockAfterMs: 60_000,
@@ -476,7 +568,7 @@ describe("WebLocksClipboardOperationCoordinator", () => {
       coordinatorB,
     );
     await activationB.activate({
-      activationGeneration: generationB,
+      activationAuthorization: generationB,
       unlockedVault: vaultB,
       sourceSnapshotVersionVector: { [valuesB.deviceId]: 2 },
       lockAfterMs: 60_000,
@@ -578,7 +670,7 @@ describe("WebLocksClipboardOperationCoordinator", () => {
       commitCoordinator,
     );
     const active = await activation.activate({
-      activationGeneration: generation,
+      activationAuthorization: generation,
       unlockedVault,
       sourceSnapshotVersionVector: { [values.deviceId]: 1 },
       lockAfterMs: 60_000,
@@ -645,7 +737,88 @@ describe("WebLocksClipboardOperationCoordinator", () => {
       CLIPBOARD_OPERATION_LOCK_NAME,
       CLIPBOARD_OPERATION_LOCK_NAME,
       CLIPBOARD_OPERATION_LOCK_NAME,
+      CLIPBOARD_OPERATION_LOCK_NAME,
+      CLIPBOARD_OPERATION_LOCK_NAME,
     ]);
+  });
+
+  it("serializes an independent session restore before a replacement commit", async () => {
+    const values = createCoreTestValues();
+    const ports = createCoreTestPorts(values);
+    const lockManager = new SerializedWebLockManager();
+    const writerCoordinator = new WebLocksClipboardOperationCoordinator(
+      lockManager,
+    );
+    const readerCoordinator = new WebLocksClipboardOperationCoordinator(
+      lockManager,
+    );
+    const { storageArea } = createChromeStorageArea();
+    const writerMaterial = new ChromeUnlockedVaultSessionMaterialRepository(
+      storageArea,
+    );
+    const readerMaterial = new ChromeUnlockedVaultSessionMaterialRepository(
+      storageArea,
+    );
+    const writer = new UnlockedVaultSessionService(
+      writerMaterial,
+      ports.encryptedUnlockedVaultSessionPayloadRepository,
+      ports.crypto,
+      ports.ids,
+      writerCoordinator,
+    );
+    const reader = new UnlockedVaultSessionService(
+      readerMaterial,
+      ports.encryptedUnlockedVaultSessionPayloadRepository,
+      ports.crypto,
+      ports.ids,
+      readerCoordinator,
+    );
+    const unlockedVault = createUnlockedVaultWithEntries(values, []);
+    const activationAuthorization = await writer.requireVaultCanBeActivated(
+      values.vaultId,
+    );
+    vi.mocked(ports.ids.generateId).mockReset().mockResolvedValue("session-id");
+    const sessionId = await writer.activate(
+      activationAuthorization,
+      unlockedVault,
+      { [values.deviceId]: 1 },
+    );
+    const payloadReadStarted = createDeferred();
+    const releasePayloadRead = createDeferred();
+    vi.mocked(
+      ports.encryptedUnlockedVaultSessionPayloadRepository
+        .getEncryptedUnlockedVaultSessionPayload,
+    ).mockImplementationOnce(async () => {
+      payloadReadStarted.resolve();
+      await releasePayloadRead.promise;
+      return ports.saved.encryptedUnlockedVaultSessionPayload ?? null;
+    });
+    vi.mocked(ports.crypto.encryptUnlockedVaultSessionPayload).mockClear();
+
+    const restoring = reader.get();
+    await payloadReadStarted.promise;
+    const committing = writer.commitPersistedSnapshot(
+      sessionId,
+      unlockedVault,
+      { [values.deviceId]: 2 },
+    );
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(
+      ports.crypto.encryptUnlockedVaultSessionPayload,
+    ).not.toHaveBeenCalled();
+
+    releasePayloadRead.resolve();
+    await expect(restoring).resolves.toMatchObject({ sessionId });
+    await expect(committing).resolves.toBeUndefined();
+    await expect(
+      writerMaterial.getPersistedUnlockedVaultSessionIdentity(),
+    ).resolves.toEqual({
+      sessionId,
+      vaultId: values.vaultId,
+      sourceSnapshotVersionVector: { [values.deviceId]: 2 },
+    });
   });
 
   it.each(["clear", "lock"] as const)(
@@ -667,7 +840,14 @@ describe("WebLocksClipboardOperationCoordinator", () => {
       const lockCoordinator = new WebLocksClipboardOperationCoordinator(
         lockManager,
       );
-      const unlockedVaultSession = new UnlockedVaultSessionService(
+      const copySession = new UnlockedVaultSessionService(
+        ports.unlockedVaultSessionMaterialRepository,
+        ports.encryptedUnlockedVaultSessionPayloadRepository,
+        ports.crypto,
+        ports.ids,
+        copyCoordinator,
+      );
+      const lockSession = new UnlockedVaultSessionService(
         ports.unlockedVaultSessionMaterialRepository,
         ports.encryptedUnlockedVaultSessionPayloadRepository,
         ports.crypto,
@@ -707,7 +887,7 @@ describe("WebLocksClipboardOperationCoordinator", () => {
         repository,
         ports.scheduledTasks,
         clock,
-        unlockedVaultSession,
+        copySession,
       );
       const clear = new ClearClipboardTaskUseCase(
         clipboardClear,
@@ -720,7 +900,7 @@ describe("WebLocksClipboardOperationCoordinator", () => {
           lockCoordinator,
           ports.scheduledTasks,
           ports.vaultLockTasks,
-          unlockedVaultSession,
+          lockSession,
         ),
       );
 

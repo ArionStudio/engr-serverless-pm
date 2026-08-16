@@ -929,6 +929,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     );
     vi.spyOn(ctx.clipboardOperations, "runExclusive")
       .mockImplementationOnce(runExclusive)
+      .mockImplementationOnce(runExclusive)
       .mockRejectedValueOnce(coordinationError);
 
     await expect(

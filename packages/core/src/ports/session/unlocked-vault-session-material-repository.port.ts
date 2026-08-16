@@ -16,6 +16,17 @@ import type { UnlockedVaultSessionMaterial } from "../../domain/session/unlocked
  * the active record.
  */
 export interface UnlockedVaultSessionMaterialRepositoryPort {
+  /**
+   * Reads the authoritative cross-context session epoch. The epoch is
+   * non-secret, survives material removal for the lifetime of volatile session
+   * storage, and defaults to zero when no epoch has been persisted yet.
+   */
+  getUnlockedVaultSessionEpoch: () => Promise<number>;
+  /**
+   * Advances the authoritative session epoch while the caller holds the shared
+   * clipboard/session coordinator lease.
+   */
+  advanceUnlockedVaultSessionEpoch: () => Promise<void>;
   saveUnlockedVaultSessionMaterial: (
     material: UnlockedVaultSessionMaterial,
   ) => Promise<void>;
@@ -28,7 +39,12 @@ export interface UnlockedVaultSessionMaterialRepositoryPort {
     UnlockedVaultSessionMaterial,
     "sessionId" | "vaultId" | "sourceSnapshotVersionVector"
   > | null>;
-  /** Evicts only this adapter instance's cached material identity. */
-  evictCachedUnlockedVaultSessionMaterial: (sessionId: string) => Promise<void>;
+  /**
+   * Evicts only this adapter instance's cached material identity, or its cached
+   * absence after the caller has proved that a fresh shared identity exists.
+   */
+  evictCachedUnlockedVaultSessionMaterial: (
+    sessionId: string | null,
+  ) => Promise<void>;
   removeUnlockedVaultSessionMaterial: () => Promise<void>;
 }

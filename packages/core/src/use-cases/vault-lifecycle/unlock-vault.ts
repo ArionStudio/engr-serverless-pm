@@ -81,7 +81,7 @@ export class UnlockVaultUseCase {
       params.lockAfterMs,
     );
 
-    const activationGeneration =
+    const activationAuthorization =
       await this.unlockedVaultSession.requireVaultCanBeActivated(
         params.vaultId,
       );
@@ -308,7 +308,7 @@ export class UnlockVaultUseCase {
       };
 
       await this.sessionActivation.activate({
-        activationGeneration,
+        activationAuthorization,
         unlockedVault,
         sourceSnapshotVersionVector:
           vaultSnapshot.metadata.snapshotVersionVector,

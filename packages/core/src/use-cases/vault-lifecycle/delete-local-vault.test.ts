@@ -342,7 +342,10 @@ describe("DeleteLocalVaultUseCase", () => {
     deletionCanContinue();
 
     await expect(deletion).resolves.toBeUndefined();
-    await expect(competingActivationLease).resolves.toEqual(expect.any(Number));
+    await expect(competingActivationLease).resolves.toEqual({
+      localGeneration: expect.any(Number),
+      sharedEpoch: expect.any(Number),
+    });
     expect(
       ctx.ports.vaultLocalRepository.removePersistedLocalVault,
     ).toHaveBeenCalledWith(ctx.values.vaultId);

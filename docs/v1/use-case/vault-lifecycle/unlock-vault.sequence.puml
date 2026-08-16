@@ -22,7 +22,8 @@ participant "ScheduledTaskPort" as Tasks
 
 Caller -> UC : execute(vaultId, masterPassword, lockAfterMs)
 UC -> UC : validate lockAfterMs
-UC -> Session : requireVaultCanBeActivated(vaultId)
+UC -> Coordinator : runExclusive(issue activation authorization)
+Coordinator -> Session : reconcile session identity and capture\nlocal generation + shared session epoch
 UC -> LocalRepo : getDeviceAccessRecords(vaultId)
 break material missing
   UC --> Caller : throw DeviceAccessMaterialNotFoundError
@@ -43,7 +44,7 @@ UC -> Crypto : deriveDeviceSlotVaultMasterKeyProtectionKey(deviceSlotKey)
 UC -> Crypto : unwrapVaultMasterKey(protectedVaultMasterKey, protectionKey)
 UC -> Crypto : decryptVaultSnapshotContent(content, vaultMasterKey)
 UC -> Coordinator : runExclusive(auto-lock activation transition)
-Coordinator -> Session : enter serialized auto-lock activation boundary
+Coordinator -> Session : validate composite authorization and\nadvance shared epoch before activation side effects
 UC -> LockRepo : save(actionId, vaultId, expiresAt)
 UC -> Tasks : scheduleTask(lockVault, runAt)
 alt scheduling fails

@@ -66,7 +66,7 @@ export class CopyEntryPasswordUseCase {
       throw new InvalidClipboardClearDelayError(clearDelayResult.error);
     }
 
-    return this.clipboardOperations.runExclusive(() =>
+    return this.clipboardOperations.runExclusive((coordinationLease) =>
       this.unlockedVaultSession.runWithUnlockedVaultContext(
         params.vaultId,
         "copy entry password",
@@ -134,6 +134,7 @@ export class CopyEntryPasswordUseCase {
             copied: true,
           };
         },
+        coordinationLease,
       ),
     );
   }

@@ -10,6 +10,7 @@ import type { ClipboardPort } from "../../ports/clipboard/clipboard.port";
 import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
 import { ClipboardClearService } from "../../services/clipboard/clipboard-clear.service";
 import { VaultLifecycleCleanupService } from "../../services/session/vault-lifecycle-cleanup.service";
+import { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import { UnlockedVaultSessionExpiredError } from "../../errors/vault-session.errors";
 import { LockVaultUseCase } from "./lock-vault";
 
@@ -72,6 +73,39 @@ describe("LockVaultUseCase", () => {
     expect(
       ctx.ports.sessionServices.unlockedVaultSession.cleanupActiveSession,
     ).toHaveBeenCalledTimes(1);
+    expect(ctx.ports.saved.unlockedVaultSessionEpoch).toBe(1);
+  });
+
+  it("invalidates an activation authorized in another session service before manual lock", async () => {
+    const ctx = createContext();
+    const previousSession = ctx.ports.saved.unlockedVaultSession;
+
+    if (previousSession === undefined) {
+      throw new Error("Expected an active test session.");
+    }
+
+    ctx.ports.saved.unlockedVaultSession = undefined;
+    const competingSession = new UnlockedVaultSessionService(
+      ctx.ports.unlockedVaultSessionMaterialRepository,
+      ctx.ports.encryptedUnlockedVaultSessionPayloadRepository,
+      ctx.ports.crypto,
+      ctx.ports.ids,
+      ctx.clipboardOperations,
+    );
+    const activationAuthorization =
+      await competingSession.requireVaultCanBeActivated(ctx.values.vaultId);
+
+    await expect(ctx.useCase.execute()).resolves.toBeUndefined();
+    await expect(
+      competingSession.activate(
+        activationAuthorization,
+        previousSession.unlockedVault,
+        previousSession.sourceSnapshotVersionVector,
+      ),
+    ).rejects.toBeInstanceOf(UnlockedVaultSessionExpiredError);
+
+    expect(ctx.ports.saved.unlockedVaultSessionEpoch).toBe(1);
+    expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
   });
 
   it("preserves shared lifecycle state when clipboard coordination cannot start", async () => {
@@ -183,6 +217,10 @@ describe("LockVaultUseCase", () => {
       ctx.ports.unlockedVaultSessionMaterialRepository
         .removeUnlockedVaultSessionMaterial,
     ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .advanceUnlockedVaultSessionEpoch,
+    ).not.toHaveBeenCalled();
   });
 
   it("preserves the session when lock metadata advances during scheduled cleanup", async () => {
@@ -214,6 +252,10 @@ describe("LockVaultUseCase", () => {
     ).toHaveBeenCalledWith(ctx.values.vaultLockActionId);
     await expect(ctx.ports.vaultLockTasks.get()).resolves.toBe(newerLockTask);
     expect(ctx.ports.saved.unlockedVaultSession).toBeDefined();
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .advanceUnlockedVaultSessionEpoch,
+    ).not.toHaveBeenCalled();
   });
 
   it("preserves the session when final scheduled lock authentication fails", async () => {
@@ -249,6 +291,10 @@ describe("LockVaultUseCase", () => {
     expect(
       ctx.ports.unlockedVaultSessionMaterialRepository
         .removeUnlockedVaultSessionMaterial,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .advanceUnlockedVaultSessionEpoch,
     ).not.toHaveBeenCalled();
   });
 
@@ -367,6 +413,38 @@ describe("LockVaultUseCase", () => {
     expect(
       ctx.ports.vaultLockTasks.removeIfActionIsActive,
     ).toHaveBeenCalledTimes(1);
+    expect(ctx.ports.saved.unlockedVaultSessionEpoch).toBe(1);
+  });
+
+  it("continues authenticated scheduled lock removal when advancing the shared epoch fails", async () => {
+    const ctx = createContext();
+    const error = new Error("session epoch unavailable");
+    await ctx.ports.vaultLockTasks.save({
+      actionId: ctx.values.vaultLockActionId,
+      vaultId: ctx.values.vaultId,
+      expiresAt: ctx.values.timestamp + 60_000,
+    });
+    vi.mocked(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .advanceUnlockedVaultSessionEpoch,
+    ).mockRejectedValueOnce(error);
+
+    await expect(
+      ctx.useCase.execute({ actionId: ctx.values.vaultLockActionId }),
+    ).rejects.toBe(error);
+
+    expect(
+      ctx.ports.vaultLockTasks.removeIfActionIsActive,
+    ).toHaveBeenCalledWith(ctx.values.vaultLockActionId);
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .removeUnlockedVaultSessionMaterial,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
+        .removeEncryptedUnlockedVaultSessionPayload,
+    ).toHaveBeenCalledTimes(1);
+    expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
   });
 
   it("serializes cleanup against a competing session activation", async () => {

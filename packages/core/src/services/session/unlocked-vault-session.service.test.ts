@@ -16,6 +16,7 @@ import type {
   UnlockedVaultSessionMaterial,
 } from "../../domain/session/unlocked-vault-session.type";
 import type { ClipboardOperationLease } from "../../ports/clipboard/clipboard-operation-coordinator.port";
+import type { UnlockedVaultSessionMaterialRepositoryPort } from "../../ports/session/unlocked-vault-session-material-repository.port";
 import { UnlockedVaultSessionService } from "./unlocked-vault-session.service";
 
 function createContext() {
@@ -101,7 +102,7 @@ describe("UnlockedVaultSessionService", () => {
 
     await expect(
       ctx.service.requireVaultCanBeActivated(ctx.values.vaultId),
-    ).resolves.toBe(0);
+    ).resolves.toEqual({ localGeneration: 0, sharedEpoch: 0 });
   });
 
   it("allows activation for the active vault", async () => {
@@ -110,7 +111,53 @@ describe("UnlockedVaultSessionService", () => {
 
     await expect(
       ctx.service.requireVaultCanBeActivated(ctx.values.vaultId),
-    ).resolves.toBe(0);
+    ).resolves.toEqual({ localGeneration: 0, sharedEpoch: 0 });
+  });
+
+  it("fails activation authorization before reading material when the shared epoch is unavailable", async () => {
+    const ctx = createContext();
+    const error = new Error("session epoch unavailable");
+    vi.mocked(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .getUnlockedVaultSessionEpoch,
+    ).mockRejectedValueOnce(error);
+
+    await expect(
+      ctx.service.requireVaultCanBeActivated(ctx.values.vaultId),
+    ).rejects.toBe(error);
+
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .getPersistedUnlockedVaultSessionIdentity,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .getUnlockedVaultSessionMaterial,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("rejects activation authorized before another context advances the shared epoch", async () => {
+    const ctx = createContext();
+    const activationAuthorization =
+      await ctx.service.requireVaultCanBeActivated(ctx.values.vaultId);
+    ctx.ports.saved.unlockedVaultSessionEpoch += 1;
+
+    await expect(
+      ctx.service.activate(
+        activationAuthorization,
+        ctx.session.unlockedVault,
+        ctx.sourceSnapshotVersionVector,
+      ),
+    ).rejects.toBeInstanceOf(UnlockedVaultSessionExpiredError);
+
+    expect(
+      ctx.ports.crypto.encryptUnlockedVaultSessionPayload,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .saveUnlockedVaultSessionMaterial,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.unlockedVaultSessionEpoch).toBe(1);
   });
 
   it("rejects activation when another vault is active", async () => {
@@ -139,6 +186,7 @@ describe("UnlockedVaultSessionService", () => {
     ).rejects.toBeInstanceOf(UnlockedVaultSessionExpiredError);
 
     expect(ctx.ports.saved.unlockedVaultSessionMaterial).toBeUndefined();
+    expect(ctx.ports.saved.unlockedVaultSessionEpoch).toBe(1);
   });
 
   it("consumes an activation lease", async () => {
@@ -153,6 +201,8 @@ describe("UnlockedVaultSessionService", () => {
       ctx.sourceSnapshotVersionVector,
     );
 
+    expect(ctx.ports.saved.unlockedVaultSessionEpoch).toBe(1);
+
     await expect(
       ctx.service.activate(
         activationGeneration,
@@ -160,6 +210,7 @@ describe("UnlockedVaultSessionService", () => {
         ctx.sourceSnapshotVersionVector,
       ),
     ).rejects.toBeInstanceOf(UnlockedVaultSessionExpiredError);
+    expect(ctx.ports.saved.unlockedVaultSessionEpoch).toBe(1);
   });
 
   it("returns null when no session material exists", async () => {
@@ -206,6 +257,75 @@ describe("UnlockedVaultSessionService", () => {
         sourceSnapshotVersionVector: ctx.sourceSnapshotVersionVector,
       },
     );
+  });
+
+  it("reloads authoritative material after reconciling a cross-context snapshot commit", async () => {
+    const ctx = createContext();
+    ctx.ports.saved.unlockedVaultSessionMaterial = createMaterial(ctx);
+    ctx.ports.saved.encryptedUnlockedVaultSessionPayload =
+      createEncryptedPayload(ctx);
+    const sharedMaterialRepository =
+      ctx.ports.unlockedVaultSessionMaterialRepository;
+    let cachedReaderMaterial: UnlockedVaultSessionMaterial | null | undefined;
+    const readerMaterialRepository: UnlockedVaultSessionMaterialRepositoryPort =
+      {
+        ...sharedMaterialRepository,
+        getUnlockedVaultSessionMaterial: vi.fn(async () => {
+          if (cachedReaderMaterial !== undefined) {
+            return cachedReaderMaterial;
+          }
+
+          const sharedMaterial =
+            await sharedMaterialRepository.getUnlockedVaultSessionMaterial();
+          const restoredMaterial =
+            sharedMaterial === null ? null : structuredClone(sharedMaterial);
+          cachedReaderMaterial = restoredMaterial;
+          return cachedReaderMaterial;
+        }),
+        evictCachedUnlockedVaultSessionMaterial: vi.fn(async (sessionId) => {
+          if (cachedReaderMaterial?.sessionId === sessionId) {
+            cachedReaderMaterial = undefined;
+          }
+        }),
+      };
+    const reader = new UnlockedVaultSessionService(
+      readerMaterialRepository,
+      ctx.ports.encryptedUnlockedVaultSessionPayloadRepository,
+      ctx.ports.crypto,
+      ctx.ports.ids,
+      ctx.ports.clipboardOperations,
+    );
+
+    await expect(reader.get()).resolves.toMatchObject({
+      sourceSnapshotVersionVector: ctx.sourceSnapshotVersionVector,
+    });
+    const staleReaderMaterial = cachedReaderMaterial;
+
+    if (staleReaderMaterial === undefined || staleReaderMaterial === null) {
+      throw new Error("Expected the reader to cache session material.");
+    }
+
+    const advancedSourceSnapshotVersionVector = { [ctx.values.deviceId]: 8 };
+    await ctx.service.commitPersistedSnapshot(
+      ctx.values.sessionId,
+      ctx.session.unlockedVault,
+      advancedSourceSnapshotVersionVector,
+    );
+
+    await expect(reader.get()).resolves.toBeNull();
+    for (const secret of [
+      staleReaderMaterial.vaultMasterKey,
+      staleReaderMaterial.devicePrivateSignKey,
+      staleReaderMaterial.devicePrivateVaultKey,
+      staleReaderMaterial.deviceLocalProtectionKey,
+      staleReaderMaterial.payloadKey,
+    ]) {
+      expect(Array.from(new Uint8Array(secret))).toEqual([0]);
+    }
+    await expect(reader.get()).resolves.toMatchObject({
+      sessionId: ctx.values.sessionId,
+      sourceSnapshotVersionVector: advancedSourceSnapshotVersionVector,
+    });
   });
 
   it("returns unlocked vault context for the requested active vault", async () => {
@@ -276,6 +396,7 @@ describe("UnlockedVaultSessionService", () => {
       UnlockedVaultSessionInvalidError,
     );
     expect(ctx.ports.saved.unlockedVaultSessionMaterial).toBeUndefined();
+    expect(ctx.ports.saved.unlockedVaultSessionEpoch).toBe(1);
     for (const secret of [
       material.vaultMasterKey,
       material.devicePrivateSignKey,
@@ -285,6 +406,67 @@ describe("UnlockedVaultSessionService", () => {
     ]) {
       expect(Array.from(new Uint8Array(secret))).toEqual([0]);
     }
+  });
+
+  it("revokes and removes session records when authoritative identity cannot be read", async () => {
+    const ctx = createContext();
+    const material = createMaterial(ctx);
+    const identityError = new Error("session identity is malformed");
+    ctx.ports.saved.unlockedVaultSessionMaterial = material;
+    ctx.ports.saved.encryptedUnlockedVaultSessionPayload =
+      createEncryptedPayload(ctx);
+    vi.mocked(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .getPersistedUnlockedVaultSessionIdentity,
+    ).mockRejectedValueOnce(identityError);
+
+    await expect(ctx.service.get()).rejects.toBe(identityError);
+
+    expect(ctx.ports.saved.unlockedVaultSessionEpoch).toBe(1);
+    expect(ctx.ports.saved.unlockedVaultSessionMaterial).toBeUndefined();
+    expect(
+      ctx.ports.saved.encryptedUnlockedVaultSessionPayload,
+    ).toBeUndefined();
+    for (const secret of [
+      material.vaultMasterKey,
+      material.devicePrivateSignKey,
+      material.devicePrivateVaultKey,
+      material.deviceLocalProtectionKey,
+      material.payloadKey,
+    ]) {
+      expect(Array.from(new Uint8Array(secret))).toEqual([0]);
+    }
+  });
+
+  it("revokes another context's activation authorization when invalid-session restoration removes material", async () => {
+    const ctx = createContext();
+    ctx.ports.saved.unlockedVaultSessionMaterial = createMaterial(ctx);
+    const activationAuthorization =
+      await ctx.service.requireVaultCanBeActivated(ctx.values.vaultId);
+    const cleanupContext = new UnlockedVaultSessionService(
+      ctx.ports.unlockedVaultSessionMaterialRepository,
+      ctx.ports.encryptedUnlockedVaultSessionPayloadRepository,
+      ctx.ports.crypto,
+      ctx.ports.ids,
+      ctx.ports.clipboardOperations,
+    );
+
+    await expect(cleanupContext.get()).rejects.toBeInstanceOf(
+      UnlockedVaultSessionInvalidError,
+    );
+    await expect(
+      ctx.service.activate(
+        activationAuthorization,
+        ctx.session.unlockedVault,
+        ctx.sourceSnapshotVersionVector,
+      ),
+    ).rejects.toBeInstanceOf(UnlockedVaultSessionExpiredError);
+
+    expect(ctx.ports.saved.unlockedVaultSessionEpoch).toBe(1);
+    expect(ctx.ports.saved.unlockedVaultSessionMaterial).toBeUndefined();
+    expect(
+      ctx.ports.crypto.encryptUnlockedVaultSessionPayload,
+    ).not.toHaveBeenCalled();
   });
 
   it("rejects mismatched session material and encrypted payload", async () => {
@@ -374,7 +556,7 @@ describe("UnlockedVaultSessionService", () => {
     const ctx = createContext();
 
     await ctx.service.activate(
-      0,
+      { localGeneration: 0, sharedEpoch: 0 },
       ctx.session.unlockedVault,
       ctx.sourceSnapshotVersionVector,
     );
@@ -432,7 +614,7 @@ describe("UnlockedVaultSessionService", () => {
     const ctx = createContext();
 
     await ctx.service.activate(
-      0,
+      { localGeneration: 0, sharedEpoch: 0 },
       ctx.session.unlockedVault,
       ctx.sourceSnapshotVersionVector,
     );
@@ -469,7 +651,7 @@ describe("UnlockedVaultSessionService", () => {
     ctx.ports.saved.unlockedVaultSessionMaterial = activeMaterial;
 
     await ctx.service.activate(
-      0,
+      { localGeneration: 0, sharedEpoch: 0 },
       ctx.session.unlockedVault,
       ctx.sourceSnapshotVersionVector,
     );
@@ -558,7 +740,7 @@ describe("UnlockedVaultSessionService", () => {
 
     await expect(
       ctx.service.activate(
-        0,
+        { localGeneration: 0, sharedEpoch: 0 },
         ctx.session.unlockedVault,
         ctx.sourceSnapshotVersionVector,
       ),
@@ -584,7 +766,7 @@ describe("UnlockedVaultSessionService", () => {
 
     await expect(
       ctx.service.activate(
-        0,
+        { localGeneration: 0, sharedEpoch: 0 },
         ctx.session.unlockedVault,
         ctx.sourceSnapshotVersionVector,
       ),
@@ -614,7 +796,7 @@ describe("UnlockedVaultSessionService", () => {
 
     await expect(
       ctx.service.activate(
-        0,
+        { localGeneration: 0, sharedEpoch: 0 },
         ctx.session.unlockedVault,
         ctx.sourceSnapshotVersionVector,
       ),
@@ -668,6 +850,33 @@ describe("UnlockedVaultSessionService", () => {
       ctx.ports.unlockedVaultSessionMaterialRepository
         .getUnlockedVaultSessionMaterial,
     ).toHaveBeenCalledTimes(1);
+    expect(ctx.ports.saved.unlockedVaultSessionEpoch).toBe(1);
+  });
+
+  it("preserves an epoch failure while removing a partially committed session", async () => {
+    const ctx = createContext();
+    const epochError = new Error("session epoch unavailable");
+    ctx.ports.saved.unlockedVaultSessionMaterial = createMaterial(ctx);
+    ctx.ports.saved.encryptedUnlockedVaultSessionPayload =
+      createEncryptedPayload(ctx);
+    vi.mocked(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .advanceUnlockedVaultSessionEpoch,
+    ).mockRejectedValueOnce(epochError);
+
+    await expect(
+      ctx.service.commitPersistedSnapshot(
+        ctx.values.sessionId,
+        ctx.session.unlockedVault,
+        { [ctx.values.deviceId]: 8 },
+      ),
+    ).rejects.toBe(epochError);
+
+    expect(ctx.ports.saved.unlockedVaultSessionMaterial).toBeUndefined();
+    expect(
+      ctx.ports.saved.encryptedUnlockedVaultSessionPayload,
+    ).toBeUndefined();
+    expect(ctx.ports.saved.unlockedVaultSessionEpoch).toBe(1);
   });
 
   it("rejects a persisted snapshot commit after the session was removed", async () => {
@@ -762,6 +971,7 @@ describe("UnlockedVaultSessionService", () => {
     expect(ctx.ports.saved.unlockedVaultSessionMaterial).toMatchObject({
       sourceSnapshotVersionVector: { [ctx.values.deviceId]: 8 },
     });
+    expect(ctx.ports.saved.unlockedVaultSessionEpoch).toBe(1);
   });
 
   it("does not restore state or invalidate a replacement session", async () => {
@@ -944,6 +1154,52 @@ describe("UnlockedVaultSessionService", () => {
 
     expect(restore).toHaveBeenCalledOnce();
     expect(ctx.ports.saved.unlockedVaultSessionMaterial).toBeUndefined();
+    expect(ctx.ports.saved.unlockedVaultSessionEpoch).toBe(1);
+  });
+
+  it("does not restore without active material when epoch revocation fails", async () => {
+    const ctx = createContext();
+    const epochError = new Error("session epoch unavailable");
+    const restore = vi.fn(async () => undefined);
+    vi.mocked(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .advanceUnlockedVaultSessionEpoch,
+    ).mockRejectedValueOnce(epochError);
+
+    await expect(
+      ctx.service.restorePersistedState(
+        ctx.values.sessionId,
+        ctx.values.vaultId,
+        ctx.sourceSnapshotVersionVector,
+        restore,
+      ),
+    ).resolves.toBe("rollback_failed");
+
+    expect(restore).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.unlockedVaultSessionEpoch).toBe(0);
+  });
+
+  it("revokes activation authorization when restore rollback removes an active session", async () => {
+    const ctx = createContext();
+    const restoreError = new Error("restore failed");
+    ctx.ports.saved.unlockedVaultSessionMaterial = createMaterial(ctx);
+    ctx.ports.saved.encryptedUnlockedVaultSessionPayload =
+      createEncryptedPayload(ctx);
+
+    await expect(
+      ctx.service.restorePersistedState(
+        ctx.values.sessionId,
+        ctx.values.vaultId,
+        ctx.sourceSnapshotVersionVector,
+        async () => Promise.reject(restoreError),
+      ),
+    ).resolves.toBe("rollback_failed");
+
+    expect(ctx.ports.saved.unlockedVaultSessionEpoch).toBe(1);
+    expect(ctx.ports.saved.unlockedVaultSessionMaterial).toBeUndefined();
+    expect(
+      ctx.ports.saved.encryptedUnlockedVaultSessionPayload,
+    ).toBeUndefined();
   });
 
   it.each([
@@ -1056,6 +1312,84 @@ describe("UnlockedVaultSessionService", () => {
     expect(ctx.ports.saved.unlockedVaultSessionMaterial?.sessionId).toBe(
       ctx.values.sessionId,
     );
+    expect(ctx.ports.saved.unlockedVaultSessionEpoch).toBe(1);
+  });
+
+  it("does not start active-session persistence when epoch revocation fails", async () => {
+    const ctx = createContext();
+    const epochError = new Error("session epoch unavailable");
+    ctx.ports.saved.unlockedVaultSessionMaterial = createMaterial(ctx);
+    ctx.ports.saved.encryptedUnlockedVaultSessionPayload =
+      createEncryptedPayload(ctx);
+    vi.mocked(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .advanceUnlockedVaultSessionEpoch,
+    ).mockRejectedValueOnce(epochError);
+    const persist = vi.fn(async () => undefined);
+
+    await expect(
+      ctx.service.persistForActiveSession(
+        ctx.values.sessionId,
+        ctx.values.vaultId,
+        persist,
+      ),
+    ).rejects.toBe(epochError);
+
+    expect(persist).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.unlockedVaultSessionMaterial).toBeDefined();
+  });
+
+  it("revokes activation authorization before authenticated discard", async () => {
+    const ctx = createContext();
+    ctx.ports.saved.unlockedVaultSessionMaterial = createMaterial(ctx);
+    ctx.ports.saved.encryptedUnlockedVaultSessionPayload =
+      createEncryptedPayload(ctx);
+    const discard = vi.fn(async () => true);
+
+    await expect(
+      ctx.service.discardIfSessionIsActive(
+        ctx.values.sessionId,
+        ctx.values.vaultId,
+        0,
+        ctx.sourceSnapshotVersionVector,
+        async () => undefined,
+        discard,
+      ),
+    ).resolves.toBe("discarded");
+
+    expect(ctx.ports.saved.unlockedVaultSessionEpoch).toBe(1);
+    expect(ctx.ports.saved.unlockedVaultSessionMaterial).toBeUndefined();
+    expect(discard).toHaveBeenCalledOnce();
+  });
+
+  it("continues authenticated discard removal when epoch revocation fails", async () => {
+    const ctx = createContext();
+    const epochError = new Error("session epoch unavailable");
+    ctx.ports.saved.unlockedVaultSessionMaterial = createMaterial(ctx);
+    ctx.ports.saved.encryptedUnlockedVaultSessionPayload =
+      createEncryptedPayload(ctx);
+    vi.mocked(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .advanceUnlockedVaultSessionEpoch,
+    ).mockRejectedValueOnce(epochError);
+    const discard = vi.fn(async () => true);
+
+    await expect(
+      ctx.service.discardIfSessionIsActive(
+        ctx.values.sessionId,
+        ctx.values.vaultId,
+        0,
+        ctx.sourceSnapshotVersionVector,
+        async () => undefined,
+        discard,
+      ),
+    ).resolves.toBe("rollback_failed");
+
+    expect(ctx.ports.saved.unlockedVaultSessionMaterial).toBeUndefined();
+    expect(
+      ctx.ports.saved.encryptedUnlockedVaultSessionPayload,
+    ).toBeUndefined();
+    expect(discard).not.toHaveBeenCalled();
   });
 
   it("keeps local enrollment state when session removal fails during discard", async () => {
@@ -1101,6 +1435,7 @@ describe("UnlockedVaultSessionService", () => {
     expect(
       ctx.ports.saved.encryptedUnlockedVaultSessionPayload,
     ).toBeUndefined();
+    expect(ctx.ports.saved.unlockedVaultSessionEpoch).toBe(1);
   });
 
   it("does not discard enrollment state after the active session advances", async () => {
@@ -1342,6 +1677,7 @@ describe("UnlockedVaultSessionService", () => {
     expect(
       ctx.ports.saved.encryptedUnlockedVaultSessionPayload,
     ).toBeUndefined();
+    expect(ctx.ports.saved.unlockedVaultSessionEpoch).toBe(1);
     for (const buffer of [
       material.vaultMasterKey,
       material.devicePrivateSignKey,
@@ -1351,6 +1687,168 @@ describe("UnlockedVaultSessionService", () => {
     ]) {
       expect(Array.from(new Uint8Array(buffer))).toEqual([0]);
     }
+  });
+
+  it("restores a fresh session activated by another service after local removal", async () => {
+    const ctx = createContext();
+    const freshUnlockedVault = structuredClone(ctx.session.unlockedVault);
+    ctx.ports.saved.unlockedVaultSessionMaterial = createMaterial(ctx);
+    ctx.ports.saved.encryptedUnlockedVaultSessionPayload =
+      createEncryptedPayload(ctx);
+
+    await ctx.service.remove();
+
+    const activatingService = new UnlockedVaultSessionService(
+      ctx.ports.unlockedVaultSessionMaterialRepository,
+      ctx.ports.encryptedUnlockedVaultSessionPayloadRepository,
+      ctx.ports.crypto,
+      ctx.ports.ids,
+      ctx.ports.clipboardOperations,
+    );
+    vi.mocked(ctx.ports.ids.generateId)
+      .mockReset()
+      .mockResolvedValue("replacement-session-id");
+    const activationAuthorization =
+      await activatingService.requireVaultCanBeActivated(ctx.values.vaultId);
+    await activatingService.activate(
+      activationAuthorization,
+      freshUnlockedVault,
+      ctx.sourceSnapshotVersionVector,
+    );
+
+    await expect(ctx.service.get()).resolves.toMatchObject({
+      sessionId: "replacement-session-id",
+      unlockedVault: { vaultId: ctx.values.vaultId },
+    });
+    await expect(
+      ctx.service.requireUnlockedVaultContext(
+        ctx.values.vaultId,
+        "test operation",
+      ),
+    ).resolves.toMatchObject({ sessionId: "replacement-session-id" });
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .evictCachedUnlockedVaultSessionMaterial,
+    ).toHaveBeenCalledWith(ctx.values.sessionId);
+  });
+
+  it("restores a fresh session after a successful empty removal", async () => {
+    const ctx = createContext();
+    const freshUnlockedVault = structuredClone(ctx.session.unlockedVault);
+
+    await ctx.service.remove();
+
+    const activatingService = new UnlockedVaultSessionService(
+      ctx.ports.unlockedVaultSessionMaterialRepository,
+      ctx.ports.encryptedUnlockedVaultSessionPayloadRepository,
+      ctx.ports.crypto,
+      ctx.ports.ids,
+      ctx.ports.clipboardOperations,
+    );
+    vi.mocked(ctx.ports.ids.generateId)
+      .mockReset()
+      .mockResolvedValue("replacement-session-id");
+    const activationAuthorization =
+      await activatingService.requireVaultCanBeActivated(ctx.values.vaultId);
+    await activatingService.activate(
+      activationAuthorization,
+      freshUnlockedVault,
+      ctx.sourceSnapshotVersionVector,
+    );
+
+    await expect(ctx.service.get()).resolves.toMatchObject({
+      sessionId: "replacement-session-id",
+      unlockedVault: { vaultId: ctx.values.vaultId },
+    });
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .evictCachedUnlockedVaultSessionMaterial,
+    ).toHaveBeenCalledWith(null);
+  });
+
+  it("does not revive an unknown session identity after removal fails", async () => {
+    const ctx = createContext();
+    const materialReadError = new Error("material read failed");
+    const materialRemovalError = new Error("material removal failed");
+    const payloadRemovalError = new Error("payload removal failed");
+    ctx.ports.saved.unlockedVaultSessionMaterial = createMaterial(ctx);
+    ctx.ports.saved.encryptedUnlockedVaultSessionPayload =
+      createEncryptedPayload(ctx);
+    vi.mocked(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .getUnlockedVaultSessionMaterial,
+    ).mockRejectedValueOnce(materialReadError);
+    vi.mocked(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .removeUnlockedVaultSessionMaterial,
+    ).mockRejectedValueOnce(materialRemovalError);
+    vi.mocked(
+      ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
+        .removeEncryptedUnlockedVaultSessionPayload,
+    ).mockRejectedValueOnce(payloadRemovalError);
+
+    await expect(ctx.service.remove()).rejects.toBe(materialRemovalError);
+
+    await expect(ctx.service.get()).resolves.toBeNull();
+    await expect(ctx.service.get()).resolves.toBeNull();
+    expect(ctx.ports.saved.unlockedVaultSessionMaterial).toBeDefined();
+    expect(ctx.ports.saved.encryptedUnlockedVaultSessionPayload).toBeDefined();
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .evictCachedUnlockedVaultSessionMaterial,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .getUnlockedVaultSessionMaterial,
+    ).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not revive the same session identity after removal fails", async () => {
+    const ctx = createContext();
+    const removalError = new Error("material removal failed");
+    ctx.ports.saved.unlockedVaultSessionMaterial = createMaterial(ctx);
+    ctx.ports.saved.encryptedUnlockedVaultSessionPayload =
+      createEncryptedPayload(ctx);
+    vi.mocked(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .removeUnlockedVaultSessionMaterial,
+    ).mockRejectedValueOnce(removalError);
+
+    await expect(ctx.service.remove()).rejects.toBe(removalError);
+    vi.mocked(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .evictCachedUnlockedVaultSessionMaterial,
+    ).mockClear();
+
+    await expect(ctx.service.get()).resolves.toBeNull();
+    await expect(ctx.service.get()).resolves.toBeNull();
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .evictCachedUnlockedVaultSessionMaterial,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .getUnlockedVaultSessionMaterial,
+    ).toHaveBeenCalledTimes(1);
+  });
+
+  it("continues direct removal when epoch revocation fails", async () => {
+    const ctx = createContext();
+    const epochError = new Error("session epoch unavailable");
+    ctx.ports.saved.unlockedVaultSessionMaterial = createMaterial(ctx);
+    ctx.ports.saved.encryptedUnlockedVaultSessionPayload =
+      createEncryptedPayload(ctx);
+    vi.mocked(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .advanceUnlockedVaultSessionEpoch,
+    ).mockRejectedValueOnce(epochError);
+
+    await expect(ctx.service.remove()).rejects.toBe(epochError);
+
+    expect(ctx.ports.saved.unlockedVaultSessionMaterial).toBeUndefined();
+    expect(
+      ctx.ports.saved.encryptedUnlockedVaultSessionPayload,
+    ).toBeUndefined();
   });
 
   it("rejects an expired coordination lease without mutating session state", async () => {

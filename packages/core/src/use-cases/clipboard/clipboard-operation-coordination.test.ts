@@ -6,7 +6,10 @@ import {
   saveUnlockedVaultWithEntries,
   singlePasswordEntry,
 } from "../../__tests__/fixtures/vault-entries";
-import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
+import {
+  UnlockedVaultSessionExpiredError,
+  VaultMustBeUnlockedError,
+} from "../../errors/vault-session.errors";
 import type {
   ClipboardClearTask,
   ClipboardClearTaskRepositoryPort,
@@ -417,15 +420,13 @@ describe("clipboard operation coordination", () => {
     expect(ctx.getScheduledActionIds()).toEqual(new Set());
   });
 
-  it("finishes scheduled cleanup before another context activates a replacement session", async () => {
+  it("invalidates another context's earlier activation authorization during scheduled cleanup", async () => {
     const values = createCoreTestValues();
     const ports = createCoreTestPorts(values);
     const unlockedVault = createUnlockedVaultWithEntries(values, []);
     saveUnlockedVaultWithEntries(ports, values, []);
 
     const lockActionId = "scheduled-lock-action";
-    const replacementActionId = "replacement-lock-action";
-    const replacementSessionId = "replacement-session";
     let activeLockTask: VaultLockTask | null = {
       actionId: lockActionId,
       vaultId: values.vaultId,
@@ -479,12 +480,8 @@ describe("clipboard operation coordination", () => {
       ports.ids,
       clipboardOperations,
     );
-    const activationGeneration =
+    const activationAuthorization =
       await activationSession.requireVaultCanBeActivated(values.vaultId);
-    vi.mocked(ports.ids.generateId)
-      .mockReset()
-      .mockResolvedValueOnce(replacementActionId)
-      .mockResolvedValueOnce(replacementSessionId);
     const lock = new LockVaultUseCase(
       new VaultLifecycleCleanupService(
         clipboardClear,
@@ -507,7 +504,7 @@ describe("clipboard operation coordination", () => {
     const cleanup = lock.execute({ actionId: lockActionId });
     await removalReached.promise;
     const replacement = activation.activate({
-      activationGeneration,
+      activationAuthorization,
       unlockedVault,
       sourceSnapshotVersionVector: { [values.deviceId]: 2 },
       lockAfterMs: 60_000,
@@ -518,18 +515,13 @@ describe("clipboard operation coordination", () => {
 
     removalCanFinish.resolve();
     await expect(cleanup).resolves.toBeUndefined();
-    await expect(replacement).resolves.toEqual({
-      sessionId: replacementSessionId,
-      generation: 1,
-    });
+    await expect(replacement).rejects.toBeInstanceOf(
+      UnlockedVaultSessionExpiredError,
+    );
 
-    await expect(activationSession.get()).resolves.toMatchObject({
-      sessionId: replacementSessionId,
-      sourceSnapshotVersionVector: { [values.deviceId]: 2 },
-    });
-    expect(activeLockTask).toMatchObject({
-      actionId: replacementActionId,
-      vaultId: values.vaultId,
-    });
+    await expect(activationSession.get()).resolves.toBeNull();
+    expect(activeLockTask).toBeNull();
+    expect(ports.saved.unlockedVaultSessionEpoch).toBe(1);
+    expect(vaultLockTasks.save).not.toHaveBeenCalled();
   });
 });

@@ -159,7 +159,7 @@ export class PerformDeviceEnrollmentUseCase {
       throw new LocalVaultAlreadyInitializedError(response.vaultId);
     }
 
-    const activationGeneration =
+    const activationAuthorization =
       await this.unlockedVaultSession.requireVaultCanBeActivated(
         response.vaultId,
       );
@@ -445,7 +445,7 @@ export class PerformDeviceEnrollmentUseCase {
       };
 
       const activatedSession = await this.sessionActivation.activate({
-        activationGeneration,
+        activationAuthorization,
         unlockedVault,
         sourceSnapshotVersionVector: snapshot.metadata.snapshotVersionVector,
         lockAfterMs,

@@ -379,12 +379,13 @@ cleanup but before releasing the same lifecycle boundary. A queued unlock cannot
 obtain an activation lease until deletion has completed, so it subsequently
 observes the removed local records instead of racing their removal.
 
-These in-memory serialization guarantees require one shared core composition
-per storage namespace. Extension UI contexts must route lifecycle and secret-
-using operations through that long-lived background owner; independently
-constructing session services in popup, options, and background contexts is not
-a supported composition because JavaScript object locks do not coordinate
-across contexts.
+Every extension context that shares clipboard or unlocked-session storage must
+use the same cross-context coordinator contract and origin-scoped Web Lock name.
+Instance-local queues serialize only within one service instance; they are not a
+cross-context security boundary. Under the shared Web Lock, persisted session
+identity is reconciled with each context's cache, and a volatile shared epoch
+invalidates activation authority captured before a lock, replacement, rollback,
+or snapshot transition.
 
 ---
 
