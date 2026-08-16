@@ -21,6 +21,7 @@ import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-rep
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import type { VaultSyncGuardService } from "../../services/sync";
+import { requireSyncProviderAccessOutcome } from "../../services/sync/sync-provider-outcome.policy";
 
 export type CompleteProviderCredentialRevocationCommandParams = {
   readonly vaultId: string;
@@ -123,9 +124,8 @@ export class CompleteProviderCredentialRevocationUseCase {
       target: syncTarget,
       credentials: state.previousCredentials.credentials,
     };
-    const result = await this.syncProvider.checkVaultAccess(
-      access,
-      params.vaultId,
+    const result = requireSyncProviderAccessOutcome(
+      await this.syncProvider.checkVaultAccess(access, params.vaultId),
     );
 
     if (result === "accessible") {

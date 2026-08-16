@@ -1,4 +1,12 @@
 export * from "./chrome-clipboard-clear-task.repository";
 export * from "./chrome-storage-area";
 export * from "./chrome-unlocked-vault-session-material.repository";
+export * from "./chrome-vault-lock-task.repository";
 export * from "./indexeddb-encrypted-unlocked-vault-session-payload.repository";
+export * from "./indexeddb-vault-local.repository";
+export { InvalidDeviceEnrollmentArtifactError } from "../codecs/device-enrollment-artifact.codec";
+export { InvalidLocalVaultSecurityRecordError } from "../codecs/local-vault-security.codec";
+export { InvalidSyncCredentialRecordError } from "../codecs/sync-credential.codec";
+export { InvalidUnlockedVaultSessionPayloadRecordError } from "../codecs/unlocked-session-payload.codec";
+export { InvalidLocalVaultSnapshotRecordError } from "../codecs/vault-snapshot.codec";
+export { InvalidUnlockedVaultSessionMaterialError } from "./unlocked-vault-session-material.codec";

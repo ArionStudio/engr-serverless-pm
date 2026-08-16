@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { CURRENT_ALGORITHM_SUITE } from "@lfspm/core";
 import type {
   DeviceLocalProtectionKey,
   DevicePrivateSignKey,
@@ -8,6 +9,8 @@ import type {
   UnlockedVaultSessionPayloadKey,
   VaultMasterKey,
 } from "@lfspm/core";
+import { decodeBase64Url, encodeBase64Url } from "@lfspm/core/lib";
+import type { Base64URLString } from "@lfspm/core/lib";
 import { createChromeStorageArea } from "../../__tests__/fixtures/chrome-storage-area";
 import {
   ChromeUnlockedVaultSessionMaterialRepository,
@@ -15,8 +18,17 @@ import {
   UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY,
 } from "./chrome-unlocked-vault-session-material.repository";
 import type { ChromeStorageArea } from "./chrome-storage-area";
+import { InvalidUnlockedVaultSessionMaterialError } from "./unlocked-vault-session-material.codec";
 
-const { bestEffortWipeArrayBuffersSpy, secureWipeSpy } = vi.hoisted(() => ({
+const ED25519_PUBLIC_KEY = "Fqs-ZEF094DwnmgIP_3vW66vR7a3roKY4a6rHcf_Mbg";
+const ED25519_PRIVATE_KEY =
+  "MC4CAQAwBQYDK2VwBCIEIKCpkcLGPXOj3QmuhXSqbSzyR9QxZsgQRcHKuEBgvBGS";
+const P256_PUBLIC_KEY =
+  "BGHA1gXNkZGy7nD5xmWFenBCQYwNDXk_JvqcNfVsq9rQ4951gUvzZy3aDWK6yj5FRZqAimQvURlj6i-I8aYbzNg";
+const P256_PRIVATE_KEY =
+  "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgWiqUpCPje41XhU_gfBax1XuzrKagNbTrY97LNjclW2ehRANCAARhwNYFzZGRsu5w-cZlhXpwQkGMDQ15Pyb6nDX1bKva0OPedYFL82ct2g1iuso-RUWagIpkL1EZY-oviPGmG8zY";
+
+const { bestEffortWipeArrayBuffersSpy } = vi.hoisted(() => ({
   bestEffortWipeArrayBuffersSpy: vi.fn(
     (buffers: readonly (ArrayBuffer | undefined)[]) => {
       for (const buffer of buffers) {
@@ -26,7 +38,6 @@ const { bestEffortWipeArrayBuffersSpy, secureWipeSpy } = vi.hoisted(() => ({
       }
     },
   ),
-  secureWipeSpy: vi.fn((bytes: Uint8Array) => bytes.fill(0)),
 }));
 
 vi.mock("@lfspm/core/lib", async (importOriginal) => {
@@ -35,13 +46,11 @@ vi.mock("@lfspm/core/lib", async (importOriginal) => {
   return {
     ...actual,
     bestEffortWipeArrayBuffers: bestEffortWipeArrayBuffersSpy,
-    secureWipe: secureWipeSpy,
   };
 });
 
 beforeEach(() => {
   bestEffortWipeArrayBuffersSpy.mockClear();
-  secureWipeSpy.mockClear();
 });
 function createMaterial() {
   return {
@@ -51,26 +60,37 @@ function createMaterial() {
       "device-id": 7,
     },
     deviceId: "device-id",
-    vaultMasterKey: arrayBuffer(1, 2, 3) as VaultMasterKey,
-    devicePrivateSignKey: arrayBuffer(4, 5, 6) as DevicePrivateSignKey,
-    devicePrivateVaultKey: arrayBuffer(7, 8, 9) as DeviceVaultPrivateKey,
-    deviceLocalProtectionKey: arrayBuffer(
-      10,
-      11,
-      12,
+    vaultMasterKey: filledBuffer(1, 32) as VaultMasterKey,
+    devicePrivateSignKey: decodeBuffer(
+      ED25519_PRIVATE_KEY,
+    ) as DevicePrivateSignKey,
+    devicePrivateVaultKey: decodeBuffer(
+      P256_PRIVATE_KEY,
+    ) as DeviceVaultPrivateKey,
+    deviceLocalProtectionKey: filledBuffer(
+      2,
+      CURRENT_ALGORITHM_SUITE.deviceLocalProtectionKeyGeneration.byteLength,
     ) as DeviceLocalProtectionKey,
-    payloadKey: arrayBuffer(13, 14, 15) as UnlockedVaultSessionPayloadKey,
+    payloadKey: filledBuffer(
+      3,
+      CURRENT_ALGORITHM_SUITE.unlockedVaultSessionPayloadKeyGeneration
+        .byteLength,
+    ) as UnlockedVaultSessionPayloadKey,
     trustedSnapshotContext: {
-      snapshotDigest: "snapshot-digest",
+      snapshotDigest: digest(4),
       trust: {
         generation: 2,
         vaultKeyGeneration: 3,
-        certificateDigest: "certificate-digest",
+        certificateDigest: digest(5),
         trustedDevices: [
           {
             deviceId: "device-id",
-            publicSignKey: arrayBuffer(16, 17, 18) as DevicePublicSignKey,
-            publicVaultKey: arrayBuffer(19, 20, 21) as DeviceVaultPublicKey,
+            publicSignKey: decodeBuffer(
+              ED25519_PUBLIC_KEY,
+            ) as DevicePublicSignKey,
+            publicVaultKey: decodeBuffer(
+              P256_PUBLIC_KEY,
+            ) as DeviceVaultPublicKey,
           },
         ],
       },
@@ -79,8 +99,53 @@ function createMaterial() {
       version: 1 as const,
       vaultId: "vault-id",
       genesisDeviceId: "device-id",
-      genesisPublicSignKey: arrayBuffer(22, 23, 24) as DevicePublicSignKey,
-      genesisCertificateDigest: "genesis-certificate-digest",
+      genesisPublicSignKey: decodeBuffer(
+        ED25519_PUBLIC_KEY,
+      ) as DevicePublicSignKey,
+      genesisCertificateDigest: digest(6),
+    },
+  };
+}
+
+function createStoredMaterial() {
+  const material = createMaterial();
+  return {
+    sessionId: material.sessionId,
+    vaultId: material.vaultId,
+    sourceSnapshotVersionVector: material.sourceSnapshotVersionVector,
+    deviceId: material.deviceId,
+    vaultMasterKey: encodeBuffer(material.vaultMasterKey),
+    devicePrivateSignKey: encodeBuffer(material.devicePrivateSignKey),
+    devicePrivateVaultKey: encodeBuffer(material.devicePrivateVaultKey),
+    deviceLocalProtectionKey: encodeBuffer(material.deviceLocalProtectionKey),
+    payloadKey: encodeBuffer(material.payloadKey),
+    trustedSnapshotContext: {
+      snapshotDigest: material.trustedSnapshotContext.snapshotDigest,
+      trust: {
+        generation: material.trustedSnapshotContext.trust.generation,
+        vaultKeyGeneration:
+          material.trustedSnapshotContext.trust.vaultKeyGeneration,
+        certificateDigest:
+          material.trustedSnapshotContext.trust.certificateDigest,
+        trustedDevices:
+          material.trustedSnapshotContext.trust.trustedDevices.map(
+            (device) => ({
+              deviceId: device.deviceId,
+              publicSignKey: encodeBuffer(device.publicSignKey),
+              publicVaultKey: encodeBuffer(device.publicVaultKey),
+            }),
+          ),
+      },
+    },
+    vaultTrustAnchor: {
+      version: material.vaultTrustAnchor.version,
+      vaultId: material.vaultTrustAnchor.vaultId,
+      genesisDeviceId: material.vaultTrustAnchor.genesisDeviceId,
+      genesisPublicSignKey: encodeBuffer(
+        material.vaultTrustAnchor.genesisPublicSignKey,
+      ),
+      genesisCertificateDigest:
+        material.vaultTrustAnchor.genesisCertificateDigest,
     },
   };
 }
@@ -95,41 +160,9 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
 
     await repository.saveUnlockedVaultSessionMaterial(material);
 
-    expect(getRecords()[UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY]).toEqual({
-      sessionId: "session-id",
-      vaultId: "vault-id",
-      sourceSnapshotVersionVector: {
-        "device-id": 7,
-      },
-      deviceId: "device-id",
-      vaultMasterKey: "AQID",
-      devicePrivateSignKey: "BAUG",
-      devicePrivateVaultKey: "BwgJ",
-      deviceLocalProtectionKey: "CgsM",
-      payloadKey: "DQ4P",
-      trustedSnapshotContext: {
-        snapshotDigest: "snapshot-digest",
-        trust: {
-          generation: 2,
-          vaultKeyGeneration: 3,
-          certificateDigest: "certificate-digest",
-          trustedDevices: [
-            {
-              deviceId: "device-id",
-              publicSignKey: "EBES",
-              publicVaultKey: "ExQV",
-            },
-          ],
-        },
-      },
-      vaultTrustAnchor: {
-        version: 1,
-        vaultId: "vault-id",
-        genesisDeviceId: "device-id",
-        genesisPublicSignKey: "FhcY",
-        genesisCertificateDigest: "genesis-certificate-digest",
-      },
-    });
+    expect(getRecords()[UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY]).toEqual(
+      createStoredMaterial(),
+    );
     await expect(repository.getUnlockedVaultSessionMaterial()).resolves.toBe(
       material,
     );
@@ -137,41 +170,7 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
 
   it("restores session material from storage", async () => {
     const { storageArea } = createChromeStorageArea({
-      [UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY]: {
-        sessionId: "session-id",
-        vaultId: "vault-id",
-        sourceSnapshotVersionVector: {
-          "device-id": 7,
-        },
-        deviceId: "device-id",
-        vaultMasterKey: "AQID",
-        devicePrivateSignKey: "BAUG",
-        devicePrivateVaultKey: "BwgJ",
-        deviceLocalProtectionKey: "CgsM",
-        payloadKey: "DQ4P",
-        trustedSnapshotContext: {
-          snapshotDigest: "snapshot-digest",
-          trust: {
-            generation: 2,
-            vaultKeyGeneration: 3,
-            certificateDigest: "certificate-digest",
-            trustedDevices: [
-              {
-                deviceId: "device-id",
-                publicSignKey: "EBES",
-                publicVaultKey: "ExQV",
-              },
-            ],
-          },
-        },
-        vaultTrustAnchor: {
-          version: 1,
-          vaultId: "vault-id",
-          genesisDeviceId: "device-id",
-          genesisPublicSignKey: "FhcY",
-          genesisCertificateDigest: "genesis-certificate-digest",
-        },
-      },
+      [UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY]: createStoredMaterial(),
     });
     const repository = new ChromeUnlockedVaultSessionMaterialRepository(
       storageArea,
@@ -182,12 +181,6 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
 
     expect(result).toEqual(createMaterial());
     expect(repeatedResult).toBe(result);
-    expect(secureWipeSpy).toHaveBeenCalledTimes(8);
-    for (const [temporaryBytes] of secureWipeSpy.mock.calls) {
-      expect(Array.from(temporaryBytes)).toEqual(
-        Array.from({ length: temporaryBytes.length }, () => 0),
-      );
-    }
   });
 
   it("returns one decoded material identity to concurrent cold readers", async () => {
@@ -407,59 +400,300 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
     ).resolves.toBeNull();
   });
 
-  it("names the malformed field when stored material is corrupted", async () => {
+  it("exposes one static secret-free error for malformed material", async () => {
+    const hostileMaterial = {
+      ...createStoredMaterial(),
+      payloadKey: null,
+    };
+    const { storageArea } = createChromeStorageArea({
+      [UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY]: hostileMaterial,
+    });
+    const repository = new ChromeUnlockedVaultSessionMaterialRepository(
+      storageArea,
+    );
+
+    const error = await captureRejection(
+      repository.getUnlockedVaultSessionMaterial(),
+    );
+
+    expect(error).toBeInstanceOf(InvalidUnlockedVaultSessionMaterialError);
+    expect(error).toMatchObject({
+      name: "InvalidUnlockedVaultSessionMaterialError",
+      message: "Unlocked vault session material is malformed.",
+    });
+    expect(Object.hasOwn(error, "cause")).toBe(false);
+    expect(Object.hasOwn(error, "input")).toBe(false);
+    expect(Object.hasOwn(error, "material")).toBe(false);
+    expect(Object.values(error)).not.toContain(hostileMaterial);
+  });
+
+  it("rejects extras, unsafe counters, duplicate identities, and inconsistent context", async () => {
+    const stored = createStoredMaterial();
+    const trustedDevice =
+      stored.trustedSnapshotContext.trust.trustedDevices[0]!;
+    const hostileRecords: unknown[] = [
+      { ...stored, unexpected: true },
+      {
+        ...stored,
+        trustedSnapshotContext: {
+          ...stored.trustedSnapshotContext,
+          unexpected: true,
+        },
+      },
+      {
+        ...stored,
+        trustedSnapshotContext: {
+          ...stored.trustedSnapshotContext,
+          trust: {
+            ...stored.trustedSnapshotContext.trust,
+            unexpected: true,
+          },
+        },
+      },
+      {
+        ...stored,
+        trustedSnapshotContext: {
+          ...stored.trustedSnapshotContext,
+          trust: {
+            ...stored.trustedSnapshotContext.trust,
+            trustedDevices: [{ ...trustedDevice, unexpected: true }],
+          },
+        },
+      },
+      {
+        ...stored,
+        vaultTrustAnchor: { ...stored.vaultTrustAnchor, unexpected: true },
+      },
+      { ...stored, sourceSnapshotVersionVector: { "device-id": -1 } },
+      { ...stored, sourceSnapshotVersionVector: { "device-id": 1.5 } },
+      { ...stored, sourceSnapshotVersionVector: new ArrayBuffer(0) },
+      {
+        ...stored,
+        sourceSnapshotVersionVector: {
+          "device-id": Number.MAX_SAFE_INTEGER + 1,
+        },
+      },
+      {
+        ...stored,
+        trustedSnapshotContext: {
+          ...stored.trustedSnapshotContext,
+          trust: {
+            ...stored.trustedSnapshotContext.trust,
+            generation: Number.POSITIVE_INFINITY,
+          },
+        },
+      },
+      {
+        ...stored,
+        trustedSnapshotContext: {
+          ...stored.trustedSnapshotContext,
+          trust: {
+            ...stored.trustedSnapshotContext.trust,
+            vaultKeyGeneration: 0,
+          },
+        },
+      },
+      {
+        ...stored,
+        trustedSnapshotContext: {
+          ...stored.trustedSnapshotContext,
+          trust: {
+            ...stored.trustedSnapshotContext.trust,
+            vaultKeyGeneration: -1,
+          },
+        },
+      },
+      {
+        ...stored,
+        trustedSnapshotContext: {
+          ...stored.trustedSnapshotContext,
+          trust: {
+            ...stored.trustedSnapshotContext.trust,
+            trustedDevices: [trustedDevice, { ...trustedDevice }],
+          },
+        },
+      },
+      {
+        ...stored,
+        deviceId: "untrusted-device-id",
+      },
+      {
+        ...stored,
+        vaultTrustAnchor: {
+          ...stored.vaultTrustAnchor,
+          vaultId: "other-vault-id",
+        },
+      },
+      {
+        ...stored,
+        vaultTrustAnchor: {
+          ...stored.vaultTrustAnchor,
+          genesisPublicSignKey: encodeBuffer(filledBuffer(0, 32)),
+        },
+      },
+    ];
+
+    for (const hostileRecord of hostileRecords) {
+      await expectInvalidMaterial(hostileRecord);
+    }
+  });
+
+  it("rejects noncanonical encodings, wrong byte lengths, and non-importable keys", async () => {
+    const stored = createStoredMaterial();
+    const trustedDevice =
+      stored.trustedSnapshotContext.trust.trustedDevices[0]!;
+    const hostileRecords: unknown[] = [
+      { ...stored, payloadKey: `${stored.payloadKey}=` },
+      { ...stored, vaultMasterKey: encodeBuffer(filledBuffer(1, 31)) },
+      {
+        ...stored,
+        deviceLocalProtectionKey: encodeBuffer(filledBuffer(1, 31)),
+      },
+      { ...stored, payloadKey: encodeBuffer(filledBuffer(1, 31)) },
+      {
+        ...stored,
+        trustedSnapshotContext: {
+          ...stored.trustedSnapshotContext,
+          snapshotDigest: encodeBuffer(filledBuffer(1, 31)),
+        },
+      },
+      {
+        ...stored,
+        trustedSnapshotContext: {
+          ...stored.trustedSnapshotContext,
+          trust: {
+            ...stored.trustedSnapshotContext.trust,
+            certificateDigest: `${stored.trustedSnapshotContext.trust.certificateDigest}=`,
+          },
+        },
+      },
+      {
+        ...stored,
+        trustedSnapshotContext: {
+          ...stored.trustedSnapshotContext,
+          trust: {
+            ...stored.trustedSnapshotContext.trust,
+            trustedDevices: [
+              {
+                ...trustedDevice,
+                publicSignKey: encodeBuffer(filledBuffer(1, 31)),
+              },
+            ],
+          },
+        },
+      },
+      {
+        ...stored,
+        trustedSnapshotContext: {
+          ...stored.trustedSnapshotContext,
+          trust: {
+            ...stored.trustedSnapshotContext.trust,
+            trustedDevices: [
+              {
+                ...trustedDevice,
+                publicVaultKey: encodeBuffer(filledBuffer(1, 64)),
+              },
+            ],
+          },
+        },
+      },
+      {
+        ...stored,
+        vaultTrustAnchor: {
+          ...stored.vaultTrustAnchor,
+          genesisCertificateDigest: encodeBuffer(filledBuffer(1, 31)),
+        },
+      },
+      {
+        ...stored,
+        devicePrivateSignKey: encodeBuffer(
+          filledBuffer(0, decodeBuffer(ED25519_PRIVATE_KEY).byteLength),
+        ),
+      },
+      {
+        ...stored,
+        trustedSnapshotContext: {
+          ...stored.trustedSnapshotContext,
+          trust: {
+            ...stored.trustedSnapshotContext.trust,
+            trustedDevices: [
+              {
+                ...trustedDevice,
+                publicVaultKey: encodeBuffer(filledBuffer(0, 65)),
+              },
+            ],
+          },
+        },
+      },
+    ];
+
+    for (const hostileRecord of hostileRecords) {
+      await expectInvalidMaterial(hostileRecord);
+    }
+  });
+
+  it("applies full material validation before projecting persisted identity", async () => {
+    const stored = createStoredMaterial();
     const { storageArea } = createChromeStorageArea({
       [UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY]: {
-        sessionId: "session-id",
-        vaultId: "vault-id",
-        sourceSnapshotVersionVector: {
-          "device-id": 7,
-        },
-        deviceId: "device-id",
-        vaultMasterKey: "AQID",
-        devicePrivateSignKey: "BAUG",
-        devicePrivateVaultKey: "BwgJ",
-        deviceLocalProtectionKey: "CgsM",
-        payloadKey: null,
+        ...stored,
+        devicePrivateSignKey: encodeBuffer(
+          filledBuffer(0, decodeBuffer(ED25519_PRIVATE_KEY).byteLength),
+        ),
       },
     });
     const repository = new ChromeUnlockedVaultSessionMaterialRepository(
       storageArea,
     );
 
-    await expect(repository.getUnlockedVaultSessionMaterial()).rejects.toThrow(
-      'Unlocked vault session material field "payloadKey" is malformed.',
+    await expect(
+      repository.getPersistedUnlockedVaultSessionIdentity(),
+    ).rejects.toBeInstanceOf(InvalidUnlockedVaultSessionMaterialError);
+  });
+
+  it("performs no asymmetric key import when outer validation fails", async () => {
+    const validator = {
+      importDeviceSignPublicKey: vi.fn(async (): Promise<CryptoKey> => {
+        throw new Error("Unexpected key import.");
+      }),
+      importDeviceSignPrivateKey: vi.fn(async (): Promise<CryptoKey> => {
+        throw new Error("Unexpected key import.");
+      }),
+      importDeviceVaultPublicKey: vi.fn(async (): Promise<CryptoKey> => {
+        throw new Error("Unexpected key import.");
+      }),
+      importDeviceVaultPrivateKey: vi.fn(async (): Promise<CryptoKey> => {
+        throw new Error("Unexpected key import.");
+      }),
+    };
+    const { storageArea } = createChromeStorageArea({
+      [UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY]: {
+        ...createStoredMaterial(),
+        unexpected: true,
+      },
+    });
+    const repository = new ChromeUnlockedVaultSessionMaterialRepository(
+      storageArea,
+      UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY,
+      UNLOCKED_VAULT_SESSION_EPOCH_STORAGE_KEY,
+      validator,
     );
+
+    await expect(
+      repository.getUnlockedVaultSessionMaterial(),
+    ).rejects.toBeInstanceOf(InvalidUnlockedVaultSessionMaterialError);
+    expect(validator.importDeviceSignPublicKey).not.toHaveBeenCalled();
+    expect(validator.importDeviceSignPrivateKey).not.toHaveBeenCalled();
+    expect(validator.importDeviceVaultPublicKey).not.toHaveBeenCalled();
+    expect(validator.importDeviceVaultPrivateKey).not.toHaveBeenCalled();
   });
 
   it("wipes decoded secret copies when a later secret cannot be decoded", async () => {
+    const stored = createStoredMaterial();
     const { storageArea } = createChromeStorageArea({
       [UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY]: {
-        sessionId: "session-id",
-        vaultId: "vault-id",
-        sourceSnapshotVersionVector: { "device-id": 7 },
-        deviceId: "device-id",
-        vaultMasterKey: "AQID",
-        devicePrivateSignKey: "BAUG",
+        ...stored,
         devicePrivateVaultKey: "!",
-        deviceLocalProtectionKey: "CgsM",
-        payloadKey: "DQ4P",
-        trustedSnapshotContext: {
-          snapshotDigest: "snapshot-digest",
-          trust: {
-            generation: 2,
-            vaultKeyGeneration: 3,
-            certificateDigest: "certificate-digest",
-            trustedDevices: [],
-          },
-        },
-        vaultTrustAnchor: {
-          version: 1,
-          vaultId: "vault-id",
-          genesisDeviceId: "device-id",
-          genesisPublicSignKey: "FhcY",
-          genesisCertificateDigest: "genesis-certificate-digest",
-        },
       },
     });
     const repository = new ChromeUnlockedVaultSessionMaterialRepository(
@@ -470,12 +704,11 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
       repository.getUnlockedVaultSessionMaterial(),
     ).rejects.toThrow();
 
-    expect(secureWipeSpy).toHaveBeenCalledTimes(2);
     expect(bestEffortWipeArrayBuffersSpy).toHaveBeenCalledTimes(1);
     const decodedSecrets = bestEffortWipeArrayBuffersSpy.mock.calls[0]![0];
     expect(decodedSecrets).toHaveLength(2);
     for (const secret of decodedSecrets) {
-      expect(Array.from(new Uint8Array(secret!))).toEqual([0, 0, 0]);
+      expect(new Uint8Array(secret!).every((byte) => byte === 0)).toBe(true);
     }
   });
 
@@ -527,6 +760,46 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
   });
 });
 
-function arrayBuffer(...bytes: number[]): ArrayBuffer {
-  return new Uint8Array(bytes).buffer;
+function filledBuffer(value: number, byteLength: number): ArrayBuffer {
+  return new Uint8Array(byteLength).fill(value).buffer;
+}
+
+function decodeBuffer(value: string): ArrayBuffer {
+  return decodeBase64Url(value as Base64URLString).slice().buffer;
+}
+
+function encodeBuffer(value: ArrayBuffer): string {
+  return encodeBase64Url(new Uint8Array(value));
+}
+
+function digest(value: number): string {
+  return encodeBuffer(filledBuffer(value, 32));
+}
+
+async function captureRejection(promise: Promise<unknown>): Promise<Error> {
+  try {
+    await promise;
+  } catch (error) {
+    if (error instanceof Error) {
+      return error;
+    }
+    throw new Error("Expected an Error rejection.");
+  }
+  throw new Error("Expected promise to reject.");
+}
+
+async function expectInvalidMaterial(material: unknown): Promise<void> {
+  const { storageArea } = createChromeStorageArea({
+    [UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY]: material,
+  });
+  const repository = new ChromeUnlockedVaultSessionMaterialRepository(
+    storageArea,
+  );
+
+  await expect(
+    repository.getUnlockedVaultSessionMaterial(),
+  ).rejects.toMatchObject({
+    name: "InvalidUnlockedVaultSessionMaterialError",
+    message: "Unlocked vault session material is malformed.",
+  });
 }

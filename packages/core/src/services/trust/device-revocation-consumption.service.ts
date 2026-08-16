@@ -37,6 +37,7 @@ import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import { bestEffortWipeArrayBuffers } from "../../lib/secure-wipe.utils";
 import type { VaultSnapshotService } from "../snapshot/vault-snapshot.service";
+import { requireSyncProviderAccessOutcome } from "../sync/sync-provider-outcome.policy";
 import { VaultTrustService } from "./vault-trust.service";
 
 export class DeviceRevocationConsumptionService {
@@ -125,12 +126,14 @@ export class DeviceRevocationConsumptionService {
     );
 
     if (previousState.previousCredentials !== undefined) {
-      const previousAccess = await this.syncProvider.checkVaultAccess(
-        {
-          target: syncTarget,
-          credentials: previousState.previousCredentials.credentials,
-        },
-        params.vaultId,
+      const previousAccess = requireSyncProviderAccessOutcome(
+        await this.syncProvider.checkVaultAccess(
+          {
+            target: syncTarget,
+            credentials: previousState.previousCredentials.credentials,
+          },
+          params.vaultId,
+        ),
       );
 
       if (previousAccess === "accessible") {

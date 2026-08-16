@@ -12,6 +12,7 @@
     "type-check": "tsc --noEmit -p tsconfig.typecheck.json"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1111.0",
     "@base-ui/react": "^1.0.0",
     "@fontsource-variable/dm-sans": "^5.2.8",
     "@phosphor-icons/react": "^2.1.10",
@@ -20,6 +21,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dexie": "^4.3.0",
+    "json-canonicalize": "2.0.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-router-dom": "^7.12.0",

@@ -13,6 +13,7 @@ import { CLIPBOARD_CLEAR_TASK_STORAGE_KEY } from "../../adapters/storage";
 import {
   type ChromeAlarmsApi,
   ChromeAlarmsScheduledTask,
+  InvalidScheduledTaskRecordError,
   serializeScheduledTask,
 } from "../../adapters/system";
 import {
@@ -60,6 +61,7 @@ function createContext() {
   );
   const handleAlarm = createClipboardAlarmHandler(
     clearClipboardTask,
+    clipboardClearTasks,
     scheduledTasks,
     clock,
   );
@@ -70,6 +72,7 @@ function createContext() {
     clipboardClearTasks,
     storageArea,
     clearAlarm,
+    clearClipboardTask,
     createAlarm,
     getClipboardValue: () => clipboardValue,
     handleAlarm,
@@ -199,12 +202,11 @@ describe("clipboard alarm runtime", () => {
     expect(ctx.getClipboardValue()).toBe("copied-password");
     expect(ctx.clipboard.readText).not.toHaveBeenCalled();
     expect(ctx.clipboard.writeText).not.toHaveBeenCalled();
-    expect(ctx.clearAlarm).toHaveBeenCalledWith(
-      serializeScheduledTask({ name: "clearClipboard", actionId }),
-    );
+    expect(ctx.createAlarm).not.toHaveBeenCalled();
+    expect(ctx.clearAlarm).not.toHaveBeenCalled();
   });
 
-  it("retains a retry when volatile ownership metadata is malformed", async () => {
+  it("rejects malformed volatile ownership before alarm mutation", async () => {
     const ctx = createContext();
     const actionId = "clipboard-action-id";
     await ctx.storageArea.set({
@@ -219,11 +221,12 @@ describe("clipboard alarm runtime", () => {
       ctx.handleAlarm({
         name: serializeScheduledTask({ name: "clearClipboard", actionId }),
       }),
-    ).rejects.toThrow("Clipboard clear task metadata is malformed.");
+    ).rejects.toBeInstanceOf(InvalidScheduledTaskRecordError);
 
     expect(ctx.getClipboardValue()).toBe("copied-password");
     expect(ctx.clipboard.readText).not.toHaveBeenCalled();
     expect(ctx.clipboard.writeText).not.toHaveBeenCalled();
+    expect(ctx.createAlarm).not.toHaveBeenCalled();
     expect(ctx.clearAlarm).not.toHaveBeenCalled();
   });
 
@@ -313,5 +316,61 @@ describe("clipboard alarm runtime", () => {
     expect(ctx.clipboard.readText).not.toHaveBeenCalled();
     expect(ctx.createAlarm).not.toHaveBeenCalled();
     expect(ctx.clearAlarm).not.toHaveBeenCalled();
+  });
+
+  it("preserves the active clipboard task for a mismatched alarm action", async () => {
+    const ctx = createContext();
+    await ctx.clipboardClearTasks.save({
+      actionId: "active-action-id",
+      copiedValueHash: await ctx.copyContextSecretHash.hashSecretValue(
+        ctx.getClipboardValue(),
+      ),
+      expiresAt: ctx.clock.now(),
+    });
+
+    await ctx.handleAlarm({
+      name: serializeScheduledTask({
+        name: "clearClipboard",
+        actionId: "stale-action-id",
+      }),
+    });
+
+    expect(ctx.clipboard.readText).not.toHaveBeenCalled();
+    expect(ctx.clipboard.writeText).not.toHaveBeenCalled();
+    await expect(ctx.clipboardClearTasks.get()).resolves.toMatchObject({
+      actionId: "active-action-id",
+    });
+    expect(ctx.createAlarm).not.toHaveBeenCalled();
+    expect(ctx.clearAlarm).not.toHaveBeenCalled();
+  });
+
+  it("cancels only the retry it pre-armed when ownership races to stale", async () => {
+    const ctx = createContext();
+    const actionId = "clipboard-action-id";
+    await ctx.clipboardClearTasks.save({
+      actionId,
+      copiedValueHash: await ctx.copyContextSecretHash.hashSecretValue(
+        ctx.getClipboardValue(),
+      ),
+      expiresAt: ctx.clock.now(),
+    });
+    vi.spyOn(ctx.clearClipboardTask, "execute").mockResolvedValueOnce({
+      cleared: false,
+      reason: "staleAction",
+    });
+
+    await ctx.handleAlarm({
+      name: serializeScheduledTask({ name: "clearClipboard", actionId }),
+    });
+
+    expect(ctx.createAlarm).toHaveBeenCalledOnce();
+    expect(ctx.clearAlarm).toHaveBeenCalledWith(
+      serializeScheduledTask({ name: "clearClipboard", actionId }),
+    );
+    expect(ctx.clipboard.readText).not.toHaveBeenCalled();
+    expect(ctx.clipboard.writeText).not.toHaveBeenCalled();
+    await expect(ctx.clipboardClearTasks.get()).resolves.toMatchObject({
+      actionId,
+    });
   });
 });

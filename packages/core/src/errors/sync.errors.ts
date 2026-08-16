@@ -7,6 +7,14 @@ export class InvalidSyncConfigError extends Error {
   }
 }
 
+export class InvalidSyncProviderOutcomeError extends Error {
+  override readonly name = "InvalidSyncProviderOutcomeError";
+
+  constructor() {
+    super("Sync provider access outcome is malformed.");
+  }
+}
+
 export class SyncNotConfiguredError extends Error {
   constructor(vaultId: string, operation: string) {
     super(`Vault "${vaultId}" must have sync configured before ${operation}.`);

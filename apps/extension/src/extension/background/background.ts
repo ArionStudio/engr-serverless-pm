@@ -1,11 +1,9 @@
-import { composeClipboardAlarmHandler } from "./clipboard-alarm-runtime";
+import { composeScheduledTaskAlarmHandler } from "./clipboard-alarm-runtime";
 
-const handleClipboardAlarm = composeClipboardAlarmHandler();
+const handleScheduledTaskAlarm = composeScheduledTaskAlarmHandler();
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  void handleClipboardAlarm(alarm).catch(() => {
-    console.error(
-      "Clipboard alarm handling failed; verify the clipboard is clear.",
-    );
+  void handleScheduledTaskAlarm(alarm).catch(() => {
+    console.error("Scheduled task alarm handling failed.");
   });
 });

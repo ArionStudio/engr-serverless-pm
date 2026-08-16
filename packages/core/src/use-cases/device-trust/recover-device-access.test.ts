@@ -146,6 +146,32 @@ describe("RecoverDeviceAccessUseCase", () => {
     );
   });
 
+  it("stops recovery before key checks, decryption, wrapping, or persistence when authenticated local keys are malformed", async () => {
+    const ctx = createContext();
+    const decodeError = new Error("local keys payload is malformed");
+    vi.mocked(ctx.ports.crypto.unwrapLocalKeysPayload).mockRejectedValueOnce(
+      decodeError,
+    );
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        recoveryMnemonicKey: ctx.values.recoveryMnemonicKey,
+        newMasterPassword: ctx.values.newMasterPassword,
+      }),
+    ).rejects.toBe(decodeError);
+
+    expect(ctx.ports.crypto.verifyDeviceSignKeyPair).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.verifyDeviceVaultKeyPair).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.openDeviceVaultKeyEnvelope).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.wrapLocalKeysPayload).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
+    ).not.toHaveBeenCalled();
+    expect(ctx.saved.unlockedVaultSession).toBeUndefined();
+  });
+
   it("replaces the current local backup without changing the trusted identity", async () => {
     const ctx = createContext();
     const recoveredVaultMasterKey = new Uint8Array([7])
