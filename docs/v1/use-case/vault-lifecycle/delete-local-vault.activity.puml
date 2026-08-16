@@ -12,7 +12,13 @@ skinparam activity {
 start
 :Input:\nvaultId;
 :Source:\npackages/core/src/use-cases/vault-lifecycle/delete-local-vault.ts;
-:Read unlocked vault session and prove the target vault identity;
+:Enter shared cross-context clipboard/lifecycle coordinator;
+if (coordination cannot start?) then (yes)
+  :Preserve shared session and persisted vault state;
+  :Throw coordination failure for retry;
+  stop
+endif
+:Within it, read unlocked vault session and prove the target vault identity;
 if (session read fails?) then (yes)
   :Preserve session/task state and throw the read failure;
   stop

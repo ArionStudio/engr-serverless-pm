@@ -34,6 +34,7 @@ function createContext(
     get: vi.fn(async () => clipboardClearTask),
     remove: vi.fn(async () => undefined),
   };
+  const clipboardOperations = ports.clipboardOperations;
   const clock = {
     now: vi.fn(() => 1_000),
   };
@@ -49,8 +50,9 @@ function createContext(
         clipboard,
         clipboardClearTasks,
         clock,
-        ports.crypto,
+        ports.clipboardSecretHash,
       ),
+      clipboardOperations,
     ),
   };
 }

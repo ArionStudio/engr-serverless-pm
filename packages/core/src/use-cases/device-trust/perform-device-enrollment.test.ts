@@ -132,11 +132,13 @@ function createContext(synced = false) {
     clipboard,
     clipboardClearTasks,
     ports.clock,
-    ports.crypto,
+    ports.clipboardSecretHash,
   );
+  const clipboardOperations = ports.clipboardOperations;
   const lifecycleCleanup = new VaultLifecycleCleanupService(
     clipboardClear,
     clipboardClearTasks,
+    clipboardOperations,
     ports.scheduledTasks,
     ports.vaultLockTasks,
     ports.sessionServices.unlockedVaultSession,
@@ -153,6 +155,7 @@ function createContext(synced = false) {
     lifecycleCleanup,
     ports.scheduledTasks,
     ports.vaultLockTasks,
+    clipboardOperations,
   );
 
   vi.mocked(ports.ids.generateId).mockReset();
@@ -168,6 +171,7 @@ function createContext(synced = false) {
     clipboard,
     clipboardClear,
     clipboardClearTasks,
+    clipboardOperations,
     lifecycleCleanup,
     useCase,
   };
@@ -911,6 +915,56 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     });
     expect(ctx.ports.saved.localVaultDescriptor).toBeDefined();
     expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
+    expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
+  });
+
+  it("preserves the active session and local enrollment when rollback coordination is unavailable", async () => {
+    const ctx = createContext(true);
+    const coordinationError = new Error("clipboard coordination unavailable");
+    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockRejectedValueOnce(
+      new RemoteVaultSnapshotChangedError(ctx.values.vaultId),
+    );
+    const runExclusive = ctx.clipboardOperations.runExclusive.bind(
+      ctx.clipboardOperations,
+    );
+    vi.spyOn(ctx.clipboardOperations, "runExclusive")
+      .mockImplementationOnce(runExclusive)
+      .mockImplementationOnce(runExclusive)
+      .mockRejectedValueOnce(coordinationError);
+
+    await expect(
+      ctx.useCase.execute({
+        enrollmentResponse: ctx.response,
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "New laptop",
+        lockAfterMs: 60_000,
+        syncConfig: ctx.values.syncConfigInput,
+      }),
+    ).rejects.toMatchObject({
+      name: "DeviceEnrollmentRollbackIncompleteError",
+      cause: expect.objectContaining({
+        name: "DeviceEnrollmentRemoteSnapshotChangedError",
+      }),
+    });
+
+    expect(ctx.clipboardClearTasks.get).not.toHaveBeenCalled();
+    expect(ctx.ports.vaultLockTasks.get).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLockTasks.removeIfActionIsActive,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.unlockedVaultSession).toBeDefined();
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .removeUnlockedVaultSessionMaterial,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
+        .removeEncryptedUnlockedVaultSessionPayload,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfSnapshotMatches,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.localVaultDescriptor).toBeDefined();
     expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
   });
 

@@ -1,17 +1,11 @@
-// Chrome Extension Background Script
-chrome.runtime.onInstalled.addListener(() => {
-  console.log("SPM Extension installed");
-});
+import { composeClipboardAlarmHandler } from "./clipboard-alarm-runtime";
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  console.log("Message received:", request);
-  console.log("Sender:", sender);
-  sendResponse({ status: "received" });
-});
+const handleClipboardAlarm = composeClipboardAlarmHandler();
 
-// Hot reload helper for development
-if (import.meta.hot) {
-  import.meta.hot.accept(() => {
-    console.log("Background script hot reloaded");
+chrome.alarms.onAlarm.addListener((alarm) => {
+  void handleClipboardAlarm(alarm).catch(() => {
+    console.error(
+      "Clipboard alarm handling failed; verify the clipboard is clear.",
+    );
   });
-}
+});

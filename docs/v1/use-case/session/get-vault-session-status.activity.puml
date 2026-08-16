@@ -12,11 +12,13 @@ skinparam activity {
 start
 :Input:\nnone;
 :Source:\npackages/core/src/use-cases/session/get-vault-session-status.ts;
-:Read unlocked vault session material only;
+:Enter shared cross-context clipboard/session coordinator;
+:Read authoritative persisted session identity;
+:Reconcile it with cached material, wiping and evicting stale material;
 note right
-This use case does not read or decrypt the session payload.
+This use case does not read or decrypt the encrypted session payload.
 end note
-if (material missing?) then (yes)
+if (reconciled active vault identity unavailable?) then (yes)
   :Return { status: "locked" };
   stop
 else (no)

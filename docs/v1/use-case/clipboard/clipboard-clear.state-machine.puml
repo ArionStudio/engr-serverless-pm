@@ -18,7 +18,8 @@ PendingClear --> NoPendingCopy : clipboard changed, metadata removed by service
 PendingClear --> PendingClear : stale action ignored
 PendingClear --> PendingClear : requireExpired and not expired
 PendingClear --> NoPendingCopy : LockVaultUseCase clears with requireExpired = false
-PendingClear --> NoPendingCopy : schedule or clipboard write failure cleanup
+PendingClear --> NoPendingCopy : schedule failure with successful metadata cleanup
+PendingClear --> PendingClear : ambiguous clipboard write failure retains owner and alarm
 
 note right of PendingClear
 Pending metadata is actionId, copiedValueHash, expiresAt.

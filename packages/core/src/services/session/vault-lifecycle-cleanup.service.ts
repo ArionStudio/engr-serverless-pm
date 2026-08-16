@@ -1,9 +1,11 @@
 import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard/clipboard-clear-task-repository.port";
+import type { ClipboardOperationCoordinatorPort } from "../../ports/clipboard/clipboard-operation-coordinator.port";
 import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
 import type { VaultLockTaskRepositoryPort } from "../../ports/vault/vault-lock-task-repository.port";
 import type { ClipboardClearService } from "../clipboard/clipboard-clear.service";
 import type { UnlockedVaultSessionService } from "./unlocked-vault-session.service";
 import type { VersionVector } from "../../domain/versioning/version-vector.type";
+import type { ClipboardOperationLease } from "../../ports/clipboard/clipboard-operation-coordinator.port";
 
 export type VaultLifecycleCleanupParams = {
   readonly actionId?: string;
@@ -11,9 +13,17 @@ export type VaultLifecycleCleanupParams = {
   readonly requiredVaultId?: string;
 };
 
+type SessionDiscardResult =
+  | "discarded"
+  | "session_advanced"
+  | "session_replaced"
+  | "session_unavailable"
+  | "rollback_failed";
+
 export class VaultLifecycleCleanupService {
   private readonly clipboardClear: ClipboardClearService;
   private readonly clipboardClearTasks: ClipboardClearTaskRepositoryPort;
+  private readonly clipboardOperations: ClipboardOperationCoordinatorPort;
   private readonly scheduledTasks: ScheduledTaskPort;
   private readonly vaultLockTasks: VaultLockTaskRepositoryPort;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
@@ -21,12 +31,14 @@ export class VaultLifecycleCleanupService {
   constructor(
     clipboardClear: ClipboardClearService,
     clipboardClearTasks: ClipboardClearTaskRepositoryPort,
+    clipboardOperations: ClipboardOperationCoordinatorPort,
     scheduledTasks: ScheduledTaskPort,
     vaultLockTasks: VaultLockTaskRepositoryPort,
     unlockedVaultSession: UnlockedVaultSessionService,
   ) {
     this.clipboardClear = clipboardClear;
     this.clipboardClearTasks = clipboardClearTasks;
+    this.clipboardOperations = clipboardOperations;
     this.scheduledTasks = scheduledTasks;
     this.vaultLockTasks = vaultLockTasks;
     this.unlockedVaultSession = unlockedVaultSession;
@@ -34,6 +46,15 @@ export class VaultLifecycleCleanupService {
 
   async cleanup(
     params: VaultLifecycleCleanupParams = {},
+  ): Promise<"cleaned" | "session_unavailable" | "stale_action"> {
+    return this.clipboardOperations.runExclusive((coordinationLease) =>
+      this.cleanupExclusive(params, coordinationLease),
+    );
+  }
+
+  private async cleanupExclusive(
+    params: VaultLifecycleCleanupParams,
+    coordinationLease: ClipboardOperationLease,
   ): Promise<"cleaned" | "session_unavailable" | "stale_action"> {
     let staleAction = false;
     let staleActionError: unknown;
@@ -52,6 +73,7 @@ export class VaultLifecycleCleanupService {
         return !staleAction;
       },
       params.afterSessionRemoval,
+      coordinationLease,
     );
 
     if (staleActionError !== undefined) {
@@ -73,13 +95,35 @@ export class VaultLifecycleCleanupService {
       readonly sourceSnapshotVersionVector: VersionVector;
     },
     discard: () => Promise<boolean>,
-  ): Promise<
-    | "discarded"
-    | "session_advanced"
-    | "session_replaced"
-    | "session_unavailable"
-    | "rollback_failed"
-  > {
+  ): Promise<SessionDiscardResult> {
+    let operationStarted = false;
+
+    try {
+      return await this.clipboardOperations.runExclusive(
+        (coordinationLease) => {
+          operationStarted = true;
+          return this.discardExclusive(params, discard, coordinationLease);
+        },
+      );
+    } catch (error) {
+      if (operationStarted) {
+        throw error;
+      }
+
+      return "rollback_failed";
+    }
+  }
+
+  private async discardExclusive(
+    params: {
+      readonly sessionId: string;
+      readonly vaultId: string;
+      readonly generation: number;
+      readonly sourceSnapshotVersionVector: VersionVector;
+    },
+    discard: () => Promise<boolean>,
+    coordinationLease: ClipboardOperationLease,
+  ): Promise<SessionDiscardResult> {
     return this.unlockedVaultSession.discardIfSessionIsActive(
       params.sessionId,
       params.vaultId,
@@ -89,6 +133,7 @@ export class VaultLifecycleCleanupService {
         await this.cleanupTasks(undefined, params.vaultId);
       },
       discard,
+      coordinationLease,
     );
   }
 
@@ -102,11 +147,12 @@ export class VaultLifecycleCleanupService {
     let firstError: unknown;
     let vaultLockTask: Awaited<ReturnType<VaultLockTaskRepositoryPort["get"]>>;
     let lockMetadataRemoved = false;
+    let scheduledActionAuthenticationFailed = false;
 
     try {
       vaultLockTask = await this.vaultLockTasks.get();
     } catch (error) {
-      firstError = error;
+      firstError ??= error;
       vaultLockTask = null;
 
       if (actionId !== undefined) {
@@ -114,10 +160,10 @@ export class VaultLifecycleCleanupService {
           lockMetadataRemoved =
             await this.vaultLockTasks.removeIfActionIsActive(actionId);
         } catch {
-          return { status: "stale_action", error };
+          scheduledActionAuthenticationFailed = true;
         }
 
-        if (!lockMetadataRemoved) {
+        if (!lockMetadataRemoved && !scheduledActionAuthenticationFailed) {
           return { status: "stale_action" };
         }
       }
@@ -136,7 +182,8 @@ export class VaultLifecycleCleanupService {
     if (
       actionId !== undefined &&
       vaultLockTask === null &&
-      !lockMetadataRemoved
+      !lockMetadataRemoved &&
+      !scheduledActionAuthenticationFailed
     ) {
       return { status: "stale_action" };
     }
@@ -144,42 +191,35 @@ export class VaultLifecycleCleanupService {
     let clipboardClearTask: Awaited<
       ReturnType<ClipboardClearTaskRepositoryPort["get"]>
     >;
-    let clipboardTaskStateUnknown = false;
-
     try {
       clipboardClearTask = await this.clipboardClearTasks.get();
     } catch (error) {
       firstError ??= error;
       clipboardClearTask = null;
-      clipboardTaskStateUnknown = true;
     }
 
     if (clipboardClearTask !== null) {
+      let clipboardOwnershipReleased = false;
+
       try {
         await this.clipboardClear.clearTask({
           task: clipboardClearTask,
           requireExpired: false,
         });
-      } catch (error) {
-        firstError ??= error;
-        clipboardTaskStateUnknown = true;
-      }
-
-      try {
-        await this.scheduledTasks.cancelTask({
-          name: "clearClipboard",
-          actionId: clipboardClearTask.actionId,
-        });
+        clipboardOwnershipReleased = true;
       } catch (error) {
         firstError ??= error;
       }
-    }
 
-    if (clipboardTaskStateUnknown) {
-      try {
-        await this.clipboardClearTasks.remove();
-      } catch (error) {
-        firstError ??= error;
+      if (clipboardOwnershipReleased) {
+        try {
+          await this.scheduledTasks.cancelTask({
+            name: "clearClipboard",
+            actionId: clipboardClearTask.actionId,
+          });
+        } catch (error) {
+          firstError ??= error;
+        }
       }
     }
 
@@ -193,6 +233,20 @@ export class VaultLifecycleCleanupService {
         });
       } catch (error) {
         firstError ??= error;
+      }
+    }
+
+    if (actionId !== undefined && lockMetadataRemoved) {
+      try {
+        if ((await this.vaultLockTasks.get()) !== null) {
+          return {
+            status: "stale_action",
+            ...(firstError === undefined ? {} : { error: firstError }),
+          };
+        }
+      } catch (error) {
+        firstError ??= error;
+        scheduledActionAuthenticationFailed = true;
       }
     }
 
@@ -210,7 +264,18 @@ export class VaultLifecycleCleanupService {
         }
       } catch (error) {
         firstError ??= error;
+
+        if (actionId !== undefined) {
+          scheduledActionAuthenticationFailed = true;
+        }
       }
+    }
+
+    if (scheduledActionAuthenticationFailed) {
+      return {
+        status: "stale_action",
+        ...(firstError === undefined ? {} : { error: firstError }),
+      };
     }
 
     if (firstError !== undefined) {

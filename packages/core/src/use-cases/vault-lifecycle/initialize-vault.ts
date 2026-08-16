@@ -29,6 +29,7 @@ import { VaultSessionActivationService } from "../../services/session/vault-sess
 import { bestEffortWipeArrayBuffers } from "../../lib/secure-wipe.utils";
 import { VaultTrustService } from "../../services/trust/vault-trust.service";
 import { DeviceAccessMaterialChangedError } from "../../errors/vault-device.errors";
+import type { ClipboardOperationCoordinatorPort } from "../../ports/clipboard/clipboard-operation-coordinator.port";
 
 export type InitializeVaultCommandParams = {
   masterPassword: RawMasterPassword;
@@ -62,6 +63,7 @@ export class InitializeVaultUseCase {
     vaultDisplayName: VaultDisplayNamePort,
     scheduledTasks: ScheduledTaskPort,
     vaultLockTasks: VaultLockTaskRepositoryPort,
+    clipboardOperations: ClipboardOperationCoordinatorPort,
   ) {
     this.crypto = crypto;
     this.bip39 = bip39;
@@ -77,6 +79,7 @@ export class InitializeVaultUseCase {
       scheduledTasks,
       vaultLockTasks,
       unlockedVaultSession,
+      clipboardOperations,
     );
   }
 
@@ -90,7 +93,7 @@ export class InitializeVaultUseCase {
       initializeVaultCommandParams.masterPassword,
     );
     const vaultId = await this.ids.generateId();
-    const activationGeneration =
+    const activationAuthorization =
       await this.unlockedVaultSession.requireVaultCanBeActivated(vaultId);
 
     const deviceId = await this.ids.generateId();
@@ -296,7 +299,7 @@ export class InitializeVaultUseCase {
       );
 
       await this.sessionActivation.activate({
-        activationGeneration,
+        activationAuthorization,
         unlockedVault,
         sourceSnapshotVersionVector:
           vaultSnapshot.metadata.snapshotVersionVector,

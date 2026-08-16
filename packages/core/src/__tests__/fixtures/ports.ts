@@ -27,6 +27,11 @@ import type {
 import type { Vault } from "../../domain/vault/vault";
 import type { Bip39Port } from "../../ports/crypto/bip39.port";
 import type { ClockPort } from "../../ports/system/clock.port";
+import type {
+  ClipboardOperationCoordinatorPort,
+  ClipboardOperationLease,
+} from "../../ports/clipboard/clipboard-operation-coordinator.port";
+import type { ClipboardSecretHashPort } from "../../ports/clipboard/clipboard-secret-hash.port";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { EncryptedUnlockedVaultSessionPayloadRepositoryPort } from "../../ports/session/encrypted-unlocked-vault-session-payload-repository.port";
 import type { IdPort } from "../../ports/system/id.port";
@@ -49,6 +54,7 @@ import { LocalVaultAlreadyInitializedError } from "../../errors/vault-lifecycle.
 import { DeviceAccessMaterialChangedError } from "../../errors/vault-device.errors";
 
 export type SavedCoreRecords = {
+  unlockedVaultSessionEpoch: number;
   localVaultDescriptor?: LocalVaultDescriptor;
   deviceAccessMaterial?: DeviceAccessMaterial;
   deviceAccessRecoveryBackup?: DeviceAccessRecoveryBackup;
@@ -134,6 +140,7 @@ export function createCoreTestPorts(
   const freshBuffer = <T extends ArrayBuffer>(buffer: T): T =>
     buffer.slice(0) as T;
   const saved: SavedCoreRecords = {
+    unlockedVaultSessionEpoch: 0,
     vaultSnapshotDigest: values.vaultSnapshotDigest,
     deviceSyncCredentialState: values.encryptedDeviceSyncCredentialState,
   };
@@ -193,8 +200,6 @@ export function createCoreTestPorts(
     generateRandomBytes: vi.fn(
       async (byteLength: number) => new ArrayBuffer(byteLength) as RandomBytes,
     ),
-    hashSecretValue: vi.fn(async (value) => `hash:${value}`),
-    compareSecretValueHash: vi.fn(async (left, right) => left === right),
     generateDeviceSignKeyPair: vi.fn(
       async (): Promise<DeviceSignKeyPair> => ({
         publicKey: freshBuffer(values.devicePublicSignKey),
@@ -207,17 +212,19 @@ export function createCoreTestPorts(
         privateKey: freshBuffer(values.devicePrivateVaultKey),
       }),
     ),
-    generateDeviceLocalProtectionKey: vi.fn(
-      async () => freshBuffer(values.deviceLocalProtectionKey),
+    generateDeviceLocalProtectionKey: vi.fn(async () =>
+      freshBuffer(values.deviceLocalProtectionKey),
     ),
-    generateVaultMasterKey: vi.fn(async () => freshBuffer(values.vaultMasterKey)),
+    generateVaultMasterKey: vi.fn(async () =>
+      freshBuffer(values.vaultMasterKey),
+    ),
     generateRecoveryKey: vi.fn(async () => {
       const recoveryKey = freshBuffer(values.recoverySecretKey);
       recoveryKeyKinds.set(recoveryKey, "current");
       return recoveryKey;
     }),
-    generateUnlockedVaultSessionPayloadKey: vi.fn(
-      async () => freshBuffer(values.unlockedVaultSessionPayloadKey),
+    generateUnlockedVaultSessionPayloadKey: vi.fn(async () =>
+      freshBuffer(values.unlockedVaultSessionPayloadKey),
     ),
     generateMasterPasswordSalt: vi
       .fn()
@@ -240,7 +247,9 @@ export function createCoreTestPorts(
     deriveLocalKeysProtectionKey: vi.fn(async (_localRootKey, salt) => {
       const isNew = salt === values.newLocalKeysProtectionSalt;
       const protectionKey = freshBuffer(
-        isNew ? values.newLocalKeysProtectionKey : values.localKeysProtectionKey,
+        isNew
+          ? values.newLocalKeysProtectionKey
+          : values.localKeysProtectionKey,
       );
       protectionKeyKinds.set(protectionKey, isNew ? "new_local" : "local");
       return protectionKey;
@@ -258,8 +267,8 @@ export function createCoreTestPorts(
       );
       return protectionKey;
     }),
-    deriveDeviceEnrollmentPrivateStateProtectionKey: vi.fn(
-      async () => freshBuffer(values.pendingEnrollmentProtectionKey),
+    deriveDeviceEnrollmentPrivateStateProtectionKey: vi.fn(async () =>
+      freshBuffer(values.pendingEnrollmentProtectionKey),
     ),
     wrapLocalKeysPayload: vi.fn(async (_localKeysPayload, protectionKey) => {
       const protectionKeyKind = protectionKeyKinds.get(protectionKey);
@@ -394,6 +403,28 @@ export function createCoreTestPorts(
     ),
   };
 
+  const clipboardSecretHash: ClipboardSecretHashPort = {
+    hashSecretValue: vi.fn(async (value) => `hash:${value}`),
+    compareSecretValueHash: vi.fn(async (left, right) => left === right),
+  };
+
+  const activeClipboardOperationLeases = new WeakSet<ClipboardOperationLease>();
+  const clipboardOperations: ClipboardOperationCoordinatorPort = {
+    isLeaseActive: (lease) => activeClipboardOperationLeases.has(lease),
+    runExclusive: async <Result>(
+      operation: (lease: ClipboardOperationLease) => Promise<Result>,
+    ) => {
+      const lease = Object.freeze({}) as ClipboardOperationLease;
+      activeClipboardOperationLeases.add(lease);
+
+      try {
+        return await operation(lease);
+      } finally {
+        activeClipboardOperationLeases.delete(lease);
+      }
+    },
+  };
+
   const bip39: Bip39Port = {
     recoveryKeyToMnemonic: vi.fn(async (recoveryKey) =>
       recoveryKey === values.rotatedRecoverySecretKey ||
@@ -402,7 +433,8 @@ export function createCoreTestPorts(
         : values.recoveryMnemonicKey,
     ),
     mnemonicToRecoveryKey: vi.fn(async (recoveryMnemonicKey) => {
-      const isRotated = recoveryMnemonicKey === values.rotatedRecoveryMnemonicKey;
+      const isRotated =
+        recoveryMnemonicKey === values.rotatedRecoveryMnemonicKey;
       const recoveryKey = freshBuffer(
         isRotated ? values.rotatedRecoverySecretKey : values.recoverySecretKey,
       );
@@ -704,12 +736,29 @@ export function createCoreTestPorts(
 
   const unlockedVaultSessionMaterialRepository: UnlockedVaultSessionMaterialRepositoryPort =
     {
+      getUnlockedVaultSessionEpoch: vi.fn(
+        async () => saved.unlockedVaultSessionEpoch,
+      ),
+      advanceUnlockedVaultSessionEpoch: vi.fn(async () => {
+        saved.unlockedVaultSessionEpoch += 1;
+      }),
       saveUnlockedVaultSessionMaterial: vi.fn(async (material) => {
         saved.unlockedVaultSessionMaterial = material;
       }),
       getUnlockedVaultSessionMaterial: vi.fn(
         async () => saved.unlockedVaultSessionMaterial ?? null,
       ),
+      getPersistedUnlockedVaultSessionIdentity: vi.fn(async () => {
+        const material = saved.unlockedVaultSessionMaterial;
+        return material === undefined
+          ? null
+          : {
+              sessionId: material.sessionId,
+              vaultId: material.vaultId,
+              sourceSnapshotVersionVector: material.sourceSnapshotVersionVector,
+            };
+      }),
+      evictCachedUnlockedVaultSessionMaterial: vi.fn(async () => undefined),
       removeUnlockedVaultSessionMaterial: vi.fn(async () => {
         saved.unlockedVaultSessionMaterial = undefined;
         unlockedVaultSessionMirror = undefined;
@@ -746,6 +795,7 @@ export function createCoreTestPorts(
     encryptedUnlockedVaultSessionPayloadRepository,
     crypto,
     ids,
+    clipboardOperations,
   );
   const sessionServices = {
     unlockedVaultSession,
@@ -777,14 +827,16 @@ export function createCoreTestPorts(
 
   vi.spyOn(sessionServices.unlockedVaultSession, "activate").mockImplementation(
     async (
-      activationGeneration,
+      activationAuthorization,
       unlockedVault,
       sourceSnapshotVersionVector,
+      coordinationLease,
     ) => {
       const sessionId = await activateSessionOriginal(
-        activationGeneration,
+        activationAuthorization,
         unlockedVault,
         sourceSnapshotVersionVector,
+        coordinationLease,
       );
       unlockedVaultSessionMirror = {
         sessionId,
@@ -800,18 +852,20 @@ export function createCoreTestPorts(
     "activateWithAutoLock",
   ).mockImplementation(
     async (
-      activationGeneration,
+      activationAuthorization,
       unlockedVault,
       sourceSnapshotVersionVector,
       installAutoLock,
       rollbackAutoLock,
+      coordinationLease,
     ) => {
       const activatedSession = await activateSessionWithAutoLockOriginal(
-        activationGeneration,
+        activationAuthorization,
         unlockedVault,
         sourceSnapshotVersionVector,
         installAutoLock,
         rollbackAutoLock,
+        coordinationLease,
       );
       unlockedVaultSessionMirror = {
         sessionId: activatedSession.sessionId,
@@ -826,11 +880,17 @@ export function createCoreTestPorts(
     sessionServices.unlockedVaultSession,
     "commitPersistedSnapshot",
   ).mockImplementation(
-    async (sessionId, unlockedVault, sourceSnapshotVersionVector) => {
+    async (
+      sessionId,
+      unlockedVault,
+      sourceSnapshotVersionVector,
+      coordinationLease,
+    ) => {
       await commitPersistedSnapshotOriginal(
         sessionId,
         unlockedVault,
         sourceSnapshotVersionVector,
+        coordinationLease,
       );
       unlockedVaultSessionMirror = {
         sessionId,
@@ -862,12 +922,14 @@ export function createCoreTestPorts(
       invalidateWhenUnavailable,
       beforeRemoval,
       afterRemoval,
+      coordinationLease,
     ) => {
       const result = await cleanupActiveSessionOriginal(
         requiredVaultId,
         invalidateWhenUnavailable,
         beforeRemoval,
         afterRemoval,
+        coordinationLease,
       );
 
       if (result === "removed") {
@@ -922,6 +984,8 @@ export function createCoreTestPorts(
 
   return {
     crypto,
+    clipboardOperations,
+    clipboardSecretHash,
     bip39,
     vaultLocalRepository,
     unlockedVaultSessionMaterialRepository,

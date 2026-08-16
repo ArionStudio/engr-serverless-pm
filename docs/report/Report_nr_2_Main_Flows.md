@@ -153,13 +153,14 @@
     2. `popup` sends password entry id and selected clipboard clear delay to `extension service worker`
     3. `extension service worker` loads the unlocked vault from `storage.session`
     4. if a previous pending clipboard clear task exists, `extension service worker` clears the previous copied password only when the current clipboard value still matches that previous entry password
-    5. if a previous pending clipboard clear task exists, `extension service worker` cancels its scheduled clear task
+    5. after the previous task releases clipboard ownership successfully, `extension service worker` cancels its scheduled clear task; a clear failure preserves the previous metadata and scheduled retry and aborts the copy
     6. `extension service worker` hashes the copied password value and stores a new pending clipboard clear task containing action id, copied value hash, and expiry timestamp
     7. `extension service worker` schedules clipboard clear at `now + selected clear delay`
     8. `extension service worker` writes the selected password value to `Clipboard`
-    9. if scheduling or clipboard write fails, `extension service worker` removes the pending clipboard clear task
-    10. `extension service worker` confirms copy success to `popup`
-    11. `popup` shows copy confirmation and clipboard warning information
+    9. if scheduling fails, `extension service worker` makes a best-effort attempt to remove the new pending task and reports the scheduling failure
+    10. if the clipboard write reports failure, `extension service worker` preserves the new task and scheduled clear because the operating-system write may already have committed
+    11. `extension service worker` confirms copy success to `popup`
+    12. `popup` shows copy confirmation and clipboard warning information
 
 9.  [x] Clear copied password from clipboard
     - starts from: `extension service worker`

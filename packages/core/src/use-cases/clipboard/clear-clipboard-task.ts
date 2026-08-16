@@ -1,10 +1,9 @@
-import type { ClipboardClearTask } from "../../ports/clipboard/clipboard-clear-task-repository.port";
+import type { ClipboardOperationCoordinatorPort } from "../../ports/clipboard/clipboard-operation-coordinator.port";
 import type { ClipboardClearService } from "../../services/clipboard/clipboard-clear.service";
 
 export type ClearClipboardTaskCommandParams = {
   readonly actionId?: string;
   readonly requireExpired: boolean;
-  readonly task?: ClipboardClearTask | null;
 };
 
 export type ClearClipboardTaskResult =
@@ -22,14 +21,21 @@ export type ClearClipboardTaskResult =
 
 export class ClearClipboardTaskUseCase {
   private readonly clipboardClear: ClipboardClearService;
+  private readonly clipboardOperations: ClipboardOperationCoordinatorPort;
 
-  constructor(clipboardClear: ClipboardClearService) {
+  constructor(
+    clipboardClear: ClipboardClearService,
+    clipboardOperations: ClipboardOperationCoordinatorPort,
+  ) {
     this.clipboardClear = clipboardClear;
+    this.clipboardOperations = clipboardOperations;
   }
 
   async execute(
     params: ClearClipboardTaskCommandParams,
   ): Promise<ClearClipboardTaskResult> {
-    return this.clipboardClear.clearTask(params);
+    return this.clipboardOperations.runExclusive(() =>
+      this.clipboardClear.clearTask(params),
+    );
   }
 }

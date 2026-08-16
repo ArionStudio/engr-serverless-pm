@@ -29,11 +29,13 @@ function createContext() {
     clipboard,
     clipboardClearTasks,
     ports.clock,
-    ports.crypto,
+    ports.clipboardSecretHash,
   );
+  const clipboardOperations = ports.clipboardOperations;
   const lifecycleCleanup = new VaultLifecycleCleanupService(
     clipboardClear,
     clipboardClearTasks,
+    clipboardOperations,
     scheduledTasks,
     ports.vaultLockTasks,
     ports.sessionServices.unlockedVaultSession,
@@ -69,6 +71,7 @@ function createContext() {
     ports,
     clipboard,
     clipboardClearTasks,
+    clipboardOperations,
     scheduledTasks,
     lifecycleCleanup,
     useCase,
@@ -131,6 +134,28 @@ describe("DeleteLocalVaultUseCase", () => {
     expect(
       ctx.ports.vaultLockTasks.removeIfActionIsActive,
     ).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves shared session and vault state when clipboard coordination cannot start", async () => {
+    const ctx = createContext();
+    const error = new Error("clipboard coordination unavailable");
+    vi.spyOn(ctx.clipboardOperations, "runExclusive").mockRejectedValueOnce(
+      error,
+    );
+
+    await expect(
+      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toBe(error);
+
+    expect(ctx.clipboardClearTasks.get).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.unlockedVaultSession).toBeDefined();
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .removeUnlockedVaultSessionMaterial,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.removePersistedLocalVault,
+    ).not.toHaveBeenCalled();
   });
 
   it("fails when no vault is unlocked", async () => {
@@ -233,6 +258,34 @@ describe("DeleteLocalVaultUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
+  it("preserves all state when targeted session identity is unreadable", async () => {
+    const ctx = createContext();
+    const error = new Error("persisted session identity unavailable");
+    vi.mocked(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .getPersistedUnlockedVaultSessionIdentity,
+    ).mockRejectedValueOnce(error);
+
+    await expect(
+      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toBe(error);
+
+    expect(ctx.ports.vaultLockTasks.get).not.toHaveBeenCalled();
+    expect(ctx.clipboardClearTasks.get).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .removeUnlockedVaultSessionMaterial,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
+        .removeEncryptedUnlockedVaultSessionPayload,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.removePersistedLocalVault,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.unlockedVaultSession).toBeDefined();
+  });
+
   it("does not grant a competing activation lease until deletion finishes", async () => {
     const ctx = createContext();
     let cleanupCanContinue!: () => void;
@@ -289,7 +342,10 @@ describe("DeleteLocalVaultUseCase", () => {
     deletionCanContinue();
 
     await expect(deletion).resolves.toBeUndefined();
-    await expect(competingActivationLease).resolves.toEqual(expect.any(Number));
+    await expect(competingActivationLease).resolves.toEqual({
+      localGeneration: expect.any(Number),
+      sharedEpoch: expect.any(Number),
+    });
     expect(
       ctx.ports.vaultLocalRepository.removePersistedLocalVault,
     ).toHaveBeenCalledWith(ctx.values.vaultId);
@@ -353,7 +409,7 @@ describe("DeleteLocalVaultUseCase", () => {
       ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
     ).rejects.toBe(error);
 
-    expect(ctx.scheduledTasks.cancelTask).toHaveBeenCalledWith({
+    expect(ctx.scheduledTasks.cancelTask).not.toHaveBeenCalledWith({
       name: "clearClipboard",
       actionId: "clipboard-action-id",
     });
@@ -361,7 +417,7 @@ describe("DeleteLocalVaultUseCase", () => {
       name: "lockVault",
       actionId: ctx.values.vaultLockActionId,
     });
-    expect(ctx.clipboardClearTasks.remove).toHaveBeenCalledTimes(1);
+    expect(ctx.clipboardClearTasks.remove).not.toHaveBeenCalled();
     expect(
       ctx.ports.vaultLockTasks.removeIfActionIsActive,
     ).toHaveBeenCalledTimes(1);

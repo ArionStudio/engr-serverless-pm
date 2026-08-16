@@ -158,6 +158,20 @@ export function deserializeUnlockedVaultSessionMaterial(
   }
 }
 
+export function deserializeUnlockedVaultSessionIdentity(
+  material: unknown,
+): Pick<
+  UnlockedVaultSessionMaterial,
+  "sessionId" | "vaultId" | "sourceSnapshotVersionVector"
+> {
+  assertStoredMaterial(material);
+  return {
+    sessionId: material.sessionId,
+    vaultId: material.vaultId,
+    sourceSnapshotVersionVector: material.sourceSnapshotVersionVector,
+  };
+}
+
 function arrayBufferToBase64Url(buffer: ArrayBuffer): Base64URLString {
   return encodeBase64Url(new Uint8Array(buffer));
 }

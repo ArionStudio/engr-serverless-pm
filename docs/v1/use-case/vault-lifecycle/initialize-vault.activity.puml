@@ -54,7 +54,12 @@ endif
 :Build device access material and recovery backup\nwith revision 1 and the same localAccessGenerationId;
 :Build local vault descriptor;
 :Build unlocked vault session object;
-:Enter serialized session activation boundary;
+:Enter shared cross-context clipboard/lifecycle coordinator;
+if (coordination cannot start?) then (yes)
+  :Throw coordination failure without persisting local or session state;
+  stop
+endif
+:Within it, enter serialized session activation boundary;
 :saveInitializedLocalVault(descriptor,\naccess material, recovery backup, snapshot);
 :Save vault lock task metadata;
 

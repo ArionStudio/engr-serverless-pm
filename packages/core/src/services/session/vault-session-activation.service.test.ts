@@ -11,6 +11,88 @@ import type {
 import { VaultSessionActivationService } from "./vault-session-activation.service";
 
 describe("VaultSessionActivationService", () => {
+  it("does not prepare activation when coordination is unavailable", async () => {
+    const values = createCoreTestValues();
+    const ports = createCoreTestPorts(values);
+    const unlockedVault = createUnlockedVaultWithEntries(values, []);
+    const coordinationError = new Error("coordination unavailable");
+    const generation =
+      await ports.sessionServices.unlockedVaultSession.requireVaultCanBeActivated(
+        values.vaultId,
+      );
+    const service = new VaultSessionActivationService(
+      ports.clock,
+      ports.ids,
+      ports.scheduledTasks,
+      ports.vaultLockTasks,
+      ports.sessionServices.unlockedVaultSession,
+      {
+        isLeaseActive: () => false,
+        runExclusive: async () => {
+          throw coordinationError;
+        },
+      },
+    );
+    const prepareActivation = vi.fn(async () => undefined);
+
+    await expect(
+      service.activate({
+        activationAuthorization: generation,
+        unlockedVault,
+        sourceSnapshotVersionVector: { [values.deviceId]: 1 },
+        lockAfterMs: 60_000,
+        prepareActivation,
+      }),
+    ).rejects.toBe(coordinationError);
+
+    expect(prepareActivation).not.toHaveBeenCalled();
+    expect(ports.vaultLockTasks.save).not.toHaveBeenCalled();
+    expect(ports.scheduledTasks.scheduleTask).not.toHaveBeenCalled();
+    expect(ports.saved.unlockedVaultSession).toBeUndefined();
+  });
+
+  it("does not prepare activation when the shared session epoch cannot advance", async () => {
+    const values = createCoreTestValues();
+    const ports = createCoreTestPorts(values);
+    const unlockedVault = createUnlockedVaultWithEntries(values, []);
+    const error = new Error("session epoch unavailable");
+    const activationAuthorization =
+      await ports.sessionServices.unlockedVaultSession.requireVaultCanBeActivated(
+        values.vaultId,
+      );
+    vi.mocked(
+      ports.unlockedVaultSessionMaterialRepository
+        .advanceUnlockedVaultSessionEpoch,
+    ).mockRejectedValueOnce(error);
+    const service = new VaultSessionActivationService(
+      ports.clock,
+      ports.ids,
+      ports.scheduledTasks,
+      ports.vaultLockTasks,
+      ports.sessionServices.unlockedVaultSession,
+      ports.clipboardOperations,
+    );
+    const prepareActivation = vi.fn(async () => undefined);
+
+    await expect(
+      service.activate({
+        activationAuthorization,
+        unlockedVault,
+        sourceSnapshotVersionVector: { [values.deviceId]: 1 },
+        lockAfterMs: 60_000,
+        prepareActivation,
+      }),
+    ).rejects.toBe(error);
+
+    expect(prepareActivation).not.toHaveBeenCalled();
+    expect(ports.vaultLockTasks.save).not.toHaveBeenCalled();
+    expect(ports.scheduledTasks.scheduleTask).not.toHaveBeenCalled();
+    expect(
+      ports.crypto.encryptUnlockedVaultSessionPayload,
+    ).not.toHaveBeenCalled();
+    expect(ports.saved.unlockedVaultSession).toBeUndefined();
+  });
+
   it("serializes competing auto-lock installation and session activation", async () => {
     const values = createCoreTestValues();
     const ports = createCoreTestPorts(values);
@@ -55,6 +137,7 @@ describe("VaultSessionActivationService", () => {
       scheduledTasks,
       vaultLockTasks,
       ports.sessionServices.unlockedVaultSession,
+      ports.clipboardOperations,
     );
     const firstGeneration =
       await ports.sessionServices.unlockedVaultSession.requireVaultCanBeActivated(
@@ -72,14 +155,14 @@ describe("VaultSessionActivationService", () => {
 
     const firstActivation = service.activate({
       ...params,
-      activationGeneration: firstGeneration,
+      activationAuthorization: firstGeneration,
     });
     await scheduleStarted;
     const competingPrepare = vi.fn(async () => undefined);
     const competingRollback = vi.fn(async () => undefined);
     const competingActivation = service.activate({
       ...params,
-      activationGeneration: competingGeneration,
+      activationAuthorization: competingGeneration,
       prepareActivation: competingPrepare,
       rollbackPreparedActivation: competingRollback,
     });
@@ -147,6 +230,7 @@ describe("VaultSessionActivationService", () => {
       scheduledTasks,
       vaultLockTasks,
       ports.sessionServices.unlockedVaultSession,
+      ports.clipboardOperations,
     );
     const generation =
       await ports.sessionServices.unlockedVaultSession.requireVaultCanBeActivated(
@@ -157,7 +241,7 @@ describe("VaultSessionActivationService", () => {
 
     await expect(
       service.activate({
-        activationGeneration: generation,
+        activationAuthorization: generation,
         unlockedVault,
         sourceSnapshotVersionVector: { [values.deviceId]: 1 },
         lockAfterMs: 60_000,
@@ -190,6 +274,7 @@ describe("VaultSessionActivationService", () => {
       ports.scheduledTasks,
       ports.vaultLockTasks,
       ports.sessionServices.unlockedVaultSession,
+      ports.clipboardOperations,
     );
     const generation =
       await ports.sessionServices.unlockedVaultSession.requireVaultCanBeActivated(
@@ -198,7 +283,7 @@ describe("VaultSessionActivationService", () => {
 
     await expect(
       service.activate({
-        activationGeneration: generation,
+        activationAuthorization: generation,
         unlockedVault,
         sourceSnapshotVersionVector: { [values.deviceId]: 1 },
         lockAfterMs: 60_000,
@@ -258,6 +343,7 @@ describe("VaultSessionActivationService", () => {
       scheduledTasks,
       vaultLockTasks,
       ports.sessionServices.unlockedVaultSession,
+      ports.clipboardOperations,
     );
     const generation =
       await ports.sessionServices.unlockedVaultSession.requireVaultCanBeActivated(
@@ -266,7 +352,7 @@ describe("VaultSessionActivationService", () => {
 
     await expect(
       service.activate({
-        activationGeneration: generation,
+        activationAuthorization: generation,
         unlockedVault,
         sourceSnapshotVersionVector: { [values.deviceId]: 1 },
         lockAfterMs: 60_000,
@@ -327,6 +413,7 @@ describe("VaultSessionActivationService", () => {
       scheduledTasks,
       vaultLockTasks,
       ports.sessionServices.unlockedVaultSession,
+      ports.clipboardOperations,
     );
     const generation =
       await ports.sessionServices.unlockedVaultSession.requireVaultCanBeActivated(
@@ -335,7 +422,7 @@ describe("VaultSessionActivationService", () => {
 
     await expect(
       service.activate({
-        activationGeneration: generation,
+        activationAuthorization: generation,
         unlockedVault,
         sourceSnapshotVersionVector: { [values.deviceId]: 1 },
         lockAfterMs: 60_000,

@@ -4,6 +4,7 @@ import type { RawMasterPassword } from "../../domain/master-password";
 import { InvalidNewMasterPasswordError } from "../../errors/master-password.errors";
 import { DeviceAccessMaterialChangedError } from "../../errors/vault-device.errors";
 import { InvalidVaultLockDelayError } from "../../errors/vault-session.errors";
+import type { VaultSessionActivationAuthorization } from "../../services/session/unlocked-vault-session.service";
 
 describe("InitializeVaultUseCase", () => {
   it("rejects a master password below maximum strength before generating IDs", async () => {
@@ -270,7 +271,9 @@ describe("InitializeVaultUseCase", () => {
       ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
     );
     const save = saveInitializedLocalVault.getMockImplementation();
-    let competingLease: Promise<number> | undefined;
+    let competingLease:
+      | Promise<VaultSessionActivationAuthorization>
+      | undefined;
 
     if (save === undefined) {
       throw new Error("Expected initialized-vault fixture implementation.");
@@ -294,7 +297,10 @@ describe("InitializeVaultUseCase", () => {
       throw new Error("Expected a competing activation lease.");
     }
 
-    await expect(competingLease).resolves.toBe(1);
+    await expect(competingLease).resolves.toEqual({
+      localGeneration: 1,
+      sharedEpoch: 1,
+    });
     expect(ctx.saved.localVaultDescriptor).toBeDefined();
     expect(ctx.saved.unlockedVaultSession).toBeDefined();
   });
