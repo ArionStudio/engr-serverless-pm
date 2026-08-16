@@ -92,6 +92,8 @@ describe("WebLocksClipboardOperationCoordinator", () => {
       });
     });
 
+    await Promise.resolve();
+    await Promise.resolve();
     expect(secondStarted).toBe(false);
     releaseFirst.resolve();
     await Promise.all([firstOperation, secondOperation]);

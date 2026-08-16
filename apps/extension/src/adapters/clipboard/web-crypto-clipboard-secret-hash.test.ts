@@ -16,5 +16,11 @@ describe("WebCryptoClipboardSecretHash", () => {
         copiedValueHash,
       ),
     ).resolves.toBe(true);
+    await expect(
+      alarmContextHash.compareSecretValueHash(
+        await alarmContextHash.hashSecretValue("different-password"),
+        copiedValueHash,
+      ),
+    ).resolves.toBe(false);
   });
 });

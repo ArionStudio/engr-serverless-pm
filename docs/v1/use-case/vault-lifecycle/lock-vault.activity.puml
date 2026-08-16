@@ -12,7 +12,8 @@ skinparam activity {
 start
 :Input:\noptional actionId;
 :Source:\npackages/core/src/use-cases/vault-lifecycle/lock-vault.ts;
-:Enter serialized session cleanup boundary;
+:Enter shared cross-context clipboard operation coordinator;
+:Within it, enter serialized session cleanup boundary;
 :Read active session material, preserving the first failure;
 :Load pending vault lock task metadata inside cleanup boundary;
 
@@ -22,10 +23,11 @@ if (scheduled action does not match current task or required vault?) then (yes)
 else (no)
   :Load pending clipboard clear task;
   :Attempt clipboardClear.clearTask(requireExpired = false);
-  if (clipboard task existed?) then (yes)
+  if (clipboard ownership was released?) then (yes)
     :Attempt cancellation of scheduled clearClipboard task;
+  else (no)
+    :Preserve clipboard metadata and any existing scheduled retry;
   endif
-  :Attempt clipboard task metadata removal after read/clear failure;
 
   if (vault lock task exists?) then (yes)
     :Attempt cancellation of scheduled lockVault task;

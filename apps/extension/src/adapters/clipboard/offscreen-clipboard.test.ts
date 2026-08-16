@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
   type ChromeOffscreenApi,
   type ChromeRuntimeMessenger,
-  type OffscreenClipboardResponse,
   type OffscreenClientDirectory,
   OFFSCREEN_CLIPBOARD_MESSAGE_TARGET,
   OFFSCREEN_CLIPBOARD_REASON,
@@ -16,7 +15,7 @@ function createContext(documentExists = false) {
   const offscreen: ChromeOffscreenApi = {
     createDocument,
   };
-  let nextResponse: OffscreenClipboardResponse | undefined;
+  let nextResponse: unknown;
   let respond = true;
   const postMessage = vi.fn(
     (request: { readonly operation?: unknown }, transfer: Transferable[]) => {
@@ -67,7 +66,7 @@ function createContext(documentExists = false) {
     matchAll,
     otherClientPostMessage,
     postMessage,
-    setNextResponse(response: OffscreenClipboardResponse) {
+    setNextResponse(response: unknown) {
       nextResponse = response;
     },
     stopResponding() {
@@ -126,6 +125,24 @@ describe("OffscreenClipboard", () => {
 
     await expect(ctx.clipboard.readText()).rejects.toThrow(
       "Clipboard operation failed.",
+    );
+  });
+
+  it("rejects when the offscreen document client is unavailable", async () => {
+    const ctx = createContext(true);
+    ctx.matchAll.mockResolvedValueOnce([]);
+
+    await expect(ctx.clipboard.readText()).rejects.toThrow(
+      "Offscreen clipboard document client is unavailable.",
+    );
+  });
+
+  it("rejects malformed offscreen responses", async () => {
+    const ctx = createContext(true);
+    ctx.setNextResponse({ ok: "yes" });
+
+    await expect(ctx.clipboard.readText()).rejects.toThrow(
+      "Offscreen clipboard returned an invalid response.",
     );
   });
 

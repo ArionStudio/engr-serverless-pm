@@ -64,4 +64,19 @@ describe("offscreen clipboard document", () => {
     ).toThrow("Clipboard copy command failed.");
     expect(transferControl.value).toBe("");
   });
+
+  it("clears plaintext when the browser rejects a paste command", () => {
+    const transferControl = createControl();
+    const commandExecutor: ClipboardCommandExecutor = {
+      execCommand: vi.fn(() => {
+        transferControl.value = "clipboard-value";
+        return false;
+      }),
+    };
+
+    expect(() => readClipboardText(commandExecutor, transferControl)).toThrow(
+      "Clipboard paste command failed.",
+    );
+    expect(transferControl.value).toBe("");
+  });
 });
