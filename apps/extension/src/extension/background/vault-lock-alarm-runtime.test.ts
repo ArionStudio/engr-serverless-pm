@@ -28,7 +28,10 @@ import {
   SCHEDULED_TASK_ALARM_PREFIX,
   serializeScheduledTask,
 } from "../../adapters/system";
-import { createVaultLockAlarmHandler } from "./clipboard-alarm-runtime";
+import {
+  createVaultLockAlarmHandler,
+  VAULT_LOCK_RETRY_DELAY_MS,
+} from "./clipboard-alarm-runtime";
 
 const immediateLockManager: WebLockManager = {
   request: async (_name, operation) => operation(null),
@@ -100,6 +103,9 @@ function createContext() {
     encryptedPayloadRepository,
     handleAlarm: createVaultLockAlarmHandler(
       new LockVaultUseCase(lifecycleCleanup),
+      vaultLockTasks,
+      scheduledTasks,
+      { now: () => 1_000 },
     ),
     materialRepository,
     scheduledTasks,
@@ -137,6 +143,7 @@ describe("vault-lock alarm runtime", () => {
     expect(ctx.clipboard.writeText).not.toHaveBeenCalled();
     expect(removeClipboardTask).not.toHaveBeenCalled();
     expect(removeVaultLockTask).not.toHaveBeenCalled();
+    expect(ctx.scheduledTasks.scheduleTask).not.toHaveBeenCalled();
     expect(ctx.scheduledTasks.cancelTask).not.toHaveBeenCalled();
     expect(
       ctx.materialRepository.removeUnlockedVaultSessionMaterial,
@@ -167,6 +174,7 @@ describe("vault-lock alarm runtime", () => {
     expect(getClipboardTask).not.toHaveBeenCalled();
     expect(ctx.clipboard.readText).not.toHaveBeenCalled();
     expect(ctx.clipboard.writeText).not.toHaveBeenCalled();
+    expect(ctx.scheduledTasks.scheduleTask).not.toHaveBeenCalled();
     expect(ctx.scheduledTasks.cancelTask).not.toHaveBeenCalled();
     expect(
       ctx.materialRepository.removeUnlockedVaultSessionMaterial,
@@ -174,5 +182,120 @@ describe("vault-lock alarm runtime", () => {
     expect(
       ctx.encryptedPayloadRepository.removeEncryptedUnlockedVaultSessionPayload,
     ).not.toHaveBeenCalled();
+  });
+
+  it("retains a retry after transient lock failure and cleans matching ownership on retry", async () => {
+    const ctx = createContext();
+    const task = {
+      name: "lockVault" as const,
+      actionId: "active-lock-action",
+    };
+    const error = new Error("session removal failed");
+    await ctx.vaultLockTasks.save({
+      actionId: task.actionId,
+      vaultId: "vault-id",
+      expiresAt: 1_000,
+    });
+    const execute = vi
+      .fn<({ actionId }: { actionId: string }) => Promise<void>>()
+      .mockRejectedValueOnce(error)
+      .mockImplementationOnce(async ({ actionId }) => {
+        await ctx.vaultLockTasks.removeIfActionIsActive(actionId);
+      });
+    const handleAlarm = createVaultLockAlarmHandler(
+      { execute },
+      ctx.vaultLockTasks,
+      ctx.scheduledTasks,
+      { now: () => 1_000 },
+    );
+    const alarm = { name: serializeScheduledTask(task) };
+
+    await expect(handleAlarm(alarm)).rejects.toBe(error);
+
+    expect(ctx.scheduledTasks.scheduleTask).toHaveBeenCalledWith({
+      task,
+      runAt: 1_000 + VAULT_LOCK_RETRY_DELAY_MS,
+    });
+    expect(ctx.scheduledTasks.cancelTask).not.toHaveBeenCalled();
+    await expect(ctx.vaultLockTasks.get()).resolves.toMatchObject({
+      actionId: task.actionId,
+    });
+
+    await expect(handleAlarm(alarm)).resolves.toBeUndefined();
+
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(execute).toHaveBeenLastCalledWith({ actionId: task.actionId });
+    expect(ctx.scheduledTasks.cancelTask).toHaveBeenCalledWith(task);
+    await expect(ctx.vaultLockTasks.get()).resolves.toBeNull();
+  });
+
+  it("keeps the pre-armed retry when lock metadata removal fails", async () => {
+    const ctx = createContext();
+    const task = {
+      name: "lockVault" as const,
+      actionId: "active-lock-action",
+    };
+    const removalError = new Error("lock metadata removal failed");
+    await ctx.vaultLockTasks.save({
+      actionId: task.actionId,
+      vaultId: "vault-id",
+      expiresAt: 1_000,
+    });
+    const removeIfActionIsActive = vi.spyOn(
+      ctx.vaultLockTasks,
+      "removeIfActionIsActive",
+    );
+    removeIfActionIsActive.mockRejectedValueOnce(removalError);
+    const alarm = { name: serializeScheduledTask(task) };
+
+    await expect(ctx.handleAlarm(alarm)).rejects.toBe(removalError);
+
+    expect(ctx.scheduledTasks.scheduleTask).toHaveBeenCalledWith({
+      task,
+      runAt: 1_000 + VAULT_LOCK_RETRY_DELAY_MS,
+    });
+    expect(ctx.scheduledTasks.cancelTask).not.toHaveBeenCalled();
+    await expect(ctx.vaultLockTasks.get()).resolves.toMatchObject({
+      actionId: task.actionId,
+    });
+
+    await expect(ctx.handleAlarm(alarm)).resolves.toBeUndefined();
+
+    await expect(ctx.vaultLockTasks.get()).resolves.toBeNull();
+    expect(ctx.scheduledTasks.cancelTask).toHaveBeenCalledWith(task);
+
+    await ctx.vaultLockTasks.save({
+      actionId: "newer-lock-action",
+      vaultId: "vault-id",
+      expiresAt: 2_000,
+    });
+    const removalCalls = removeIfActionIsActive.mock.calls.length;
+
+    await expect(ctx.handleAlarm(alarm)).resolves.toBeUndefined();
+
+    expect(removeIfActionIsActive).toHaveBeenCalledTimes(removalCalls);
+    await expect(ctx.vaultLockTasks.get()).resolves.toMatchObject({
+      actionId: "newer-lock-action",
+    });
+  });
+
+  it("re-arms a valid alarm when lock ownership cannot be read", async () => {
+    const ctx = createContext();
+    const task = {
+      name: "lockVault" as const,
+      actionId: "active-lock-action",
+    };
+    const error = new Error("lock ownership unavailable");
+    vi.spyOn(ctx.vaultLockTasks, "get").mockRejectedValueOnce(error);
+
+    await expect(
+      ctx.handleAlarm({ name: serializeScheduledTask(task) }),
+    ).rejects.toBe(error);
+
+    expect(ctx.scheduledTasks.scheduleTask).toHaveBeenCalledWith({
+      task,
+      runAt: 1_000 + VAULT_LOCK_RETRY_DELAY_MS,
+    });
+    expect(ctx.scheduledTasks.cancelTask).not.toHaveBeenCalled();
   });
 });

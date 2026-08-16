@@ -38,6 +38,21 @@ function createContext() {
   return { ...ctx, backup, useCase };
 }
 
+async function expectInitialRecoverySecretsWiped(
+  ctx: ReturnType<typeof createContext>,
+): Promise<void> {
+  const recoverySecretKey = await vi.mocked(
+    ctx.ports.bip39.mnemonicToRecoveryKey,
+  ).mock.results[0]!.value;
+  const recoveryLocalKeysProtectionKey = await vi.mocked(
+    ctx.ports.crypto.deriveRecoveryLocalKeysProtectionKey,
+  ).mock.results[0]!.value;
+
+  for (const buffer of [recoverySecretKey, recoveryLocalKeysProtectionKey]) {
+    expect(Array.from(new Uint8Array(buffer))).toEqual([0]);
+  }
+}
+
 function deferRecoveryReplacement(ctx: ReturnType<typeof createContext>) {
   vi.mocked(ctx.ports.crypto.generateRecoveryKey).mockResolvedValue(
     ctx.values.rotatedRecoverySecretKey,
@@ -170,6 +185,7 @@ describe("RecoverDeviceAccessUseCase", () => {
       ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
     ).not.toHaveBeenCalled();
     expect(ctx.saved.unlockedVaultSession).toBeUndefined();
+    await expectInitialRecoverySecretsWiped(ctx);
   });
 
   it("replaces the current local backup without changing the trusted identity", async () => {

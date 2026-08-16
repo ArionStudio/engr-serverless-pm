@@ -1,19 +1,20 @@
-import type {
-  DeletedDeviceProfile,
-  DeletedPasswordEntry,
-  DeletedTag,
-  DeviceKeySlot,
-  DevicePublicSignKey,
-  DeviceVaultPublicKey,
-  JsonValue,
-  LocalVaultTrustAnchor,
-  PasswordEntry,
-  RandomBytes,
-  Tag,
-  Vault,
-  VaultSnapshot,
-  VaultSnapshotDescriptor,
-  VaultTrustCertificate,
+import {
+  CURRENT_ALGORITHM_SUITE,
+  type DeletedDeviceProfile,
+  type DeletedPasswordEntry,
+  type DeletedTag,
+  type DeviceKeySlot,
+  type DevicePublicSignKey,
+  type DeviceVaultPublicKey,
+  type JsonValue,
+  type LocalVaultTrustAnchor,
+  type PasswordEntry,
+  type RandomBytes,
+  type Tag,
+  type Vault,
+  type VaultSnapshot,
+  type VaultSnapshotDescriptor,
+  type VaultTrustCertificate,
 } from "@lfspm/core";
 import { passwordEntryInputSchema, tagSchema } from "@lfspm/core";
 import {
@@ -95,7 +96,7 @@ export function decodeTrustAnchor(value: unknown): LocalVaultTrustAnchor {
     genesisDeviceId: nonBlankString(record.genesisDeviceId),
     genesisPublicSignKey: decodeCanonicalBytes<DevicePublicSignKey>(
       record.genesisPublicSignKey,
-      32,
+      CURRENT_ALGORITHM_SUITE.signing.publicKeyLengthBytes,
     ),
     genesisCertificateDigest: canonicalDigest(record.genesisCertificateDigest),
   };
@@ -135,11 +136,11 @@ function decodeTrustCertificate(value: unknown): VaultTrustCertificate {
       deviceId: nonBlankString(device.deviceId),
       publicSignKey: decodeCanonicalBytes<DevicePublicSignKey>(
         device.publicSignKey,
-        32,
+        CURRENT_ALGORITHM_SUITE.signing.publicKeyLengthBytes,
       ),
       publicVaultKey: decodeCanonicalBytes<DeviceVaultPublicKey>(
         device.publicVaultKey,
-        65,
+        CURRENT_ALGORITHM_SUITE.vaultKeyWrapping.publicKeyLengthBytes,
       ),
     };
   });
@@ -209,7 +210,7 @@ function decodeDeviceKeySlot(value: unknown): DeviceKeySlot {
       vaultKeyGeneration: envelopeGeneration,
       ephemeralPublicKey: decodeCanonicalBytes<DeviceVaultPublicKey>(
         envelope.ephemeralPublicKey,
-        65,
+        CURRENT_ALGORITHM_SUITE.vaultKeyWrapping.publicKeyLengthBytes,
       ),
       hkdfSalt: decodeCanonicalBytes<RandomBytes>(envelope.hkdfSalt, 32),
       encryptedVaultMasterKey: decodeEncrypted(

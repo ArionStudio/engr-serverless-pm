@@ -1,15 +1,16 @@
-import type {
-  DeviceAccessMaterial,
-  DeviceAccessRecoveryBackup,
-  DeviceLocalProtectionKey,
-  DevicePrivateSignKey,
-  DevicePublicSignKey,
-  DeviceVaultPrivateKey,
-  DeviceVaultPublicKey,
-  LocalKeysPayload,
-  LocalVaultDescriptor,
-  LocalVaultTrustCheckpoint,
-  RandomBytes,
+import {
+  CURRENT_ALGORITHM_SUITE,
+  type DeviceAccessMaterial,
+  type DeviceAccessRecoveryBackup,
+  type DeviceLocalProtectionKey,
+  type DevicePrivateSignKey,
+  type DevicePublicSignKey,
+  type DeviceVaultPrivateKey,
+  type DeviceVaultPublicKey,
+  type LocalKeysPayload,
+  type LocalVaultDescriptor,
+  type LocalVaultTrustCheckpoint,
+  type RandomBytes,
 } from "@lfspm/core";
 import { bestEffortWipeArrayBuffers } from "@lfspm/core/lib";
 import {
@@ -101,11 +102,11 @@ function decodeAccessCommon(value: unknown, recovery: boolean) {
       : decodeCanonicalBytes<RandomBytes>(record.localKeysProtectionSalt, 32),
     devicePublicSignKey: decodeCanonicalBytes<DevicePublicSignKey>(
       record.devicePublicSignKey,
-      32,
+      CURRENT_ALGORITHM_SUITE.signing.publicKeyLengthBytes,
     ),
     devicePublicVaultKey: decodeCanonicalBytes<DeviceVaultPublicKey>(
       record.devicePublicVaultKey,
-      65,
+      CURRENT_ALGORITHM_SUITE.vaultKeyWrapping.publicKeyLengthBytes,
     ),
     protectedLocalKeys: decodeWrapped<LocalKeysPayload>(
       record.protectedLocalKeys,
@@ -248,9 +249,11 @@ export function decodeLocalKeysPayload(value: unknown): LocalKeysPayload {
     ]);
     devicePrivateSignKey = decodeCanonicalBytes<DevicePrivateSignKey>(
       record.devicePrivateSignKey,
+      CURRENT_ALGORITHM_SUITE.signing.privateKeyLengthBytes,
     );
     devicePrivateVaultKey = decodeCanonicalBytes<DeviceVaultPrivateKey>(
       record.devicePrivateVaultKey,
+      CURRENT_ALGORITHM_SUITE.vaultKeyWrapping.privateKeyLengthBytes,
     );
     deviceLocalProtectionKey = decodeCanonicalBytes<DeviceLocalProtectionKey>(
       record.deviceLocalProtectionKey,

@@ -93,10 +93,5 @@ export function decodeDeviceSyncCredentialState(
 export function encodeDeviceSyncCredentialState(
   value: DeviceSyncCredentialState,
 ): unknown {
-  return {
-    currentCredentials: value.currentCredentials,
-    ...(value.previousCredentials === undefined
-      ? {}
-      : { previousCredentials: value.previousCredentials }),
-  };
+  return decodeDeviceSyncCredentialState(value);
 }

@@ -3,6 +3,7 @@ import type {
   ClockPort,
   IdPort,
   ScheduledTaskPort,
+  VaultLockTaskRepositoryPort,
 } from "@lfspm/core";
 import { ClearClipboardTaskUseCase, LockVaultUseCase } from "@lfspm/core";
 import {
@@ -28,6 +29,7 @@ import {
 } from "../../adapters/system";
 
 export const CLIPBOARD_CLEAR_RETRY_DELAY_MS = 60_000;
+export const VAULT_LOCK_RETRY_DELAY_MS = 60_000;
 
 type ClearClipboardTaskExecutor = Pick<ClearClipboardTaskUseCase, "execute">;
 type LockVaultTaskExecutor = Pick<LockVaultUseCase, "execute">;
@@ -120,6 +122,9 @@ export function createClipboardAlarmHandler(
 
 export function createVaultLockAlarmHandler(
   lockVault: LockVaultTaskExecutor,
+  vaultLockTasks: Pick<VaultLockTaskRepositoryPort, "get">,
+  scheduledTasks: ScheduledTaskPort,
+  clock: ClockPort,
 ): ClipboardAlarmHandler {
   return async (alarm) => {
     const task = parseScheduledTask(alarm.name);
@@ -128,7 +133,55 @@ export function createVaultLockAlarmHandler(
       return;
     }
 
-    await lockVault.execute({ actionId: task.actionId });
+    const retry = {
+      task,
+      runAt: clock.now() + VAULT_LOCK_RETRY_DELAY_MS,
+    };
+    let activeTask: Awaited<ReturnType<VaultLockTaskRepositoryPort["get"]>>;
+
+    try {
+      activeTask = await vaultLockTasks.get();
+    } catch (error) {
+      try {
+        await scheduledTasks.scheduleTask(retry);
+      } catch {
+        // Preserve the ownership-read failure that prevented authentication.
+      }
+
+      throw error;
+    }
+
+    if (activeTask === null || activeTask.actionId !== task.actionId) {
+      return;
+    }
+
+    let retryScheduleError: unknown;
+    let retryScheduled = false;
+
+    try {
+      await scheduledTasks.scheduleTask(retry);
+      retryScheduled = true;
+    } catch (error) {
+      retryScheduleError = error;
+    }
+
+    try {
+      await lockVault.execute({ actionId: task.actionId });
+    } catch (error) {
+      if (!retryScheduled) {
+        try {
+          await scheduledTasks.scheduleTask(retry);
+        } catch {
+          // Preserve the first alarm scheduling or vault cleanup failure.
+        }
+      }
+
+      throw retryScheduleError ?? error;
+    }
+
+    if (retryScheduled) {
+      await scheduledTasks.cancelTask(task);
+    }
   };
 }
 
@@ -196,6 +249,9 @@ export function composeScheduledTaskAlarmHandler(): ClipboardAlarmHandler {
   );
   const lockVaultAlarm = createVaultLockAlarmHandler(
     new LockVaultUseCase(lifecycleCleanup),
+    vaultLockTasks,
+    scheduledTasks,
+    clock,
   );
 
   return async (alarm) => {

@@ -1,14 +1,15 @@
-import type {
-  DeviceEnrollmentPrivateState,
-  DeviceEnrollmentRequest,
-  DeviceEnrollmentResponse,
-  DeviceLocalProtectionKey,
-  DevicePrivateSignKey,
-  DevicePublicSignKey,
-  DeviceVaultPrivateKey,
-  DeviceVaultPublicKey,
-  PendingDeviceEnrollment,
-  RandomBytes,
+import {
+  CURRENT_ALGORITHM_SUITE,
+  type DeviceEnrollmentPrivateState,
+  type DeviceEnrollmentRequest,
+  type DeviceEnrollmentResponse,
+  type DeviceLocalProtectionKey,
+  type DevicePrivateSignKey,
+  type DevicePublicSignKey,
+  type DeviceVaultPrivateKey,
+  type DeviceVaultPublicKey,
+  type PendingDeviceEnrollment,
+  type RandomBytes,
 } from "@lfspm/core";
 import { bestEffortWipeArrayBuffers } from "@lfspm/core/lib";
 import {
@@ -75,11 +76,11 @@ function decodeEnrollmentRequestInner(value: unknown): DeviceEnrollmentRequest {
       algorithmSuiteId: nonBlankString(payload.algorithmSuiteId),
       publicSignKey: decodeCanonicalBytes<DevicePublicSignKey>(
         payload.publicSignKey,
-        32,
+        CURRENT_ALGORITHM_SUITE.signing.publicKeyLengthBytes,
       ),
       publicVaultKey: decodeCanonicalBytes<DeviceVaultPublicKey>(
         payload.publicVaultKey,
-        65,
+        CURRENT_ALGORITHM_SUITE.vaultKeyWrapping.publicKeyLengthBytes,
       ),
     },
     signature: decodeSignature(record.signature),
@@ -216,9 +217,11 @@ export function decodeDeviceEnrollmentPrivateState(
     const request = decodeEnrollmentRequestInner(record.request);
     devicePrivateSignKey = decodeCanonicalBytes<DevicePrivateSignKey>(
       record.devicePrivateSignKey,
+      CURRENT_ALGORITHM_SUITE.signing.privateKeyLengthBytes,
     );
     devicePrivateVaultKey = decodeCanonicalBytes<DeviceVaultPrivateKey>(
       record.devicePrivateVaultKey,
+      CURRENT_ALGORITHM_SUITE.vaultKeyWrapping.privateKeyLengthBytes,
     );
     deviceLocalProtectionKey = decodeCanonicalBytes<DeviceLocalProtectionKey>(
       record.deviceLocalProtectionKey,

@@ -56,7 +56,7 @@ export class CompleteProviderCredentialRevocationUseCase {
   ): Promise<{
     readonly providerCredentialRevocation:
       | "complete"
-      | "pending_external_disable";
+      | "pending_external_deletion";
   }> {
     const { sessionId, sourceSnapshotVersionVector, unlockedVault } =
       await this.unlockedVaultSession.requireUnlockedVaultContext(
@@ -99,7 +99,9 @@ export class CompleteProviderCredentialRevocationUseCase {
     if (state.previousCredentials === undefined) {
       return {
         providerCredentialRevocation:
-          sharedPending === undefined ? "complete" : "pending_external_disable",
+          sharedPending === undefined
+            ? "complete"
+            : "pending_external_deletion",
       };
     }
 
@@ -169,7 +171,9 @@ export class CompleteProviderCredentialRevocationUseCase {
 
       return {
         providerCredentialRevocation:
-          sharedPending === undefined ? "complete" : "pending_external_disable",
+          sharedPending === undefined
+            ? "complete"
+            : "pending_external_deletion",
       };
     }
 

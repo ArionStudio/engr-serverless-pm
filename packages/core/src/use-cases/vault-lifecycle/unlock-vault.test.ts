@@ -13,26 +13,33 @@ import { ChangeMasterPasswordUseCase } from "./change-master-password";
 
 async function expectUnlockOwnedBuffersWiped(
   ctx: ReturnType<typeof createUnlockVaultTestContext>,
+  stage: "localProtection" | "localKeys" | "vaultKey" = "vaultKey",
 ): Promise<void> {
   const localRootKey = await vi.mocked(ctx.ports.crypto.deriveLocalRootKey).mock
     .results[0]!.value;
   const localKeysProtectionKey = await vi.mocked(
     ctx.ports.crypto.deriveLocalKeysProtectionKey,
   ).mock.results[0]!.value;
-  const localKeys = await vi.mocked(ctx.ports.crypto.unwrapLocalKeysPayload)
-    .mock.results[0]!.value;
-  const vaultMasterKey = await vi.mocked(
-    ctx.ports.crypto.openDeviceVaultKeyEnvelope,
-  ).mock.results[0]!.value;
+  const buffers = [localRootKey, localKeysProtectionKey];
 
-  for (const buffer of [
-    localRootKey,
-    localKeysProtectionKey,
-    localKeys.devicePrivateSignKey,
-    localKeys.devicePrivateVaultKey,
-    localKeys.deviceLocalProtectionKey,
-    vaultMasterKey,
-  ]) {
+  if (stage !== "localProtection") {
+    const localKeys = await vi.mocked(ctx.ports.crypto.unwrapLocalKeysPayload)
+      .mock.results[0]!.value;
+    buffers.push(
+      localKeys.devicePrivateSignKey,
+      localKeys.devicePrivateVaultKey,
+      localKeys.deviceLocalProtectionKey,
+    );
+  }
+
+  if (stage === "vaultKey") {
+    const vaultMasterKey = await vi.mocked(
+      ctx.ports.crypto.openDeviceVaultKeyEnvelope,
+    ).mock.results[0]!.value;
+    buffers.push(vaultMasterKey);
+  }
+
+  for (const buffer of buffers) {
     expect(Array.from(new Uint8Array(buffer))).toEqual([0]);
   }
 }
@@ -173,7 +180,9 @@ describe("UnlockVaultUseCase", () => {
 
     expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
     expect(ctx.ports.vaultLockTasks.save).not.toHaveBeenCalled();
+    expect(ctx.ports.scheduledTasks.scheduleTask).not.toHaveBeenCalled();
     expect(ctx.saved.unlockedVaultSession).toBeUndefined();
+    await expectUnlockOwnedBuffersWiped(ctx, "localKeys");
   });
 
   it("stops before key checks, decryption, or activation when authenticated local keys are malformed", async () => {
@@ -198,6 +207,7 @@ describe("UnlockVaultUseCase", () => {
     expect(ctx.ports.vaultLockTasks.save).not.toHaveBeenCalled();
     expect(ctx.ports.scheduledTasks.scheduleTask).not.toHaveBeenCalled();
     expect(ctx.saved.unlockedVaultSession).toBeUndefined();
+    await expectUnlockOwnedBuffersWiped(ctx, "localProtection");
   });
 
   it("stops before activation when authenticated vault plaintext is malformed", async () => {
@@ -222,6 +232,7 @@ describe("UnlockVaultUseCase", () => {
         .saveUnlockedVaultSessionMaterial,
     ).not.toHaveBeenCalled();
     expect(ctx.saved.unlockedVaultSession).toBeUndefined();
+    await expectUnlockOwnedBuffersWiped(ctx);
   });
 
   it("rejects device access material for another vault before reading the snapshot", async () => {

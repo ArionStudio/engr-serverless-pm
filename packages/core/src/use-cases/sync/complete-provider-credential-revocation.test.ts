@@ -246,7 +246,7 @@ describe("CompleteProviderCredentialRevocationUseCase", () => {
     await expect(
       ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
     ).resolves.toEqual({
-      providerCredentialRevocation: "pending_external_disable",
+      providerCredentialRevocation: "pending_external_deletion",
     });
 
     expect(ctx.ports.syncProvider.checkVaultAccess).not.toHaveBeenCalled();
@@ -269,7 +269,7 @@ describe("CompleteProviderCredentialRevocationUseCase", () => {
     await expect(
       ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
     ).resolves.toEqual({
-      providerCredentialRevocation: "pending_external_disable",
+      providerCredentialRevocation: "pending_external_deletion",
     });
 
     expect(ctx.saved.deviceSyncCredentialState).toBe(

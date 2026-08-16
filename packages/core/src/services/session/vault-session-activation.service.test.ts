@@ -103,6 +103,16 @@ describe("VaultSessionActivationService", () => {
         activeLockTask = task;
       }),
       get: vi.fn(async () => activeLockTask),
+      runIfActionIsActive: async (actionId, operation) => {
+        if (activeLockTask?.actionId !== actionId) {
+          return { status: "stale_action" };
+        }
+
+        return {
+          status: "executed",
+          result: await operation(activeLockTask),
+        };
+      },
       removeIfActionIsActive: vi.fn(async (actionId) => {
         if (activeLockTask?.actionId !== actionId) {
           return false;
@@ -205,6 +215,16 @@ describe("VaultSessionActivationService", () => {
         activeLockTask = task;
       }),
       get: vi.fn(async () => activeLockTask),
+      runIfActionIsActive: async (actionId, operation) => {
+        if (activeLockTask?.actionId !== actionId) {
+          return { status: "stale_action" };
+        }
+
+        return {
+          status: "executed",
+          result: await operation(activeLockTask),
+        };
+      },
       removeIfActionIsActive: vi.fn(async (actionId) => {
         if (activeLockTask?.actionId !== actionId) {
           return false;
@@ -317,6 +337,16 @@ describe("VaultSessionActivationService", () => {
         activeLockTask = task;
       }),
       get: vi.fn(async () => activeLockTask),
+      runIfActionIsActive: async (actionId, operation) => {
+        if (activeLockTask?.actionId !== actionId) {
+          return { status: "stale_action" };
+        }
+
+        return {
+          status: "executed",
+          result: await operation(activeLockTask),
+        };
+      },
       removeIfActionIsActive: vi.fn(async (actionId) => {
         if (activeLockTask?.actionId !== actionId) {
           return false;
@@ -383,6 +413,16 @@ describe("VaultSessionActivationService", () => {
         activeLockTask = task;
       }),
       get: vi.fn(async () => activeLockTask),
+      runIfActionIsActive: async (actionId, operation) => {
+        if (activeLockTask?.actionId !== actionId) {
+          return { status: "stale_action" };
+        }
+
+        return {
+          status: "executed",
+          result: await operation(activeLockTask),
+        };
+      },
       removeIfActionIsActive: vi.fn(async (actionId) => {
         if (activeLockTask?.actionId !== actionId) {
           return false;

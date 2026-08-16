@@ -1,7 +1,10 @@
 import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard/clipboard-clear-task-repository.port";
 import type { ClipboardOperationCoordinatorPort } from "../../ports/clipboard/clipboard-operation-coordinator.port";
 import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
-import type { VaultLockTaskRepositoryPort } from "../../ports/vault/vault-lock-task-repository.port";
+import type {
+  VaultLockTask,
+  VaultLockTaskRepositoryPort,
+} from "../../ports/vault/vault-lock-task-repository.port";
 import type { ClipboardClearService } from "../clipboard/clipboard-clear.service";
 import type { UnlockedVaultSessionService } from "./unlocked-vault-session.service";
 import type { VersionVector } from "../../domain/versioning/version-vector.type";
@@ -19,6 +22,20 @@ type SessionDiscardResult =
   | "session_replaced"
   | "session_unavailable"
   | "rollback_failed";
+
+type PreparedCleanup = {
+  readonly result: "cleaned" | "session_unavailable" | "stale_action";
+  readonly lockActionId?: string;
+  readonly error?: unknown;
+};
+
+type LockTaskSource =
+  | { readonly kind: "load" }
+  | {
+      readonly kind: "authenticated";
+      readonly task: VaultLockTask;
+      readonly initialError?: unknown;
+    };
 
 export class VaultLifecycleCleanupService {
   private readonly clipboardClear: ClipboardClearService;
@@ -56,35 +73,145 @@ export class VaultLifecycleCleanupService {
     params: VaultLifecycleCleanupParams,
     coordinationLease: ClipboardOperationLease,
   ): Promise<"cleaned" | "session_unavailable" | "stale_action"> {
+    if (params.actionId === undefined) {
+      const prepared = await this.prepareCleanup(params, coordinationLease, {
+        kind: "load",
+      });
+      return this.finalizePreparedCleanup(prepared);
+    }
+
+    let initialTaskReadError: unknown;
+
+    try {
+      const initialTask = await this.vaultLockTasks.get();
+      if (initialTask === null || initialTask.actionId !== params.actionId) {
+        return "stale_action";
+      }
+    } catch (error) {
+      initialTaskReadError = error;
+    }
+
+    let claimed:
+      | { readonly status: "executed"; readonly result: PreparedCleanup }
+      | { readonly status: "stale_action" };
+
+    try {
+      claimed = await this.vaultLockTasks.runIfActionIsActive(
+        params.actionId,
+        (task) =>
+          this.prepareCleanup(params, coordinationLease, {
+            kind: "authenticated",
+            task,
+            ...(initialTaskReadError === undefined
+              ? {}
+              : { initialError: initialTaskReadError }),
+          }),
+      );
+    } catch (error) {
+      throw initialTaskReadError ?? error;
+    }
+
+    if (claimed.status === "stale_action") {
+      return "stale_action";
+    }
+
+    return this.finalizePreparedCleanup(claimed.result);
+  }
+
+  private async prepareCleanup(
+    params: VaultLifecycleCleanupParams,
+    coordinationLease: ClipboardOperationLease,
+    lockTaskSource: LockTaskSource,
+  ): Promise<PreparedCleanup> {
     let staleAction = false;
     let staleActionError: unknown;
-    const result = await this.unlockedVaultSession.cleanupActiveSession(
-      params.requiredVaultId,
-      params.actionId === undefined,
-      async (activeSession) => {
-        const taskCleanup = await this.cleanupTasks(
-          params.actionId,
-          activeSession?.vaultId ?? params.requiredVaultId,
-        );
-        if (taskCleanup.status === "stale_action") {
-          staleAction = true;
-          staleActionError = taskCleanup.error;
-        }
-        return !staleAction;
-      },
-      params.afterSessionRemoval,
-      coordinationLease,
-    );
+    let taskCleanupError: unknown;
+    let lockActionId: string | undefined;
+    let sessionRecordsRemoved = false;
+    let result: "removed" | "session_unavailable" | "stale_action";
+
+    try {
+      result = await this.unlockedVaultSession.cleanupActiveSession(
+        params.requiredVaultId,
+        params.actionId === undefined,
+        async (activeSession) => {
+          const taskCleanup = await this.cleanupTasks(
+            activeSession?.vaultId ?? params.requiredVaultId,
+            lockTaskSource,
+          );
+          if (taskCleanup.status === "stale_action") {
+            staleAction = true;
+            staleActionError = taskCleanup.error;
+          } else {
+            lockActionId = taskCleanup.lockActionId;
+            taskCleanupError = taskCleanup.error;
+          }
+          return !staleAction;
+        },
+        async () => {
+          sessionRecordsRemoved = true;
+          if (taskCleanupError === undefined) {
+            await params.afterSessionRemoval?.();
+          }
+        },
+        coordinationLease,
+        {
+          removeRecordsWhenUnavailableAfterAuthorization:
+            lockTaskSource.kind === "authenticated",
+        },
+      );
+    } catch (error) {
+      if (sessionRecordsRemoved) {
+        return {
+          result: "cleaned",
+          ...(lockActionId === undefined ? {} : { lockActionId }),
+          error: taskCleanupError ?? error,
+        };
+      }
+
+      throw taskCleanupError ?? error;
+    }
 
     if (staleActionError !== undefined) {
       throw staleActionError;
     }
 
-    if (staleAction || result === "stale_action") {
-      return "stale_action";
+    return {
+      result:
+        staleAction || result === "stale_action"
+          ? "stale_action"
+          : result === "session_unavailable"
+            ? result
+            : "cleaned",
+      ...(lockActionId === undefined ? {} : { lockActionId }),
+      ...(taskCleanupError === undefined ? {} : { error: taskCleanupError }),
+    };
+  }
+
+  private async finalizePreparedCleanup(
+    prepared: PreparedCleanup,
+  ): Promise<"cleaned" | "session_unavailable" | "stale_action"> {
+    if (prepared.result === "stale_action") {
+      return prepared.result;
     }
 
-    return result === "session_unavailable" ? result : "cleaned";
+    let finalizationError: unknown;
+
+    try {
+      await this.finalizeLockTask(prepared.lockActionId);
+    } catch (error) {
+      finalizationError = error;
+    }
+
+    if (prepared.error !== undefined) {
+      throw prepared.error;
+    }
+
+    if (finalizationError !== undefined) {
+      throw finalizationError;
+    }
+
+    return prepared.result;
   }
 
   async discardIfSessionIsActive(
@@ -130,7 +257,26 @@ export class VaultLifecycleCleanupService {
       params.generation,
       params.sourceSnapshotVersionVector,
       async () => {
-        await this.cleanupTasks(undefined, params.vaultId);
+        const taskCleanup = await this.cleanupTasks(params.vaultId, {
+          kind: "load",
+        });
+        let finalizationError: unknown;
+
+        if (taskCleanup.status === "cleaned") {
+          try {
+            await this.finalizeLockTask(taskCleanup.lockActionId);
+          } catch (error) {
+            finalizationError = error;
+          }
+
+          if (taskCleanup.error !== undefined) {
+            throw taskCleanup.error;
+          }
+        }
+
+        if (finalizationError !== undefined) {
+          throw finalizationError;
+        }
       },
       discard,
       coordinationLease,
@@ -138,52 +284,37 @@ export class VaultLifecycleCleanupService {
   }
 
   private async cleanupTasks(
-    actionId: string | undefined,
     expectedVaultId: string | undefined,
+    lockTaskSource: LockTaskSource,
   ): Promise<
-    | { readonly status: "cleaned" }
+    | {
+        readonly status: "cleaned";
+        readonly lockActionId?: string;
+        readonly error?: unknown;
+      }
     | { readonly status: "stale_action"; readonly error?: unknown }
   > {
-    let firstError: unknown;
+    let firstError =
+      lockTaskSource.kind === "authenticated"
+        ? lockTaskSource.initialError
+        : undefined;
     let vaultLockTask: Awaited<ReturnType<VaultLockTaskRepositoryPort["get"]>>;
-    let lockMetadataRemoved = false;
-    let scheduledActionAuthenticationFailed = false;
 
-    try {
-      vaultLockTask = await this.vaultLockTasks.get();
-    } catch (error) {
-      firstError ??= error;
-      vaultLockTask = null;
-
-      if (actionId !== undefined) {
-        try {
-          lockMetadataRemoved =
-            await this.vaultLockTasks.removeIfActionIsActive(actionId);
-        } catch {
-          scheduledActionAuthenticationFailed = true;
-        }
-
-        if (!lockMetadataRemoved && !scheduledActionAuthenticationFailed) {
-          return { status: "stale_action" };
-        }
+    if (lockTaskSource.kind === "authenticated") {
+      vaultLockTask = lockTaskSource.task;
+    } else {
+      try {
+        vaultLockTask = await this.vaultLockTasks.get();
+      } catch (error) {
+        firstError = error;
+        vaultLockTask = null;
       }
     }
 
     if (
-      actionId !== undefined &&
-      vaultLockTask !== null &&
-      (vaultLockTask.actionId !== actionId ||
-        (expectedVaultId !== undefined &&
-          vaultLockTask.vaultId !== expectedVaultId))
-    ) {
-      return { status: "stale_action" };
-    }
-
-    if (
-      actionId !== undefined &&
-      vaultLockTask === null &&
-      !lockMetadataRemoved &&
-      !scheduledActionAuthenticationFailed
+      lockTaskSource.kind === "authenticated" &&
+      expectedVaultId !== undefined &&
+      lockTaskSource.task.vaultId !== expectedVaultId
     ) {
       return { status: "stale_action" };
     }
@@ -223,65 +354,24 @@ export class VaultLifecycleCleanupService {
       }
     }
 
-    const lockActionId = vaultLockTask?.actionId ?? actionId;
+    return {
+      status: "cleaned",
+      ...(vaultLockTask === null
+        ? {}
+        : { lockActionId: vaultLockTask.actionId }),
+      ...(firstError === undefined ? {} : { error: firstError }),
+    };
+  }
 
-    if (lockActionId !== undefined) {
-      try {
-        await this.scheduledTasks.cancelTask({
-          name: "lockVault",
-          actionId: lockActionId,
-        });
-      } catch (error) {
-        firstError ??= error;
-      }
+  private async finalizeLockTask(actionId: string | undefined): Promise<void> {
+    if (actionId === undefined) {
+      return;
     }
 
-    if (actionId !== undefined && lockMetadataRemoved) {
-      try {
-        if ((await this.vaultLockTasks.get()) !== null) {
-          return {
-            status: "stale_action",
-            ...(firstError === undefined ? {} : { error: firstError }),
-          };
-        }
-      } catch (error) {
-        firstError ??= error;
-        scheduledActionAuthenticationFailed = true;
-      }
-    }
-
-    if (vaultLockTask !== null && !lockMetadataRemoved) {
-      try {
-        const removed = await this.vaultLockTasks.removeIfActionIsActive(
-          vaultLockTask.actionId,
-        );
-
-        if (actionId !== undefined && !removed) {
-          return {
-            status: "stale_action",
-            ...(firstError === undefined ? {} : { error: firstError }),
-          };
-        }
-      } catch (error) {
-        firstError ??= error;
-
-        if (actionId !== undefined) {
-          scheduledActionAuthenticationFailed = true;
-        }
-      }
-    }
-
-    if (scheduledActionAuthenticationFailed) {
-      return {
-        status: "stale_action",
-        ...(firstError === undefined ? {} : { error: firstError }),
-      };
-    }
-
-    if (firstError !== undefined) {
-      throw firstError;
-    }
-
-    return { status: "cleaned" };
+    await this.vaultLockTasks.removeIfActionIsActive(actionId);
+    await this.scheduledTasks.cancelTask({
+      name: "lockVault",
+      actionId,
+    });
   }
 }

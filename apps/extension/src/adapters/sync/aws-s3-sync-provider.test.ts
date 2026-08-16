@@ -691,6 +691,19 @@ describe("AwsS3SyncProvider", () => {
     );
   });
 
+  it("rejects a matching upload record without an ETag before writing", async () => {
+    const client = createClient();
+    vi.mocked(client.getObject).mockResolvedValueOnce(
+      remoteResponse(descriptor),
+    );
+    const provider = createTestProvider(client);
+
+    await expect(
+      provider.uploadVaultSnapshot(syncAccess, snapshot, descriptor),
+    ).rejects.toBeInstanceOf(codec.InvalidRemoteVaultSnapshotRecordError);
+    expect(client.putObject).not.toHaveBeenCalled();
+  });
+
   it("maps conditional put conflicts to the core conflict error", async () => {
     const client = createClient();
     vi.mocked(client.getObject).mockResolvedValueOnce(
@@ -732,6 +745,19 @@ describe("AwsS3SyncProvider", () => {
     });
   });
 
+  it("rejects a matching removal record without an ETag before deleting", async () => {
+    const client = createClient();
+    vi.mocked(client.getObject).mockResolvedValueOnce(
+      remoteResponse(descriptor),
+    );
+    const provider = createTestProvider(client);
+
+    await expect(
+      provider.removeVaultSnapshots(syncAccess, descriptor.vaultId, descriptor),
+    ).rejects.toBeInstanceOf(codec.InvalidRemoteVaultSnapshotRecordError);
+    expect(client.deleteObject).not.toHaveBeenCalled();
+  });
+
   it("does not delete state when the expected descriptor is absent", async () => {
     const client = createClient();
     vi.mocked(client.getObject).mockResolvedValueOnce(
@@ -758,17 +784,31 @@ describe("AwsS3SyncProvider", () => {
     expect(client.deleteObject).not.toHaveBeenCalled();
   });
 
-  it("maps only definitive authentication failures", async () => {
+  it("maps only definitive credential rejection and propagates ambiguous authorization failures", async () => {
     const client = createClient();
+    const accessibleBody = responseBody("{").Body;
+    const bareUnauthorized = awsError("UnknownProviderFailure", 401);
+    const bareForbidden = awsError("UnknownProviderFailure", 403);
+    const accessDenied = awsError("AccessDenied", 403);
+    const signatureMismatch = awsError("SignatureDoesNotMatch", 403);
     const networkError = new Error("network unavailable");
     const rateLimitError = awsError("SlowDown", 429);
-    vi.mocked(client.headObject)
+    vi.mocked(client.getObject)
+      .mockResolvedValueOnce({ Body: accessibleBody })
       .mockRejectedValueOnce(awsError("InvalidAccessKeyId", 403))
       .mockRejectedValueOnce(awsError("NoSuchKey", 404))
+      .mockRejectedValueOnce(bareUnauthorized)
+      .mockRejectedValueOnce(bareForbidden)
+      .mockRejectedValueOnce(accessDenied)
+      .mockRejectedValueOnce(signatureMismatch)
       .mockRejectedValueOnce(networkError)
       .mockRejectedValueOnce(rateLimitError);
     const provider = createTestProvider(client);
 
+    await expect(
+      provider.checkVaultAccess(syncAccess, descriptor.vaultId),
+    ).resolves.toBe("accessible");
+    expect(accessibleBody?.transformToString).toHaveBeenCalledOnce();
     await expect(
       provider.checkVaultAccess(syncAccess, descriptor.vaultId),
     ).resolves.toBe("authentication_rejected");
@@ -777,17 +817,33 @@ describe("AwsS3SyncProvider", () => {
     ).resolves.toBe("accessible");
     await expect(
       provider.checkVaultAccess(syncAccess, descriptor.vaultId),
+    ).rejects.toBe(bareUnauthorized);
+    await expect(
+      provider.checkVaultAccess(syncAccess, descriptor.vaultId),
+    ).rejects.toBe(bareForbidden);
+    await expect(
+      provider.checkVaultAccess(syncAccess, descriptor.vaultId),
+    ).rejects.toBe(accessDenied);
+    await expect(
+      provider.checkVaultAccess(syncAccess, descriptor.vaultId),
+    ).rejects.toBe(signatureMismatch);
+    await expect(
+      provider.checkVaultAccess(syncAccess, descriptor.vaultId),
     ).rejects.toBe(networkError);
     await expect(
       provider.checkVaultAccess(syncAccess, descriptor.vaultId),
     ).rejects.toBe(rateLimitError);
+    expect(client.getObject).toHaveBeenNthCalledWith(1, {
+      Bucket: "bucket-name",
+      Key: "vaults/vault.enc",
+      Range: "bytes=0-0",
+    });
   });
 });
 
 function createClient(): S3SyncClient {
   return {
     getObject: vi.fn(),
-    headObject: vi.fn(),
     putObject: vi.fn(),
     deleteObject: vi.fn(),
   };
@@ -843,7 +899,6 @@ function expectStaticProviderError(
 
 function expectClientNotCalled(client: S3SyncClient): void {
   expect(client.getObject).not.toHaveBeenCalled();
-  expect(client.headObject).not.toHaveBeenCalled();
   expect(client.putObject).not.toHaveBeenCalled();
   expect(client.deleteObject).not.toHaveBeenCalled();
 }

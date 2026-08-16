@@ -27,6 +27,7 @@ export class ChromeClipboardClearTaskRepository implements ClipboardClearTaskRep
       storageArea.setAccessLevel?.({
         accessLevel: CLIPBOARD_CLEAR_TASK_STORAGE_ACCESS_LEVEL,
       }) ?? Promise.resolve();
+    void this.accessRestriction.catch(() => undefined);
   }
 
   async save(task: ClipboardClearTask): Promise<void> {

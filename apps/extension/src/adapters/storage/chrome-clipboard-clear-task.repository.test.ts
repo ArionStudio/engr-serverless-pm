@@ -14,6 +14,20 @@ const clipboardClearTask = {
 };
 
 describe("ChromeClipboardClearTaskRepository", () => {
+  it("observes access restriction rejection immediately and preserves it for callers", async () => {
+    const accessError = new Error("access restriction unavailable");
+    const { getRecords, storageArea } = createChromeStorageArea();
+    vi.mocked(storageArea.setAccessLevel!).mockRejectedValueOnce(accessError);
+    const setStoredRecords = vi.spyOn(storageArea, "set");
+    const repository = new ChromeClipboardClearTaskRepository(storageArea);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    await expect(repository.save(clipboardClearTask)).rejects.toBe(accessError);
+    expect(setStoredRecords).not.toHaveBeenCalled();
+    expect(getRecords()).toEqual({});
+  });
+
   it("stores only volatile trusted-context ownership metadata", async () => {
     const { getRecords, storageArea } = createChromeStorageArea();
     const repository = new ChromeClipboardClearTaskRepository(storageArea);

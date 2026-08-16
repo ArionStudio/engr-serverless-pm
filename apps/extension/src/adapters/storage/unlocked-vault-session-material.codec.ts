@@ -23,8 +23,6 @@ import {
   safeInteger,
 } from "../codecs/artifact-codec.primitives";
 
-const ED25519_PUBLIC_KEY_LENGTH_BYTES = 32;
-const P256_UNCOMPRESSED_PUBLIC_KEY_LENGTH_BYTES = 65;
 const SYMMETRIC_KEY_LENGTH_BYTES =
   CURRENT_ALGORITHM_SUITE.vaultMasterKeyGeneration.keyLengthBits / 8;
 
@@ -212,12 +210,12 @@ function decodeStoredMaterial(
   >(material.vaultMasterKey, SYMMETRIC_KEY_LENGTH_BYTES, decodedSecrets);
   const devicePrivateSignKey = decodeSecret<DevicePrivateSignKey>(
     material.devicePrivateSignKey,
-    undefined,
+    CURRENT_ALGORITHM_SUITE.signing.privateKeyLengthBytes,
     decodedSecrets,
   );
   const devicePrivateVaultKey = decodeSecret<DeviceVaultPrivateKey>(
     material.devicePrivateVaultKey,
-    undefined,
+    CURRENT_ALGORITHM_SUITE.vaultKeyWrapping.privateKeyLengthBytes,
     decodedSecrets,
   );
   const deviceLocalProtectionKey = decodeSecret<DeviceLocalProtectionKey>(
@@ -287,11 +285,11 @@ function decodeTrustedSnapshotContext(
       deviceId: nonBlankString(device.deviceId),
       publicSignKey: decodeCanonicalBytes<DevicePublicSignKey>(
         device.publicSignKey,
-        ED25519_PUBLIC_KEY_LENGTH_BYTES,
+        CURRENT_ALGORITHM_SUITE.signing.publicKeyLengthBytes,
       ),
       publicVaultKey: decodeCanonicalBytes<DeviceVaultPublicKey>(
         device.publicVaultKey,
-        P256_UNCOMPRESSED_PUBLIC_KEY_LENGTH_BYTES,
+        CURRENT_ALGORITHM_SUITE.vaultKeyWrapping.publicKeyLengthBytes,
       ),
     };
   });
@@ -322,7 +320,7 @@ function decodeVaultTrustAnchor(
     genesisDeviceId: nonBlankString(anchor.genesisDeviceId),
     genesisPublicSignKey: decodeCanonicalBytes<DevicePublicSignKey>(
       anchor.genesisPublicSignKey,
-      ED25519_PUBLIC_KEY_LENGTH_BYTES,
+      CURRENT_ALGORITHM_SUITE.signing.publicKeyLengthBytes,
     ),
     genesisCertificateDigest: canonicalDigest(anchor.genesisCertificateDigest),
   };

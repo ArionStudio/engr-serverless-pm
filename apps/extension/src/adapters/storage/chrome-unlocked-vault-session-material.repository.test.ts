@@ -547,6 +547,24 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
       { ...stored, vaultMasterKey: encodeBuffer(filledBuffer(1, 31)) },
       {
         ...stored,
+        devicePrivateSignKey: encodeBuffer(
+          filledBuffer(
+            1,
+            CURRENT_ALGORITHM_SUITE.signing.privateKeyLengthBytes - 1,
+          ),
+        ),
+      },
+      {
+        ...stored,
+        devicePrivateVaultKey: encodeBuffer(
+          filledBuffer(
+            1,
+            CURRENT_ALGORITHM_SUITE.vaultKeyWrapping.privateKeyLengthBytes + 1,
+          ),
+        ),
+      },
+      {
+        ...stored,
         deviceLocalProtectionKey: encodeBuffer(filledBuffer(1, 31)),
       },
       { ...stored, payloadKey: encodeBuffer(filledBuffer(1, 31)) },

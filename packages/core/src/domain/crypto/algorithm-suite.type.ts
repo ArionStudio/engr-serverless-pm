@@ -4,7 +4,9 @@ export interface AlgorithmSuite {
     readonly algorithm: "Ed25519";
     readonly canonicalization: "JCS-RFC8785";
     readonly publicKeyFormat: "raw";
+    readonly publicKeyLengthBytes: 32;
     readonly privateKeyFormat: "pkcs8";
+    readonly privateKeyLengthBytes: 48;
   };
   readonly vaultMasterKeyGeneration: {
     readonly algorithm: "AES-GCM";
@@ -17,7 +19,9 @@ export interface AlgorithmSuite {
     readonly keyDerivation: "HKDF";
     readonly hash: "SHA-256";
     readonly publicKeyFormat: "raw";
+    readonly publicKeyLengthBytes: 65;
     readonly privateKeyFormat: "pkcs8";
+    readonly privateKeyLengthBytes: 138;
     readonly publicKeyEncoding: "uncompressed";
     readonly hkdfInfoPurpose: "lfspm-vault-key-envelope-v1";
     readonly hkdfInfoContext: [

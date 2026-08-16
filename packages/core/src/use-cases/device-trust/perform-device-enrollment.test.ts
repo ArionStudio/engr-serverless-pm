@@ -179,14 +179,24 @@ function createContext(synced = false) {
 
 async function expectEnrollmentOwnedBuffersWiped(
   ctx: ReturnType<typeof createContext>,
+  stage: "pendingProtection" | "all" = "all",
 ): Promise<void> {
   const pendingRootKey = await vi.mocked(ctx.ports.crypto.deriveLocalRootKey)
     .mock.results[0]!.value;
-  const nextRootKey = await vi.mocked(ctx.ports.crypto.deriveLocalRootKey).mock
-    .results[1]!.value;
   const pendingProtectionKey = await vi.mocked(
     ctx.ports.crypto.deriveDeviceEnrollmentPrivateStateProtectionKey,
   ).mock.results[0]!.value;
+
+  if (stage === "pendingProtection") {
+    for (const buffer of [pendingRootKey, pendingProtectionKey]) {
+      expect(Array.from(new Uint8Array(buffer))).toEqual([0]);
+    }
+
+    return;
+  }
+
+  const nextRootKey = await vi.mocked(ctx.ports.crypto.deriveLocalRootKey).mock
+    .results[1]!.value;
   const localProtectionKey = await vi.mocked(
     ctx.ports.crypto.deriveLocalKeysProtectionKey,
   ).mock.results[0]!.value;
@@ -316,6 +326,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     expect(ctx.ports.vaultLockTasks.save).not.toHaveBeenCalled();
     expect(ctx.ports.scheduledTasks.scheduleTask).not.toHaveBeenCalled();
     expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
+    await expectEnrollmentOwnedBuffersWiped(ctx, "pendingProtection");
   });
 
   it("keeps request identity and private-key matching in the core semantic owner", async () => {

@@ -6,6 +6,7 @@ import {
   type VaultSnapshotDescriptor,
 } from "@lfspm/core";
 import { WebCryptoPort } from "../crypto/web-crypto.port";
+import { encodeVersionVector } from "../codecs/artifact-codec.primitives";
 import {
   InvalidLocalVaultSnapshotRecordError,
   InvalidOpenedVaultMasterKeyError,
@@ -18,6 +19,19 @@ import {
 } from "../codecs/vault-snapshot.codec";
 
 describe("vault snapshot artifact codec", () => {
+  it("encodes version-vector keys in locale-independent code-unit order", () => {
+    expect(
+      Object.keys(
+        encodeVersionVector({
+          "z-device": 1,
+          "ä-device": 2,
+          "a-device": 3,
+          "A-device": 4,
+        }),
+      ),
+    ).toEqual(["A-device", "a-device", "z-device", "ä-device"]);
+  });
+
   it.each([
     [
       InvalidLocalVaultSnapshotRecordError,

@@ -1,9 +1,10 @@
 import { canonicalize } from "json-canonicalize";
 import { describe, expect, it } from "vitest";
-import type {
-  LocalKeysPayload,
-  ProtectionKeyFor,
-  SerializedWrapped,
+import {
+  CURRENT_ALGORITHM_SUITE,
+  type LocalKeysPayload,
+  type ProtectionKeyFor,
+  type SerializedWrapped,
 } from "@lfspm/core";
 import { encodeBase64Url } from "@lfspm/core/lib";
 import { InvalidLocalKeysPayloadError } from "./index";
@@ -78,6 +79,53 @@ describe("WebCryptoPort local-keys hostile plaintext boundary", () => {
       crypto.unwrapLocalKeysPayload(wrapped, protectionKey),
     );
   });
+
+  it.each([
+    ["signing", "devicePrivateSignKey", CURRENT_ALGORITHM_SUITE.signing],
+    [
+      "vault",
+      "devicePrivateVaultKey",
+      CURRENT_ALGORITHM_SUITE.vaultKeyWrapping,
+    ],
+  ] as const)(
+    "rejects a wrong-length %s private key before returning local keys",
+    async (_label, field, suite) => {
+      const crypto = new WebCryptoPort();
+      const signing = await crypto.generateDeviceSignKeyPair();
+      const vault = await crypto.generateDeviceVaultKeyPair();
+      const protectionKey =
+        (await crypto.generateDeviceLocalProtectionKey()) as unknown as ProtectionKeyFor<LocalKeysPayload>;
+      const encodedPayload = {
+        devicePrivateSignKey: encodeBase64Url(
+          new Uint8Array(signing.privateKey),
+        ),
+        devicePrivateVaultKey: encodeBase64Url(
+          new Uint8Array(vault.privateKey),
+        ),
+        deviceLocalProtectionKey: encodeBase64Url(new Uint8Array(32).fill(5)),
+        vaultTrustAnchor: {
+          version: 1,
+          vaultId: "vault-id",
+          genesisDeviceId: "device-id",
+          genesisPublicSignKey: encodeBase64Url(
+            new Uint8Array(signing.publicKey),
+          ),
+          genesisCertificateDigest: digest(6),
+        },
+        [field]: encodeBase64Url(
+          new Uint8Array(suite.privateKeyLengthBytes - 1),
+        ),
+      };
+      const wrapped = await encryptAuthenticatedLocalKeysPayload(
+        encodedPayload,
+        protectionKey,
+      );
+
+      await expectExactLocalKeysError(
+        crypto.unwrapLocalKeysPayload(wrapped, protectionKey),
+      );
+    },
+  );
 });
 
 async function encryptAuthenticatedLocalKeysPayload(

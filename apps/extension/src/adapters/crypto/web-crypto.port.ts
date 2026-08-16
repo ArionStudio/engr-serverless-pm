@@ -77,9 +77,7 @@ const AES_KEY_LENGTH_BYTES =
   CURRENT_ALGORITHM_SUITE.vaultMasterKeyGeneration.keyLengthBits / 8;
 const AES_GCM_TAG_LENGTH_BITS = 128;
 const AES_GCM_TAG_LENGTH_BYTES = AES_GCM_TAG_LENGTH_BITS / 8;
-const ED25519_PUBLIC_KEY_LENGTH_BYTES = 32;
 const ED25519_SIGNATURE_LENGTH_BYTES = 64;
-const P256_UNCOMPRESSED_PUBLIC_KEY_LENGTH_BYTES = 65;
 const RANDOM_CHUNK_LENGTH = 65_536;
 
 type CanonicalJsonValue =
@@ -127,7 +125,7 @@ export class WebCryptoAsymmetricKeyValidator implements AsymmetricKeyValidator {
   ): Promise<CryptoKey> {
     requireBufferLength(
       publicKey,
-      ED25519_PUBLIC_KEY_LENGTH_BYTES,
+      CURRENT_ALGORITHM_SUITE.signing.publicKeyLengthBytes,
       "Device signing public key",
     );
     return this.crypto.subtle.importKey(
@@ -142,6 +140,11 @@ export class WebCryptoAsymmetricKeyValidator implements AsymmetricKeyValidator {
   async importDeviceSignPrivateKey(
     privateKey: DevicePrivateSignKey,
   ): Promise<CryptoKey> {
+    requireBufferLength(
+      privateKey,
+      CURRENT_ALGORITHM_SUITE.signing.privateKeyLengthBytes,
+      "Device signing private key",
+    );
     return this.crypto.subtle.importKey(
       CURRENT_ALGORITHM_SUITE.signing.privateKeyFormat,
       privateKey,
@@ -156,7 +159,7 @@ export class WebCryptoAsymmetricKeyValidator implements AsymmetricKeyValidator {
   ): Promise<CryptoKey> {
     requireBufferLength(
       publicKey,
-      P256_UNCOMPRESSED_PUBLIC_KEY_LENGTH_BYTES,
+      CURRENT_ALGORITHM_SUITE.vaultKeyWrapping.publicKeyLengthBytes,
       "Device vault public key",
     );
     return this.crypto.subtle.importKey(
@@ -174,6 +177,11 @@ export class WebCryptoAsymmetricKeyValidator implements AsymmetricKeyValidator {
   async importDeviceVaultPrivateKey(
     privateKey: DeviceVaultPrivateKey,
   ): Promise<CryptoKey> {
+    requireBufferLength(
+      privateKey,
+      CURRENT_ALGORITHM_SUITE.vaultKeyWrapping.privateKeyLengthBytes,
+      "Device vault private key",
+    );
     return this.crypto.subtle.importKey(
       CURRENT_ALGORITHM_SUITE.vaultKeyWrapping.privateKeyFormat,
       privateKey,
@@ -529,7 +537,7 @@ export class WebCryptoPort implements CryptoPort {
         name: CURRENT_ALGORITHM_SUITE.vaultKeyWrapping.keyAgreement,
         namedCurve: CURRENT_ALGORITHM_SUITE.vaultKeyWrapping.namedCurve,
       },
-      true,
+      false,
       ["deriveBits"],
     );
     let sharedSecret: ArrayBuffer | undefined;
@@ -555,7 +563,12 @@ export class WebCryptoPort implements CryptoPort {
         vaultMasterKey,
         wrappingKey,
         CURRENT_ALGORITHM_SUITE.vaultKeyWrapping.nonceLengthBytes,
-        canonicalBytes(context),
+        canonicalBytes(
+          projectDeclaredFields(
+            context,
+            CURRENT_ALGORITHM_SUITE.vaultKeyWrapping.authenticatedData,
+          ),
+        ),
       );
       const ephemeralPublicKey = copyBuffer(
         await this.crypto.subtle.exportKey(
@@ -619,7 +632,12 @@ export class WebCryptoPort implements CryptoPort {
           envelope.encryptedVaultMasterKey,
           wrappingKey,
           CURRENT_ALGORITHM_SUITE.vaultKeyWrapping.nonceLengthBytes,
-          canonicalBytes(context),
+          canonicalBytes(
+            projectDeclaredFields(
+              context,
+              CURRENT_ALGORITHM_SUITE.vaultKeyWrapping.authenticatedData,
+            ),
+          ),
         );
 
         try {
@@ -645,7 +663,7 @@ export class WebCryptoPort implements CryptoPort {
   ): Promise<string> {
     requireBufferLength(
       publicSignKey,
-      ED25519_PUBLIC_KEY_LENGTH_BYTES,
+      CURRENT_ALGORITHM_SUITE.signing.publicKeyLengthBytes,
       "Device signing public key",
     );
     await this.importDeviceSignPublicKey(publicSignKey);
@@ -966,7 +984,10 @@ export class WebCryptoPort implements CryptoPort {
         salt,
         info: canonicalBytes({
           purpose: CURRENT_ALGORITHM_SUITE.vaultKeyWrapping.hkdfInfoPurpose,
-          context,
+          context: projectDeclaredFields(
+            context,
+            CURRENT_ALGORITHM_SUITE.vaultKeyWrapping.hkdfInfoContext,
+          ),
         }),
       },
       material,
@@ -1214,6 +1235,15 @@ export class WebCryptoPort implements CryptoPort {
     const digest = await this.crypto.subtle.digest("SHA-256", value);
     return encodeBase64Url(new Uint8Array(digest));
   }
+}
+
+function projectDeclaredFields<
+  Context extends object,
+  Field extends Extract<keyof Context, string>,
+>(context: Context, fields: readonly Field[]): Pick<Context, Field> {
+  return Object.fromEntries(
+    fields.map((field) => [field, context[field]]),
+  ) as Pick<Context, Field>;
 }
 
 function canonicalBytes(value: unknown): Uint8Array<ArrayBuffer> {

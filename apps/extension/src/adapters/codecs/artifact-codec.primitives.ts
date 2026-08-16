@@ -108,9 +108,6 @@ export function decodeVersionVector(value: unknown): VersionVector {
     ([deviceId, counter]) =>
       [nonBlankString(deviceId), safeInteger(counter)] as const,
   );
-  if (new Set(entries.map(([deviceId]) => deviceId)).size !== entries.length) {
-    throw new Error("duplicate");
-  }
   return Object.fromEntries(entries);
 }
 
@@ -118,7 +115,9 @@ export function encodeVersionVector(
   value: VersionVector,
 ): Record<string, number> {
   return Object.fromEntries(
-    Object.entries(value).sort(([a], [b]) => a.localeCompare(b)),
+    Object.entries(value).sort(([left], [right]) =>
+      left < right ? -1 : left > right ? 1 : 0,
+    ),
   );
 }
 

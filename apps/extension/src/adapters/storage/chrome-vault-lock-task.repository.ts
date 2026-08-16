@@ -26,10 +26,12 @@ export class ChromeVaultLockTaskRepository implements VaultLockTaskRepositoryPor
     this.storageArea = storageArea;
     this.storageKey = storageKey;
     this.lockManager = lockManager;
-    this.accessRestriction =
+    const accessRestriction =
       storageArea.setAccessLevel?.({
         accessLevel: VAULT_LOCK_TASK_STORAGE_ACCESS_LEVEL,
       }) ?? Promise.resolve();
+    void accessRestriction.catch(() => undefined);
+    this.accessRestriction = accessRestriction;
   }
 
   async save(task: VaultLockTask): Promise<void> {
@@ -42,6 +44,26 @@ export class ChromeVaultLockTaskRepository implements VaultLockTaskRepositoryPor
 
   async get(): Promise<VaultLockTask | null> {
     return this.withStorageLock(() => this.readTask());
+  }
+
+  async runIfActionIsActive<T>(
+    actionId: string,
+    operation: (task: VaultLockTask) => Promise<T>,
+  ): Promise<
+    | { readonly status: "executed"; readonly result: T }
+    | { readonly status: "stale_action" }
+  > {
+    const decodedActionId = decodeActionId(actionId);
+
+    return this.withStorageLock(async () => {
+      const task = await this.readTask();
+
+      if (task === null || task.actionId !== decodedActionId) {
+        return { status: "stale_action" };
+      }
+
+      return { status: "executed", result: await operation(task) };
+    });
   }
 
   async removeIfActionIsActive(actionId: string): Promise<boolean> {

@@ -174,7 +174,7 @@ external action:
 1. Create a replacement credential in AWS.
 2. Enter it during device revocation.
 3. Upload the rotated vault.
-4. Disable or delete the old credential in AWS.
+4. Delete the old credential in AWS.
 5. Run verification in the app.
 6. Enter the replacement credential once on each survivor before its next sync.
 
@@ -186,6 +186,10 @@ Verification calls the provider with the encrypted previous credential:
   its local pending metadata matches that marker;
 - network, rate-limit, and indeterminate provider failures propagate and leave
   the workflow pending.
+
+Deletion is required for verification. AWS reports an inactive key and an
+active key denied by policy through the same ambiguous authorization failure,
+so deactivation alone deliberately leaves the workflow pending.
 
 Credential removal is idempotent. Core never reports provider revocation as
 complete while the shared marker remains. Normal sync may consume a signed

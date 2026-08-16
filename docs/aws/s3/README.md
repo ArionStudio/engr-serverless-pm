@@ -176,16 +176,18 @@ no longer be trusted:
 1. Create a replacement access key for `IamUserName` in IAM.
 2. Enter it on the trusted device that is revoking another device.
 3. Let that device upload the vault-key-rotated snapshot.
-4. Delete or deactivate the old IAM access key in AWS.
+4. Delete the old IAM access key in AWS.
 5. Run provider-revocation verification in the extension. The workflow remains
    pending until AWS rejects the old key.
 6. Enter the replacement key once on every surviving device before that
    device's next sync.
 
 The replacement key is never distributed through the vault snapshot. Do not
-deactivate the old key before the rotated snapshot has uploaded, because the
+delete the old key before the rotated snapshot has uploaded, because the
 revoking device first verifies that both credentials address the same current
-vault namespace.
+vault namespace. Deactivation alone is insufficient for verification: AWS
+reports inactive keys and active keys denied by policy through the same
+ambiguous authorization failure, so the extension keeps revocation pending.
 
 Survivor recovery uses the current object only. It validates the complete
 signed chronological trust suffix, including any enrollments between

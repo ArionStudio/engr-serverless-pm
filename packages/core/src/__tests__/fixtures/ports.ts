@@ -923,6 +923,7 @@ export function createCoreTestPorts(
       beforeRemoval,
       afterRemoval,
       coordinationLease,
+      options,
     ) => {
       const result = await cleanupActiveSessionOriginal(
         requiredVaultId,
@@ -930,6 +931,7 @@ export function createCoreTestPorts(
         beforeRemoval,
         afterRemoval,
         coordinationLease,
+        options,
       );
 
       if (result === "removed") {
@@ -968,6 +970,16 @@ export function createCoreTestPorts(
       activeVaultLockTask = task;
     }),
     get: vi.fn(async () => activeVaultLockTask),
+    runIfActionIsActive: async (actionId, operation) => {
+      if (activeVaultLockTask?.actionId !== actionId) {
+        return { status: "stale_action" };
+      }
+
+      return {
+        status: "executed",
+        result: await operation(activeVaultLockTask),
+      };
+    },
     removeIfActionIsActive: vi.fn(async (actionId) => {
       if (activeVaultLockTask?.actionId !== actionId) {
         return false;

@@ -1,7 +1,6 @@
 import {
   DeleteObjectCommand,
   GetObjectCommand,
-  HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -50,15 +49,18 @@ type S3ObjectLocation = {
   readonly Key: string;
 };
 
+type S3GetObjectInput = S3ObjectLocation & {
+  readonly Range?: string;
+};
+
 type S3ResponseBody = {
   readonly transformToString: () => Promise<string>;
 };
 
 export type S3SyncClient = {
   readonly getObject: (
-    input: S3ObjectLocation,
+    input: S3GetObjectInput,
   ) => Promise<{ readonly Body?: S3ResponseBody; readonly ETag?: string }>;
-  readonly headObject: (input: S3ObjectLocation) => Promise<void>;
   readonly putObject: (
     input: S3ObjectLocation & {
       readonly Body: string;
@@ -86,15 +88,9 @@ type RemoteVaultSnapshotObject = RemoteVaultSnapshotRecord & {
   readonly etag?: string;
 };
 
-const AUTHENTICATION_ERROR_CODES = new Set([
-  "AccessDenied",
-  "ExpiredToken",
+const DEFINITIVE_CREDENTIAL_REJECTION_CODES = new Set([
   "InvalidAccessKeyId",
   "InvalidClientTokenId",
-  "InvalidSecurity",
-  "InvalidToken",
-  "SignatureDoesNotMatch",
-  "TokenRefreshRequired",
   "UnrecognizedClientException",
 ]);
 
@@ -281,14 +277,18 @@ export class AwsS3SyncProvider implements SyncProviderPort {
     );
 
     try {
-      await client.headObject(location);
+      const response = await client.getObject({
+        ...location,
+        Range: "bytes=0-0",
+      });
+      await response.Body?.transformToString();
       return "accessible";
     } catch (error) {
       if (isNotFound(error)) {
         return "accessible";
       }
 
-      if (isAuthenticationRejection(error)) {
+      if (isDefinitiveCredentialRejection(error)) {
         return "authentication_rejected";
       }
 
@@ -329,9 +329,6 @@ function createAwsS3Client(
 
   return {
     getObject: (input) => client.send(new GetObjectCommand(input)),
-    headObject: async (input) => {
-      await client.send(new HeadObjectCommand(input));
-    },
     putObject: async (input) => {
       await client.send(new PutObjectCommand(input));
     },
@@ -579,13 +576,8 @@ function isConditionalConflict(error: unknown): boolean {
   );
 }
 
-function isAuthenticationRejection(error: unknown): boolean {
-  const status = getHttpStatusCode(error);
-  return (
-    status === 401 ||
-    status === 403 ||
-    AUTHENTICATION_ERROR_CODES.has(getErrorCode(error) ?? "")
-  );
+function isDefinitiveCredentialRejection(error: unknown): boolean {
+  return DEFINITIVE_CREDENTIAL_REJECTION_CODES.has(getErrorCode(error) ?? "");
 }
 
 function getHttpStatusCode(error: unknown): number | undefined {

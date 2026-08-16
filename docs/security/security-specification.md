@@ -336,10 +336,12 @@ serialized lifecycle boundary. New-vault persistence for initialization and
 enrollment is prepared inside that boundary and conditionally rolled back there
 on failure, so a competing activation cannot win between persistence and
 cleanup. Cleanup enters that same boundary before reading or canceling task
-metadata, so activation cannot advance during cleanup. A
-scheduled action is authenticated against current metadata, including through
-atomic action-ID removal when a metadata read fails, before safe clipboard,
-task, and session cleanup continues. Manual cleanup also invalidates an
+metadata, so activation cannot advance during cleanup. A scheduled action is
+authenticated by holding its current action-ID ownership under a callback-scoped
+Web Lock while safe clipboard, task, and session cleanup continues. Matching
+lock metadata is conditionally removed after session cleanup and before its
+alarm is canceled, so a failed metadata removal retains the pre-armed retry.
+Manual cleanup also invalidates an
 already-authorized activation when no stored session remains. Target-bound
 cleanup, including local deletion, fails closed before destructive cleanup when
 the active vault identity cannot be read; it cannot safely infer that an
@@ -434,7 +436,7 @@ or snapshot transition.
     access, require the revoked identity to have either one active profile and
     no tombstone or no profile state yet while enrollment is pending.
 2.  **Stage Credential:** Encrypt the replacement locally while retaining the
-    old credential for rollback and external-disable verification.
+    old credential for rollback and external-deletion verification.
 3.  **Rotate:** Generate a fresh Vault Key and increment its generation once.
 4.  **Re-Encrypt:** Encrypt data with the fresh key.
 5.  **Re-Slot:** Create a fresh ephemeral ECDH envelope for each survivor and no
@@ -442,7 +444,7 @@ or snapshot transition.
 6.  **Commit:** Append the removal-only trust transition, sign, atomically
     persist the snapshot, checkpoint, and local credential transition with
     local compare-and-set, and upload with remote compare-and-set.
-7.  **External Completion:** The user disables the old AWS credential. Core
+7.  **External Completion:** The user deletes the old AWS credential. Core
     reports completion only after the provider rejects it.
 
 The encrypted signed vault stores a non-secret pending marker with the revoked

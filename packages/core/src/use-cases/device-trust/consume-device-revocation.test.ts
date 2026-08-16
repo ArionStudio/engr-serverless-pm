@@ -845,7 +845,7 @@ describe("ConsumeDeviceRevocationUseCase", () => {
       ),
     ).toBe(false);
     expect(result.providerCredentialRevocation).toBe(
-      "pending_external_disable",
+      "pending_external_deletion",
     );
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });

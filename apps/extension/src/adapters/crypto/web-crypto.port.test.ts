@@ -69,6 +69,19 @@ describe("WebCryptoPort", () => {
     const vault = await crypto.generateDeviceVaultKeyPair();
     const otherVault = await crypto.generateDeviceVaultKeyPair();
 
+    expect(signing.publicKey.byteLength).toBe(
+      CURRENT_ALGORITHM_SUITE.signing.publicKeyLengthBytes,
+    );
+    expect(signing.privateKey.byteLength).toBe(
+      CURRENT_ALGORITHM_SUITE.signing.privateKeyLengthBytes,
+    );
+    expect(vault.publicKey.byteLength).toBe(
+      CURRENT_ALGORITHM_SUITE.vaultKeyWrapping.publicKeyLengthBytes,
+    );
+    expect(vault.privateKey.byteLength).toBe(
+      CURRENT_ALGORITHM_SUITE.vaultKeyWrapping.privateKeyLengthBytes,
+    );
+
     await expect(
       crypto.verifyDeviceSignKeyPair(signing.publicKey, signing.privateKey),
     ).resolves.toBe(true);
@@ -251,6 +264,22 @@ describe("WebCryptoPort", () => {
         ...fixture.encoded,
         deviceLocalProtectionKey: `${fixture.encoded.deviceLocalProtectionKey}=`,
       },
+      {
+        ...fixture.encoded,
+        devicePrivateSignKey: encodeBase64Url(
+          new Uint8Array(
+            CURRENT_ALGORITHM_SUITE.signing.privateKeyLengthBytes - 1,
+          ),
+        ),
+      },
+      {
+        ...fixture.encoded,
+        devicePrivateVaultKey: encodeBase64Url(
+          new Uint8Array(
+            CURRENT_ALGORITHM_SUITE.vaultKeyWrapping.privateKeyLengthBytes + 1,
+          ),
+        ),
+      },
     ];
 
     for (const hostileState of hostileStates) {
@@ -332,6 +361,24 @@ describe("WebCryptoPort", () => {
     );
     expect(bytes(opened)).toEqual(bytes(masterKey));
     expect(opened).not.toBe(masterKey);
+
+    const contextWithRuntimeExtra = {
+      ...context,
+      undeclaredContext: "ignored",
+    };
+    const envelopeWithRuntimeExtra = await crypto.createDeviceVaultKeyEnvelope(
+      masterKey,
+      recipient.publicKey,
+      contextWithRuntimeExtra,
+    );
+    await expect(
+      crypto.openDeviceVaultKeyEnvelope(
+        envelopeWithRuntimeExtra,
+        recipient.privateKey,
+        context,
+      ),
+    ).resolves.toEqual(masterKey);
+
     await expect(
       crypto.openDeviceVaultKeyEnvelope(envelope, recipient.privateKey, {
         ...context,
@@ -345,6 +392,47 @@ describe("WebCryptoPort", () => {
         context,
       ),
     ).rejects.toBeInstanceOf(RangeError);
+  });
+
+  it("keeps the ephemeral ECDH private key non-extractable", async () => {
+    const producer = new WebCryptoPort();
+    const recipient = await producer.generateDeviceVaultKeyPair();
+    const requestedExtractability: boolean[] = [];
+    const subtle = new Proxy(globalThis.crypto.subtle, {
+      get(target, property, receiver) {
+        if (property === "generateKey") {
+          return async (
+            algorithm: AlgorithmIdentifier,
+            extractable: boolean,
+            keyUsages: readonly KeyUsage[],
+          ) => {
+            requestedExtractability.push(extractable);
+            return target.generateKey(algorithm, extractable, keyUsages);
+          };
+        }
+        const value: unknown = Reflect.get(target, property, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const cryptoApi = Object.create(globalThis.crypto) as Crypto;
+    Object.defineProperty(cryptoApi, "subtle", { value: subtle });
+    Object.defineProperty(cryptoApi, "getRandomValues", {
+      value: globalThis.crypto.getRandomValues.bind(globalThis.crypto),
+    });
+    const crypto = new WebCryptoPort(cryptoApi);
+
+    await crypto.createDeviceVaultKeyEnvelope(
+      await producer.generateVaultMasterKey(),
+      recipient.publicKey,
+      {
+        vaultId: "vault-id",
+        deviceId: "device-id",
+        vaultKeyGeneration: 1,
+        algorithmSuiteId: CURRENT_ALGORITHM_SUITE.id,
+      },
+    );
+
+    expect(requestedExtractability).toEqual([false]);
   });
 
   it("encrypts vault, session, and credential payloads with context binding", async () => {

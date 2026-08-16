@@ -82,6 +82,119 @@ describe("ChromeVaultLockTaskRepository", () => {
     await expect(repository.get()).resolves.toBeNull();
   });
 
+  it("runs only a matching action while retaining its ownership metadata", async () => {
+    const { storageArea } = createChromeStorageArea();
+    const repository = new ChromeVaultLockTaskRepository(
+      storageArea,
+      immediateLockManager,
+    );
+    const operation = vi.fn(async () => "completed");
+    await repository.save(vaultLockTask);
+
+    await expect(
+      repository.runIfActionIsActive("stale-action-id", operation),
+    ).resolves.toEqual({ status: "stale_action" });
+    await expect(
+      repository.runIfActionIsActive(vaultLockTask.actionId, operation),
+    ).resolves.toEqual({ status: "executed", result: "completed" });
+
+    expect(operation).toHaveBeenCalledTimes(1);
+    expect(operation).toHaveBeenCalledWith(vaultLockTask);
+    await expect(repository.get()).resolves.toEqual(vaultLockTask);
+  });
+
+  it("retains matching ownership when the claimed operation rejects", async () => {
+    const { storageArea } = createChromeStorageArea();
+    const repository = new ChromeVaultLockTaskRepository(
+      storageArea,
+      immediateLockManager,
+    );
+    const error = new Error("session removal failed");
+    await repository.save(vaultLockTask);
+
+    await expect(
+      repository.runIfActionIsActive(vaultLockTask.actionId, async () => {
+        throw error;
+      }),
+    ).rejects.toBe(error);
+
+    await expect(repository.get()).resolves.toEqual(vaultLockTask);
+  });
+
+  it("blocks replacement saves until a matching action operation finishes", async () => {
+    let previousOperation = Promise.resolve();
+    const lockManager: WebLockManager = {
+      request: vi.fn(async (_name, operation) => {
+        const waitForPrevious = previousOperation;
+        let finishOperation!: () => void;
+        previousOperation = new Promise<void>((resolve) => {
+          finishOperation = resolve;
+        });
+        await waitForPrevious;
+
+        try {
+          return await operation(null);
+        } finally {
+          finishOperation();
+        }
+      }),
+    };
+    const { getRecords, storageArea } = createChromeStorageArea();
+    const repository = new ChromeVaultLockTaskRepository(
+      storageArea,
+      lockManager,
+    );
+    const replacementTask = {
+      ...vaultLockTask,
+      actionId: "replacement-action-id",
+    };
+    let operationStarted!: () => void;
+    let finishClaimedOperation!: () => void;
+    const claimedOperationStarted = new Promise<void>((resolve) => {
+      operationStarted = resolve;
+    });
+    const claimedOperationCanFinish = new Promise<void>((resolve) => {
+      finishClaimedOperation = resolve;
+    });
+    await repository.save(vaultLockTask);
+
+    const claimedOperation = repository.runIfActionIsActive(
+      vaultLockTask.actionId,
+      async () => {
+        operationStarted();
+        await claimedOperationCanFinish;
+      },
+    );
+    await claimedOperationStarted;
+    const replacementSave = repository.save(replacementTask);
+    await Promise.resolve();
+
+    expect(getRecords()[VAULT_LOCK_TASK_STORAGE_KEY]).toEqual(vaultLockTask);
+
+    finishClaimedOperation();
+    await claimedOperation;
+    await replacementSave;
+    expect(getRecords()[VAULT_LOCK_TASK_STORAGE_KEY]).toEqual(replacementTask);
+  });
+
+  it("observes immediate access restriction rejection until an operation awaits it", async () => {
+    const error = new Error("access restriction failed");
+    const { storageArea } = createChromeStorageArea();
+    const setAccessLevel = storageArea.setAccessLevel;
+    if (setAccessLevel === undefined) {
+      throw new Error("Expected the storage fixture to restrict access.");
+    }
+    vi.mocked(setAccessLevel).mockReturnValueOnce(Promise.reject(error));
+    const repository = new ChromeVaultLockTaskRepository(
+      storageArea,
+      immediateLockManager,
+    );
+
+    await Promise.resolve();
+
+    await expect(repository.get()).rejects.toBe(error);
+  });
+
   it.each([
     {},
     { ...vaultLockTask, futureField: true },

@@ -568,6 +568,9 @@ export class UnlockedVaultSessionService {
     ) => Promise<boolean>,
     afterRemoval?: () => Promise<void>,
     coordinationLease?: ClipboardOperationLease,
+    options: {
+      readonly removeRecordsWhenUnavailableAfterAuthorization?: boolean;
+    } = {},
   ): Promise<"removed" | "session_unavailable" | "stale_action"> {
     return this.runCoordinatedSessionMutation(coordinationLease, async () => {
       let firstError: unknown;
@@ -575,6 +578,7 @@ export class UnlockedVaultSessionService {
       let materialReadFailed = false;
       let materialReconciled = false;
       let activeSessionAdvanced = false;
+      let sessionRecordsRemoved = false;
       let persistedIdentity: PersistedUnlockedVaultSessionIdentity = null;
       let persistedIdentityReadFailed = false;
 
@@ -666,23 +670,28 @@ export class UnlockedVaultSessionService {
         persistedIdentity !== null ||
         persistedIdentityReadFailed ||
         materialReadFailed ||
-        invalidateWhenUnavailable
+        invalidateWhenUnavailable ||
+        options.removeRecordsWhenUnavailableAfterAuthorization === true
       ) {
         try {
           await this.removeSessionRecords(material ?? undefined);
+          sessionRecordsRemoved = true;
         } catch (error) {
           firstError ??= error;
         }
       }
 
       if (
-        firstError === undefined &&
-        (persistedIdentity !== null || activeSessionAdvanced)
+        sessionRecordsRemoved &&
+        (persistedIdentity !== null ||
+          persistedIdentityReadFailed ||
+          materialReadFailed ||
+          activeSessionAdvanced)
       ) {
         try {
           await afterRemoval?.();
         } catch (error) {
-          firstError = error;
+          firstError ??= error;
         }
       }
 

@@ -18,7 +18,10 @@ import {
   type VaultManagerDb,
 } from "../../infrastructure/database/dexie-db";
 import { IndexedDbVaultLocalRepository } from "../storage";
-import { decodeDeviceSyncCredentialState } from "../codecs/sync-credential.codec";
+import {
+  decodeDeviceSyncCredentialState,
+  encodeDeviceSyncCredentialState,
+} from "../codecs/sync-credential.codec";
 import { InvalidDeviceSyncCredentialStateError } from "./index";
 import { WebCryptoPort } from "./web-crypto.port";
 
@@ -46,6 +49,51 @@ afterEach(async () => {
 });
 
 describe("WebCrypto device sync credential state boundary", () => {
+  it.each([
+    [
+      "non-finite JSON",
+      {
+        currentCredentials: {
+          provider: "aws-s3-v1",
+          credentialsConfig: { timeout: Number.POSITIVE_INFINITY },
+        },
+      },
+    ],
+    [
+      "extra credential field",
+      {
+        currentCredentials: {
+          provider: "aws-s3-v1",
+          credentialsConfig: {},
+          futureField: true,
+        },
+      },
+    ],
+  ] as const)("rejects %s on the encoder write path", (_label, state) => {
+    expect(() =>
+      encodeDeviceSyncCredentialState(state as DeviceSyncCredentialState),
+    ).toThrow(InvalidDeviceSyncCredentialStateError);
+  });
+
+  it("rebuilds the encoded credential state without retaining input references", () => {
+    const credentialsConfig = { region: "eu-west-1" };
+    const state: DeviceSyncCredentialState = {
+      currentCredentials: {
+        provider: "aws-s3-v1",
+        credentialsConfig,
+      },
+    };
+    const encoded = encodeDeviceSyncCredentialState(state);
+    credentialsConfig.region = "changed-after-encode";
+
+    expect(encoded).toEqual({
+      currentCredentials: {
+        provider: "aws-s3-v1",
+        credentialsConfig: { region: "eu-west-1" },
+      },
+    });
+  });
+
   it("rejects a non-JSON credentials configuration object", () => {
     expect(() =>
       decodeDeviceSyncCredentialState({
