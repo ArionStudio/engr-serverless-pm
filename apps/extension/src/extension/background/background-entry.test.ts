@@ -44,7 +44,7 @@ describe("background entrypoint", () => {
       expect(handleAlarm).toHaveBeenCalledWith({ name: "clipboard-alarm" });
       expect(consoleError).toHaveBeenCalledOnce();
       expect(consoleError).toHaveBeenCalledWith(
-        "Clipboard cleanup failed; clear the clipboard manually if needed.",
+        "Clipboard alarm handling failed; verify the clipboard is clear.",
       );
     });
   });
