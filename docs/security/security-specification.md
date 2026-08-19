@@ -267,7 +267,14 @@ behalf.
 The encrypted shared vault stores only the provider and non-secret target
 configuration. Every device stores its credential in a separate local encrypted
 record. A device-local symmetric key protects that record, and AAD binds it to
-the vault ID, local device ID, provider, and canonical target.
+the vault ID, local device ID, provider, and canonical target. Every
+synchronized snapshot transition must compare the exact expected encrypted
+artifact—ciphertext and nonce, or record absence—together with the snapshot
+digest and exact signed checkpoint artifact, even when the credential record
+remains unchanged.
+Reconciliation-intent stage and clear operations use the same local
+compare-and-set boundary, so stale work cannot persist over or erase a newer
+pending marker.
 
 The security boundary is therefore:
 
@@ -355,8 +362,48 @@ work authorized under the replaced identity therefore cannot persist or commit
 after reactivation. Ordinary snapshot commits retain the active identity while
 advancing its generation.
 Persisted-state rollback is likewise authenticated against its originating
-session ID and source snapshot vector before it runs, so an upload failure from
-stale work cannot roll back or wipe a replacement or advanced session. A
+session ID and source snapshot vector before it runs, so a definite upload
+non-commit from stale work cannot roll back or wipe a replacement or advanced
+session. An upload whose remote outcome is unknown never restores the prior
+snapshot: it retains the signed candidate, commits the matching session, and
+reports sync pending. Provider preparation may reject before initiation, but a
+synchronous start exception, rejected result, or malformed result after start
+is conservatively treated as outcome unknown. Before invoking the provider,
+the local snapshot owner
+atomically stores an encrypted device-local reconciliation intent that binds
+the candidate descriptor and digest to the original nullable remote
+descriptor-and-digest compare-and-set identity. The candidate snapshot signs
+that same historical identity in its metadata. Reconciliation downloads and
+verifies the remote before clearing an apparent candidate match, retries only
+against the exact recorded identity, and rejects
+an absent, rolled-back, or otherwise changed remote without overwriting it.
+Every intent stage, clear, credential replacement, and rollback compares the
+exact expected encrypted credential ciphertext and nonce (or expected absence)
+alongside the snapshot digest and exact signed checkpoint artifact. Losing this local compare-and-set
+leaves reconciliation pending rather than allowing stale cleanup to erase a
+newer intent.
+Intent encryption, restaging, and local intent compare-and-set writes are
+serialized against the originating active session. Provider preflight returns
+a synchronous start operation; the conditional upload or removal starts only
+after revalidating the originating session, while its network result is awaited
+after releasing that local boundary. Session removal
+therefore cannot wipe the device-local protection key during an intent write,
+and a continuation cannot initiate a provider mutation after its session was
+revoked. If the session disappears before committed-intent cleanup, the exact
+pending artifact is retained for a later authenticated reconciliation.
+
+Every reconciliation retry compare-and-set refreshes that encrypted intent
+before provider access. The refreshed ciphertext and nonce are the attempt's
+ownership token: definite failure may restore the previous intent only while
+that token remains current, and an unknown outcome retains it. A fresh attempt
+may likewise clear only the exact intent artifact it staged.
+
+Because local storage is attacker-modifiable, the signed metadata is the
+fail-closed authority if the encrypted intent record is removed or replayed. A
+replayed intent must agree with the signed candidate descriptor, digest, and
+historical expectation; disagreement is an integrity failure. With no intent,
+normal upload still uses the signed historical expectation and never promotes a
+fresh remote observation into an overwrite authorization. A
 rollback with no active material advances the generation before persistence is
 restored, invalidating activation leases that may have read the replaced state.
 Before each fallible remote upload, the snapshot owner signs and retains the
@@ -369,7 +416,13 @@ preserve potentially active secret buffers and surface an explicit incomplete-
 rollback error. If a conditional restore fails for the known matching session,
 the session owner invalidates and wipes that session before callers surface the
 same explicit error. Neither case masks uncertain local state with only the
-upload error.
+upload error. Provider adapters may reject only before initiating a write; after
+initiation they return committed, definite-non-commit, or outcome-unknown.
+Definite non-commits distinguish snapshot compare-and-set changes from
+recognized static provider rejections, so both restore local state without
+misreporting configuration or authorization failure as concurrency. Any error
+after an automatic retry remains outcome unknown because an earlier attempt may
+have committed before its response was lost.
 
 Password copy revalidates its session and performs clipboard task replacement,
 scheduling, and the plaintext write inside that same serialized boundary. A
@@ -512,21 +565,27 @@ A new device joins through a two-file, asynchronous exchange:
     optional local credentials are initialized together. Pending request state
     is removed only after success. If session activation fails, the initialized
     local records are conditionally removed inside the serialized activation
-    boundary and the pending request remains retryable. A
-    later remote compare-and-set rollback may remove those records only while
-    both the active session version and persisted snapshot digest still match
-    the enrollment snapshot. That rollback uses the shared lifecycle owner to
-    clear clipboard and auto-lock state before invalidating the matching
-    session, and wipes the enrollment operation's original secret buffers when
-    their ownership is no longer transferred to a live session.
+    boundary and the pending request remains retryable. A later definite upload
+    non-commit rollback, whether caused by a remote compare-and-set change or a
+    recognized provider rejection, may remove those records only while the
+    active session version and every initialized local artifact still match the
+    enrollment attempt: descriptor, device access material, recovery backup,
+    persisted snapshot digest, exact signed checkpoint, and exact staged
+    encrypted upload-intent artifact. The repository compares that complete
+    deletion set atomically before removing any record.
+    That rollback uses the shared lifecycle owner to clear clipboard and
+    auto-lock state before invalidating the matching session, and wipes the
+    enrollment operation's original secret buffers when their ownership is no
+    longer transferred to a live session.
 
 The devices never need to be connected simultaneously. Neither transported
 artifact contains private device keys or provider credentials.
 
 An indeterminate completion-upload result preserves local enrollment and
 returns the recovery mnemonic with sync marked pending. A later normal sync can
-reconcile the signed local snapshot. Only a definite remote compare-and-set
-rejection rolls local enrollment back.
+reconcile the signed local snapshot. Only a definite non-commit—either a remote
+compare-and-set change or a recognized provider rejection—rolls local
+enrollment back.
 
 An already-enrolled survivor advances through a separate verified
 enrollment-consumption flow. Every skipped certificate must add exactly one

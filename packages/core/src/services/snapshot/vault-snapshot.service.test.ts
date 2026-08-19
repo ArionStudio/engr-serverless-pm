@@ -1,12 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
 import { createUnlockedVaultWithEntries } from "../../__tests__/fixtures/vault-entries";
-import { VaultTrustStateInvalidError } from "../../errors/vault-trust.errors";
+import {
+  LocalVaultTrustCheckpointInvalidError,
+  VaultTrustStateInvalidError,
+} from "../../errors/vault-trust.errors";
 import {
   SnapshotSigningDeviceNotTrustedError,
   VaultSnapshotDigestMismatchError,
 } from "../../errors/vault-snapshot.errors";
 import { VaultSnapshotService } from "./vault-snapshot.service";
+import { VaultTrustService } from "../trust/vault-trust.service";
 
 function createContext() {
   const base = createUnlockVaultTestContext();
@@ -111,16 +115,20 @@ describe("VaultSnapshotService", () => {
     ).mock.calls.length;
     new Uint8Array(ctx.unlockedVault.devicePrivateSignKey).fill(0);
     ctx.ports.saved.vaultSnapshotDigest = "replacement-snapshot-digest";
+    ctx.ports.saved.deviceSyncCredentialState = undefined;
 
     await ctx.service.restorePreparedLocalVaultSnapshot(
       preparedRestore,
       "replacement-snapshot-digest",
+      ctx.values.localVaultTrustCheckpoint,
     );
 
     expect(
       ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).toHaveBeenLastCalledWith({
       expectedSnapshotDigest: "replacement-snapshot-digest",
+      expectedCheckpoint: ctx.values.localVaultTrustCheckpoint,
+      expectedSyncCredentialState: null,
       snapshot: ctx.vaultSnapshot,
       checkpoint: preparedRestore.checkpoint,
       syncCredentialState: null,
@@ -149,6 +157,44 @@ describe("VaultSnapshotService", () => {
     ).not.toHaveBeenCalled();
   });
 
+  it("rejects an unauthenticated current checkpoint before persistence", async () => {
+    const ctx = createContext();
+    vi.mocked(
+      ctx.ports.crypto.verifyLocalVaultTrustCheckpointSignature,
+    ).mockResolvedValueOnce(false);
+
+    await expect(
+      ctx.service.persistUnlockedVault(
+        ctx.values.vaultId,
+        ctx.unlockedVault,
+        ctx.vaultSnapshot.metadata.snapshotVersionVector,
+      ),
+    ).rejects.toBeInstanceOf(LocalVaultTrustCheckpointInvalidError);
+
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unauthenticated current checkpoint before restoration", async () => {
+    const ctx = createContext();
+    vi.mocked(
+      ctx.ports.crypto.verifyLocalVaultTrustCheckpointSignature,
+    ).mockResolvedValueOnce(false);
+
+    await expect(
+      ctx.service.restoreLocalVaultSnapshot(
+        ctx.vaultSnapshot,
+        ctx.vaultSnapshot,
+        ctx.unlockedVault,
+      ),
+    ).rejects.toBeInstanceOf(LocalVaultTrustCheckpointInvalidError);
+
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+  });
+
   it("verifies candidate trust before returning it", async () => {
     const ctx = createContext();
 
@@ -161,6 +207,63 @@ describe("VaultSnapshotService", () => {
     ).resolves.toEqual({
       chain: ctx.values.vaultTrustChain,
       state: ctx.values.verifiedVaultTrustState,
+      snapshotDigest: ctx.values.vaultSnapshotDigest,
     });
+  });
+
+  it("verifies a historical remote as an ancestor of the current candidate trust", async () => {
+    const ctx = createContext();
+    const historicalTrust = {
+      ...ctx.values.verifiedVaultTrustState,
+      generation: 0,
+    };
+    const currentTrust = {
+      ...ctx.values.verifiedVaultTrustState,
+      generation: 1,
+      certificateDigest: "current-certificate-digest",
+    };
+    const currentSnapshot = {
+      ...ctx.vaultSnapshot,
+      trustChain: {
+        certificates: [...ctx.vaultSnapshot.trustChain.certificates],
+      },
+    };
+    const verifyTrustChain = vi
+      .spyOn(VaultTrustService.prototype, "verifyTrustChain")
+      .mockResolvedValue(historicalTrust);
+    const verifySnapshot = vi
+      .spyOn(VaultTrustService.prototype, "verifySnapshot")
+      .mockResolvedValue(undefined);
+    const requireTrustDescendsFrom = vi
+      .spyOn(VaultTrustService.prototype, "requireTrustDescendsFrom")
+      .mockResolvedValue(undefined);
+
+    try {
+      await expect(
+        ctx.service.verifyHistoricalSnapshotTrust(
+          ctx.values.vaultId,
+          ctx.vaultSnapshot,
+          currentSnapshot,
+          {
+            ...ctx.unlockedVault,
+            trustedSnapshotContext: {
+              ...ctx.unlockedVault.trustedSnapshotContext,
+              trust: currentTrust,
+            },
+          },
+        ),
+      ).resolves.toMatchObject({ state: historicalTrust });
+
+      expect(requireTrustDescendsFrom).toHaveBeenCalledWith(
+        ctx.values.vaultId,
+        currentSnapshot.trustChain,
+        currentTrust,
+        historicalTrust,
+      );
+    } finally {
+      verifyTrustChain.mockRestore();
+      verifySnapshot.mockRestore();
+      requireTrustDescendsFrom.mockRestore();
+    }
   });
 });

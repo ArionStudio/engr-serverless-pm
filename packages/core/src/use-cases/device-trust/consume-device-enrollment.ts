@@ -9,11 +9,11 @@ import {
 } from "../../domain/sync/sync-resolution.utils";
 import { findChangedTags } from "../../domain/sync/tag-review.utils";
 import type {
-  ReviewedVaultSnapshotDescriptors,
+  ReviewedVaultSnapshotIdentities,
   VaultSnapshot,
 } from "../../domain/snapshot";
 import {
-  cloneReviewedVaultSnapshotDescriptors,
+  cloneReviewedVaultSnapshotIdentities,
   cloneVaultSnapshotDescriptor,
 } from "../../domain/snapshot";
 import type { Vault } from "../../domain/vault";
@@ -31,16 +31,18 @@ import type { VaultSnapshotService } from "../../services/snapshot/vault-snapsho
 import type { VaultSyncGuardService } from "../../services/sync";
 import { DeviceEnrollmentConsumptionService } from "../../services/trust/device-enrollment-consumption.service";
 import { VaultTrustService } from "../../services/trust/vault-trust.service";
+import type { SyncUploadStatus } from "../../domain/sync/sync-upload-status.type";
 
 export type ConsumeDeviceEnrollmentCommandParams = {
   readonly vaultId: string;
-  readonly reviewedSnapshotDescriptors: ReviewedVaultSnapshotDescriptors;
+  readonly reviewedSnapshotIdentities: ReviewedVaultSnapshotIdentities;
   readonly resolution: VaultSyncResolution;
 };
 
 export type ConsumeDeviceEnrollmentResult = {
   readonly enrolledDeviceIds: readonly string[];
   readonly vaultKeyGeneration: number;
+  readonly syncUpload: SyncUploadStatus;
 };
 
 export class ConsumeDeviceEnrollmentUseCase {
@@ -77,13 +79,13 @@ export class ConsumeDeviceEnrollmentUseCase {
   async execute(
     params: ConsumeDeviceEnrollmentCommandParams,
   ): Promise<ConsumeDeviceEnrollmentResult> {
-    const reviewedSnapshotDescriptors = cloneReviewedVaultSnapshotDescriptors(
-      params.reviewedSnapshotDescriptors,
+    const reviewedSnapshotIdentities = cloneReviewedVaultSnapshotIdentities(
+      params.reviewedSnapshotIdentities,
     );
     const resolution = cloneVaultSyncResolution(params.resolution);
     if (
-      reviewedSnapshotDescriptors.local.vaultId !== params.vaultId ||
-      reviewedSnapshotDescriptors.remote.vaultId !== params.vaultId
+      reviewedSnapshotIdentities.local.descriptor.vaultId !== params.vaultId ||
+      reviewedSnapshotIdentities.remote.descriptor.vaultId !== params.vaultId
     ) {
       throw new InvalidSyncResolutionError(
         params.vaultId,
@@ -101,7 +103,7 @@ export class ConsumeDeviceEnrollmentUseCase {
       operation: "consume device enrollment",
       unlockedVault,
       sourceSnapshotVersionVector,
-      reviewedSnapshotDescriptors,
+      reviewedSnapshotIdentities,
     });
     const entryReviews = findChangedEntries(
       candidate.enrollmentBaseline,
@@ -128,6 +130,7 @@ export class ConsumeDeviceEnrollmentUseCase {
       entryReviews.length > 0 ||
       tagReviews.length > 0 ||
       deviceProfileReviews.length > 0;
+    let syncUpload: SyncUploadStatus = "complete";
 
     if (!hasContentChanges) {
       await this.persistRemoteSnapshot(
@@ -160,53 +163,80 @@ export class ConsumeDeviceEnrollmentUseCase {
         ...unlockedVault,
         vault: resolvedVault,
       };
-      const { persistedSnapshot, preparedRestore } =
-        await this.unlockedVaultSession.persistForActiveSession(
-          sessionId,
-          params.vaultId,
-          async () => {
-            const preparedRestore =
-              await this.vaultSnapshot.prepareLocalVaultSnapshotRestore(
-                candidate.localSnapshot,
-                unlockedVault,
-              );
-            const persistedSnapshot =
-              await this.vaultSnapshot.persistUnlockedVault(
-                params.vaultId,
-                updatedUnlockedVault,
-                sourceSnapshotVersionVector,
-                {
-                  baseSnapshotVersionVector: mergeVersionVectors(
-                    candidate.localSnapshot.metadata.snapshotVersionVector,
-                    candidate.remoteSnapshot.metadata.snapshotVersionVector,
-                  ),
-                  keySlots: candidate.remoteSnapshot.keySlots,
-                  vaultKeyGeneration:
-                    candidate.remoteSnapshot.metadata.vaultKeyGeneration,
-                  nextTrust: candidate.remoteTrust,
+      const {
+        persistedSnapshot,
+        preparedRestore,
+        persistedSyncCredentialState,
+      } = await this.unlockedVaultSession.persistForActiveSession(
+        sessionId,
+        params.vaultId,
+        async () => {
+          const preparedRestore =
+            await this.vaultSnapshot.prepareLocalVaultSnapshotRestore(
+              candidate.localSnapshot,
+              unlockedVault,
+            );
+          const syncCredentialStateTransition =
+            await this.vaultSyncGuard.prepareSyncCredentialStateWithoutPending(
+              params.vaultId,
+              unlockedVault,
+              { allowPendingSnapshotUpload: true },
+            );
+          const persistedSnapshot =
+            await this.vaultSnapshot.persistUnlockedVault(
+              params.vaultId,
+              updatedUnlockedVault,
+              sourceSnapshotVersionVector,
+              {
+                baseSnapshotVersionVector: mergeVersionVectors(
+                  candidate.localSnapshot.metadata.snapshotVersionVector,
+                  candidate.remoteSnapshot.metadata.snapshotVersionVector,
+                ),
+                keySlots: candidate.remoteSnapshot.keySlots,
+                vaultKeyGeneration:
+                  candidate.remoteSnapshot.metadata.vaultKeyGeneration,
+                nextTrust: candidate.remoteTrust,
+                uploadExpectedRemoteSnapshotIdentity: {
+                  descriptor: candidate.remoteSnapshotDescriptor,
+                  snapshotDigest: candidate.remoteTrust.snapshotDigest,
                 },
-              );
+                expectedSyncCredentialState:
+                  syncCredentialStateTransition.expectedState,
+                syncCredentialState: syncCredentialStateTransition.nextState,
+              },
+            );
 
-            return { persistedSnapshot, preparedRestore };
-          },
-        );
+          return {
+            persistedSnapshot,
+            preparedRestore,
+            persistedSyncCredentialState:
+              syncCredentialStateTransition.nextState,
+          };
+        },
+      );
 
-      await this.vaultSyncGuard.uploadPersistedLocalMutation(
+      syncUpload = await this.vaultSyncGuard.uploadPersistedLocalMutation(
         params.vaultId,
         {
           localSnapshot: candidate.localSnapshot,
           syncAccess: candidate.syncAccess,
-          remoteSnapshotDescriptor: cloneVaultSnapshotDescriptor(
-            candidate.remoteSnapshotDescriptor,
-          ),
+          syncCredentialState: persistedSyncCredentialState,
+          remoteSnapshotIdentity: {
+            descriptor: cloneVaultSnapshotDescriptor(
+              candidate.remoteSnapshotDescriptor,
+            ),
+            snapshotDigest: candidate.remoteTrust.snapshotDigest,
+          },
         },
         persistedSnapshot.snapshot,
         persistedSnapshot.trustedSnapshotContext.snapshotDigest,
+        persistedSnapshot.checkpoint,
+        updatedUnlockedVault,
         preparedRestore,
         sessionId,
       );
 
-      await this.unlockedVaultSession.commitPersistedSnapshot(
+      await this.unlockedVaultSession.commitPersistedSnapshotIfSessionIsActive(
         sessionId,
         {
           ...updatedUnlockedVault,
@@ -221,6 +251,7 @@ export class ConsumeDeviceEnrollmentUseCase {
         (transition) => transition.enrolledDeviceId,
       ),
       vaultKeyGeneration: candidate.remoteSnapshot.metadata.vaultKeyGeneration,
+      syncUpload,
     };
   }
 
@@ -239,17 +270,38 @@ export class ConsumeDeviceEnrollmentUseCase {
       unlockedVault.deviceId,
       unlockedVault.devicePrivateSignKey,
     );
+    const currentSnapshot = await this.vaultSnapshot.requireLocalVaultSnapshot(
+      unlockedVault.vaultId,
+    );
+    const expectedCheckpoint =
+      await this.vaultSnapshot.requireCurrentCheckpointForUnlockedVault(
+        unlockedVault.vaultId,
+        currentSnapshot,
+        unlockedVault,
+      );
 
     await this.unlockedVaultSession.persistForActiveSession(
       sessionId,
       unlockedVault.vaultId,
-      async () =>
-        this.vaultLocalRepository.saveVaultSnapshotWithCheckpoint({
+      async () => {
+        const syncCredentialStateTransition =
+          await this.vaultSyncGuard.prepareSyncCredentialStateWithoutPending(
+            unlockedVault.vaultId,
+            unlockedVault,
+            { allowPendingSnapshotUpload: true },
+          );
+
+        await this.vaultLocalRepository.saveVaultSnapshotWithCheckpoint({
           expectedSnapshotDigest:
             unlockedVault.trustedSnapshotContext.snapshotDigest,
+          expectedCheckpoint,
+          expectedSyncCredentialState:
+            syncCredentialStateTransition.expectedState,
           snapshot: remoteSnapshot,
           checkpoint,
-        }),
+          syncCredentialState: syncCredentialStateTransition.nextState,
+        });
+      },
     );
 
     await this.unlockedVaultSession.commitPersistedSnapshot(

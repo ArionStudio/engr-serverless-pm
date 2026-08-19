@@ -10,28 +10,38 @@ skinparam state {
 }
 
 [*] --> SyncNotConfigured
-SyncNotConfigured --> Configured : SetupSyncUseCase persists syncConfig and uploads initial snapshot
+SyncNotConfigured --> Configured : SetupSyncUseCase persists syncTarget,\nlocal encrypted credentials, and uploads initial snapshot
 
-Configured --> Equal : local descriptor equals remote descriptor
+Configured --> Equal : authenticated local and remote exact identities equal
 Configured --> LocalAhead : local snapshot vector ahead
 Configured --> RemoteAhead : remote snapshot vector ahead
 Configured --> Broken : crossed vectors or descriptor integrity mismatch
 Configured --> RemoteMissing : remote descriptor is null
+Configured --> UploadPending : provider upload outcome is unknown or\ncommitted-intent cleanup is incomplete
 
 Equal --> Configured : SyncUploadUseCase returns without upload
 LocalAhead --> Configured : SyncUploadUseCase uploads local snapshot
 RemoteAhead --> ReviewPrepared : PrepareSyncReviewUseCase downloads trusted remote and returns review
 Broken --> [*] : integrity error
 RemoteMissing --> Configured : SyncUploadUseCase uploads local snapshot with expected remote = null
+UploadPending --> Configured : remote equals candidate; clear local intent
+UploadPending --> Configured : remote equals stored expectation; retry succeeds
+UploadPending --> ReviewPrepared : remote differs from both; never overwrite
 
 ReviewPrepared --> Configured : ApplySyncResolutionUseCase persists resolved snapshot and uploads
 ReviewPrepared --> Broken : trust change requires device-trust flow or invalid resolution
-Configured --> LocalOnly : DisableSyncUseCase removes remote snapshots, syncConfig, and other device trust
-LocalOnly --> Configured : SetupSyncUseCase persists syncConfig and uploads initial snapshot
+Configured --> LocalOnly : DisableSyncUseCase removes remote snapshots, syncTarget,\nlocal encrypted credentials, and other device trust
+LocalOnly --> Configured : SetupSyncUseCase persists syncTarget,\nlocal encrypted credentials, and uploads initial snapshot
 
 note right of ReviewPrepared
 Review includes actionable entries, tags, device profiles,
 and read-only key slot changes.
+end note
+
+note right of UploadPending
+Encrypted device-local intent binds the exact candidate identity
+(descriptor + digest) to the original nullable remote exact identity.
+Fresh mutations and sync removal are blocked.
 end note
 
 @enduml

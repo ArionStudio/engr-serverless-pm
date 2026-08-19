@@ -1,7 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  createDivergedTrustBaselineFixture,
-} from "../../__tests__/fixtures/device-trust";
+import { createDivergedTrustBaselineFixture } from "../../__tests__/fixtures/device-trust";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import type {
@@ -12,7 +10,10 @@ import type {
 } from "../../domain/device-trust";
 import type { UnlockedVault } from "../../domain/session";
 import type { VaultSnapshot } from "../../domain/snapshot";
-import { toVaultSnapshotDescriptor } from "../../domain/snapshot";
+import {
+  toVaultSnapshotDescriptor,
+  toVaultSnapshotIdentity,
+} from "../../domain/snapshot";
 import { InvalidDeviceEnrollmentTransitionError } from "../../errors/device-enrollment.errors";
 import {
   RemoteVaultSnapshotChangedError,
@@ -204,6 +205,15 @@ function createContext() {
   };
   ports.saved.vaultSnapshot = localSnapshot;
   ports.saved.vaultSnapshotDigest = values.vaultSnapshotDigest;
+  ports.saved.localVaultTrustCheckpoint = {
+    ...values.localVaultTrustCheckpoint,
+    payload: {
+      ...values.localVaultTrustCheckpoint.payload,
+      trustGeneration: localTrust.generation,
+      snapshotVersionVector: localSnapshot.metadata.snapshotVersionVector,
+      snapshotDigest: values.vaultSnapshotDigest,
+    },
+  };
   ports.saved.deviceSyncCredentialState =
     values.encryptedDeviceSyncCredentialState;
   ports.saved.unlockedVaultSession = {
@@ -266,9 +276,17 @@ function createContext() {
 function createCommand(ctx: ReturnType<typeof createContext>) {
   return {
     vaultId: ctx.values.vaultId,
-    reviewedSnapshotDescriptors: {
-      local: toVaultSnapshotDescriptor(ctx.values.vaultId, ctx.localSnapshot),
-      remote: toVaultSnapshotDescriptor(ctx.values.vaultId, ctx.remoteSnapshot),
+    reviewedSnapshotIdentities: {
+      local: toVaultSnapshotIdentity(
+        ctx.values.vaultId,
+        ctx.localSnapshot,
+        ctx.values.vaultSnapshotDigest,
+      ),
+      remote: toVaultSnapshotIdentity(
+        ctx.values.vaultId,
+        ctx.remoteSnapshot,
+        ctx.values.vaultSnapshotDigest,
+      ),
     },
     resolution: {
       entryResolutions: [],
@@ -307,8 +325,12 @@ describe("device enrollment consumption", () => {
 
     expect(result.enrolledDeviceIds).toEqual([ctx.enrolledDevice.deviceId]);
     expect(result.vaultKeyGeneration).toBe(1);
-    expect(result.reviewedSnapshotDescriptors.local).toEqual(
-      toVaultSnapshotDescriptor(ctx.values.vaultId, ctx.localSnapshot),
+    expect(result.reviewedSnapshotIdentities.local).toEqual(
+      toVaultSnapshotIdentity(
+        ctx.values.vaultId,
+        ctx.localSnapshot,
+        ctx.values.vaultSnapshotDigest,
+      ),
     );
     expect(result.review.deviceProfileReviews).toEqual([]);
     expect(
@@ -326,23 +348,19 @@ describe("device enrollment consumption", () => {
       throw new Error("Expected local and remote trust transitions.");
     }
 
-    const {
-      divergedBaseline,
-      divergedBaselineDigest,
-      forgedRemoteSnapshot,
-    } = createDivergedTrustBaselineFixture({
-      remoteSnapshot: ctx.remoteSnapshot,
-      remotePrefix: ctx.remoteSnapshot.trustChain.certificates.slice(0, 1),
-      localBaseline,
-      remoteTransition,
-      replacementSignature: ctx.values.enrollmentRequestSignature,
-    });
-    vi.mocked(
-      ctx.ports.crypto.digestVaultTrustCertificate,
-    ).mockImplementation(async (certificate) =>
-      certificate === divergedBaseline
-        ? divergedBaselineDigest
-        : ctx.values.vaultTrustCertificateDigest,
+    const { divergedBaseline, divergedBaselineDigest, forgedRemoteSnapshot } =
+      createDivergedTrustBaselineFixture({
+        remoteSnapshot: ctx.remoteSnapshot,
+        remotePrefix: ctx.remoteSnapshot.trustChain.certificates.slice(0, 1),
+        localBaseline,
+        remoteTransition,
+        replacementSignature: ctx.values.enrollmentRequestSignature,
+      });
+    vi.mocked(ctx.ports.crypto.digestVaultTrustCertificate).mockImplementation(
+      async (certificate) =>
+        certificate === divergedBaseline
+          ? divergedBaselineDigest
+          : ctx.values.vaultTrustCertificateDigest,
     );
     vi.mocked(ctx.ports.syncProvider.downloadVaultSnapshot).mockResolvedValue(
       forgedRemoteSnapshot,
@@ -507,6 +525,7 @@ describe("device enrollment consumption", () => {
     expect(result).toEqual({
       enrolledDeviceIds: [ctx.enrolledDevice.deviceId],
       vaultKeyGeneration: 1,
+      syncUpload: "complete",
     });
     expect(ctx.ports.saved.vaultSnapshot).toBe(ctx.remoteSnapshot);
     expect(
@@ -584,7 +603,13 @@ describe("device enrollment consumption", () => {
         trustChain: ctx.remoteSnapshot.trustChain,
         keySlots: ctx.remoteSnapshot.keySlots,
       }),
-      toVaultSnapshotDescriptor(ctx.values.vaultId, ctx.remoteSnapshot),
+      {
+        descriptor: toVaultSnapshotDescriptor(
+          ctx.values.vaultId,
+          ctx.remoteSnapshot,
+        ),
+        snapshotDigest: ctx.values.vaultSnapshotDigest,
+      },
     );
     expect(
       ctx.ports.saved.unlockedVaultSession?.unlockedVault.vault.tags,
@@ -746,6 +771,29 @@ describe("device enrollment consumption", () => {
     ).not.toHaveBeenCalled();
   });
 
+  it("rejects same-descriptor enrollment bytes that differ from the reviewed identity", async () => {
+    const ctx = createContext();
+    const verification = vi
+      .spyOn(VaultSnapshotService.prototype, "verifyCandidateSnapshotTrust")
+      .mockResolvedValue({
+        chain: ctx.remoteSnapshot.trustChain,
+        state: ctx.values.verifiedVaultTrustState,
+        snapshotDigest: "substituted-remote-snapshot-digest",
+      });
+
+    try {
+      await expect(
+        ctx.consumeUseCase.execute(createCommand(ctx)),
+      ).rejects.toBeInstanceOf(RemoteVaultSnapshotChangedError);
+    } finally {
+      verification.mockRestore();
+    }
+
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+  });
+
   it("rejects when the reviewed local snapshot changes before apply", async () => {
     const ctx = createContext();
     const command = createCommand(ctx);
@@ -753,12 +801,16 @@ describe("device enrollment consumption", () => {
     await expect(
       ctx.consumeUseCase.execute({
         ...command,
-        reviewedSnapshotDescriptors: {
-          ...command.reviewedSnapshotDescriptors,
+        reviewedSnapshotIdentities: {
+          ...command.reviewedSnapshotIdentities,
           local: {
-            ...command.reviewedSnapshotDescriptors.local,
-            revisionTimestamp:
-              command.reviewedSnapshotDescriptors.local.revisionTimestamp - 1,
+            ...command.reviewedSnapshotIdentities.local,
+            descriptor: {
+              ...command.reviewedSnapshotIdentities.local.descriptor,
+              revisionTimestamp:
+                command.reviewedSnapshotIdentities.local.descriptor
+                  .revisionTimestamp - 1,
+            },
           },
         },
       }),
@@ -788,8 +840,11 @@ describe("device enrollment consumption", () => {
     vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue(
       remoteVault,
     );
-    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockRejectedValueOnce(
-      new RemoteVaultSnapshotChangedError(ctx.values.vaultId),
+    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockResolvedValueOnce(
+      {
+        status: "definitely_not_committed",
+        reason: "remote_snapshot_changed",
+      },
     );
 
     await expect(
@@ -807,5 +862,47 @@ describe("device enrollment consumption", () => {
     expect(ctx.ports.saved.unlockedVaultSession?.unlockedVault.vault).toBe(
       ctx.localVault,
     );
+  });
+
+  it("keeps resolved enrollment content and reports pending when upload outcome is unknown", async () => {
+    const ctx = createContext();
+    const remoteVault = {
+      ...ctx.localVault,
+      versionVector: { [ctx.values.deviceId]: 3 },
+      tags: [
+        {
+          id: 1,
+          name: "Remote tag",
+          versionVector: { [ctx.values.deviceId]: 3 },
+        },
+      ],
+    };
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue(
+      remoteVault,
+    );
+    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockResolvedValueOnce(
+      {
+        status: "outcome_unknown",
+      },
+    );
+
+    const result = await ctx.consumeUseCase.execute({
+      ...createCommand(ctx),
+      resolution: {
+        entryResolutions: [],
+        tagResolutions: [{ tagId: 1, action: "use_remote" }],
+        deviceProfileResolutions: [],
+      },
+    });
+
+    expect(result.syncUpload).toBe("pending");
+    expect(ctx.ports.saved.vaultSnapshot).not.toBe(ctx.localSnapshot);
+    expect(
+      ctx.ports.saved.unlockedVaultSession?.unlockedVault.vault.tags,
+    ).toEqual([expect.objectContaining({ id: 1, name: "Remote tag" })]);
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession
+        .commitPersistedSnapshotIfSessionIsActive,
+    ).toHaveBeenCalledOnce();
   });
 });

@@ -1,7 +1,8 @@
 import type { VaultSnapshot } from "./vault-snapshot";
 import type {
-  ReviewedVaultSnapshotDescriptors,
+  ReviewedVaultSnapshotIdentities,
   VaultSnapshotDescriptor,
+  VaultSnapshotIdentity,
 } from "./vault-snapshot-descriptor.type";
 import { compareVersionVectors } from "../versioning/version-vector.utils";
 import type { VersionVectorRelation } from "../versioning/version-vector.type";
@@ -16,12 +17,31 @@ export function cloneVaultSnapshotDescriptor(
   };
 }
 
-export function cloneReviewedVaultSnapshotDescriptors(
-  descriptors: ReviewedVaultSnapshotDescriptors,
-): ReviewedVaultSnapshotDescriptors {
+export function cloneVaultSnapshotIdentity(
+  identity: VaultSnapshotIdentity,
+): VaultSnapshotIdentity {
   return {
-    local: cloneVaultSnapshotDescriptor(descriptors.local),
-    remote: cloneVaultSnapshotDescriptor(descriptors.remote),
+    descriptor: cloneVaultSnapshotDescriptor(identity.descriptor),
+    snapshotDigest: identity.snapshotDigest,
+  };
+}
+
+export function areVaultSnapshotIdentitiesEqual(
+  actual: VaultSnapshotIdentity,
+  expected: VaultSnapshotIdentity,
+): boolean {
+  return (
+    actual.snapshotDigest === expected.snapshotDigest &&
+    areVaultSnapshotDescriptorsEqual(actual.descriptor, expected.descriptor)
+  );
+}
+
+export function cloneReviewedVaultSnapshotIdentities(
+  identities: ReviewedVaultSnapshotIdentities,
+): ReviewedVaultSnapshotIdentities {
+  return {
+    local: cloneVaultSnapshotIdentity(identities.local),
+    remote: cloneVaultSnapshotIdentity(identities.remote),
   };
 }
 
@@ -29,6 +49,10 @@ export function compareVaultSnapshotDescriptors(
   local: VaultSnapshotDescriptor,
   remote: VaultSnapshotDescriptor,
 ): Exclude<VersionVectorRelation, "remote_missing"> {
+  if (local.vaultId !== remote.vaultId) {
+    return "broken";
+  }
+
   return compareVersionVectors(
     local.snapshotVersionVector,
     remote.snapshotVersionVector,
@@ -58,4 +82,15 @@ export function toVaultSnapshotDescriptor(
     snapshotVersionVector: vaultSnapshot.metadata.snapshotVersionVector,
     revisionTimestamp: vaultSnapshot.metadata.revisionTimestamp,
   });
+}
+
+export function toVaultSnapshotIdentity(
+  vaultId: string,
+  vaultSnapshot: VaultSnapshot,
+  snapshotDigest: string,
+): VaultSnapshotIdentity {
+  return {
+    descriptor: toVaultSnapshotDescriptor(vaultId, vaultSnapshot),
+    snapshotDigest,
+  };
 }

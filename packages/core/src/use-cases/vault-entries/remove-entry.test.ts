@@ -8,6 +8,7 @@ import {
   secondPasswordEntry,
   standardPasswordEntries,
 } from "../../__tests__/fixtures/vault-entries";
+import { toVaultSnapshotDescriptor } from "../../domain/snapshot";
 import { PasswordEntryNotFoundError } from "../../errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 import { VaultSyncGuardService } from "../../services/sync";
@@ -55,6 +56,7 @@ describe("RemoveEntryUseCase", () => {
         [ctx.values.deviceId]: 2,
       },
       revisionTimestamp: ctx.values.timestamp + 1,
+      syncUpload: "complete",
     });
     expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries).toEqual(
       [secondPasswordEntry],
@@ -74,6 +76,7 @@ describe("RemoveEntryUseCase", () => {
       {
         [ctx.values.deviceId]: 1,
       },
+      {},
     );
     expect(
       vi.mocked(ctx.vaultSnapshot.persistUnlockedVault).mock
@@ -124,16 +127,67 @@ describe("RemoveEntryUseCase", () => {
           },
         }),
       }),
-      remoteSnapshotDescriptor,
+      {
+        descriptor: remoteSnapshotDescriptor,
+        snapshotDigest: ctx.values.vaultSnapshotDigest,
+      },
     );
     expect(
       vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mock
         .invocationCallOrder[0],
     ).toBeLessThan(
       vi.mocked(
-        ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
+        ctx.ports.sessionServices.unlockedVaultSession
+          .commitPersistedSnapshotIfSessionIsActive,
       ).mock.invocationCallOrder[0],
     );
+  });
+
+  it("keeps the local removal and reports pending when the upload outcome is unknown", async () => {
+    const ctx = createContext();
+    const remoteSnapshotDescriptor = toVaultSnapshotDescriptor(
+      ctx.values.vaultId,
+      ctx.saved.vaultSnapshot!,
+    );
+    const session = ctx.saved.unlockedVaultSession!;
+    ctx.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          syncTarget: ctx.values.syncTarget,
+        },
+      },
+    };
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValueOnce(remoteSnapshotDescriptor);
+    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockResolvedValueOnce(
+      {
+        status: "outcome_unknown",
+      },
+    );
+
+    const result = await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      entryId: firstPasswordEntry.id,
+    });
+
+    expect(result.syncUpload).toBe("pending");
+    expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries).toEqual(
+      [secondPasswordEntry],
+    );
+    expect(ctx.saved.vaultSnapshot?.metadata.snapshotVersionVector).toEqual({
+      [ctx.values.deviceId]: 2,
+    });
+    expect(
+      ctx.vaultSnapshot.restorePreparedLocalVaultSnapshot,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession
+        .commitPersistedSnapshotIfSessionIsActive,
+    ).toHaveBeenCalledOnce();
   });
 
   it("fails when the target vault is not unlocked", async () => {

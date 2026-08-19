@@ -7,7 +7,7 @@ import type {
   PasswordEntry,
 } from "../entry/password-entry.type";
 import type { SyncTarget } from "../sync/sync-config.type";
-import type { VaultSnapshotDescriptor } from "../snapshot/vault-snapshot-descriptor.type";
+import type { VaultSnapshotIdentity } from "../snapshot/vault-snapshot-descriptor.type";
 import type { VaultSnapshot } from "../snapshot/vault-snapshot";
 import type { VersionVector } from "../versioning/version-vector.type";
 import type { DeletedTag, Tag } from "../entry/tag.type";
@@ -20,7 +20,7 @@ export interface Vault {
   deletedDeviceProfiles: DeletedDeviceProfile[];
   syncTarget?: SyncTarget;
   syncRemovalPending?: {
-    readonly expectedRemoteSnapshotDescriptor: VaultSnapshotDescriptor | null;
+    readonly expectedRemoteSnapshotIdentity: VaultSnapshotIdentity | null;
     readonly rollbackSnapshot: VaultSnapshot;
   };
   providerCredentialRevocationPending?: {

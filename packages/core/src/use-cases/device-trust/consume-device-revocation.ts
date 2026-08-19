@@ -17,26 +17,24 @@ import {
 } from "../../domain/sync/sync-resolution.utils";
 import { findChangedTags } from "../../domain/sync/tag-review.utils";
 import type {
-  ReviewedVaultSnapshotDescriptors,
+  ReviewedVaultSnapshotIdentities,
   VaultMasterKey,
   VaultSnapshot,
   VaultSnapshotDescriptor,
 } from "../../domain/snapshot";
 import {
-  cloneReviewedVaultSnapshotDescriptors,
+  cloneReviewedVaultSnapshotIdentities,
   cloneVaultSnapshotDescriptor,
 } from "../../domain/snapshot";
 import type { Vault } from "../../domain/vault";
 import type { VersionVector } from "../../domain/versioning";
+import type { SyncUploadStatus } from "../../domain/sync/sync-upload-status.type";
 import { mergeVersionVectors } from "../../domain/versioning";
 import {
   InvalidSyncResolutionError,
   InvalidVaultSyncResolutionError,
-  RemoteVaultSnapshotChangedError,
-  SyncConflictDetectedError,
   SyncResolutionIncompleteError,
 } from "../../errors/sync.errors";
-import { PersistedVaultRollbackIncompleteError } from "../../errors/vault-snapshot.errors";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
@@ -45,11 +43,12 @@ import type { VaultSnapshotService } from "../../services/snapshot/vault-snapsho
 import { DeviceRevocationConsumptionService } from "../../services/trust/device-revocation-consumption.service";
 import { VaultTrustService } from "../../services/trust/vault-trust.service";
 import { bestEffortWipeArrayBuffers } from "../../lib/secure-wipe.utils";
+import { VaultSyncGuardService } from "../../services/sync/vault-sync-guard.service";
 
 export type ConsumeDeviceRevocationCommandParams = {
   readonly vaultId: string;
   readonly replacementSyncConfig: SyncSetupInput;
-  readonly reviewedSnapshotDescriptors: ReviewedVaultSnapshotDescriptors;
+  readonly reviewedSnapshotIdentities: ReviewedVaultSnapshotIdentities;
   readonly resolution: VaultSyncResolution;
 };
 
@@ -58,16 +57,17 @@ export type ConsumeDeviceRevocationResult = {
   readonly enrolledDeviceIds: readonly string[];
   readonly vaultKeyGeneration: number;
   readonly providerCredentialRevocation: "pending_external_deletion";
+  readonly syncUpload: SyncUploadStatus;
 };
 
 export class ConsumeDeviceRevocationUseCase {
   private readonly crypto: CryptoPort;
-  private readonly syncProvider: SyncProviderPort;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
   private readonly vaultSnapshot: VaultSnapshotService;
   private readonly vaultLocalRepository: VaultLocalRepositoryPort;
   private readonly revocationConsumption: DeviceRevocationConsumptionService;
   private readonly vaultTrust: VaultTrustService;
+  private readonly vaultSyncGuard: VaultSyncGuardService;
 
   constructor(
     crypto: CryptoPort,
@@ -77,7 +77,6 @@ export class ConsumeDeviceRevocationUseCase {
     vaultLocalRepository: VaultLocalRepositoryPort,
   ) {
     this.crypto = crypto;
-    this.syncProvider = syncProvider;
     this.unlockedVaultSession = unlockedVaultSession;
     this.vaultSnapshot = vaultSnapshot;
     this.vaultLocalRepository = vaultLocalRepository;
@@ -88,18 +87,25 @@ export class ConsumeDeviceRevocationUseCase {
       vaultLocalRepository,
     );
     this.vaultTrust = new VaultTrustService(crypto);
+    this.vaultSyncGuard = new VaultSyncGuardService(
+      syncProvider,
+      vaultSnapshot,
+      unlockedVaultSession,
+      crypto,
+      vaultLocalRepository,
+    );
   }
 
   async execute(
     params: ConsumeDeviceRevocationCommandParams,
   ): Promise<ConsumeDeviceRevocationResult> {
-    const reviewedSnapshotDescriptors = cloneReviewedVaultSnapshotDescriptors(
-      params.reviewedSnapshotDescriptors,
+    const reviewedSnapshotIdentities = cloneReviewedVaultSnapshotIdentities(
+      params.reviewedSnapshotIdentities,
     );
     const resolution = cloneVaultSyncResolution(params.resolution);
     if (
-      reviewedSnapshotDescriptors.local.vaultId !== params.vaultId ||
-      reviewedSnapshotDescriptors.remote.vaultId !== params.vaultId
+      reviewedSnapshotIdentities.local.descriptor.vaultId !== params.vaultId ||
+      reviewedSnapshotIdentities.remote.descriptor.vaultId !== params.vaultId
     ) {
       throw new InvalidSyncResolutionError(
         params.vaultId,
@@ -117,7 +123,7 @@ export class ConsumeDeviceRevocationUseCase {
       replacementSyncConfig: params.replacementSyncConfig,
       unlockedVault,
       sourceSnapshotVersionVector,
-      reviewedSnapshotDescriptors,
+      reviewedSnapshotIdentities,
     });
     let vaultMasterKeyTransferred = false;
 
@@ -168,6 +174,7 @@ export class ConsumeDeviceRevocationUseCase {
         entryReviews.length > 0 ||
         tagReviews.length > 0 ||
         deviceProfileReviews.length > 0;
+      let syncUpload: SyncUploadStatus = "complete";
 
       if (!hasContentChanges) {
         await this.persistRemoteSnapshot(
@@ -177,8 +184,10 @@ export class ConsumeDeviceRevocationUseCase {
           candidate.remoteTrust.state,
           candidate.remoteVault,
           candidate.vaultMasterKey,
+          candidate.previousEncryptedState,
           encryptedCredentialState,
         );
+        vaultMasterKeyTransferred = true;
       } else {
         let resolvedVault: Vault;
 
@@ -198,7 +207,7 @@ export class ConsumeDeviceRevocationUseCase {
           throw error;
         }
 
-        await this.persistResolvedSnapshot({
+        const resolvedSnapshot = await this.persistResolvedSnapshot({
           vaultId: params.vaultId,
           sessionId,
           sourceSnapshotVersionVector,
@@ -213,8 +222,9 @@ export class ConsumeDeviceRevocationUseCase {
           previousEncryptedState: candidate.previousEncryptedState,
           encryptedCredentialState,
         });
+        syncUpload = resolvedSnapshot.syncUpload;
+        vaultMasterKeyTransferred = resolvedSnapshot.sessionCommitted;
       }
-      vaultMasterKeyTransferred = true;
 
       return {
         revokedDeviceIds,
@@ -222,6 +232,7 @@ export class ConsumeDeviceRevocationUseCase {
         vaultKeyGeneration:
           candidate.remoteSnapshot.metadata.vaultKeyGeneration,
         providerCredentialRevocation: "pending_external_deletion",
+        syncUpload,
       };
     } finally {
       if (!vaultMasterKeyTransferred) {
@@ -237,6 +248,7 @@ export class ConsumeDeviceRevocationUseCase {
     remoteTrust: VerifiedVaultTrustState,
     remoteVault: Vault,
     vaultMasterKey: VaultMasterKey,
+    previousEncryptedState: EncryptedDeviceSyncCredentialState,
     encryptedCredentialState: EncryptedDeviceSyncCredentialState,
   ): Promise<void> {
     const snapshotDigest =
@@ -247,6 +259,15 @@ export class ConsumeDeviceRevocationUseCase {
       unlockedVault.deviceId,
       unlockedVault.devicePrivateSignKey,
     );
+    const currentSnapshot = await this.vaultSnapshot.requireLocalVaultSnapshot(
+      unlockedVault.vaultId,
+    );
+    const expectedCheckpoint =
+      await this.vaultSnapshot.requireCurrentCheckpointForUnlockedVault(
+        unlockedVault.vaultId,
+        currentSnapshot,
+        unlockedVault,
+      );
 
     await this.unlockedVaultSession.persistForActiveSession(
       sessionId,
@@ -255,6 +276,8 @@ export class ConsumeDeviceRevocationUseCase {
         this.vaultLocalRepository.saveVaultSnapshotWithCheckpoint({
           expectedSnapshotDigest:
             unlockedVault.trustedSnapshotContext.snapshotDigest,
+          expectedCheckpoint,
+          expectedSyncCredentialState: previousEncryptedState,
           snapshot: remoteSnapshot,
           checkpoint,
           syncCredentialState: encryptedCredentialState,
@@ -287,13 +310,17 @@ export class ConsumeDeviceRevocationUseCase {
     readonly remoteTrust: {
       readonly chain: VaultTrustChain;
       readonly state: VerifiedVaultTrustState;
+      readonly snapshotDigest: string;
     };
     readonly replacementAccess: SyncAccess;
     readonly vaultMasterKey: VaultMasterKey;
     readonly resolvedVault: Vault;
     readonly previousEncryptedState: EncryptedDeviceSyncCredentialState;
     readonly encryptedCredentialState: EncryptedDeviceSyncCredentialState;
-  }): Promise<void> {
+  }): Promise<{
+    readonly syncUpload: SyncUploadStatus;
+    readonly sessionCommitted: boolean;
+  }> {
     const rotatedUnlockedVault = {
       ...params.unlockedVault,
       vault: params.resolvedVault,
@@ -324,6 +351,11 @@ export class ConsumeDeviceRevocationUseCase {
                 vaultKeyGeneration:
                   params.remoteSnapshot.metadata.vaultKeyGeneration,
                 nextTrust: params.remoteTrust,
+                uploadExpectedRemoteSnapshotIdentity: {
+                  descriptor: params.remoteSnapshotDescriptor,
+                  snapshotDigest: params.remoteTrust.snapshotDigest,
+                },
+                expectedSyncCredentialState: params.previousEncryptedState,
                 syncCredentialState: params.encryptedCredentialState,
               },
             );
@@ -332,43 +364,36 @@ export class ConsumeDeviceRevocationUseCase {
         },
       );
 
-    try {
-      await this.syncProvider.uploadVaultSnapshot(
-        params.replacementAccess,
-        persistedSnapshot.snapshot,
-        cloneVaultSnapshotDescriptor(params.remoteSnapshotDescriptor),
-      );
-    } catch (error) {
-      const rollbackResult =
-        await this.unlockedVaultSession.restorePersistedState(
-          params.sessionId,
-          params.vaultId,
-          params.sourceSnapshotVersionVector,
-          async () =>
-            this.vaultSnapshot.restorePreparedLocalVaultSnapshot(
-              preparedRestore,
-              persistedSnapshot.trustedSnapshotContext.snapshotDigest,
-            ),
-        );
-
-      if (rollbackResult === "rollback_failed") {
-        throw new PersistedVaultRollbackIncompleteError(params.vaultId, error);
-      }
-
-      if (error instanceof RemoteVaultSnapshotChangedError) {
-        throw new SyncConflictDetectedError(params.vaultId);
-      }
-
-      throw error;
-    }
-
-    await this.unlockedVaultSession.commitPersistedSnapshot(
-      params.sessionId,
-      {
-        ...rotatedUnlockedVault,
-        trustedSnapshotContext: persistedSnapshot.trustedSnapshotContext,
+    const syncUpload = await this.vaultSyncGuard.uploadPersistedSnapshot({
+      vaultId: params.vaultId,
+      syncAccess: params.replacementAccess,
+      persistedSnapshot: persistedSnapshot.snapshot,
+      expectedRemoteSnapshotIdentity: {
+        descriptor: cloneVaultSnapshotDescriptor(
+          params.remoteSnapshotDescriptor,
+        ),
+        snapshotDigest: params.remoteTrust.snapshotDigest,
       },
-      persistedSnapshot.snapshotVersionVector,
-    );
+      previousSnapshotVersionVector: params.sourceSnapshotVersionVector,
+      persistedSnapshotDigest:
+        persistedSnapshot.trustedSnapshotContext.snapshotDigest,
+      checkpoint: persistedSnapshot.checkpoint,
+      persistedSyncCredentialState: params.encryptedCredentialState,
+      unlockedVault: rotatedUnlockedVault,
+      preparedRestore,
+      sessionId: params.sessionId,
+    });
+
+    const sessionCommitted =
+      await this.unlockedVaultSession.commitPersistedSnapshotIfSessionIsActive(
+        params.sessionId,
+        {
+          ...rotatedUnlockedVault,
+          trustedSnapshotContext: persistedSnapshot.trustedSnapshotContext,
+        },
+        persistedSnapshot.snapshotVersionVector,
+      );
+
+    return { syncUpload, sessionCommitted };
   }
 }

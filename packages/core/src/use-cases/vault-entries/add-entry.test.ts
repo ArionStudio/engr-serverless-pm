@@ -7,12 +7,14 @@ import {
   createVaultSnapshotServiceMock,
   saveUnlockedVaultWithEntries,
 } from "../../__tests__/fixtures/vault-entries";
+import { toVaultSnapshotDescriptor } from "../../domain/snapshot";
 import {
   LocalVaultSnapshotAheadError,
   RemoteVaultSnapshotAheadError,
-  RemoteVaultSnapshotChangedError,
+  RemoteVaultSnapshotIntegrityError,
   SyncRemovalPendingError,
   SyncConflictDetectedError,
+  SyncProviderUploadRejectedError,
 } from "../../errors/sync.errors";
 import {
   InvalidEntryUrlError,
@@ -20,7 +22,11 @@ import {
   PasswordEntryStrengthRequirementNotMetError,
 } from "../../errors/vault-entry.errors";
 import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
-import { PersistedVaultRollbackIncompleteError } from "../../errors/vault-snapshot.errors";
+import {
+  LocalVaultSnapshotChangedError,
+  PersistedVaultRollbackIncompleteError,
+} from "../../errors/vault-snapshot.errors";
+import type { SyncUploadOutcome } from "../../ports/sync/sync-provider.port";
 import { VaultSyncGuardService } from "../../services/sync";
 import { AddEntryUseCase } from "./add-entry";
 
@@ -78,6 +84,7 @@ describe("AddEntryUseCase", () => {
         [ctx.values.deviceId]: 2,
       },
       revisionTimestamp: ctx.values.timestamp + 1,
+      syncUpload: "complete",
     });
     expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries).toEqual(
       [
@@ -113,6 +120,7 @@ describe("AddEntryUseCase", () => {
       {
         [ctx.values.deviceId]: 1,
       },
+      {},
     );
     expect(ctx.saved.vaultSnapshot?.metadata.snapshotVersionVector).toEqual(
       ctx.saved.localVaultTrustCheckpoint?.payload.snapshotVersionVector,
@@ -286,7 +294,7 @@ describe("AddEntryUseCase", () => {
           ...session.unlockedVault.vault,
           syncTarget: ctx.values.syncTarget,
           syncRemovalPending: {
-            expectedRemoteSnapshotDescriptor: null,
+            expectedRemoteSnapshotIdentity: null,
             rollbackSnapshot,
           },
         },
@@ -426,6 +434,44 @@ describe("AddEntryUseCase", () => {
     );
   });
 
+  it("rejects a descriptor from another vault before extending synchronized state", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession!;
+    ctx.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          syncTarget: ctx.values.syncTarget,
+        },
+      },
+    };
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValue({
+      vaultId: "other-vault-id",
+      snapshotVersionVector: { [ctx.values.deviceId]: 0 },
+      revisionTimestamp: ctx.values.timestamp - 1,
+    });
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        entry: {
+          password: maximumStrengthPassword,
+          login: "user@example.com",
+          tags: [],
+          url: "https://example.com/login",
+        },
+      }),
+    ).rejects.toBeInstanceOf(RemoteVaultSnapshotIntegrityError);
+
+    expect(ctx.ports.ids.generateId).not.toHaveBeenCalled();
+    expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
   it("uploads the persisted snapshot before committing a synced vault entry", async () => {
     const ctx = createContext();
     const remoteSnapshotDescriptor = {
@@ -470,7 +516,10 @@ describe("AddEntryUseCase", () => {
           },
         }),
       }),
-      remoteSnapshotDescriptor,
+      {
+        descriptor: remoteSnapshotDescriptor,
+        snapshotDigest: ctx.values.vaultSnapshotDigest,
+      },
     );
     expect(
       vi.mocked(ctx.vaultSnapshot.persistUnlockedVault).mock
@@ -484,9 +533,383 @@ describe("AddEntryUseCase", () => {
         .invocationCallOrder[0],
     ).toBeLessThan(
       vi.mocked(
-        ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
+        ctx.ports.sessionServices.unlockedVaultSession
+          .commitPersistedSnapshotIfSessionIsActive,
       ).mock.invocationCallOrder[0],
     );
+  });
+
+  it.each([
+    ["an outcome-unknown result", { status: "outcome_unknown" }],
+    ["a malformed result", "malformed"],
+  ] as const)(
+    "keeps the local entry and reports pending for %s",
+    async (_description, uploadOutcome) => {
+      const ctx = createContext();
+      const remoteSnapshotDescriptor = toVaultSnapshotDescriptor(
+        ctx.values.vaultId,
+        ctx.saved.vaultSnapshot!,
+      );
+      const session = ctx.saved.unlockedVaultSession!;
+      ctx.saved.unlockedVaultSession = {
+        ...session,
+        unlockedVault: {
+          ...session.unlockedVault,
+          vault: {
+            ...session.unlockedVault.vault,
+            syncTarget: ctx.values.syncTarget,
+          },
+        },
+      };
+      vi.mocked(
+        ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+      ).mockResolvedValueOnce(remoteSnapshotDescriptor);
+      vi.mocked(
+        ctx.ports.syncProvider.uploadVaultSnapshot,
+      ).mockResolvedValueOnce(uploadOutcome as never);
+
+      const result = await ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        entry: {
+          password: maximumStrengthPassword,
+          login: "pending@example.com",
+          tags: [],
+          url: "https://example.com/pending",
+        },
+      });
+
+      expect(result.syncUpload).toBe("pending");
+      expect(ctx.saved.vaultSnapshot?.metadata.snapshotVersionVector).toEqual({
+        [ctx.values.deviceId]: 2,
+      });
+      expect(
+        ctx.saved.vaultSnapshot?.metadata.uploadExpectedRemoteSnapshotIdentity,
+      ).toEqual({
+        descriptor: remoteSnapshotDescriptor,
+        snapshotDigest: ctx.values.vaultSnapshotDigest,
+      });
+      expect(
+        ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries,
+      ).toEqual([
+        expect.objectContaining({
+          id: "entry-id",
+          login: "pending@example.com",
+        }),
+      ]);
+      expect(
+        ctx.vaultSnapshot.restorePreparedLocalVaultSnapshot,
+      ).not.toHaveBeenCalled();
+      expect(
+        ctx.ports.sessionServices.unlockedVaultSession
+          .commitPersistedSnapshotIfSessionIsActive,
+      ).toHaveBeenCalledOnce();
+      await expect(
+        ctx.ports.crypto.decryptDeviceSyncCredentialState(
+          ctx.saved.deviceSyncCredentialState!,
+          ctx.values.deviceLocalProtectionKey,
+          {
+            vaultId: ctx.values.vaultId,
+            deviceId: ctx.values.deviceId,
+            provider: ctx.values.syncTarget.provider,
+            target: ctx.values.syncTarget,
+          },
+        ),
+      ).resolves.toEqual(
+        expect.objectContaining({
+          pendingSnapshotUpload: {
+            candidateSnapshotIdentity: {
+              descriptor: toVaultSnapshotDescriptor(
+                ctx.values.vaultId,
+                ctx.saved.vaultSnapshot!,
+              ),
+              snapshotDigest: ctx.saved.vaultSnapshotDigest!,
+            },
+            expectedRemoteSnapshotIdentity: {
+              descriptor: remoteSnapshotDescriptor,
+              snapshotDigest: ctx.values.vaultSnapshotDigest,
+            },
+          },
+        }),
+      );
+      expect(
+        vi.mocked(
+          ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+        ).mock.invocationCallOrder[0],
+      ).toBeLessThan(
+        vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mock
+          .invocationCallOrder[0]!,
+      );
+    },
+  );
+
+  it("returns pending when the session is removed after upload start", async () => {
+    const ctx = createContext();
+    const remoteSnapshotDescriptor = toVaultSnapshotDescriptor(
+      ctx.values.vaultId,
+      ctx.saved.vaultSnapshot!,
+    );
+    const session = ctx.saved.unlockedVaultSession!;
+    ctx.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          syncTarget: ctx.values.syncTarget,
+        },
+      },
+    };
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValueOnce(remoteSnapshotDescriptor);
+    let signalUploadStarted: () => void = () => undefined;
+    let resolveUpload: (outcome: SyncUploadOutcome) => void = () => undefined;
+    const uploadStarted = new Promise<void>((resolve) => {
+      signalUploadStarted = resolve;
+    });
+    vi.mocked(
+      ctx.ports.syncProvider.uploadVaultSnapshot,
+    ).mockImplementationOnce(
+      async () =>
+        new Promise<SyncUploadOutcome>((resolve) => {
+          resolveUpload = resolve;
+          signalUploadStarted();
+        }),
+    );
+
+    const execution = ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      entry: {
+        password: maximumStrengthPassword,
+        login: "locked@example.com",
+        tags: [],
+        url: "https://example.com/locked",
+      },
+    });
+    await uploadStarted;
+    await ctx.ports.sessionServices.unlockedVaultSession.remove();
+    resolveUpload({ status: "committed" });
+
+    await expect(execution).resolves.toMatchObject({ syncUpload: "pending" });
+    expect(ctx.saved.unlockedVaultSession).toBeUndefined();
+    expect(ctx.saved.deviceSyncCredentialState).toBeDefined();
+    expect(ctx.saved.vaultSnapshot?.metadata.snapshotVersionVector).toEqual({
+      [ctx.values.deviceId]: 2,
+    });
+  });
+
+  it("leaves a replacement session untouched after a started upload commits", async () => {
+    const ctx = createContext();
+    const remoteSnapshotDescriptor = toVaultSnapshotDescriptor(
+      ctx.values.vaultId,
+      ctx.saved.vaultSnapshot!,
+    );
+    const originalSession = ctx.saved.unlockedVaultSession!;
+    ctx.saved.unlockedVaultSession = {
+      ...originalSession,
+      unlockedVault: {
+        ...originalSession.unlockedVault,
+        vault: {
+          ...originalSession.unlockedVault.vault,
+          syncTarget: ctx.values.syncTarget,
+        },
+      },
+    };
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValueOnce(remoteSnapshotDescriptor);
+    let signalUploadStarted: () => void = () => undefined;
+    let resolveUpload: (outcome: SyncUploadOutcome) => void = () => undefined;
+    const uploadStarted = new Promise<void>((resolve) => {
+      signalUploadStarted = resolve;
+    });
+    vi.mocked(
+      ctx.ports.syncProvider.uploadVaultSnapshot,
+    ).mockImplementationOnce(
+      async () =>
+        new Promise<SyncUploadOutcome>((resolve) => {
+          resolveUpload = resolve;
+          signalUploadStarted();
+        }),
+    );
+
+    const execution = ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      entry: {
+        password: maximumStrengthPassword,
+        login: "replacement@example.com",
+        tags: [],
+        url: "https://example.com/replacement",
+      },
+    });
+    await uploadStarted;
+    await ctx.ports.sessionServices.unlockedVaultSession.remove();
+    vi.mocked(ctx.ports.ids.generateId).mockResolvedValueOnce(
+      "replacement-session-id",
+    );
+    const activationGeneration =
+      await ctx.ports.sessionServices.unlockedVaultSession.requireVaultCanBeActivated(
+        ctx.values.vaultId,
+      );
+    await ctx.ports.sessionServices.unlockedVaultSession.activate(
+      activationGeneration,
+      originalSession.unlockedVault,
+      originalSession.sourceSnapshotVersionVector,
+    );
+    resolveUpload({ status: "committed" });
+
+    await expect(execution).resolves.toMatchObject({ syncUpload: "pending" });
+    expect(ctx.saved.unlockedVaultSession).toMatchObject({
+      sessionId: "replacement-session-id",
+      sourceSnapshotVersionVector: originalSession.sourceSnapshotVersionVector,
+    });
+  });
+
+  it("blocks a new mutation while an outcome-unknown snapshot upload is pending", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession!;
+    const unlockedVault = {
+      ...session.unlockedVault,
+      vault: {
+        ...session.unlockedVault.vault,
+        syncTarget: ctx.values.syncTarget,
+      },
+    };
+    ctx.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault,
+    };
+    ctx.saved.deviceSyncCredentialState =
+      await ctx.ports.crypto.encryptDeviceSyncCredentialState(
+        {
+          ...ctx.values.deviceSyncCredentialState,
+          pendingSnapshotUpload: {
+            candidateSnapshotIdentity: {
+              descriptor: toVaultSnapshotDescriptor(
+                ctx.values.vaultId,
+                ctx.saved.vaultSnapshot!,
+              ),
+              snapshotDigest: ctx.values.vaultSnapshotDigest,
+            },
+            expectedRemoteSnapshotIdentity: null,
+          },
+        },
+        ctx.values.deviceLocalProtectionKey,
+        {
+          vaultId: ctx.values.vaultId,
+          deviceId: ctx.values.deviceId,
+          provider: ctx.values.syncTarget.provider,
+          target: ctx.values.syncTarget,
+        },
+      );
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        entry: {
+          password: maximumStrengthPassword,
+          login: "blocked@example.com",
+          tags: [],
+          url: "https://example.com/blocked",
+        },
+      }),
+    ).rejects.toBeInstanceOf(LocalVaultSnapshotAheadError);
+
+    expect(ctx.ports.ids.generateId).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).not.toHaveBeenCalled();
+    expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
+  });
+
+  it("does not persist over an upload intent staged after mutation preflight", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession!;
+    const snapshot = ctx.saved.vaultSnapshot!;
+    const checkpoint = ctx.saved.localVaultTrustCheckpoint!;
+    const remoteSnapshotDescriptor = toVaultSnapshotDescriptor(
+      ctx.values.vaultId,
+      snapshot,
+    );
+    ctx.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          syncTarget: ctx.values.syncTarget,
+        },
+      },
+    };
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockImplementationOnce(async () => {
+      const pendingCredentialState =
+        await ctx.ports.crypto.encryptDeviceSyncCredentialState(
+          {
+            ...ctx.values.deviceSyncCredentialState,
+            pendingSnapshotUpload: {
+              candidateSnapshotIdentity: {
+                descriptor: remoteSnapshotDescriptor,
+                snapshotDigest: ctx.values.vaultSnapshotDigest,
+              },
+              expectedRemoteSnapshotIdentity: {
+                descriptor: remoteSnapshotDescriptor,
+                snapshotDigest: ctx.values.vaultSnapshotDigest,
+              },
+            },
+          },
+          ctx.values.deviceLocalProtectionKey,
+          {
+            vaultId: ctx.values.vaultId,
+            deviceId: ctx.values.deviceId,
+            provider: ctx.values.syncTarget.provider,
+            target: ctx.values.syncTarget,
+          },
+        );
+      await ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint({
+        expectedSnapshotDigest: ctx.values.vaultSnapshotDigest,
+        expectedCheckpoint: checkpoint,
+        expectedSyncCredentialState:
+          ctx.values.encryptedDeviceSyncCredentialState,
+        snapshot,
+        checkpoint,
+        syncCredentialState: pendingCredentialState,
+      });
+      return remoteSnapshotDescriptor;
+    });
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        entry: {
+          password: maximumStrengthPassword,
+          login: "raced@example.com",
+          tags: [],
+          url: "https://example.com/raced",
+        },
+      }),
+    ).rejects.toBeInstanceOf(LocalVaultSnapshotChangedError);
+
+    expect(ctx.saved.vaultSnapshot).toBe(snapshot);
+    await expect(
+      ctx.ports.crypto.decryptDeviceSyncCredentialState(
+        ctx.saved.deviceSyncCredentialState!,
+        ctx.values.deviceLocalProtectionKey,
+        {
+          vaultId: ctx.values.vaultId,
+          deviceId: ctx.values.deviceId,
+          provider: ctx.values.syncTarget.provider,
+          target: ctx.values.syncTarget,
+        },
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({ pendingSnapshotUpload: expect.any(Object) }),
+    );
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
+    ).not.toHaveBeenCalled();
   });
 
   it("restores the local snapshot and does not commit when synced upload races", async () => {
@@ -513,8 +936,11 @@ describe("AddEntryUseCase", () => {
     vi.mocked(
       ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
     ).mockResolvedValueOnce(remoteSnapshotDescriptor);
-    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockRejectedValueOnce(
-      new RemoteVaultSnapshotChangedError(ctx.values.vaultId),
+    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockResolvedValueOnce(
+      {
+        status: "definitely_not_committed",
+        reason: "remote_snapshot_changed",
+      },
     );
 
     await expect(
@@ -550,6 +976,8 @@ describe("AddEntryUseCase", () => {
         }),
       }),
       expect.any(String),
+      expect.any(Object),
+      expect.any(Object),
     );
     const persistedSnapshotDigest = vi.mocked(
       ctx.vaultSnapshot.restorePreparedLocalVaultSnapshot,
@@ -575,6 +1003,51 @@ describe("AddEntryUseCase", () => {
       }),
     );
     expect(ctx.saved.vaultSnapshotDigest).toBe(ctx.values.vaultSnapshotDigest);
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("restores the local snapshot without reporting a conflict when the provider rejects the upload", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession!;
+    const snapshot = ctx.saved.vaultSnapshot!;
+
+    ctx.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          syncTarget: ctx.values.syncTarget,
+        },
+      },
+    };
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValueOnce(
+      toVaultSnapshotDescriptor(ctx.values.vaultId, snapshot),
+    );
+    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockResolvedValueOnce(
+      {
+        status: "definitely_not_committed",
+        reason: "provider_rejected",
+      },
+    );
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        entry: {
+          password: maximumStrengthPassword,
+          login: "user@example.com",
+          tags: [],
+          url: "https://example.com/login",
+        },
+      }),
+    ).rejects.toBeInstanceOf(SyncProviderUploadRejectedError);
+
+    expect(ctx.saved.vaultSnapshot).toEqual(snapshot);
     expect(
       ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
     ).not.toHaveBeenCalled();
@@ -667,7 +1140,10 @@ describe("AddEntryUseCase", () => {
         originalSession.sourceSnapshotVersionVector,
       );
 
-      throw new RemoteVaultSnapshotChangedError(ctx.values.vaultId);
+      return {
+        status: "definitely_not_committed",
+        reason: "remote_snapshot_changed",
+      };
     });
 
     await expect(
@@ -733,7 +1209,10 @@ describe("AddEntryUseCase", () => {
           snapshotDigest: concurrentSnapshotDigest,
         },
       };
-      throw new RemoteVaultSnapshotChangedError(ctx.values.vaultId);
+      return {
+        status: "definitely_not_committed",
+        reason: "remote_snapshot_changed",
+      };
     });
 
     await expect(
@@ -773,7 +1252,6 @@ describe("AddEntryUseCase", () => {
       revisionTimestamp: ctx.values.timestamp,
     };
     const session = ctx.saved.unlockedVaultSession!;
-    const uploadError = new RemoteVaultSnapshotChangedError(ctx.values.vaultId);
 
     ctx.saved.unlockedVaultSession = {
       ...session,
@@ -795,7 +1273,10 @@ describe("AddEntryUseCase", () => {
         ctx.ports.unlockedVaultSessionMaterialRepository
           .getUnlockedVaultSessionMaterial,
       ).mockRejectedValueOnce(new Error("material read failed"));
-      throw uploadError;
+      return {
+        status: "definitely_not_committed",
+        reason: "remote_snapshot_changed",
+      };
     });
 
     await expect(
@@ -810,7 +1291,9 @@ describe("AddEntryUseCase", () => {
       }),
     ).rejects.toMatchObject({
       name: "PersistedVaultRollbackIncompleteError",
-      cause: uploadError,
+      cause: expect.objectContaining({
+        name: "RemoteVaultSnapshotChangedError",
+      }),
     });
 
     expect(

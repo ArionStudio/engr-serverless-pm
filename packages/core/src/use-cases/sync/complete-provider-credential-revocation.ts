@@ -8,13 +8,11 @@ import {
   LocalSyncCredentialsMissingError,
   PreviousSyncCredentialStillActiveError,
   RemoteVaultSnapshotChangedError,
+  RemoteVaultSnapshotIntegrityError,
   RemoteVaultSnapshotNotFoundError,
-  SyncConflictDetectedError,
   SyncNotConfiguredError,
 } from "../../errors/sync.errors";
 import { InvalidDeviceRevocationTransitionError } from "../../errors/device-revocation.errors";
-import { PersistedVaultRollbackIncompleteError } from "../../errors/vault-snapshot.errors";
-import { LocalVaultTrustCheckpointNotFoundError } from "../../errors/vault-trust.errors";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
@@ -22,6 +20,7 @@ import type { UnlockedVaultSessionService } from "../../services/session/unlocke
 import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import type { VaultSyncGuardService } from "../../services/sync";
 import { requireSyncProviderAccessOutcome } from "../../services/sync/sync-provider-outcome.policy";
+import type { SyncUploadStatus } from "../../domain/sync/sync-upload-status.type";
 
 export type CompleteProviderCredentialRevocationCommandParams = {
   readonly vaultId: string;
@@ -57,6 +56,7 @@ export class CompleteProviderCredentialRevocationUseCase {
     readonly providerCredentialRevocation:
       | "complete"
       | "pending_external_deletion";
+    readonly syncUpload: SyncUploadStatus;
   }> {
     const { sessionId, sourceSnapshotVersionVector, unlockedVault } =
       await this.unlockedVaultSession.requireUnlockedVaultContext(
@@ -93,6 +93,13 @@ export class CompleteProviderCredentialRevocationUseCase {
       context,
     );
 
+    if (state.pendingSnapshotUpload !== undefined) {
+      await this.vaultSyncGuard.requireSnapshotUploadReconciled(
+        params.vaultId,
+        unlockedVault,
+      );
+    }
+
     const sharedPending =
       unlockedVault.vault.providerCredentialRevocationPending;
 
@@ -102,6 +109,7 @@ export class CompleteProviderCredentialRevocationUseCase {
           sharedPending === undefined
             ? "complete"
             : "pending_external_deletion",
+        syncUpload: "complete",
       };
     }
 
@@ -148,13 +156,11 @@ export class CompleteProviderCredentialRevocationUseCase {
 
     if (!sharedMarkerMatches) {
       const checkpoint =
-        await this.vaultLocalRepository.getLocalVaultTrustCheckpoint(
+        await this.vaultSnapshot.requireCurrentCheckpointForUnlockedVault(
           params.vaultId,
+          snapshot,
+          unlockedVault,
         );
-
-      if (checkpoint === null) {
-        throw new LocalVaultTrustCheckpointNotFoundError(params.vaultId);
-      }
 
       await this.unlockedVaultSession.persistForActiveSession(
         sessionId,
@@ -163,6 +169,8 @@ export class CompleteProviderCredentialRevocationUseCase {
           this.vaultLocalRepository.saveVaultSnapshotWithCheckpoint({
             expectedSnapshotDigest:
               unlockedVault.trustedSnapshotContext.snapshotDigest,
+            expectedCheckpoint: checkpoint,
+            expectedSyncCredentialState: encryptedState,
             snapshot,
             checkpoint,
             syncCredentialState: completedState,
@@ -174,6 +182,7 @@ export class CompleteProviderCredentialRevocationUseCase {
           sharedPending === undefined
             ? "complete"
             : "pending_external_deletion",
+        syncUpload: "complete",
       };
     }
 
@@ -200,6 +209,24 @@ export class CompleteProviderCredentialRevocationUseCase {
       throw new RemoteVaultSnapshotChangedError(params.vaultId);
     }
 
+    const remoteSnapshot = await this.syncProvider.downloadVaultSnapshot(
+      currentSyncAccess,
+      remoteSnapshotDescriptor,
+    );
+    const remoteSnapshotDigest =
+      await this.crypto.digestVaultSnapshot(remoteSnapshot);
+
+    if (
+      remoteSnapshotDigest !==
+      unlockedVault.trustedSnapshotContext.snapshotDigest
+    ) {
+      throw new RemoteVaultSnapshotIntegrityError(params.vaultId);
+    }
+    const expectedRemoteSnapshotIdentity = {
+      descriptor: remoteSnapshotDescriptor,
+      snapshotDigest: remoteSnapshotDigest,
+    };
+
     const completedUnlockedVault = {
       ...unlockedVault,
       vault: clearVaultProviderCredentialRevocationPending(unlockedVault.vault),
@@ -220,44 +247,34 @@ export class CompleteProviderCredentialRevocationUseCase {
               params.vaultId,
               completedUnlockedVault,
               sourceSnapshotVersionVector,
-              { syncCredentialState: completedState },
+              {
+                uploadExpectedRemoteSnapshotIdentity:
+                  expectedRemoteSnapshotIdentity,
+                expectedSyncCredentialState: encryptedState,
+                syncCredentialState: completedState,
+              },
             );
 
           return { persistedSnapshot, preparedRestore };
         },
       );
 
-    try {
-      await this.syncProvider.uploadVaultSnapshot(
-        currentSyncAccess,
-        persistedSnapshot.snapshot,
-        remoteSnapshotDescriptor,
-      );
-    } catch (error) {
-      const rollbackResult =
-        await this.unlockedVaultSession.restorePersistedState(
-          sessionId,
-          params.vaultId,
-          sourceSnapshotVersionVector,
-          async () =>
-            this.vaultSnapshot.restorePreparedLocalVaultSnapshot(
-              preparedRestore,
-              persistedSnapshot.trustedSnapshotContext.snapshotDigest,
-            ),
-        );
+    const syncUpload = await this.vaultSyncGuard.uploadPersistedSnapshot({
+      vaultId: params.vaultId,
+      syncAccess: currentSyncAccess,
+      persistedSnapshot: persistedSnapshot.snapshot,
+      expectedRemoteSnapshotIdentity,
+      previousSnapshotVersionVector: sourceSnapshotVersionVector,
+      persistedSnapshotDigest:
+        persistedSnapshot.trustedSnapshotContext.snapshotDigest,
+      checkpoint: persistedSnapshot.checkpoint,
+      persistedSyncCredentialState: completedState,
+      unlockedVault: completedUnlockedVault,
+      preparedRestore,
+      sessionId,
+    });
 
-      if (rollbackResult === "rollback_failed") {
-        throw new PersistedVaultRollbackIncompleteError(params.vaultId, error);
-      }
-
-      if (error instanceof RemoteVaultSnapshotChangedError) {
-        throw new SyncConflictDetectedError(params.vaultId);
-      }
-
-      throw error;
-    }
-
-    await this.unlockedVaultSession.commitPersistedSnapshot(
+    await this.unlockedVaultSession.commitPersistedSnapshotIfSessionIsActive(
       sessionId,
       {
         ...completedUnlockedVault,
@@ -266,6 +283,6 @@ export class CompleteProviderCredentialRevocationUseCase {
       persistedSnapshot.snapshotVersionVector,
     );
 
-    return { providerCredentialRevocation: "complete" };
+    return { providerCredentialRevocation: "complete", syncUpload };
   }
 }

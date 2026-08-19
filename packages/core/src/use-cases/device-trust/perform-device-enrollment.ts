@@ -10,7 +10,11 @@ import { isValidLocalAccessGenerationId } from "../../domain/device-trust/device
 import type { RawMasterPassword } from "../../domain/master-password";
 import { assertNewMasterPasswordMeetsPolicy } from "../../domain/master-password/master-password.utils";
 import type { RecoveryKeyMnemonic } from "../../domain/recovery";
-import type { SyncAccess, SyncSetupInput } from "../../domain/sync";
+import type {
+  SyncAccess,
+  SyncSetupInput,
+  SyncUploadStatus,
+} from "../../domain/sync";
 import type {
   UnsignedVaultSnapshot,
   VaultSnapshot,
@@ -60,6 +64,8 @@ import type { ClipboardOperationCoordinatorPort } from "../../ports/clipboard/cl
 import { VaultSessionActivationService } from "../../services/session/vault-session-activation.service";
 import { bestEffortWipeArrayBuffers } from "../../lib/secure-wipe.utils";
 import { VaultTrustService } from "../../services/trust/vault-trust.service";
+import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
+import { VaultSyncGuardService } from "../../services/sync/vault-sync-guard.service";
 
 export type PerformDeviceEnrollmentCommandParams = {
   readonly enrollmentResponse: DeviceEnrollmentResponse;
@@ -75,7 +81,7 @@ export type PerformDeviceEnrollmentResult = {
   readonly recoveryMnemonicKey: RecoveryKeyMnemonic;
   readonly snapshotVersionVector: VersionVector;
   readonly revisionTimestamp: number;
-  readonly syncUpload: "complete" | "pending";
+  readonly syncUpload: SyncUploadStatus;
 };
 
 export class PerformDeviceEnrollmentUseCase {
@@ -90,6 +96,7 @@ export class PerformDeviceEnrollmentUseCase {
   private readonly vaultTrust: VaultTrustService;
   private readonly sessionActivation: VaultSessionActivationService;
   private readonly lifecycleCleanup: VaultLifecycleCleanupService;
+  private readonly vaultSyncGuard: VaultSyncGuardService;
 
   constructor(
     clock: ClockPort,
@@ -123,6 +130,13 @@ export class PerformDeviceEnrollmentUseCase {
       clipboardOperations,
     );
     this.lifecycleCleanup = lifecycleCleanup;
+    this.vaultSyncGuard = new VaultSyncGuardService(
+      syncProvider,
+      new VaultSnapshotService(crypto, clock, vaultLocalRepository),
+      unlockedVaultSession,
+      crypto,
+      vaultLocalRepository,
+    );
   }
 
   async execute(
@@ -308,6 +322,8 @@ export class PerformDeviceEnrollmentUseCase {
         params.syncConfig,
         authorizedSnapshot,
       );
+      const authorizedSnapshotDigest =
+        await this.crypto.digestVaultSnapshot(authorizedSnapshot);
       const unsignedSnapshot: UnsignedVaultSnapshot = {
         metadata: {
           ...authorizedSnapshot.metadata,
@@ -317,6 +333,17 @@ export class PerformDeviceEnrollmentUseCase {
             request.payload.deviceId,
           ),
           createdByDeviceId: request.payload.deviceId,
+          ...(syncAccess === undefined
+            ? {}
+            : {
+                uploadExpectedRemoteSnapshotIdentity: {
+                  descriptor: toVaultSnapshotDescriptor(
+                    response.vaultId,
+                    authorizedSnapshot,
+                  ),
+                  snapshotDigest: authorizedSnapshotDigest,
+                },
+              }),
         },
         trustChain: authorizedSnapshot.trustChain,
         keySlots: authorizedSnapshot.keySlots,
@@ -429,6 +456,8 @@ export class PerformDeviceEnrollmentUseCase {
                 target: syncAccess.target,
               },
             );
+      let expectedRollbackSyncCredentialState =
+        encryptedSyncCredentialState ?? null;
       const unlockedVault: UnlockedVault = {
         vaultId: response.vaultId,
         deviceId: request.payload.deviceId,
@@ -461,64 +490,93 @@ export class PerformDeviceEnrollmentUseCase {
               : { syncCredentialState: encryptedSyncCredentialState }),
           }),
         rollbackPreparedActivation: async () => {
-          await this.vaultLocalRepository.removePersistedLocalVaultIfSnapshotMatches(
-            response.vaultId,
-            snapshotDigest,
+          await this.vaultLocalRepository.removePersistedLocalVaultIfArtifactsMatch(
+            {
+              vaultId: response.vaultId,
+              expectedDescriptor: descriptor,
+              expectedDeviceAccessMaterial: deviceAccessMaterial,
+              expectedDeviceAccessRecoveryBackup: deviceAccessRecoveryBackup,
+              expectedSnapshotDigest: snapshotDigest,
+              expectedCheckpoint: checkpoint,
+              expectedSyncCredentialState: expectedRollbackSyncCredentialState,
+            },
           );
         },
       });
       const { sessionId, generation: sessionGeneration } = activatedSession;
       sessionActivated = true;
 
-      let syncUpload: "complete" | "pending" = "complete";
+      let syncUpload: SyncUploadStatus = "complete";
 
       if (syncAccess !== undefined) {
         try {
-          await this.syncProvider.uploadVaultSnapshot(
+          syncUpload = await this.vaultSyncGuard.uploadTrackedSnapshot({
+            sessionId,
+            vaultId: response.vaultId,
+            unlockedVault,
             syncAccess,
             snapshot,
-            toVaultSnapshotDescriptor(response.vaultId, authorizedSnapshot),
-          );
-        } catch (error) {
-          if (!(error instanceof RemoteVaultSnapshotChangedError)) {
-            syncUpload = "pending";
-          } else {
-            const remoteSnapshotChanged =
-              new DeviceEnrollmentRemoteSnapshotChangedError(response.vaultId, {
-                cause: error,
-              });
-            const rollbackResult =
-              await this.lifecycleCleanup.discardIfSessionIsActive(
-                {
-                  sessionId,
-                  vaultId: response.vaultId,
-                  generation: sessionGeneration,
-                  sourceSnapshotVersionVector:
-                    snapshot.metadata.snapshotVersionVector,
-                },
-                async () =>
-                  this.vaultLocalRepository.removePersistedLocalVaultIfSnapshotMatches(
-                    response.vaultId,
-                    snapshotDigest,
-                  ),
-              );
-
-            if (
-              rollbackResult !== "session_advanced" &&
-              rollbackResult !== "session_replaced"
-            ) {
-              sessionActivated = false;
-            }
-
-            if (rollbackResult !== "discarded") {
-              throw new DeviceEnrollmentRollbackIncompleteError(
+            snapshotDigest,
+            checkpoint,
+            expectedRemoteSnapshotIdentity: {
+              descriptor: toVaultSnapshotDescriptor(
                 response.vaultId,
-                remoteSnapshotChanged,
-              );
-            }
+                authorizedSnapshot,
+              ),
+              snapshotDigest: authorizedSnapshotDigest,
+            },
+            onIntentStaged: ({ pending }) => {
+              expectedRollbackSyncCredentialState = pending;
+            },
+          });
+        } catch (error) {
+          const uploadError =
+            error instanceof RemoteVaultSnapshotChangedError
+              ? new DeviceEnrollmentRemoteSnapshotChangedError(
+                  response.vaultId,
+                  { cause: error },
+                )
+              : error;
+          const rollbackResult =
+            await this.lifecycleCleanup.discardIfSessionIsActive(
+              {
+                sessionId,
+                vaultId: response.vaultId,
+                generation: sessionGeneration,
+                sourceSnapshotVersionVector:
+                  snapshot.metadata.snapshotVersionVector,
+              },
+              async () =>
+                this.vaultLocalRepository.removePersistedLocalVaultIfArtifactsMatch(
+                  {
+                    vaultId: response.vaultId,
+                    expectedDescriptor: descriptor,
+                    expectedDeviceAccessMaterial: deviceAccessMaterial,
+                    expectedDeviceAccessRecoveryBackup:
+                      deviceAccessRecoveryBackup,
+                    expectedSnapshotDigest: snapshotDigest,
+                    expectedCheckpoint: checkpoint,
+                    expectedSyncCredentialState:
+                      expectedRollbackSyncCredentialState,
+                  },
+                ),
+            );
 
-            throw remoteSnapshotChanged;
+          if (
+            rollbackResult !== "session_advanced" &&
+            rollbackResult !== "session_replaced"
+          ) {
+            sessionActivated = false;
           }
+
+          if (rollbackResult !== "discarded") {
+            throw new DeviceEnrollmentRollbackIncompleteError(
+              response.vaultId,
+              uploadError,
+            );
+          }
+
+          throw uploadError;
         }
       }
 

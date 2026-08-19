@@ -10,6 +10,7 @@ import type {
   CryptoPort,
 } from "@lfspm/core";
 import {
+  areJsonEqual,
   DeviceAccessMaterialChangedError,
   LocalVaultAlreadyInitializedError,
   LocalVaultSnapshotChangedError,
@@ -55,6 +56,20 @@ import {
 } from "../codecs/vault-snapshot.codec";
 
 const INITIAL_DEVICE_ACCESS_REVISION = 1;
+
+function areEncryptedSyncCredentialStatesEqual(
+  left: EncryptedDeviceSyncCredentialState | null,
+  right: EncryptedDeviceSyncCredentialState | null,
+): boolean {
+  if (left === null || right === null) {
+    return left === null && right === null;
+  }
+
+  return (
+    left.ciphertext === right.ciphertext &&
+    left.encryptionNonce === right.encryptionNonce
+  );
+}
 
 type ErrorConstructor = new () => Error;
 
@@ -196,10 +211,22 @@ export class IndexedDbVaultLocalRepository implements VaultLocalRepositoryPort {
     );
   }
 
-  async removePersistedLocalVaultIfSnapshotMatches(
-    vaultId: string,
-    expectedSnapshotDigest: string,
+  async removePersistedLocalVaultIfArtifactsMatch(
+    params: Parameters<
+      VaultLocalRepositoryPort["removePersistedLocalVaultIfArtifactsMatch"]
+    >[0],
   ): Promise<boolean> {
+    const { vaultId } = params;
+    const expectedDescriptorArtifact = encodeLocalVaultDescriptor(
+      params.expectedDescriptor,
+    );
+    const expectedMaterialArtifact = encodeDeviceAccessMaterial(
+      params.expectedDeviceAccessMaterial,
+    );
+    const expectedBackupArtifact = encodeDeviceAccessRecoveryBackup(
+      params.expectedDeviceAccessRecoveryBackup,
+    );
+
     return this.database.transaction(
       "rw",
       [
@@ -211,14 +238,47 @@ export class IndexedDbVaultLocalRepository implements VaultLocalRepositoryPort {
         this.database.deviceSyncCredentialStates,
       ],
       async () => {
-        const [snapshotRecord, checkpointRecord] = await Promise.all([
+        const [
+          descriptorRecord,
+          materialRecord,
+          backupRecord,
+          snapshotRecord,
+          checkpointRecord,
+          syncCredentialRecord,
+        ] = await Promise.all([
+          this.database.localVaultDescriptors.get(vaultId),
+          this.database.deviceAccessMaterials.get(vaultId),
+          this.database.deviceAccessRecoveryBackups.get(vaultId),
           this.database.vaultSnapshots.get(vaultId),
           this.database.localVaultTrustCheckpoints.get(vaultId),
+          this.database.deviceSyncCredentialStates.get(vaultId),
         ]);
 
-        if (snapshotRecord === undefined || checkpointRecord === undefined) {
+        if (
+          descriptorRecord === undefined ||
+          materialRecord === undefined ||
+          backupRecord === undefined ||
+          snapshotRecord === undefined ||
+          checkpointRecord === undefined
+        ) {
           return false;
         }
+
+        const descriptorArtifact = storedVaultArtifactValue(
+          descriptorRecord,
+          vaultId,
+          InvalidLocalVaultSecurityRecordError,
+        );
+        const materialArtifact = storedVaultArtifactValue(
+          materialRecord,
+          vaultId,
+          InvalidLocalVaultSecurityRecordError,
+        );
+        const backupArtifact = storedVaultArtifactValue(
+          backupRecord,
+          vaultId,
+          InvalidLocalVaultSecurityRecordError,
+        );
 
         const snapshot = await this.decodeAndValidateVaultSnapshot(
           storedVaultArtifactValue(
@@ -237,12 +297,30 @@ export class IndexedDbVaultLocalRepository implements VaultLocalRepositoryPort {
         const currentSnapshotDigest = await Dexie.waitFor(
           this.snapshotDigester.digestVaultSnapshot(snapshot),
         );
+        const currentSyncCredentialState =
+          syncCredentialRecord === undefined
+            ? null
+            : decodeEncryptedDeviceSyncCredentialState(
+                storedVaultArtifactValue(
+                  syncCredentialRecord,
+                  vaultId,
+                  InvalidSyncCredentialRecordError,
+                ),
+              );
 
         if (
           snapshot.metadata.id !== vaultId ||
           checkpoint.payload.vaultId !== vaultId ||
-          currentSnapshotDigest !== expectedSnapshotDigest ||
-          checkpoint.payload.snapshotDigest !== expectedSnapshotDigest
+          !areJsonEqual(descriptorArtifact, expectedDescriptorArtifact) ||
+          !areJsonEqual(materialArtifact, expectedMaterialArtifact) ||
+          !areJsonEqual(backupArtifact, expectedBackupArtifact) ||
+          currentSnapshotDigest !== params.expectedSnapshotDigest ||
+          checkpoint.payload.snapshotDigest !== params.expectedSnapshotDigest ||
+          !areJsonEqual(checkpoint, params.expectedCheckpoint) ||
+          !areEncryptedSyncCredentialStatesEqual(
+            currentSyncCredentialState,
+            params.expectedSyncCredentialState,
+          )
         ) {
           return false;
         }
@@ -474,12 +552,11 @@ export class IndexedDbVaultLocalRepository implements VaultLocalRepositoryPort {
     await this.database.vaultSnapshots.delete(vaultId);
   }
 
-  async saveVaultSnapshotWithCheckpoint(params: {
-    readonly expectedSnapshotDigest: string;
-    readonly snapshot: VaultSnapshot;
-    readonly checkpoint: LocalVaultTrustCheckpoint;
-    readonly syncCredentialState?: EncryptedDeviceSyncCredentialState | null;
-  }): Promise<void> {
+  async saveVaultSnapshotWithCheckpoint(
+    params: Parameters<
+      VaultLocalRepositoryPort["saveVaultSnapshotWithCheckpoint"]
+    >[0],
+  ): Promise<void> {
     const vaultId = params.snapshot.metadata.id;
 
     if (params.checkpoint.payload.vaultId !== vaultId) {
@@ -495,6 +572,22 @@ export class IndexedDbVaultLocalRepository implements VaultLocalRepositoryPort {
       params.syncCredentialState === null
         ? params.syncCredentialState
         : encodeEncryptedDeviceSyncCredentialState(params.syncCredentialState);
+    const replacesSyncCredentialState =
+      params.syncCredentialState !== undefined;
+    const hasSyncCredentialState = Object.hasOwn(params, "syncCredentialState");
+    const hasExpectedSyncCredentialState = Object.hasOwn(
+      params,
+      "expectedSyncCredentialState",
+    );
+
+    if (
+      hasSyncCredentialState !== replacesSyncCredentialState ||
+      hasExpectedSyncCredentialState !== replacesSyncCredentialState ||
+      (replacesSyncCredentialState &&
+        params.expectedSyncCredentialState === undefined)
+    ) {
+      throw new InvalidLocalVaultSecurityRecordError();
+    }
 
     await this.database.transaction(
       "rw",
@@ -502,10 +595,14 @@ export class IndexedDbVaultLocalRepository implements VaultLocalRepositoryPort {
       this.database.localVaultTrustCheckpoints,
       this.database.deviceSyncCredentialStates,
       async () => {
-        const [snapshotRecord, checkpointRecord] = await Promise.all([
-          this.database.vaultSnapshots.get(vaultId),
-          this.database.localVaultTrustCheckpoints.get(vaultId),
-        ]);
+        const [snapshotRecord, checkpointRecord, syncCredentialRecord] =
+          await Promise.all([
+            this.database.vaultSnapshots.get(vaultId),
+            this.database.localVaultTrustCheckpoints.get(vaultId),
+            replacesSyncCredentialState
+              ? this.database.deviceSyncCredentialStates.get(vaultId)
+              : Promise.resolve(undefined),
+          ]);
 
         if (snapshotRecord === undefined || checkpointRecord === undefined) {
           throw new LocalVaultSnapshotChangedError(vaultId);
@@ -528,13 +625,27 @@ export class IndexedDbVaultLocalRepository implements VaultLocalRepositoryPort {
         const currentSnapshotDigest = await Dexie.waitFor(
           this.snapshotDigester.digestVaultSnapshot(currentSnapshot),
         );
+        const currentSyncCredentialState =
+          syncCredentialRecord === undefined
+            ? null
+            : decodeEncryptedDeviceSyncCredentialState(
+                storedVaultArtifactValue(
+                  syncCredentialRecord,
+                  vaultId,
+                  InvalidSyncCredentialRecordError,
+                ),
+              );
 
         if (
           currentSnapshot.metadata.id !== vaultId ||
           currentCheckpoint.payload.vaultId !== vaultId ||
           currentSnapshotDigest !== params.expectedSnapshotDigest ||
-          currentCheckpoint.payload.snapshotDigest !==
-            params.expectedSnapshotDigest
+          !areJsonEqual(currentCheckpoint, params.expectedCheckpoint) ||
+          (replacesSyncCredentialState &&
+            !areEncryptedSyncCredentialStatesEqual(
+              currentSyncCredentialState,
+              params.expectedSyncCredentialState ?? null,
+            ))
         ) {
           throw new LocalVaultSnapshotChangedError(vaultId);
         }

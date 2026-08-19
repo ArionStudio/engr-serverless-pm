@@ -11,6 +11,7 @@ import type { VaultSnapshotService } from "../../services/snapshot/vault-snapsho
 import type { VersionVector } from "../../domain/versioning/version-vector.type";
 import type { VaultSyncGuardService } from "../../services/sync";
 import { calculatePasswordStrength } from "../../lib/password-strength/password-strength.utils";
+import type { SyncUploadStatus } from "../../domain/sync/sync-upload-status.type";
 
 export type UpdateEntryCommandParams = {
   vaultId: string;
@@ -28,6 +29,7 @@ export type UpdateEntryResult = {
   entryId: string;
   snapshotVersionVector: VersionVector;
   revisionTimestamp: number;
+  syncUpload: SyncUploadStatus;
 };
 
 export class UpdateEntryUseCase {
@@ -118,40 +120,63 @@ export class UpdateEntryUseCase {
               params.vaultId,
               updatedUnlockedVault,
               sourceSnapshotVersionVector,
+              syncState.remoteSnapshotIdentity === undefined
+                ? {}
+                : {
+                    uploadExpectedRemoteSnapshotIdentity:
+                      syncState.remoteSnapshotIdentity,
+                    expectedSyncCredentialState: syncState.syncCredentialState,
+                    syncCredentialState: syncState.syncCredentialState,
+                  },
             );
 
           return { persistedSnapshot, preparedRestore };
         },
       );
 
+    let syncUpload: SyncUploadStatus = "complete";
+
     if (syncState.syncAccess !== undefined) {
       if (preparedRestore === undefined) {
         throw new Error("Synchronized mutation rollback was not prepared.");
       }
 
-      await this.vaultSyncGuard.uploadPersistedLocalMutation(
+      syncUpload = await this.vaultSyncGuard.uploadPersistedLocalMutation(
         params.vaultId,
         syncState,
         persistedSnapshot.snapshot,
         persistedSnapshot.trustedSnapshotContext.snapshotDigest,
+        persistedSnapshot.checkpoint,
+        updatedUnlockedVault,
         preparedRestore,
         sessionId,
       );
     }
 
-    await this.unlockedVaultSession.commitPersistedSnapshot(
-      sessionId,
-      {
-        ...updatedUnlockedVault,
-        trustedSnapshotContext: persistedSnapshot.trustedSnapshotContext,
-      },
-      persistedSnapshot.snapshotVersionVector,
-    );
+    const committedUnlockedVault = {
+      ...updatedUnlockedVault,
+      trustedSnapshotContext: persistedSnapshot.trustedSnapshotContext,
+    };
+
+    if (syncState.syncAccess === undefined) {
+      await this.unlockedVaultSession.commitPersistedSnapshot(
+        sessionId,
+        committedUnlockedVault,
+        persistedSnapshot.snapshotVersionVector,
+      );
+    } else {
+      await this.unlockedVaultSession.commitPersistedSnapshotIfSessionIsActive(
+        sessionId,
+        committedUnlockedVault,
+        persistedSnapshot.snapshotVersionVector,
+      );
+    }
 
     return {
       entryId: params.entryId,
       snapshotVersionVector: persistedSnapshot.snapshotVersionVector,
       revisionTimestamp: persistedSnapshot.revisionTimestamp,
+      syncUpload,
     };
   }
 }

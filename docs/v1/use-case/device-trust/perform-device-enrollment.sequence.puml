@@ -67,12 +67,15 @@ alt scheduling or session activation fails
   Session -> Activation : invoke rollback callback
   Activation -> Tasks : best effort cancelTask(lockVault, actionId)
   Activation -> LockRepo : best effort removeIfActionIsActive(actionId)
-  Activation -> LocalRepo : best effort removePersistedLocalVaultIfSnapshotMatches(...)
+  Activation -> LocalRepo : best effort removePersistedLocalVaultIfArtifactsMatch(\nexact complete initialized artifact set)
   UC --> Caller : throw original activation failure
 else activated with fresh session identity
   opt sync access exists
-    UC -> Sync : uploadVaultSnapshot(syncAccess, registeredSnapshot,\nauthorizedDescriptor)
-    alt remote snapshot changed
+    UC -> LocalRepo : CAS-save same snapshot + encrypted pending upload intent
+    UC -> Sync : prepareVaultSnapshotUpload(syncAccess, registeredSnapshot,\nauthorizedSnapshotIdentity { descriptor, digest })
+    Sync --> UC : synchronous start operation after provider preflight
+    UC -> Session : revalidate originating session and start conditional upload
+    alt definitely not committed
       UC -> Lifecycle : discardIfSessionIsActive(sessionId, generation, vector)
       Lifecycle -> Session : enter serialized conditional discard
       alt originating session is current
@@ -82,9 +85,9 @@ else activated with fresh session identity
         Lifecycle -> LockRepo : removeIfActionIsActive(lockActionId)
         Session -> Session : wipe and remove matching session records
         alt cleanup and session removal completed
-          Session -> LocalRepo : removePersistedLocalVaultIfSnapshotMatches(...)
+          Session -> LocalRepo : removePersistedLocalVaultIfArtifactsMatch(\nexact complete initialized artifact set + staged intent)
           alt local discard completed
-            UC --> Caller : throw DeviceEnrollmentRemoteSnapshotChangedError
+            UC --> Caller : throw mapped remote-change or provider-rejection error
           else local discard incomplete
             UC -> UC : wipe original buffers after session custody ended
             UC --> Caller : throw DeviceEnrollmentRollbackIncompleteError
@@ -102,8 +105,15 @@ else activated with fresh session identity
         UC -> UC : wipe original buffers; preserve local state
         UC --> Caller : throw DeviceEnrollmentRollbackIncompleteError
       end
-    else other upload failure
-      UC -> UC : keep local enrollment; syncUpload = pending
+    else outcome unknown
+      UC -> UC : keep local enrollment and pending intent; syncUpload = pending
+    else committed
+      UC -> LocalRepo : CAS-clear pending upload intent
+      alt clear succeeds
+        UC -> UC : syncUpload = complete
+      else clear races or session is no longer active
+        UC -> UC : retain reconciliation state; syncUpload = pending
+      end
     end
   end
   UC -> LocalRepo : best effort removePendingDeviceEnrollment(requestId)

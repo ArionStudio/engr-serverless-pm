@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createDivergedTrustBaselineFixture } from "../../__tests__/fixtures/device-trust";
 import {
   createCoreTestPorts,
-  replaceVaultSnapshotAfterNextSave,
+  captureVaultSnapshotFromNextSave,
 } from "../../__tests__/fixtures/ports";
 import {
   createCoreTestValues,
@@ -16,7 +16,10 @@ import type {
 } from "../../domain/device-trust";
 import type { UnlockedVault } from "../../domain/session";
 import type { VaultSnapshot } from "../../domain/snapshot";
-import { toVaultSnapshotDescriptor } from "../../domain/snapshot";
+import {
+  toVaultSnapshotDescriptor,
+  toVaultSnapshotIdentity,
+} from "../../domain/snapshot";
 import { revokeDeviceProfileFromVault } from "../../domain/vault/vault-device.mutations";
 import {
   CurrentDeviceRevokedError,
@@ -34,6 +37,7 @@ import {
 import { UnlockedVaultSessionExpiredError } from "../../errors/vault-session.errors";
 import { LocalVaultSnapshotChangedError } from "../../errors/vault-snapshot.errors";
 import { VaultSnapshotRollbackDetectedError } from "../../errors/vault-trust.errors";
+import type { SyncUploadOutcome } from "../../ports/sync/sync-provider.port";
 import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import { ConsumeDeviceRevocationUseCase } from "./consume-device-revocation";
 import { PrepareDeviceRevocationConsumptionUseCase } from "./prepare-device-revocation-consumption";
@@ -190,6 +194,15 @@ function createContext() {
   };
   ports.saved.vaultSnapshot = localSnapshot;
   ports.saved.vaultSnapshotDigest = values.vaultSnapshotDigest;
+  ports.saved.localVaultTrustCheckpoint = {
+    ...values.localVaultTrustCheckpoint,
+    payload: {
+      ...values.localVaultTrustCheckpoint.payload,
+      trustGeneration: localTrust.generation,
+      snapshotVersionVector: localSnapshot.metadata.snapshotVersionVector,
+      snapshotDigest: values.vaultSnapshotDigest,
+    },
+  };
   ports.saved.deviceSyncCredentialState =
     values.encryptedDeviceSyncCredentialState;
   ports.saved.unlockedVaultSession = {
@@ -243,9 +256,17 @@ function createCommand(ctx: {
   return {
     vaultId: ctx.values.vaultId,
     replacementSyncConfig: ctx.values.replacementSyncConfigInput,
-    reviewedSnapshotDescriptors: {
-      local: toVaultSnapshotDescriptor(ctx.values.vaultId, ctx.localSnapshot),
-      remote: toVaultSnapshotDescriptor(ctx.values.vaultId, ctx.remoteSnapshot),
+    reviewedSnapshotIdentities: {
+      local: toVaultSnapshotIdentity(
+        ctx.values.vaultId,
+        ctx.localSnapshot,
+        ctx.values.vaultSnapshotDigest,
+      ),
+      remote: toVaultSnapshotIdentity(
+        ctx.values.vaultId,
+        ctx.remoteSnapshot,
+        ctx.values.vaultSnapshotDigest,
+      ),
     },
     resolution: {
       entryResolutions: [],
@@ -285,8 +306,12 @@ describe("PrepareDeviceRevocationConsumptionUseCase", () => {
     });
 
     expect(result).toMatchObject({
-      reviewedSnapshotDescriptors: {
-        local: toVaultSnapshotDescriptor(ctx.values.vaultId, ctx.localSnapshot),
+      reviewedSnapshotIdentities: {
+        local: toVaultSnapshotIdentity(
+          ctx.values.vaultId,
+          ctx.localSnapshot,
+          ctx.values.vaultSnapshotDigest,
+        ),
       },
       revokedDeviceIds: [ctx.values.pendingDeviceId],
       vaultKeyGeneration: 2,
@@ -770,7 +795,7 @@ describe("PrepareDeviceRevocationConsumptionUseCase", () => {
 });
 
 describe("ConsumeDeviceRevocationUseCase", () => {
-  it("uploads the signed consumption even when local storage replaces it after save", async () => {
+  it("uploads the exact signed consumption persisted by the local save", async () => {
     const ctx = createContext();
     const remoteVault = {
       ...ctx.remoteVault,
@@ -785,10 +810,7 @@ describe("ConsumeDeviceRevocationUseCase", () => {
     vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue(
       remoteVault,
     );
-    const getPersistedSnapshot = replaceVaultSnapshotAfterNextSave(
-      ctx.ports,
-      ctx.localSnapshot,
-    );
+    const getPersistedSnapshot = captureVaultSnapshotFromNextSave(ctx.ports);
 
     await ctx.useCase.execute({
       ...createCommand(ctx),
@@ -803,8 +825,6 @@ describe("ConsumeDeviceRevocationUseCase", () => {
       ctx.ports.syncProvider.uploadVaultSnapshot,
     ).mock.calls[0]?.[1];
     expect(uploadedSnapshot).toBe(getPersistedSnapshot());
-    expect(uploadedSnapshot).not.toBe(ctx.ports.saved.vaultSnapshot);
-    expect(ctx.ports.saved.vaultSnapshot).toBe(ctx.localSnapshot);
   });
 
   it("opens the survivor envelope and commits the rotated snapshot", async () => {
@@ -847,6 +867,7 @@ describe("ConsumeDeviceRevocationUseCase", () => {
     expect(result.providerCredentialRevocation).toBe(
       "pending_external_deletion",
     );
+    expect(result.syncUpload).toBe("complete");
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });
 
@@ -1044,9 +1065,17 @@ describe("ConsumeDeviceRevocationUseCase", () => {
     await expect(
       ctx.useCase.execute({
         ...createCommand(ctx),
-        reviewedSnapshotDescriptors: {
-          local: toVaultSnapshotDescriptor(ctx.values.vaultId, localSnapshot),
-          remote: toVaultSnapshotDescriptor(ctx.values.vaultId, remoteSnapshot),
+        reviewedSnapshotIdentities: {
+          local: toVaultSnapshotIdentity(
+            ctx.values.vaultId,
+            localSnapshot,
+            ctx.values.vaultSnapshotDigest,
+          ),
+          remote: toVaultSnapshotIdentity(
+            ctx.values.vaultId,
+            remoteSnapshot,
+            ctx.values.vaultSnapshotDigest,
+          ),
         },
       }),
     ).resolves.toMatchObject({
@@ -1232,9 +1261,13 @@ describe("ConsumeDeviceRevocationUseCase", () => {
     await expect(
       ctx.useCase.execute({
         ...createCommand(ctx),
-        reviewedSnapshotDescriptors: {
-          ...createCommand(ctx).reviewedSnapshotDescriptors,
-          remote: toVaultSnapshotDescriptor(ctx.values.vaultId, remoteSnapshot),
+        reviewedSnapshotIdentities: {
+          ...createCommand(ctx).reviewedSnapshotIdentities,
+          remote: toVaultSnapshotIdentity(
+            ctx.values.vaultId,
+            remoteSnapshot,
+            ctx.values.vaultSnapshotDigest,
+          ),
         },
       }),
     ).resolves.toMatchObject({
@@ -1278,12 +1311,19 @@ describe("ConsumeDeviceRevocationUseCase", () => {
 
     await expect(ctx.useCase.execute(command)).resolves.toMatchObject({
       revokedDeviceIds: [ctx.values.pendingDeviceId],
+      syncUpload: "complete",
     });
 
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).toHaveBeenCalledWith(
       ctx.values.replacementSyncAccess,
       expect.anything(),
-      toVaultSnapshotDescriptor(ctx.values.vaultId, ctx.remoteSnapshot),
+      {
+        descriptor: toVaultSnapshotDescriptor(
+          ctx.values.vaultId,
+          ctx.remoteSnapshot,
+        ),
+        snapshotDigest: ctx.values.vaultSnapshotDigest,
+      },
     );
   });
 
@@ -1326,6 +1366,29 @@ describe("ConsumeDeviceRevocationUseCase", () => {
     expect(ctx.ports.syncProvider.downloadVaultSnapshot).not.toHaveBeenCalled();
   });
 
+  it("rejects same-descriptor revocation bytes that differ from the reviewed identity", async () => {
+    const ctx = createContext();
+    const verification = vi
+      .spyOn(VaultSnapshotService.prototype, "verifyCandidateSnapshotTrust")
+      .mockResolvedValue({
+        chain: ctx.remoteSnapshot.trustChain,
+        state: ctx.values.verifiedVaultTrustState,
+        snapshotDigest: "substituted-remote-snapshot-digest",
+      });
+
+    try {
+      await expect(
+        ctx.useCase.execute(createCommand(ctx)),
+      ).rejects.toBeInstanceOf(RemoteVaultSnapshotChangedError);
+    } finally {
+      verification.mockRestore();
+    }
+
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+  });
+
   it("rejects when the local descriptor changed after review", async () => {
     const ctx = createContext();
     const command = createCommand(ctx);
@@ -1333,12 +1396,16 @@ describe("ConsumeDeviceRevocationUseCase", () => {
     await expect(
       ctx.useCase.execute({
         ...command,
-        reviewedSnapshotDescriptors: {
-          ...command.reviewedSnapshotDescriptors,
+        reviewedSnapshotIdentities: {
+          ...command.reviewedSnapshotIdentities,
           local: {
-            ...command.reviewedSnapshotDescriptors.local,
-            revisionTimestamp:
-              command.reviewedSnapshotDescriptors.local.revisionTimestamp - 1,
+            ...command.reviewedSnapshotIdentities.local,
+            descriptor: {
+              ...command.reviewedSnapshotIdentities.local.descriptor,
+              revisionTimestamp:
+                command.reviewedSnapshotIdentities.local.descriptor
+                  .revisionTimestamp - 1,
+            },
           },
         },
       }),
@@ -1365,8 +1432,11 @@ describe("ConsumeDeviceRevocationUseCase", () => {
         },
       ],
     });
-    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockRejectedValue(
-      new RemoteVaultSnapshotChangedError(ctx.values.vaultId),
+    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockResolvedValueOnce(
+      {
+        status: "definitely_not_committed",
+        reason: "remote_snapshot_changed",
+      },
     );
 
     await expect(
@@ -1384,6 +1454,126 @@ describe("ConsumeDeviceRevocationUseCase", () => {
     expect(ctx.ports.saved.deviceSyncCredentialState).toBe(
       ctx.values.encryptedDeviceSyncCredentialState,
     );
+  });
+
+  it("keeps resolved revocation content and reports pending when upload outcome is unknown", async () => {
+    const ctx = createContext();
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
+      ...ctx.remoteVault,
+      tags: [
+        {
+          id: 1,
+          name: "Later change",
+          versionVector: { [ctx.values.deviceId]: 3 },
+        },
+      ],
+    });
+    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockResolvedValueOnce(
+      {
+        status: "outcome_unknown",
+      },
+    );
+
+    const result = await ctx.useCase.execute({
+      ...createCommand(ctx),
+      resolution: {
+        entryResolutions: [],
+        tagResolutions: [{ tagId: 1, action: "use_remote" }],
+        deviceProfileResolutions: [],
+      },
+    });
+
+    expect(result.syncUpload).toBe("pending");
+    expect(ctx.ports.saved.vaultSnapshot).not.toEqual(ctx.localSnapshot);
+    await expect(
+      ctx.ports.crypto.decryptDeviceSyncCredentialState(
+        ctx.ports.saved.deviceSyncCredentialState!,
+        ctx.values.deviceLocalProtectionKey,
+        {
+          vaultId: ctx.values.vaultId,
+          deviceId: ctx.values.deviceId,
+          provider: ctx.values.syncTarget.provider,
+          target: ctx.values.syncTarget,
+        },
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        currentCredentials: ctx.values.replacementSyncCredentials,
+        previousCredentials: expect.any(Object),
+        pendingSnapshotUpload: expect.any(Object),
+      }),
+    );
+    expect(
+      ctx.ports.saved.unlockedVaultSession?.unlockedVault.vault.tags,
+    ).toEqual([expect.objectContaining({ id: 1, name: "Later change" })]);
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession
+        .commitPersistedSnapshotIfSessionIsActive,
+    ).toHaveBeenCalledOnce();
+  });
+
+  it("keeps resolved revocation content but wipes its key when the session is removed after upload start", async () => {
+    const ctx = createContext();
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
+      ...ctx.remoteVault,
+      tags: [
+        {
+          id: 1,
+          name: "Later change",
+          versionVector: { [ctx.values.deviceId]: 3 },
+        },
+      ],
+    });
+    let signalUploadStarted: () => void = () => undefined;
+    let resolveUpload: (outcome: SyncUploadOutcome) => void = () => undefined;
+    const uploadStarted = new Promise<void>((resolve) => {
+      signalUploadStarted = resolve;
+    });
+    vi.mocked(
+      ctx.ports.syncProvider.uploadVaultSnapshot,
+    ).mockImplementationOnce(
+      async () =>
+        new Promise<SyncUploadOutcome>((resolve) => {
+          resolveUpload = resolve;
+          signalUploadStarted();
+        }),
+    );
+
+    const execution = ctx.useCase.execute({
+      ...createCommand(ctx),
+      resolution: {
+        entryResolutions: [],
+        tagResolutions: [{ tagId: 1, action: "use_remote" }],
+        deviceProfileResolutions: [],
+      },
+    });
+    await uploadStarted;
+    await ctx.ports.sessionServices.unlockedVaultSession.remove();
+    resolveUpload({ status: "committed" });
+
+    await expect(execution).resolves.toMatchObject({ syncUpload: "pending" });
+    expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
+    expect(ctx.ports.saved.vaultSnapshot).not.toEqual(ctx.localSnapshot);
+    await expect(
+      ctx.ports.crypto.decryptDeviceSyncCredentialState(
+        ctx.ports.saved.deviceSyncCredentialState!,
+        ctx.values.deviceLocalProtectionKey,
+        {
+          vaultId: ctx.values.vaultId,
+          deviceId: ctx.values.deviceId,
+          provider: ctx.values.syncTarget.provider,
+          target: ctx.values.syncTarget,
+        },
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        currentCredentials: ctx.values.replacementSyncCredentials,
+        pendingSnapshotUpload: expect.any(Object),
+      }),
+    );
+    expect(
+      Array.from(new Uint8Array(ctx.values.rotatedVaultMasterKey)),
+    ).toEqual([0]);
   });
 
   it("rejects a changed vault creation timestamp before staging credentials", async () => {
@@ -1534,11 +1724,12 @@ describe("ConsumeDeviceRevocationUseCase", () => {
       await expect(
         ctx.useCase.execute({
           ...createCommand(ctx),
-          reviewedSnapshotDescriptors: {
-            ...createCommand(ctx).reviewedSnapshotDescriptors,
-            remote: toVaultSnapshotDescriptor(
+          reviewedSnapshotIdentities: {
+            ...createCommand(ctx).reviewedSnapshotIdentities,
+            remote: toVaultSnapshotIdentity(
               ctx.values.vaultId,
               remoteSnapshot,
+              ctx.values.vaultSnapshotDigest,
             ),
           },
         }),
@@ -1608,9 +1799,13 @@ describe("ConsumeDeviceRevocationUseCase", () => {
     await expect(
       ctx.useCase.execute({
         ...createCommand(ctx),
-        reviewedSnapshotDescriptors: {
-          ...createCommand(ctx).reviewedSnapshotDescriptors,
-          remote: toVaultSnapshotDescriptor(ctx.values.vaultId, remoteSnapshot),
+        reviewedSnapshotIdentities: {
+          ...createCommand(ctx).reviewedSnapshotIdentities,
+          remote: toVaultSnapshotIdentity(
+            ctx.values.vaultId,
+            remoteSnapshot,
+            ctx.values.vaultSnapshotDigest,
+          ),
         },
       }),
     ).rejects.toBeInstanceOf(Error);
@@ -1718,9 +1913,13 @@ describe("ConsumeDeviceRevocationUseCase", () => {
     await expect(
       ctx.useCase.execute({
         ...createCommand(ctx),
-        reviewedSnapshotDescriptors: {
-          ...createCommand(ctx).reviewedSnapshotDescriptors,
-          remote: toVaultSnapshotDescriptor(ctx.values.vaultId, remoteSnapshot),
+        reviewedSnapshotIdentities: {
+          ...createCommand(ctx).reviewedSnapshotIdentities,
+          remote: toVaultSnapshotIdentity(
+            ctx.values.vaultId,
+            remoteSnapshot,
+            ctx.values.vaultSnapshotDigest,
+          ),
         },
       }),
     ).rejects.toBeInstanceOf(CurrentDeviceRevokedError);

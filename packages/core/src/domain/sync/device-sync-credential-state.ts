@@ -4,9 +4,14 @@ import type {
   SyncProvider,
   SyncTarget,
 } from "./sync-config.type";
+import type { VaultSnapshotIdentity } from "../snapshot/vault-snapshot-descriptor.type";
 
 export type DeviceSyncCredentialState = {
   readonly currentCredentials: SyncCredentials;
+  readonly pendingSnapshotUpload?: {
+    readonly candidateSnapshotIdentity: VaultSnapshotIdentity;
+    readonly expectedRemoteSnapshotIdentity: VaultSnapshotIdentity | null;
+  };
   readonly previousCredentials?: {
     readonly credentials: SyncCredentials;
     readonly revokedDeviceIds: readonly string[];

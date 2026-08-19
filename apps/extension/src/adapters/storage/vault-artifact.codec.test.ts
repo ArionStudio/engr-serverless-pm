@@ -4,6 +4,7 @@ import {
   type Vault,
   type VaultSnapshot,
   type VaultSnapshotDescriptor,
+  type VaultSnapshotIdentity,
 } from "@lfspm/core";
 import { WebCryptoPort } from "../crypto/web-crypto.port";
 import { encodeVersionVector } from "../codecs/artifact-codec.primitives";
@@ -17,6 +18,8 @@ import {
   encodeVaultSnapshot,
   encodeVaultSnapshotDescriptor,
 } from "../codecs/vault-snapshot.codec";
+
+const canonicalSnapshotDigest = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
 describe("vault snapshot artifact codec", () => {
   it("encodes version-vector keys in locale-independent code-unit order", () => {
@@ -82,6 +85,38 @@ describe("vault snapshot artifact codec", () => {
   });
 
   it.each([
+    null,
+    {
+      descriptor: {
+        vaultId: "vault-id",
+        snapshotVersionVector: { "device-id": 1 },
+        revisionTimestamp: 1,
+      },
+      snapshotDigest: canonicalSnapshotDigest,
+    },
+  ] satisfies readonly (VaultSnapshotIdentity | null)[])(
+    "round-trips the nullable signed upload expectation %#",
+    async (uploadExpectedRemoteSnapshotIdentity) => {
+      const snapshot = await createSnapshot();
+      const snapshotWithExpectation: VaultSnapshot = {
+        ...snapshot,
+        metadata: {
+          ...snapshot.metadata,
+          uploadExpectedRemoteSnapshotIdentity,
+        },
+      };
+      const encoded = encodeVaultSnapshot(snapshotWithExpectation);
+
+      expect(decodeVaultSnapshot(encoded, "local").metadata).toEqual(
+        snapshotWithExpectation.metadata,
+      );
+      expect(
+        encodeVaultSnapshot(decodeVaultSnapshot(encoded, "local")),
+      ).toEqual(encoded);
+    },
+  );
+
+  it.each([
     "older schema",
     "future schema",
     "missing field",
@@ -92,6 +127,9 @@ describe("vault snapshot artifact codec", () => {
     "malformed ciphertext",
     "duplicate trusted device",
     "duplicate key slot",
+    "malformed upload expectation",
+    "wrong-length upload digest",
+    "noncanonical upload digest",
   ])("rejects %s before returning a local snapshot", async (variant) => {
     const artifact = cloneArtifact(encodeVaultSnapshot(await createSnapshot()));
     const metadata = record(artifact.metadata);
@@ -138,6 +176,37 @@ describe("vault snapshot artifact codec", () => {
         break;
       case "duplicate key slot":
         slots.push(structuredClone(slots[0]));
+        break;
+      case "malformed upload expectation":
+        metadata.uploadExpectedRemoteSnapshotIdentity = {
+          descriptor: {
+            vaultId: "vault-id",
+            snapshotVersionVector: { "device-id": 1 },
+            revisionTimestamp: 1,
+          },
+          snapshotDigest: canonicalSnapshotDigest,
+          futureField: true,
+        };
+        break;
+      case "wrong-length upload digest":
+        metadata.uploadExpectedRemoteSnapshotIdentity = {
+          descriptor: {
+            vaultId: "vault-id",
+            snapshotVersionVector: { "device-id": 1 },
+            revisionTimestamp: 1,
+          },
+          snapshotDigest: "AAAA",
+        };
+        break;
+      case "noncanonical upload digest":
+        metadata.uploadExpectedRemoteSnapshotIdentity = {
+          descriptor: {
+            vaultId: "vault-id",
+            snapshotVersionVector: { "device-id": 1 },
+            revisionTimestamp: 1,
+          },
+          snapshotDigest: `${canonicalSnapshotDigest}=`,
+        };
         break;
     }
 

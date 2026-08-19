@@ -89,22 +89,29 @@ The target persists its access material, recovery backup, snapshot, trust
 checkpoint, and encrypted local credential state as one initialization step.
 Pending request state is removed only after that step succeeds.
 If session activation fails after initialization, those new local vault records
-are removed while the pending request remains available for a safe retry.
+are removed on a best-effort basis only while the complete initialized artifact
+set still matches; the pending request remains available for a safe retry.
 Completion also rejects a retained response when that vault is already
 initialized locally, so retrying stale pending state cannot replace newer local
 vault records.
-After a definitive remote compare-and-set rejection, rollback removes the
-newly initialized records only if the active session version and persisted
-snapshot digest still match the enrollment snapshot. If either has advanced,
-or cleanup otherwise fails, completion preserves the local records and reports
-an incomplete rollback instead of claiming that the retained request is
-immediately retryable.
+After a definite upload non-commit—either a remote compare-and-set change or a
+recognized provider rejection—rollback removes the newly initialized records
+only if the active session version and every initialized local artifact still
+match the enrollment attempt: exact descriptor, device access material,
+recovery backup, persisted snapshot digest, signed trust checkpoint, and
+encrypted upload intent. The repository compares that deletion set atomically
+before removing any record. A
+reconciler refreshes or clears that artifact before acting, so a stale
+enrollment failure cannot delete state another attempt has reconciled. If any
+expectation has advanced, or cleanup otherwise fails, completion preserves the
+local records and reports an incomplete rollback instead of claiming that the
+retained request is immediately retryable.
 
 If the provider cannot confirm whether the completed snapshot upload succeeded,
 local enrollment still completes and returns the recovery mnemonic with sync
 upload marked pending. The next normal sync reconciles the signed local
-snapshot. A definite remote compare-and-set rejection rolls local enrollment
-back instead.
+snapshot. A definite non-commit, whether caused by a remote compare-and-set
+change or a recognized provider rejection, rolls local enrollment back instead.
 
 Existing devices learn about the new identity through a dedicated
 enrollment-consumption review. The workflow verifies an addition-only trust

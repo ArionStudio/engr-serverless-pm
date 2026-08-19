@@ -11,6 +11,7 @@ import {
   safeInteger,
   stringArray,
 } from "./artifact-codec.primitives";
+import { decodeVaultSnapshotIdentity } from "./vault-snapshot.codec";
 
 export class InvalidSyncCredentialRecordError extends StaticArtifactError {
   constructor() {
@@ -66,28 +67,61 @@ export function decodeDeviceSyncCredentialState(
     const record = exactRecord(
       value,
       ["currentCredentials"],
-      ["previousCredentials"],
+      ["pendingSnapshotUpload", "previousCredentials"],
     );
     const currentCredentials = decodeSyncCredentials(record.currentCredentials);
-    if (record.previousCredentials === undefined) {
-      return { currentCredentials };
-    }
-    const previous = exactRecord(record.previousCredentials, [
-      "credentials",
-      "revokedDeviceIds",
-      "vaultKeyGeneration",
-    ]);
+    const pendingSnapshotUpload =
+      record.pendingSnapshotUpload === undefined
+        ? undefined
+        : decodePendingSnapshotUpload(record.pendingSnapshotUpload);
+    const previousCredentials =
+      record.previousCredentials === undefined
+        ? undefined
+        : decodePreviousCredentials(record.previousCredentials);
+
     return {
       currentCredentials,
-      previousCredentials: {
-        credentials: decodeSyncCredentials(previous.credentials),
-        revokedDeviceIds: stringArray(previous.revokedDeviceIds, true),
-        vaultKeyGeneration: safeInteger(previous.vaultKeyGeneration, 1),
-      },
+      ...(pendingSnapshotUpload === undefined ? {} : { pendingSnapshotUpload }),
+      ...(previousCredentials === undefined ? {} : { previousCredentials }),
     };
   } catch {
     throw new InvalidDeviceSyncCredentialStateError();
   }
+}
+
+function decodePendingSnapshotUpload(
+  value: unknown,
+): NonNullable<DeviceSyncCredentialState["pendingSnapshotUpload"]> {
+  const record = exactRecord(value, [
+    "candidateSnapshotIdentity",
+    "expectedRemoteSnapshotIdentity",
+  ]);
+
+  return {
+    candidateSnapshotIdentity: decodeVaultSnapshotIdentity(
+      record.candidateSnapshotIdentity,
+    ),
+    expectedRemoteSnapshotIdentity:
+      record.expectedRemoteSnapshotIdentity === null
+        ? null
+        : decodeVaultSnapshotIdentity(record.expectedRemoteSnapshotIdentity),
+  };
+}
+
+function decodePreviousCredentials(
+  value: unknown,
+): NonNullable<DeviceSyncCredentialState["previousCredentials"]> {
+  const previous = exactRecord(value, [
+    "credentials",
+    "revokedDeviceIds",
+    "vaultKeyGeneration",
+  ]);
+
+  return {
+    credentials: decodeSyncCredentials(previous.credentials),
+    revokedDeviceIds: stringArray(previous.revokedDeviceIds, true),
+    vaultKeyGeneration: safeInteger(previous.vaultKeyGeneration, 1),
+  };
 }
 
 export function encodeDeviceSyncCredentialState(

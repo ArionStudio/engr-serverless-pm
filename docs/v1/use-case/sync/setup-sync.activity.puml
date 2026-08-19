@@ -13,7 +13,7 @@ start
 :Input:\nvaultId, syncConfig;
 :Source:\npackages/core/src/use-cases/sync/setup-sync.ts;
 :Require unlocked vault context for "setup sync";
-if (vault already has syncConfig?) then (yes)
+if (vault already has syncTarget?) then (yes)
   :Throw SyncAlreadyConfiguredError;
   stop
 endif
@@ -31,11 +31,29 @@ if (remote descriptor exists?) then (yes)
   stop
 endif
 
-:Build updated vault with provider-returned syncConfig;
-:Persist updated vault as signed local snapshot;
-:Require saved local snapshot;
-:Upload persisted initial sync snapshot with expected remote = null;
-:Commit persisted snapshot vector to unlocked session;
-:Return void;
+:Split provider-returned SyncAccess into nonsecret syncTarget\nand device-local credentials;
+:Persist updated vault with syncTarget, encrypted local credentials,\nand signed local snapshot;
+:Persist pending upload intent with expected remote = null;
+:Upload persisted initial sync snapshot;
+if (outcome is definitely not committed?) then (yes)
+  :Restore prior snapshot and remove local sync credentials;
+  :Throw conflict or provider rejection;
+  stop
+elseif (outcome is unknown?) then (yes)
+  :Retain candidate and pending intent;
+else (committed)
+  :Attempt active-session exact CAS-clear of pending intent;
+  if (intent clear succeeds?) then (yes)
+    :Set syncUpload complete;
+  else (race or coordination failure)
+    :Retain exact intent and set syncUpload pending;
+  endif
+endif
+:Conditionally commit the candidate only if the originating session remains active;
+note right
+Leave an expired or replaced session untouched and return the durable result.
+A failure committing the still-current session invalidates it and propagates.
+end note
+:Return syncUpload complete or pending;
 stop
 @enduml

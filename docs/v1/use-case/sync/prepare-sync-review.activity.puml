@@ -13,12 +13,13 @@ start
 :Input:\nvaultId;
 :Source:\npackages/core/src/use-cases/sync/prepare-sync-review.ts;
 :Require unlocked vault context for "prepare sync review";
-if (syncConfig missing?) then (yes)
+if (syncTarget missing?) then (yes)
   :Throw SyncNotConfiguredError;
   stop
 endif
 
 :Require current local snapshot for unlocked vault and source vector;
+:Decrypt local credentials and assemble runtime SyncAccess;
 :Read latest remote snapshot descriptor;
 if (remote descriptor missing?) then (yes)
   :Throw RemoteVaultSnapshotNotFoundError;
@@ -37,7 +38,13 @@ if (relation is local_ahead?) then (yes)
 endif
 if (relation is equal?) then (yes)
   if (descriptor fields exactly equal?) then (yes)
-    :Return reviewedSnapshotDescriptors { local, remote },\nrelation, review = null;
+    :Download remote snapshot;
+    :Verify trust and signature, then digest remote bytes;
+    if (remote exact identity differs from local exact identity?) then (yes)
+      :Throw RemoteVaultSnapshotIntegrityError;
+      stop
+    endif
+    :Return reviewedSnapshotIdentities\n{ local/remote descriptor + digest },\nrelation, review = null;
     stop
   else (no)
     :Throw RemoteVaultSnapshotIntegrityError;
@@ -57,6 +64,6 @@ endif
 :Find changed tags;
 :Find changed device profiles;
 :Find read-only key slot changes;
-:Return reviewedSnapshotDescriptors { local, remote }, relation,\nreview { actionable changes, readOnly keySlotsChanges };
+:Return reviewedSnapshotIdentities\n{ local/remote descriptor + digest }, relation,\nreview { actionable changes, readOnly keySlotsChanges };
 stop
 @enduml

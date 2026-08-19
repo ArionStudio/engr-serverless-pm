@@ -12,20 +12,23 @@ import {
 describe("vault sync target mutations", () => {
   it("marks remote removal pending", () => {
     const { values, vaultSnapshot } = createUnlockVaultTestContext();
-    const expectedRemoteSnapshotDescriptor = {
-      vaultId: values.vaultId,
-      snapshotVersionVector: { [values.deviceId]: 1 },
-      revisionTimestamp: values.timestamp,
+    const expectedRemoteSnapshotIdentity = {
+      descriptor: {
+        vaultId: values.vaultId,
+        snapshotVersionVector: { [values.deviceId]: 1 },
+        revisionTimestamp: values.timestamp,
+      },
+      snapshotDigest: values.vaultSnapshotDigest,
     };
 
     expect(
       markVaultSyncRemovalPending(
         values.decryptedVault,
-        expectedRemoteSnapshotDescriptor,
+        expectedRemoteSnapshotIdentity,
         vaultSnapshot,
       ).syncRemovalPending,
     ).toEqual({
-      expectedRemoteSnapshotDescriptor,
+      expectedRemoteSnapshotIdentity,
       rollbackSnapshot: vaultSnapshot,
     });
   });
@@ -36,7 +39,7 @@ describe("vault sync target mutations", () => {
       ...values.decryptedVault,
       syncTarget: values.syncTarget,
       syncRemovalPending: {
-        expectedRemoteSnapshotDescriptor: null,
+        expectedRemoteSnapshotIdentity: null,
         rollbackSnapshot: vaultSnapshot,
       },
     });
@@ -69,7 +72,7 @@ describe("vault sync target mutations", () => {
       ...values.decryptedVault,
       syncTarget: values.syncTarget,
       syncRemovalPending: {
-        expectedRemoteSnapshotDescriptor: null,
+        expectedRemoteSnapshotIdentity: null,
         rollbackSnapshot: vaultSnapshot,
       },
       providerCredentialRevocationPending: {

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
-import { replaceVaultSnapshotAfterNextSave } from "../../__tests__/fixtures/ports";
+import { captureVaultSnapshotFromNextSave } from "../../__tests__/fixtures/ports";
 import { createUnlockedVaultWithEntries } from "../../__tests__/fixtures/vault-entries";
 import type {
   DevicePublicSignKey,
@@ -48,7 +48,7 @@ function createContext() {
 }
 
 describe("InitializeDeviceEnrollmentUseCase", () => {
-  it("uploads the signed snapshot even when local storage replaces it after save", async () => {
+  it("uploads the exact signed snapshot persisted by the local save", async () => {
     const ctx = createContext();
     const session = ctx.saved.unlockedVaultSession;
 
@@ -73,10 +73,7 @@ describe("InitializeDeviceEnrollmentUseCase", () => {
     ).mockResolvedValue(
       toVaultSnapshotDescriptor(ctx.values.vaultId, ctx.vaultSnapshot),
     );
-    const getPersistedSnapshot = replaceVaultSnapshotAfterNextSave(
-      ctx.ports,
-      ctx.vaultSnapshot,
-    );
+    const getPersistedSnapshot = captureVaultSnapshotFromNextSave(ctx.ports);
 
     await ctx.useCase.execute({
       vaultId: ctx.values.vaultId,
@@ -87,17 +84,16 @@ describe("InitializeDeviceEnrollmentUseCase", () => {
       ctx.ports.syncProvider.uploadVaultSnapshot,
     ).mock.calls[0]?.[1];
     expect(uploadedSnapshot).toBe(getPersistedSnapshot());
-    expect(uploadedSnapshot).not.toBe(ctx.saved.vaultSnapshot);
-    expect(ctx.saved.vaultSnapshot).toBe(ctx.vaultSnapshot);
   });
 
   it("authorizes a signed public request and creates a normal target envelope", async () => {
     const ctx = createContext();
 
-    const response = await ctx.useCase.execute({
+    const result = await ctx.useCase.execute({
       vaultId: ctx.values.vaultId,
       request: ctx.values.enrollmentRequest,
     });
+    const response = result.enrollmentResponse;
 
     expect(
       ctx.ports.crypto.verifyDeviceEnrollmentRequestSignature,
@@ -120,6 +116,7 @@ describe("InitializeDeviceEnrollmentUseCase", () => {
     expect(response).not.toHaveProperty("devicePrivateSignKey");
     expect(response).not.toHaveProperty("devicePrivateVaultKey");
     expect(response).not.toHaveProperty("credentials");
+    expect(result.syncUpload).toBe("complete");
   });
 
   it("rejects an invalid request self-signature before mutation", async () => {
@@ -266,8 +263,11 @@ describe("InitializeDeviceEnrollmentUseCase", () => {
         request: ctx.values.enrollmentRequest,
       }),
     ).resolves.toMatchObject({
-      requestId: ctx.values.requestId,
-      snapshot: currentSnapshot,
+      enrollmentResponse: {
+        requestId: ctx.values.requestId,
+        snapshot: currentSnapshot,
+      },
+      syncUpload: "complete",
     });
 
     expect(ctx.ports.crypto.signVaultTrustCertificate).not.toHaveBeenCalled();
@@ -398,7 +398,8 @@ describe("InitializeDeviceEnrollmentUseCase", () => {
         request: ctx.values.enrollmentRequest,
       }),
     ).resolves.toMatchObject({
-      snapshot: finalSnapshot,
+      enrollmentResponse: { snapshot: finalSnapshot },
+      syncUpload: "complete",
     });
 
     expect(
@@ -551,7 +552,8 @@ describe("InitializeDeviceEnrollmentUseCase", () => {
         request: ctx.values.enrollmentRequest,
       }),
     ).resolves.toMatchObject({
-      snapshot: currentSnapshot,
+      enrollmentResponse: { snapshot: currentSnapshot },
+      syncUpload: "complete",
     });
 
     expect(
@@ -599,5 +601,67 @@ describe("InitializeDeviceEnrollmentUseCase", () => {
     expect(
       ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
+  });
+
+  it("keeps the authorized enrollment and reports pending when upload outcome is unknown", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession!;
+    ctx.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          syncTarget: ctx.values.syncTarget,
+        },
+      },
+    };
+    ctx.saved.deviceSyncCredentialState =
+      ctx.values.encryptedDeviceSyncCredentialState;
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValueOnce(
+      toVaultSnapshotDescriptor(ctx.values.vaultId, ctx.vaultSnapshot),
+    );
+    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockResolvedValueOnce(
+      {
+        status: "outcome_unknown",
+      },
+    );
+
+    const result = await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      request: ctx.values.enrollmentRequest,
+    });
+
+    expect(result.syncUpload).toBe("pending");
+    expect(result.enrollmentResponse.snapshot).toBe(ctx.saved.vaultSnapshot);
+    expect(ctx.saved.vaultSnapshot?.metadata.snapshotVersionVector).toEqual({
+      [ctx.values.deviceId]: 2,
+    });
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession
+        .commitPersistedSnapshotIfSessionIsActive,
+    ).toHaveBeenCalledOnce();
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).toHaveBeenCalledTimes(2);
+    await expect(
+      ctx.ports.crypto.decryptDeviceSyncCredentialState(
+        ctx.saved.deviceSyncCredentialState!,
+        ctx.values.deviceLocalProtectionKey,
+        {
+          vaultId: ctx.values.vaultId,
+          deviceId: ctx.values.deviceId,
+          provider: ctx.values.syncTarget.provider,
+          target: ctx.values.syncTarget,
+        },
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        currentCredentials: ctx.values.syncCredentials,
+        pendingSnapshotUpload: expect.any(Object),
+      }),
+    );
   });
 });

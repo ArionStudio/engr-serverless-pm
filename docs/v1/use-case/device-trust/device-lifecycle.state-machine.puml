@@ -12,27 +12,42 @@ skinparam state {
 [*] --> SingleTrustedDevice : InitializeVaultUseCase
 
 SingleTrustedDevice --> SyncedTrustedDevice : SetupSyncUseCase
-SyncedTrustedDevice --> EnrollmentPending : InitializeDeviceEnrollmentUseCase\nadds enrollmentKeySlot and uploads it
-EnrollmentPending --> NewDeviceTrustedRemotely : PerformDeviceEnrollmentUseCase\nadds device slot and completed proof remotely
-NewDeviceTrustedRemotely --> SyncedTrustedDevice : ApplySyncResolutionUseCase\naccepts exact completed enrollment trust change
+SyncedTrustedDevice --> EnrollmentAuthorized : InitializeDeviceEnrollmentUseCase\nverifies signed request, adds trusted identity + device slot, and uploads
+EnrollmentAuthorized --> AuthorizationUploadPending : authorization upload outcome unknown or\ncommitted-intent cleanup incomplete; retain candidate and encrypted reconciliation intent
+AuthorizationUploadPending --> EnrollmentAuthorized : SyncUploadUseCase reconciles exact candidate
+EnrollmentAuthorized --> EnrollmentCompletedRemotely : PerformDeviceEnrollmentUseCase\ntarget adds active profile and uploads completion snapshot
+EnrollmentCompletedRemotely --> CompletionUploadPending : completion upload outcome unknown or\ncommitted-intent cleanup incomplete; target retains initialized local state and exact pending intent
+CompletionUploadPending --> EnrollmentCompletedRemotely : SyncUploadUseCase reconciles exact candidate
+EnrollmentCompletedRemotely --> SyncedTrustedDevice : Prepare + ConsumeDeviceEnrollmentUseCase\nverify and consume dedicated enrollment transition
 
 SyncedTrustedDevice --> DeviceRevoked : RevokeDeviceUseCase\nremoves target slot and tombstones profile
-DeviceRevoked --> SyncedTrustedDevice : upload and session commit complete
+DeviceRevoked --> ProviderCredentialRevocationPending : revocation upload and intent cleanup complete;\nold provider credential still requires external deletion
+DeviceRevoked --> RevocationUploadPending : upload outcome unknown or committed-intent cleanup incomplete;\nretain rotated candidate and reconciliation intent
+RevocationUploadPending --> ProviderCredentialRevocationPending : SyncUploadUseCase reconciles revocation upload
+ProviderCredentialRevocationPending --> SyncedTrustedDevice : CompleteProviderCredentialRevocationUseCase\nverifies external deletion, clears marker, and completes upload
+ProviderCredentialRevocationPending --> CredentialCompletionUploadPending : marker-clear upload is pending
+CredentialCompletionUploadPending --> SyncedTrustedDevice : SyncUploadUseCase reconciles marker-clear upload
 
-SyncedTrustedDevice --> LocalOnlyCurrentDevice : DisableSyncUseCase\nremoves syncConfig, remote snapshots,\nother device profiles, and other device slots
+SyncedTrustedDevice --> LocalOnlyCurrentDevice : DisableSyncUseCase\nremoves syncTarget, local encrypted credentials, remote snapshots,\nother device profiles, and other device slots
 LocalOnlyCurrentDevice --> SyncedTrustedDevice : SetupSyncUseCase may configure sync again
 
 SingleTrustedDevice --> SingleTrustedDevice : RecoverDeviceAccessUseCase\nrewraps local material and replaces current recovery backup
 SyncedTrustedDevice --> SyncedTrustedDevice : RecoverDeviceAccessUseCase\nlocal-only recovery, no snapshot mutation or sync upload
 LocalOnlyCurrentDevice --> LocalOnlyCurrentDevice : RecoverDeviceAccessUseCase\nrewraps local material and replaces current recovery backup
 
-EnrollmentPending --> SyncedTrustedDevice : initialization upload fails\nrollback to previous snapshot/session
-EnrollmentPending --> SyncedTrustedDevice : enrollment is superseded\nfuture mutation must resolve state
+EnrollmentAuthorized --> SyncedTrustedDevice : definite authorization upload non-commit;\nrestore prior registered-device state
+EnrollmentAuthorized --> EnrollmentAuthorized : definite target completion upload non-commit;\nconditionally remove target local initialization
 
-note right of EnrollmentPending
-Pending enrollment data lives in snapshot keySlots.enrollmentKeySlot.
-The enrollment bundle carries syncConfig, descriptor data,
-enrollment secret, and pending private signing key.
+note right of EnrollmentAuthorized
+Snapshots use ordinary trusted identities and deviceSlots only.
+The target retains its signed request and encrypted private request state locally.
+Generic ApplySyncResolutionUseCase rejects trust and key-slot changes;
+existing devices use the dedicated enrollment-consumption workflow.
+end note
+
+note right of AuthorizationUploadPending
+Fresh vault mutations and sync removal remain blocked
+until explicit upload reconciliation completes.
 end note
 
 note right of SingleTrustedDevice

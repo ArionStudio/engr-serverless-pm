@@ -2,6 +2,7 @@ import type {
   SyncAccess,
   SyncSetupInput,
 } from "../../domain/sync/sync-config.type";
+import type { SyncUploadStatus } from "../../domain/sync/sync-upload-status.type";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import {
@@ -16,6 +17,10 @@ import type { VaultSyncGuardService } from "../../services/sync";
 export type SetupSyncCommandParams = {
   readonly vaultId: string;
   readonly syncConfig: SyncSetupInput;
+};
+
+export type SetupSyncResult = {
+  readonly syncUpload: SyncUploadStatus;
 };
 
 export class SetupSyncUseCase {
@@ -39,7 +44,7 @@ export class SetupSyncUseCase {
     this.crypto = crypto;
   }
 
-  async execute(params: SetupSyncCommandParams): Promise<void> {
+  async execute(params: SetupSyncCommandParams): Promise<SetupSyncResult> {
     const { sessionId, sourceSnapshotVersionVector, unlockedVault } =
       await this.unlockedVaultSession.requireUnlockedVaultContext(
         params.vaultId,
@@ -112,24 +117,32 @@ export class SetupSyncUseCase {
               params.vaultId,
               updatedUnlockedVault,
               sourceSnapshotVersionVector,
-              { syncCredentialState: encryptedCredentialState },
+              {
+                uploadExpectedRemoteSnapshotIdentity: null,
+                expectedSyncCredentialState: null,
+                syncCredentialState: encryptedCredentialState,
+              },
             );
 
           return { persistedSnapshot, preparedRestore };
         },
       );
 
-    await this.vaultSyncGuard.uploadPersistedInitialSyncSnapshot(
-      params.vaultId,
-      syncAccess,
-      syncState.localSnapshot,
-      persistedSnapshot.snapshot,
-      persistedSnapshot.trustedSnapshotContext.snapshotDigest,
-      preparedRestore,
-      sessionId,
-    );
+    const syncUpload =
+      await this.vaultSyncGuard.uploadPersistedInitialSyncSnapshot(
+        params.vaultId,
+        syncAccess,
+        syncState.localSnapshot,
+        persistedSnapshot.snapshot,
+        persistedSnapshot.trustedSnapshotContext.snapshotDigest,
+        persistedSnapshot.checkpoint,
+        encryptedCredentialState,
+        updatedUnlockedVault,
+        preparedRestore,
+        sessionId,
+      );
 
-    await this.unlockedVaultSession.commitPersistedSnapshot(
+    await this.unlockedVaultSession.commitPersistedSnapshotIfSessionIsActive(
       sessionId,
       {
         ...updatedUnlockedVault,
@@ -137,5 +150,7 @@ export class SetupSyncUseCase {
       },
       persistedSnapshot.snapshotVersionVector,
     );
+
+    return { syncUpload };
   }
 }

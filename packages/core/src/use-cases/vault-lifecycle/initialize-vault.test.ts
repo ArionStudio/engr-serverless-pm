@@ -254,8 +254,18 @@ describe("InitializeVaultUseCase", () => {
     ).rejects.toThrow("session failed");
 
     expect(
-      ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfSnapshotMatches,
-    ).toHaveBeenCalledWith(ctx.values.vaultId, ctx.values.vaultSnapshotDigest);
+      ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfArtifactsMatch,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        vaultId: ctx.values.vaultId,
+        expectedDescriptor: expect.any(Object),
+        expectedDeviceAccessMaterial: expect.any(Object),
+        expectedDeviceAccessRecoveryBackup: expect.any(Object),
+        expectedSnapshotDigest: ctx.values.vaultSnapshotDigest,
+        expectedCheckpoint: expect.any(Object),
+        expectedSyncCredentialState: null,
+      }),
+    );
     expect(ctx.ports.scheduledTasks.cancelTask).toHaveBeenCalledWith({
       name: "lockVault",
       actionId: ctx.values.vaultLockActionId,

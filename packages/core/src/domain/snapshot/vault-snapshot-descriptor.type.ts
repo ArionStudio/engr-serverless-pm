@@ -6,7 +6,12 @@ export type VaultSnapshotDescriptor = {
   readonly revisionTimestamp: number;
 };
 
-export type ReviewedVaultSnapshotDescriptors = {
-  readonly local: VaultSnapshotDescriptor;
-  readonly remote: VaultSnapshotDescriptor;
+export type VaultSnapshotIdentity = {
+  readonly descriptor: VaultSnapshotDescriptor;
+  readonly snapshotDigest: string;
+};
+
+export type ReviewedVaultSnapshotIdentities = {
+  readonly local: VaultSnapshotIdentity;
+  readonly remote: VaultSnapshotIdentity;
 };

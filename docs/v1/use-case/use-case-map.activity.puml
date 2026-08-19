@@ -22,7 +22,7 @@ partition "Vault lifecycle" {
 }
 
 partition "Vault entries" {
-  :add-entry / update-entry / remove-entry\nrequire unlocked vault, validate or check existence,\nmutate vault, persist signed snapshot, optional sync upload, commit session;
+  :add-entry / update-entry / remove-entry\nmutate and persist signed snapshot, stage encrypted upload intent,\nreturn complete/pending upload status, commit session;
   :read-entry / search-entries\nreturn visible fields only;
   :get-entry-password\nreturn plaintext password explicitly;
 }
@@ -33,18 +33,22 @@ partition "Clipboard" {
 }
 
 partition "Sync" {
-  :setup-sync\nvalidate provider config, require empty remote, persist sync config, upload;
-  :sync-upload\ncompare remote descriptor, upload local snapshot if allowed;
+  :setup-sync\nvalidate provider config, require empty remote, persist config and upload intent;
+  :sync-upload\nreconcile stored candidate/expectation or stage and upload local snapshot;
   :prepare-sync-review\ndownload trusted remote snapshot and produce review items;
-  :apply-sync-resolution\nvalidate descriptor, apply selected resolution, upload, commit;
-  :disable-sync\nremove sync config, prune other device trust, remove remote snapshots;
+  :apply-sync-resolution\nvalidate descriptors, persist resolution and upload intent, upload, commit;
+  :complete-provider-credential-revocation\npersist completion and tracked upload or retain pending intent;
+  :disable-sync\nblock pending upload, remove remote by signed transition, then prune local sync/trust;
 }
 
 partition "Device trust" {
-  :initialize-device-enrollment\ncreate pending enrollment slot and bundle;
+  :create-device-enrollment-request\ncreate signed request and persist its private pending bundle;
+  :initialize-device-enrollment\nverify request, add ordinary trusted identity + device slot, and upload authorization;
   :perform-device-enrollment\nnew device verifies enrollment, creates local access, uploads completed trust state;
+  :consume-device-enrollment\nresolve completed trust state and perform tracked upload;
   :recover-device-access\nuse local recovery backup to rewrap device trust material,\nreplace current local backup, no snapshot mutation;
   :revoke-device\nremove target device slot and tombstone device profile;
+  :consume-device-revocation\nresolve rotated trust state and perform tracked upload;
 }
 
 partition "Tools and session" {

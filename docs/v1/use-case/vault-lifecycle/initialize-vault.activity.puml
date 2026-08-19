@@ -68,7 +68,9 @@ if (schedule lock task succeeds?) then (yes)
 else (no)
   :Best effort cancel scheduled lock task;
   :Best effort remove matching lock task metadata;
-  :Best effort removePersistedLocalVaultIfSnapshotMatches(vaultId, snapshotDigest);
+  :Best effort removePersistedLocalVaultIfArtifactsMatch(
+exact descriptor, access material, recovery backup,
+snapshot digest, checkpoint, and credential absence);
   :Throw schedule failure;
   stop
 endif
@@ -79,7 +81,9 @@ if (activate unlocked session succeeds?) then (yes)
 else (no)
   :Best effort cancel scheduled lock task;
   :Best effort remove matching lock task metadata;
-  :Best effort removePersistedLocalVaultIfSnapshotMatches(vaultId, snapshotDigest);
+  :Best effort removePersistedLocalVaultIfArtifactsMatch(
+exact descriptor, access material, recovery backup,
+snapshot digest, checkpoint, and credential absence);
   :Throw original session activation error;
   stop
 endif
