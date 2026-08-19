@@ -48,7 +48,7 @@ export type RevokeDeviceResult = {
   readonly revisionTimestamp: number;
   readonly providerCredentialRevocation:
     | "not_configured"
-    | "pending_external_disable";
+    | "pending_external_deletion";
 };
 
 export class RevokeDeviceUseCase {
@@ -397,7 +397,7 @@ export class RevokeDeviceUseCase {
         providerCredentialRevocation:
           replacementAccess === undefined
             ? "not_configured"
-            : "pending_external_disable",
+            : "pending_external_deletion",
       };
     } finally {
       if (!vaultMasterKeyTransferred) {

@@ -1,18 +1,63 @@
 import {
-  decodeBase64Url,
-  encodeBase64Url,
+  CURRENT_ALGORITHM_SUITE,
+  type DeviceLocalProtectionKey,
+  type DevicePrivateSignKey,
+  type DevicePublicSignKey,
+  type DeviceVaultPrivateKey,
+  type DeviceVaultPublicKey,
+  type UnlockedVaultSessionMaterial,
+  type VersionVector,
+} from "@lfspm/core";
+import {
   bestEffortWipeArrayBuffers,
-  secureWipe,
   type Base64URLString,
 } from "@lfspm/core/lib";
-import type {
-  DeviceLocalProtectionKey,
-  DevicePublicSignKey,
-  DeviceVaultPrivateKey,
-  DeviceVaultPublicKey,
-  UnlockedVaultSessionMaterial,
-  VersionVector,
-} from "@lfspm/core";
+import type { AsymmetricKeyValidator } from "../crypto";
+import {
+  canonicalDigest,
+  decodeCanonicalBytes,
+  decodeVersionVector,
+  encodeBytes,
+  exactRecord,
+  nonBlankString,
+  safeInteger,
+} from "../codecs/artifact-codec.primitives";
+
+const SYMMETRIC_KEY_LENGTH_BYTES =
+  CURRENT_ALGORITHM_SUITE.vaultMasterKeyGeneration.keyLengthBits / 8;
+
+const MATERIAL_KEYS = [
+  "sessionId",
+  "vaultId",
+  "sourceSnapshotVersionVector",
+  "deviceId",
+  "vaultMasterKey",
+  "devicePrivateSignKey",
+  "devicePrivateVaultKey",
+  "deviceLocalProtectionKey",
+  "payloadKey",
+  "trustedSnapshotContext",
+  "vaultTrustAnchor",
+] as const;
+const TRUSTED_SNAPSHOT_CONTEXT_KEYS = ["snapshotDigest", "trust"] as const;
+const TRUST_KEYS = [
+  "generation",
+  "vaultKeyGeneration",
+  "certificateDigest",
+  "trustedDevices",
+] as const;
+const TRUSTED_DEVICE_KEYS = [
+  "deviceId",
+  "publicSignKey",
+  "publicVaultKey",
+] as const;
+const TRUST_ANCHOR_KEYS = [
+  "version",
+  "vaultId",
+  "genesisDeviceId",
+  "genesisPublicSignKey",
+  "genesisCertificateDigest",
+] as const;
 
 type StoredUnlockedVaultSessionMaterial = {
   sessionId: string;
@@ -46,6 +91,14 @@ type StoredUnlockedVaultSessionMaterial = {
   };
 };
 
+export class InvalidUnlockedVaultSessionMaterialError extends Error {
+  override readonly name = "InvalidUnlockedVaultSessionMaterialError";
+
+  constructor() {
+    super("Unlocked vault session material is malformed.");
+  }
+}
+
 export function serializeUnlockedVaultSessionMaterial(
   material: UnlockedVaultSessionMaterial,
 ): StoredUnlockedVaultSessionMaterial {
@@ -54,15 +107,11 @@ export function serializeUnlockedVaultSessionMaterial(
     vaultId: material.vaultId,
     sourceSnapshotVersionVector: material.sourceSnapshotVersionVector,
     deviceId: material.deviceId,
-    vaultMasterKey: arrayBufferToBase64Url(material.vaultMasterKey),
-    devicePrivateSignKey: arrayBufferToBase64Url(material.devicePrivateSignKey),
-    devicePrivateVaultKey: arrayBufferToBase64Url(
-      material.devicePrivateVaultKey,
-    ),
-    deviceLocalProtectionKey: arrayBufferToBase64Url(
-      material.deviceLocalProtectionKey,
-    ),
-    payloadKey: arrayBufferToBase64Url(material.payloadKey),
+    vaultMasterKey: encodeBytes(material.vaultMasterKey),
+    devicePrivateSignKey: encodeBytes(material.devicePrivateSignKey),
+    devicePrivateVaultKey: encodeBytes(material.devicePrivateVaultKey),
+    deviceLocalProtectionKey: encodeBytes(material.deviceLocalProtectionKey),
+    payloadKey: encodeBytes(material.payloadKey),
     trustedSnapshotContext: {
       snapshotDigest: material.trustedSnapshotContext.snapshotDigest,
       trust: {
@@ -75,230 +124,246 @@ export function serializeUnlockedVaultSessionMaterial(
           material.trustedSnapshotContext.trust.trustedDevices.map(
             (device) => ({
               deviceId: device.deviceId,
-              publicSignKey: arrayBufferToBase64Url(device.publicSignKey),
-              publicVaultKey: arrayBufferToBase64Url(device.publicVaultKey),
+              publicSignKey: encodeBytes(device.publicSignKey),
+              publicVaultKey: encodeBytes(device.publicVaultKey),
             }),
           ),
       },
     },
     vaultTrustAnchor: {
-      ...material.vaultTrustAnchor,
-      genesisPublicSignKey: arrayBufferToBase64Url(
+      version: material.vaultTrustAnchor.version,
+      vaultId: material.vaultTrustAnchor.vaultId,
+      genesisDeviceId: material.vaultTrustAnchor.genesisDeviceId,
+      genesisPublicSignKey: encodeBytes(
         material.vaultTrustAnchor.genesisPublicSignKey,
       ),
+      genesisCertificateDigest:
+        material.vaultTrustAnchor.genesisCertificateDigest,
     },
   };
 }
 
-export function deserializeUnlockedVaultSessionMaterial(
-  material: unknown,
-): UnlockedVaultSessionMaterial {
-  assertStoredMaterial(material);
+export async function deserializeUnlockedVaultSessionMaterial(
+  storedValue: unknown,
+  asymmetricKeyValidator: AsymmetricKeyValidator,
+): Promise<UnlockedVaultSessionMaterial> {
   const decodedSecrets: ArrayBuffer[] = [];
 
   try {
-    const vaultMasterKey = base64UrlToArrayBuffer(material.vaultMasterKey);
-    decodedSecrets.push(vaultMasterKey);
-    const devicePrivateSignKey = base64UrlToArrayBuffer(
-      material.devicePrivateSignKey,
-    );
-    decodedSecrets.push(devicePrivateSignKey);
-    const devicePrivateVaultKey = base64UrlToArrayBuffer(
-      material.devicePrivateVaultKey,
-    );
-    decodedSecrets.push(devicePrivateVaultKey);
-    const deviceLocalProtectionKey = base64UrlToArrayBuffer(
-      material.deviceLocalProtectionKey,
-    );
-    decodedSecrets.push(deviceLocalProtectionKey);
-    const payloadKey = base64UrlToArrayBuffer(material.payloadKey);
-    decodedSecrets.push(payloadKey);
+    const material = decodeStoredMaterial(storedValue, decodedSecrets);
+    await validateAsymmetricKeys(material, asymmetricKeyValidator);
+    return material;
+  } catch {
+    bestEffortWipeArrayBuffers(decodedSecrets);
+    throw new InvalidUnlockedVaultSessionMaterialError();
+  }
+}
 
+export async function deserializeUnlockedVaultSessionIdentity(
+  storedValue: unknown,
+  asymmetricKeyValidator: AsymmetricKeyValidator,
+): Promise<
+  Pick<
+    UnlockedVaultSessionMaterial,
+    "sessionId" | "vaultId" | "sourceSnapshotVersionVector"
+  >
+> {
+  let material: UnlockedVaultSessionMaterial | undefined;
+  try {
+    material = await deserializeUnlockedVaultSessionMaterial(
+      storedValue,
+      asymmetricKeyValidator,
+    );
     return {
       sessionId: material.sessionId,
       vaultId: material.vaultId,
       sourceSnapshotVersionVector: material.sourceSnapshotVersionVector,
-      deviceId: material.deviceId,
-      vaultMasterKey:
-        vaultMasterKey as UnlockedVaultSessionMaterial["vaultMasterKey"],
-      devicePrivateSignKey:
-        devicePrivateSignKey as UnlockedVaultSessionMaterial["devicePrivateSignKey"],
-      devicePrivateVaultKey: devicePrivateVaultKey as DeviceVaultPrivateKey,
-      deviceLocalProtectionKey:
-        deviceLocalProtectionKey as DeviceLocalProtectionKey,
-      payloadKey: payloadKey as UnlockedVaultSessionMaterial["payloadKey"],
-      trustedSnapshotContext: {
-        ...material.trustedSnapshotContext,
-        trust: {
-          ...material.trustedSnapshotContext.trust,
-          trustedDevices:
-            material.trustedSnapshotContext.trust.trustedDevices.map(
-              (device) => ({
-                deviceId: device.deviceId,
-                publicSignKey: base64UrlToArrayBuffer(
-                  device.publicSignKey,
-                ) as DevicePublicSignKey,
-                publicVaultKey: base64UrlToArrayBuffer(
-                  device.publicVaultKey,
-                ) as DeviceVaultPublicKey,
-              }),
-            ),
-        },
-      },
-      vaultTrustAnchor: {
-        ...material.vaultTrustAnchor,
-        genesisPublicSignKey: base64UrlToArrayBuffer(
-          material.vaultTrustAnchor.genesisPublicSignKey,
-        ) as DevicePublicSignKey,
-      },
     };
-  } catch (error) {
-    bestEffortWipeArrayBuffers(decodedSecrets);
-    throw error;
+  } finally {
+    bestEffortWipeArrayBuffers(
+      material === undefined
+        ? []
+        : [
+            material.vaultMasterKey,
+            material.devicePrivateSignKey,
+            material.devicePrivateVaultKey,
+            material.deviceLocalProtectionKey,
+            material.payloadKey,
+          ],
+    );
   }
 }
 
-export function deserializeUnlockedVaultSessionIdentity(
-  material: unknown,
-): Pick<
-  UnlockedVaultSessionMaterial,
-  "sessionId" | "vaultId" | "sourceSnapshotVersionVector"
-> {
-  assertStoredMaterial(material);
+function decodeStoredMaterial(
+  storedValue: unknown,
+  decodedSecrets: ArrayBuffer[],
+): UnlockedVaultSessionMaterial {
+  const material = exactRecord(storedValue, MATERIAL_KEYS);
+  const sessionId = nonBlankString(material.sessionId);
+  const vaultId = nonBlankString(material.vaultId);
+  const sourceSnapshotVersionVector = decodeVersionVector(
+    material.sourceSnapshotVersionVector,
+  );
+  const deviceId = nonBlankString(material.deviceId);
+  const vaultMasterKey = decodeSecret<
+    UnlockedVaultSessionMaterial["vaultMasterKey"]
+  >(material.vaultMasterKey, SYMMETRIC_KEY_LENGTH_BYTES, decodedSecrets);
+  const devicePrivateSignKey = decodeSecret<DevicePrivateSignKey>(
+    material.devicePrivateSignKey,
+    CURRENT_ALGORITHM_SUITE.signing.privateKeyLengthBytes,
+    decodedSecrets,
+  );
+  const devicePrivateVaultKey = decodeSecret<DeviceVaultPrivateKey>(
+    material.devicePrivateVaultKey,
+    CURRENT_ALGORITHM_SUITE.vaultKeyWrapping.privateKeyLengthBytes,
+    decodedSecrets,
+  );
+  const deviceLocalProtectionKey = decodeSecret<DeviceLocalProtectionKey>(
+    material.deviceLocalProtectionKey,
+    CURRENT_ALGORITHM_SUITE.deviceLocalProtectionKeyGeneration.byteLength,
+    decodedSecrets,
+  );
+  const payloadKey = decodeSecret<UnlockedVaultSessionMaterial["payloadKey"]>(
+    material.payloadKey,
+    CURRENT_ALGORITHM_SUITE.unlockedVaultSessionPayloadKeyGeneration.byteLength,
+    decodedSecrets,
+  );
+  const trustedSnapshotContext = decodeTrustedSnapshotContext(
+    material.trustedSnapshotContext,
+  );
+  const vaultTrustAnchor = decodeVaultTrustAnchor(material.vaultTrustAnchor);
+
+  if (
+    vaultTrustAnchor.vaultId !== vaultId ||
+    !trustedSnapshotContext.trust.trustedDevices.some(
+      (device) => device.deviceId === deviceId,
+    )
+  ) {
+    throw new Error("identity");
+  }
+
+  const trustedGenesisDevice = trustedSnapshotContext.trust.trustedDevices.find(
+    (device) => device.deviceId === vaultTrustAnchor.genesisDeviceId,
+  );
+  if (
+    trustedGenesisDevice !== undefined &&
+    !buffersEqual(
+      trustedGenesisDevice.publicSignKey,
+      vaultTrustAnchor.genesisPublicSignKey,
+    )
+  ) {
+    throw new Error("genesis identity");
+  }
+
   return {
-    sessionId: material.sessionId,
-    vaultId: material.vaultId,
-    sourceSnapshotVersionVector: material.sourceSnapshotVersionVector,
+    sessionId,
+    vaultId,
+    sourceSnapshotVersionVector,
+    deviceId,
+    vaultMasterKey,
+    devicePrivateSignKey,
+    devicePrivateVaultKey,
+    deviceLocalProtectionKey,
+    payloadKey,
+    trustedSnapshotContext,
+    vaultTrustAnchor,
   };
 }
 
-function arrayBufferToBase64Url(buffer: ArrayBuffer): Base64URLString {
-  return encodeBase64Url(new Uint8Array(buffer));
-}
-
-function base64UrlToArrayBuffer(value: Base64URLString): ArrayBuffer {
-  const bytes = decodeBase64Url(value);
-
-  try {
-    return bytes.slice().buffer;
-  } finally {
-    secureWipe(bytes);
-  }
-}
-
-function assertStoredMaterial(
-  material: unknown,
-): asserts material is StoredUnlockedVaultSessionMaterial {
-  if (!isRecord(material)) {
-    throw new Error("Unlocked vault session material is malformed.");
-  }
-
-  assertStringField(material, "sessionId");
-  assertStringField(material, "vaultId");
-  assertVersionVectorField(material, "sourceSnapshotVersionVector");
-  assertStringField(material, "deviceId");
-  assertStringField(material, "vaultMasterKey");
-  assertStringField(material, "devicePrivateSignKey");
-  assertStringField(material, "devicePrivateVaultKey");
-  assertStringField(material, "deviceLocalProtectionKey");
-  assertStringField(material, "payloadKey");
-  assertTrustedSnapshotContext(material.trustedSnapshotContext);
-  assertVaultTrustAnchor(material.vaultTrustAnchor);
-}
-
-function assertTrustedSnapshotContext(
+function decodeTrustedSnapshotContext(
   value: unknown,
-): asserts value is StoredUnlockedVaultSessionMaterial["trustedSnapshotContext"] {
-  if (!isRecord(value)) {
-    throw malformedField("trustedSnapshotContext");
-  }
-
-  assertStringField(value, "snapshotDigest");
-  const trust = value.trust;
-
-  if (!isRecord(trust)) {
-    throw malformedField("trustedSnapshotContext.trust");
-  }
-
-  assertNumberField(trust, "generation");
-  assertNumberField(trust, "vaultKeyGeneration");
-  assertStringField(trust, "certificateDigest");
-
+): UnlockedVaultSessionMaterial["trustedSnapshotContext"] {
+  const context = exactRecord(value, TRUSTED_SNAPSHOT_CONTEXT_KEYS);
+  const trust = exactRecord(context.trust, TRUST_KEYS);
   if (!Array.isArray(trust.trustedDevices)) {
-    throw malformedField("trustedSnapshotContext.trust.trustedDevices");
+    throw new Error("trusted devices");
   }
 
-  for (const device of trust.trustedDevices) {
-    if (!isRecord(device)) {
-      throw malformedField("trustedSnapshotContext.trust.trustedDevices");
-    }
+  const trustedDevices = trust.trustedDevices.map((deviceValue) => {
+    const device = exactRecord(deviceValue, TRUSTED_DEVICE_KEYS);
+    return {
+      deviceId: nonBlankString(device.deviceId),
+      publicSignKey: decodeCanonicalBytes<DevicePublicSignKey>(
+        device.publicSignKey,
+        CURRENT_ALGORITHM_SUITE.signing.publicKeyLengthBytes,
+      ),
+      publicVaultKey: decodeCanonicalBytes<DeviceVaultPublicKey>(
+        device.publicVaultKey,
+        CURRENT_ALGORITHM_SUITE.vaultKeyWrapping.publicKeyLengthBytes,
+      ),
+    };
+  });
+  requireUnique(trustedDevices.map((device) => device.deviceId));
 
-    assertStringField(device, "deviceId");
-    assertStringField(device, "publicSignKey");
-    assertStringField(device, "publicVaultKey");
-  }
+  return {
+    snapshotDigest: canonicalDigest(context.snapshotDigest),
+    trust: {
+      generation: safeInteger(trust.generation),
+      vaultKeyGeneration: safeInteger(trust.vaultKeyGeneration, 1),
+      certificateDigest: canonicalDigest(trust.certificateDigest),
+      trustedDevices,
+    },
+  };
 }
 
-function assertVaultTrustAnchor(
+function decodeVaultTrustAnchor(
   value: unknown,
-): asserts value is StoredUnlockedVaultSessionMaterial["vaultTrustAnchor"] {
-  if (!isRecord(value) || value.version !== 1) {
-    throw malformedField("vaultTrustAnchor");
+): UnlockedVaultSessionMaterial["vaultTrustAnchor"] {
+  const anchor = exactRecord(value, TRUST_ANCHOR_KEYS);
+  if (anchor.version !== 1) {
+    throw new Error("anchor version");
   }
 
-  assertStringField(value, "vaultId");
-  assertStringField(value, "genesisDeviceId");
-  assertStringField(value, "genesisPublicSignKey");
-  assertStringField(value, "genesisCertificateDigest");
+  return {
+    version: 1,
+    vaultId: nonBlankString(anchor.vaultId),
+    genesisDeviceId: nonBlankString(anchor.genesisDeviceId),
+    genesisPublicSignKey: decodeCanonicalBytes<DevicePublicSignKey>(
+      anchor.genesisPublicSignKey,
+      CURRENT_ALGORITHM_SUITE.signing.publicKeyLengthBytes,
+    ),
+    genesisCertificateDigest: canonicalDigest(anchor.genesisCertificateDigest),
+  };
 }
 
-function assertStringField(
-  record: Record<string, unknown>,
-  fieldName: string,
-): void {
-  if (typeof record[fieldName] !== "string") {
-    throw new Error(
-      `Unlocked vault session material field "${fieldName}" is malformed.`,
-    );
+async function validateAsymmetricKeys(
+  material: UnlockedVaultSessionMaterial,
+  validator: AsymmetricKeyValidator,
+): Promise<void> {
+  await validator.importDeviceSignPrivateKey(material.devicePrivateSignKey);
+  await validator.importDeviceVaultPrivateKey(material.devicePrivateVaultKey);
+
+  for (const device of material.trustedSnapshotContext.trust.trustedDevices) {
+    await validator.importDeviceSignPublicKey(device.publicSignKey);
+    await validator.importDeviceVaultPublicKey(device.publicVaultKey);
   }
-}
 
-function assertNumberField(
-  record: Record<string, unknown>,
-  fieldName: string,
-): void {
-  if (typeof record[fieldName] !== "number") {
-    throw malformedField(fieldName);
-  }
-}
-
-function malformedField(fieldName: string): Error {
-  return new Error(
-    `Unlocked vault session material field "${fieldName}" is malformed.`,
+  await validator.importDeviceSignPublicKey(
+    material.vaultTrustAnchor.genesisPublicSignKey,
   );
 }
 
-function assertVersionVectorField(
-  record: Record<string, unknown>,
-  fieldName: string,
-): void {
-  const value = record[fieldName];
-
-  if (!isRecord(value)) {
-    throw new Error(
-      `Unlocked vault session material field "${fieldName}" is malformed.`,
-    );
-  }
-
-  for (const version of Object.values(value)) {
-    if (typeof version !== "number") {
-      throw new Error(
-        `Unlocked vault session material field "${fieldName}" is malformed.`,
-      );
-    }
+function requireUnique(values: readonly string[]): void {
+  if (new Set(values).size !== values.length) {
+    throw new Error("duplicate identity");
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function decodeSecret<T extends ArrayBuffer>(
+  value: unknown,
+  expectedLength: number | undefined,
+  decodedSecrets: ArrayBuffer[],
+): T {
+  const secret = decodeCanonicalBytes<T>(value, expectedLength);
+  decodedSecrets.push(secret);
+  return secret;
+}
+
+function buffersEqual(left: ArrayBuffer, right: ArrayBuffer): boolean {
+  if (left.byteLength !== right.byteLength) {
+    return false;
+  }
+  const leftBytes = new Uint8Array(left);
+  const rightBytes = new Uint8Array(right);
+  return leftBytes.every((byte, index) => byte === rightBytes[index]);
 }

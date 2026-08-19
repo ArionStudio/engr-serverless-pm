@@ -3,6 +3,10 @@ import type {
   UnlockedVaultSessionMaterialRepositoryPort,
 } from "@lfspm/core";
 import {
+  WebCryptoAsymmetricKeyValidator,
+  type AsymmetricKeyValidator,
+} from "../crypto";
+import {
   deserializeUnlockedVaultSessionIdentity,
   deserializeUnlockedVaultSessionMaterial,
   serializeUnlockedVaultSessionMaterial,
@@ -18,6 +22,7 @@ export class ChromeUnlockedVaultSessionMaterialRepository implements UnlockedVau
   private readonly storageArea: ChromeStorageArea;
   private readonly storageKey: string;
   private readonly epochStorageKey: string;
+  private readonly asymmetricKeyValidator: AsymmetricKeyValidator;
   private cachedMaterial: UnlockedVaultSessionMaterial | null | undefined;
   private pendingOperation: Promise<void> = Promise.resolve();
 
@@ -26,10 +31,12 @@ export class ChromeUnlockedVaultSessionMaterialRepository implements UnlockedVau
       .session as ChromeStorageArea,
     storageKey = UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY,
     epochStorageKey = UNLOCKED_VAULT_SESSION_EPOCH_STORAGE_KEY,
+    asymmetricKeyValidator: AsymmetricKeyValidator = new WebCryptoAsymmetricKeyValidator(),
   ) {
     this.storageArea = storageArea;
     this.storageKey = storageKey;
     this.epochStorageKey = epochStorageKey;
+    this.asymmetricKeyValidator = asymmetricKeyValidator;
   }
 
   async saveUnlockedVaultSessionMaterial(
@@ -56,7 +63,10 @@ export class ChromeUnlockedVaultSessionMaterialRepository implements UnlockedVau
         return null;
       }
 
-      const decodedMaterial = deserializeUnlockedVaultSessionMaterial(material);
+      const decodedMaterial = await deserializeUnlockedVaultSessionMaterial(
+        material,
+        this.asymmetricKeyValidator,
+      );
       this.cachedMaterial = decodedMaterial;
       return decodedMaterial;
     });
@@ -72,7 +82,10 @@ export class ChromeUnlockedVaultSessionMaterialRepository implements UnlockedVau
 
       return material === undefined
         ? null
-        : deserializeUnlockedVaultSessionIdentity(material);
+        : await deserializeUnlockedVaultSessionIdentity(
+            material,
+            this.asymmetricKeyValidator,
+          );
     });
   }
 

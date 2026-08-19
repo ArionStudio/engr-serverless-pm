@@ -5,6 +5,7 @@ import { createUnlockedVaultWithEntries } from "../../__tests__/fixtures/vault-e
 import { toVaultSnapshotDescriptor } from "../../domain/snapshot";
 import { InvalidDeviceRevocationTransitionError } from "../../errors/device-revocation.errors";
 import {
+  InvalidSyncProviderOutcomeError,
   PreviousSyncCredentialStillActiveError,
   RemoteVaultSnapshotChangedError,
 } from "../../errors/sync.errors";
@@ -168,6 +169,45 @@ describe("CompleteProviderCredentialRevocationUseCase", () => {
     );
   });
 
+  it("rejects an unknown provider access outcome before encryption or mutation", async () => {
+    const ctx = createContext();
+    const sessionBefore = ctx.saved.unlockedVaultSession;
+    vi.mocked(ctx.ports.syncProvider.checkVaultAccess).mockResolvedValue(
+      "provider_timeout" as never,
+    );
+
+    let thrown: unknown;
+    try {
+      await ctx.useCase.execute({ vaultId: ctx.values.vaultId });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(InvalidSyncProviderOutcomeError);
+    expect(thrown).toMatchObject({
+      name: "InvalidSyncProviderOutcomeError",
+      message: "Sync provider access outcome is malformed.",
+    });
+    expect(Object.hasOwn(thrown as object, "cause")).toBe(false);
+    expect(
+      ctx.ports.crypto.encryptDeviceSyncCredentialState,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.getLocalVaultTrustCheckpoint,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+    expect(ctx.saved.deviceSyncCredentialState).toBe(
+      ctx.values.replacementEncryptedDeviceSyncCredentialState,
+    );
+    expect(ctx.saved.unlockedVaultSession).toBe(sessionBefore);
+  });
+
   it("is idempotent after previous credentials were removed", async () => {
     const ctx = createContext();
     ctx.saved.deviceSyncCredentialState =
@@ -206,7 +246,7 @@ describe("CompleteProviderCredentialRevocationUseCase", () => {
     await expect(
       ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
     ).resolves.toEqual({
-      providerCredentialRevocation: "pending_external_disable",
+      providerCredentialRevocation: "pending_external_deletion",
     });
 
     expect(ctx.ports.syncProvider.checkVaultAccess).not.toHaveBeenCalled();
@@ -229,7 +269,7 @@ describe("CompleteProviderCredentialRevocationUseCase", () => {
     await expect(
       ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
     ).resolves.toEqual({
-      providerCredentialRevocation: "pending_external_disable",
+      providerCredentialRevocation: "pending_external_deletion",
     });
 
     expect(ctx.saved.deviceSyncCredentialState).toBe(

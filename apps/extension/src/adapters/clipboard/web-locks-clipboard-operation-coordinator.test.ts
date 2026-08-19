@@ -1,9 +1,18 @@
 import {
   ClearClipboardTaskUseCase,
   CopyEntryPasswordUseCase,
+  CURRENT_ALGORITHM_SUITE,
   LockVaultUseCase,
   type ClipboardPort,
+  type DevicePublicSignKey,
+  type DeviceVaultPublicKey,
+  type UnlockedVault,
 } from "@lfspm/core";
+import {
+  decodeBase64Url,
+  encodeBase64Url,
+  type Base64URLString,
+} from "@lfspm/core/lib";
 import {
   ClipboardClearService,
   UnlockedVaultSessionService,
@@ -30,6 +39,97 @@ import {
   WebLocksClipboardOperationCoordinator,
 } from "./web-locks-clipboard-operation-coordinator";
 import { WebCryptoClipboardSecretHash } from "./web-crypto-clipboard-secret-hash";
+
+const ED25519_PUBLIC_KEY =
+  "Fqs-ZEF094DwnmgIP_3vW66vR7a3roKY4a6rHcf_Mbg" as Base64URLString;
+const ED25519_PRIVATE_KEY =
+  "MC4CAQAwBQYDK2VwBCIEIKCpkcLGPXOj3QmuhXSqbSzyR9QxZsgQRcHKuEBgvBGS" as Base64URLString;
+const P256_PUBLIC_KEY =
+  "BGHA1gXNkZGy7nD5xmWFenBCQYwNDXk_JvqcNfVsq9rQ4951gUvzZy3aDWK6yj5FRZqAimQvURlj6i-I8aYbzNg" as Base64URLString;
+const P256_PRIVATE_KEY =
+  "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgWiqUpCPje41XhU_gfBax1XuzrKagNbTrY97LNjclW2ehRANCAARhwNYFzZGRsu5w-cZlhXpwQkGMDQ15Pyb6nDX1bKva0OPedYFL82ct2g1iuso-RUWagIpkL1EZY-oviPGmG8zY" as Base64URLString;
+
+type TestValues = ReturnType<typeof createCoreTestValues>;
+type TestPorts = ReturnType<typeof createCoreTestPorts>;
+
+function createStrictSessionTestPorts(values: TestValues): TestPorts {
+  const ports = createCoreTestPorts(values);
+  vi.mocked(
+    ports.crypto.generateUnlockedVaultSessionPayloadKey,
+  ).mockResolvedValue(
+    filledBuffer(
+      5,
+      CURRENT_ALGORITHM_SUITE.unlockedVaultSessionPayloadKeyGeneration
+        .byteLength,
+    ) as Awaited<
+      ReturnType<typeof ports.crypto.generateUnlockedVaultSessionPayloadKey>
+    >,
+  );
+  return ports;
+}
+
+function createStrictUnlockedVaultWithEntries(
+  values: TestValues,
+  entries: Parameters<typeof createUnlockedVaultWithEntries>[1],
+  vaultId = values.vaultId,
+): UnlockedVault {
+  const unlockedVault = createUnlockedVaultWithEntries(values, entries);
+  const certificateDigest = digest(3);
+  const publicSignKey = decodeBuffer(ED25519_PUBLIC_KEY) as DevicePublicSignKey;
+
+  return {
+    ...unlockedVault,
+    vaultId,
+    vaultMasterKey: filledBuffer(
+      1,
+      CURRENT_ALGORITHM_SUITE.vaultMasterKeyGeneration.keyLengthBits / 8,
+    ) as typeof unlockedVault.vaultMasterKey,
+    devicePrivateSignKey: decodeBuffer(
+      ED25519_PRIVATE_KEY,
+    ) as typeof unlockedVault.devicePrivateSignKey,
+    devicePrivateVaultKey: decodeBuffer(
+      P256_PRIVATE_KEY,
+    ) as typeof unlockedVault.devicePrivateVaultKey,
+    deviceLocalProtectionKey: filledBuffer(
+      2,
+      CURRENT_ALGORITHM_SUITE.deviceLocalProtectionKeyGeneration.byteLength,
+    ) as typeof unlockedVault.deviceLocalProtectionKey,
+    trustedSnapshotContext: {
+      snapshotDigest: digest(4),
+      trust: {
+        ...unlockedVault.trustedSnapshotContext.trust,
+        certificateDigest,
+        trustedDevices: [
+          {
+            deviceId: values.deviceId,
+            publicSignKey,
+            publicVaultKey: decodeBuffer(
+              P256_PUBLIC_KEY,
+            ) as DeviceVaultPublicKey,
+          },
+        ],
+      },
+    },
+    vaultTrustAnchor: {
+      ...unlockedVault.vaultTrustAnchor,
+      vaultId,
+      genesisPublicSignKey: publicSignKey.slice() as DevicePublicSignKey,
+      genesisCertificateDigest: certificateDigest,
+    },
+  };
+}
+
+function filledBuffer(value: number, byteLength: number): ArrayBuffer {
+  return new Uint8Array(byteLength).fill(value).buffer;
+}
+
+function decodeBuffer(value: Base64URLString): ArrayBuffer {
+  return decodeBase64Url(value).slice().buffer;
+}
+
+function digest(value: number): string {
+  return encodeBase64Url(new Uint8Array(32).fill(value));
+}
 
 class SerializedWebLockManager implements WebLockManager {
   readonly requestedNames: string[] = [];
@@ -150,8 +250,8 @@ describe("WebLocksClipboardOperationCoordinator", () => {
 
   it("rejects an independently authorized activation after another context activates", async () => {
     const values = createCoreTestValues();
-    const portsA = createCoreTestPorts(values);
-    const portsB = createCoreTestPorts(values);
+    const portsA = createStrictSessionTestPorts(values);
+    const portsB = createStrictSessionTestPorts(values);
     const lockManager = new SerializedWebLockManager();
     const coordinatorA = new WebLocksClipboardOperationCoordinator(lockManager);
     const coordinatorB = new WebLocksClipboardOperationCoordinator(lockManager);
@@ -174,11 +274,12 @@ describe("WebLocksClipboardOperationCoordinator", () => {
       portsB.ids,
       coordinatorB,
     );
-    const vaultA = createUnlockedVaultWithEntries(values, []);
-    const vaultB = {
-      ...createUnlockedVaultWithEntries(values, []),
-      vaultId: "other-vault-id",
-    };
+    const vaultA = createStrictUnlockedVaultWithEntries(values, []);
+    const vaultB = createStrictUnlockedVaultWithEntries(
+      values,
+      [],
+      "other-vault-id",
+    );
     await materialRepositoryB.removeUnlockedVaultSessionMaterial();
     const generationA = await sessionA.requireVaultCanBeActivated(
       vaultA.vaultId,
@@ -244,7 +345,7 @@ describe("WebLocksClipboardOperationCoordinator", () => {
 
   it("revokes an independently authorized activation when another context locks", async () => {
     const values = createCoreTestValues();
-    const ports = createCoreTestPorts(values);
+    const ports = createStrictSessionTestPorts(values);
     const lockManager = new SerializedWebLockManager();
     const activationCoordinator = new WebLocksClipboardOperationCoordinator(
       lockManager,
@@ -302,7 +403,7 @@ describe("WebLocksClipboardOperationCoordinator", () => {
       activationSession,
       activationCoordinator,
     );
-    const unlockedVault = createUnlockedVaultWithEntries(values, []);
+    const unlockedVault = createStrictUnlockedVaultWithEntries(values, []);
 
     await expect(cleanup.execute()).resolves.toBeUndefined();
     await expect(
@@ -331,7 +432,7 @@ describe("WebLocksClipboardOperationCoordinator", () => {
 
   it("locks a session activated after the cleanup context cached absence", async () => {
     const values = createCoreTestValues();
-    const ports = createCoreTestPorts(values);
+    const ports = createStrictSessionTestPorts(values);
     const lockManager = new SerializedWebLockManager();
     const activationCoordinator = new WebLocksClipboardOperationCoordinator(
       lockManager,
@@ -361,7 +462,7 @@ describe("WebLocksClipboardOperationCoordinator", () => {
       ports.ids,
       cleanupCoordinator,
     );
-    const unlockedVault = createUnlockedVaultWithEntries(values, []);
+    const unlockedVault = createStrictUnlockedVaultWithEntries(values, []);
     const activationAuthorization =
       await activationSession.requireVaultCanBeActivated(values.vaultId);
     vi.mocked(ports.ids.generateId)
@@ -430,7 +531,7 @@ describe("WebLocksClipboardOperationCoordinator", () => {
 
   it("wipes a cached session when persisted Chrome material is malformed", async () => {
     const values = createCoreTestValues();
-    const ports = createCoreTestPorts(values);
+    const ports = createStrictSessionTestPorts(values);
     const lockManager = new SerializedWebLockManager();
     const coordinator = new WebLocksClipboardOperationCoordinator(lockManager);
     const { getRecords, storageArea } = createChromeStorageArea();
@@ -444,7 +545,7 @@ describe("WebLocksClipboardOperationCoordinator", () => {
       ports.ids,
       coordinator,
     );
-    const unlockedVault = createUnlockedVaultWithEntries(values, []);
+    const unlockedVault = createStrictUnlockedVaultWithEntries(values, []);
     const generation = await session.requireVaultCanBeActivated(values.vaultId);
     vi.mocked(ports.ids.generateId)
       .mockReset()
@@ -503,8 +604,8 @@ describe("WebLocksClipboardOperationCoordinator", () => {
   it("preserves a replacement session when stale-context discard acquires the lock", async () => {
     const valuesA = createCoreTestValues();
     const valuesB = createCoreTestValues();
-    const portsA = createCoreTestPorts(valuesA);
-    const portsB = createCoreTestPorts(valuesB);
+    const portsA = createStrictSessionTestPorts(valuesA);
+    const portsB = createStrictSessionTestPorts(valuesB);
     const lockManager = new SerializedWebLockManager();
     const coordinatorA = new WebLocksClipboardOperationCoordinator(lockManager);
     const coordinatorB = new WebLocksClipboardOperationCoordinator(lockManager);
@@ -529,8 +630,8 @@ describe("WebLocksClipboardOperationCoordinator", () => {
       portsB.ids,
       coordinatorB,
     );
-    const vaultA = createUnlockedVaultWithEntries(valuesA, []);
-    const vaultB = createUnlockedVaultWithEntries(valuesB, []);
+    const vaultA = createStrictUnlockedVaultWithEntries(valuesA, []);
+    const vaultB = createStrictUnlockedVaultWithEntries(valuesB, []);
     const generationA = await sessionA.requireVaultCanBeActivated(
       valuesA.vaultId,
     );
@@ -624,7 +725,7 @@ describe("WebLocksClipboardOperationCoordinator", () => {
 
   it("serializes a snapshot commit before independent same-session targeted cleanup", async () => {
     const values = createCoreTestValues();
-    const ports = createCoreTestPorts(values);
+    const ports = createStrictSessionTestPorts(values);
     const lockManager = new SerializedWebLockManager();
     const commitCoordinator = new WebLocksClipboardOperationCoordinator(
       lockManager,
@@ -653,7 +754,7 @@ describe("WebLocksClipboardOperationCoordinator", () => {
       ports.ids,
       cleanupCoordinator,
     );
-    const unlockedVault = createUnlockedVaultWithEntries(values, []);
+    const unlockedVault = createStrictUnlockedVaultWithEntries(values, []);
     const generation = await commitSession.requireVaultCanBeActivated(
       values.vaultId,
     );
@@ -744,7 +845,7 @@ describe("WebLocksClipboardOperationCoordinator", () => {
 
   it("serializes an independent session restore before a replacement commit", async () => {
     const values = createCoreTestValues();
-    const ports = createCoreTestPorts(values);
+    const ports = createStrictSessionTestPorts(values);
     const lockManager = new SerializedWebLockManager();
     const writerCoordinator = new WebLocksClipboardOperationCoordinator(
       lockManager,
@@ -773,7 +874,7 @@ describe("WebLocksClipboardOperationCoordinator", () => {
       ports.ids,
       readerCoordinator,
     );
-    const unlockedVault = createUnlockedVaultWithEntries(values, []);
+    const unlockedVault = createStrictUnlockedVaultWithEntries(values, []);
     const activationAuthorization = await writer.requireVaultCanBeActivated(
       values.vaultId,
     );

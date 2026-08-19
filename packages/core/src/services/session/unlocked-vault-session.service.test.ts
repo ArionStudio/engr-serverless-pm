@@ -1638,6 +1638,122 @@ describe("UnlockedVaultSessionService", () => {
     ).toHaveBeenCalledTimes(1);
   });
 
+  it("runs post-removal cleanup after records are removed despite an earlier error", async () => {
+    const ctx = createContext();
+    const epochError = new Error("session epoch unavailable");
+    ctx.ports.saved.unlockedVaultSessionMaterial = createMaterial(ctx);
+    ctx.ports.saved.encryptedUnlockedVaultSessionPayload =
+      createEncryptedPayload(ctx);
+    vi.mocked(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .advanceUnlockedVaultSessionEpoch,
+    ).mockRejectedValueOnce(epochError);
+    const afterRemoval = vi.fn(async () => undefined);
+
+    await expect(
+      ctx.service.cleanupActiveSession(
+        undefined,
+        true,
+        async () => true,
+        afterRemoval,
+      ),
+    ).rejects.toBe(epochError);
+
+    expect(afterRemoval).toHaveBeenCalledTimes(1);
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .removeUnlockedVaultSessionMaterial,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
+        .removeEncryptedUnlockedVaultSessionPayload,
+    ).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not run post-removal cleanup when a session record removal fails", async () => {
+    const ctx = createContext();
+    const removalError = new Error("session material removal failed");
+    ctx.ports.saved.unlockedVaultSessionMaterial = createMaterial(ctx);
+    ctx.ports.saved.encryptedUnlockedVaultSessionPayload =
+      createEncryptedPayload(ctx);
+    vi.mocked(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .removeUnlockedVaultSessionMaterial,
+    ).mockRejectedValueOnce(removalError);
+    const afterRemoval = vi.fn(async () => undefined);
+
+    await expect(
+      ctx.service.cleanupActiveSession(
+        undefined,
+        true,
+        async () => true,
+        afterRemoval,
+      ),
+    ).rejects.toBe(removalError);
+
+    expect(afterRemoval).not.toHaveBeenCalled();
+  });
+
+  it("does not remove records or run post-removal cleanup for a stale action", async () => {
+    const ctx = createContext();
+    ctx.ports.saved.unlockedVaultSessionMaterial = createMaterial(ctx);
+    ctx.ports.saved.encryptedUnlockedVaultSessionPayload =
+      createEncryptedPayload(ctx);
+    const afterRemoval = vi.fn(async () => undefined);
+
+    await expect(
+      ctx.service.cleanupActiveSession(
+        undefined,
+        false,
+        async () => false,
+        afterRemoval,
+        undefined,
+        { removeRecordsWhenUnavailableAfterAuthorization: true },
+      ),
+    ).resolves.toBe("stale_action");
+
+    expect(afterRemoval).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .removeUnlockedVaultSessionMaterial,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
+        .removeEncryptedUnlockedVaultSessionPayload,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("removes unavailable session records after an authenticated action", async () => {
+    const ctx = createContext();
+    ctx.ports.saved.encryptedUnlockedVaultSessionPayload =
+      createEncryptedPayload(ctx);
+    const afterRemoval = vi.fn(async () => undefined);
+
+    await expect(
+      ctx.service.cleanupActiveSession(
+        undefined,
+        false,
+        async () => true,
+        afterRemoval,
+        undefined,
+        { removeRecordsWhenUnavailableAfterAuthorization: true },
+      ),
+    ).resolves.toBe("session_unavailable");
+
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .removeUnlockedVaultSessionMaterial,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
+        .removeEncryptedUnlockedVaultSessionPayload,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      ctx.ports.saved.encryptedUnlockedVaultSessionPayload,
+    ).toBeUndefined();
+    expect(afterRemoval).not.toHaveBeenCalled();
+  });
+
   it("does not invalidate another active vault after persisted snapshot commit mismatch", async () => {
     const ctx = createContext();
     ctx.ports.saved.unlockedVaultSessionMaterial = createActiveMaterial(

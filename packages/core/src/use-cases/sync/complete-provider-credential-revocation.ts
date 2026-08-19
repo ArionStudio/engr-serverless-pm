@@ -21,6 +21,7 @@ import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-rep
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import type { VaultSyncGuardService } from "../../services/sync";
+import { requireSyncProviderAccessOutcome } from "../../services/sync/sync-provider-outcome.policy";
 
 export type CompleteProviderCredentialRevocationCommandParams = {
   readonly vaultId: string;
@@ -55,7 +56,7 @@ export class CompleteProviderCredentialRevocationUseCase {
   ): Promise<{
     readonly providerCredentialRevocation:
       | "complete"
-      | "pending_external_disable";
+      | "pending_external_deletion";
   }> {
     const { sessionId, sourceSnapshotVersionVector, unlockedVault } =
       await this.unlockedVaultSession.requireUnlockedVaultContext(
@@ -98,7 +99,9 @@ export class CompleteProviderCredentialRevocationUseCase {
     if (state.previousCredentials === undefined) {
       return {
         providerCredentialRevocation:
-          sharedPending === undefined ? "complete" : "pending_external_disable",
+          sharedPending === undefined
+            ? "complete"
+            : "pending_external_deletion",
       };
     }
 
@@ -123,9 +126,8 @@ export class CompleteProviderCredentialRevocationUseCase {
       target: syncTarget,
       credentials: state.previousCredentials.credentials,
     };
-    const result = await this.syncProvider.checkVaultAccess(
-      access,
-      params.vaultId,
+    const result = requireSyncProviderAccessOutcome(
+      await this.syncProvider.checkVaultAccess(access, params.vaultId),
     );
 
     if (result === "accessible") {
@@ -169,7 +171,9 @@ export class CompleteProviderCredentialRevocationUseCase {
 
       return {
         providerCredentialRevocation:
-          sharedPending === undefined ? "complete" : "pending_external_disable",
+          sharedPending === undefined
+            ? "complete"
+            : "pending_external_deletion",
       };
     }
 

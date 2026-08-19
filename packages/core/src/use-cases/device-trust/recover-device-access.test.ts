@@ -38,6 +38,21 @@ function createContext() {
   return { ...ctx, backup, useCase };
 }
 
+async function expectInitialRecoverySecretsWiped(
+  ctx: ReturnType<typeof createContext>,
+): Promise<void> {
+  const recoverySecretKey = await vi.mocked(
+    ctx.ports.bip39.mnemonicToRecoveryKey,
+  ).mock.results[0]!.value;
+  const recoveryLocalKeysProtectionKey = await vi.mocked(
+    ctx.ports.crypto.deriveRecoveryLocalKeysProtectionKey,
+  ).mock.results[0]!.value;
+
+  for (const buffer of [recoverySecretKey, recoveryLocalKeysProtectionKey]) {
+    expect(Array.from(new Uint8Array(buffer))).toEqual([0]);
+  }
+}
+
 function deferRecoveryReplacement(ctx: ReturnType<typeof createContext>) {
   vi.mocked(ctx.ports.crypto.generateRecoveryKey).mockResolvedValue(
     ctx.values.rotatedRecoverySecretKey,
@@ -144,6 +159,33 @@ describe("RecoverDeviceAccessUseCase", () => {
       newMasterPassword,
       ctx.values.masterPasswordSalt,
     );
+  });
+
+  it("stops recovery before key checks, decryption, wrapping, or persistence when authenticated local keys are malformed", async () => {
+    const ctx = createContext();
+    const decodeError = new Error("local keys payload is malformed");
+    vi.mocked(ctx.ports.crypto.unwrapLocalKeysPayload).mockRejectedValueOnce(
+      decodeError,
+    );
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        recoveryMnemonicKey: ctx.values.recoveryMnemonicKey,
+        newMasterPassword: ctx.values.newMasterPassword,
+      }),
+    ).rejects.toBe(decodeError);
+
+    expect(ctx.ports.crypto.verifyDeviceSignKeyPair).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.verifyDeviceVaultKeyPair).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.openDeviceVaultKeyEnvelope).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.wrapLocalKeysPayload).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
+    ).not.toHaveBeenCalled();
+    expect(ctx.saved.unlockedVaultSession).toBeUndefined();
+    await expectInitialRecoverySecretsWiped(ctx);
   });
 
   it("replaces the current local backup without changing the trusted identity", async () => {

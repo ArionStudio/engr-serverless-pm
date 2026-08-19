@@ -57,7 +57,7 @@ export type ConsumeDeviceRevocationResult = {
   readonly revokedDeviceIds: readonly string[];
   readonly enrolledDeviceIds: readonly string[];
   readonly vaultKeyGeneration: number;
-  readonly providerCredentialRevocation: "pending_external_disable";
+  readonly providerCredentialRevocation: "pending_external_deletion";
 };
 
 export class ConsumeDeviceRevocationUseCase {
@@ -221,7 +221,7 @@ export class ConsumeDeviceRevocationUseCase {
         enrolledDeviceIds,
         vaultKeyGeneration:
           candidate.remoteSnapshot.metadata.vaultKeyGeneration,
-        providerCredentialRevocation: "pending_external_disable",
+        providerCredentialRevocation: "pending_external_deletion",
       };
     } finally {
       if (!vaultMasterKeyTransferred) {

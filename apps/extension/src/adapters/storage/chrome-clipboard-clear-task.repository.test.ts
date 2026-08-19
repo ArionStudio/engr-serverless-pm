@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createChromeStorageArea } from "../../__tests__/fixtures/chrome-storage-area";
+import { InvalidScheduledTaskRecordError } from "../system";
 import {
   ChromeClipboardClearTaskRepository,
   CLIPBOARD_CLEAR_TASK_STORAGE_ACCESS_LEVEL,
@@ -13,6 +14,20 @@ const clipboardClearTask = {
 };
 
 describe("ChromeClipboardClearTaskRepository", () => {
+  it("observes access restriction rejection immediately and preserves it for callers", async () => {
+    const accessError = new Error("access restriction unavailable");
+    const { getRecords, storageArea } = createChromeStorageArea();
+    vi.mocked(storageArea.setAccessLevel!).mockRejectedValueOnce(accessError);
+    const setStoredRecords = vi.spyOn(storageArea, "set");
+    const repository = new ChromeClipboardClearTaskRepository(storageArea);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    await expect(repository.save(clipboardClearTask)).rejects.toBe(accessError);
+    expect(setStoredRecords).not.toHaveBeenCalled();
+    expect(getRecords()).toEqual({});
+  });
+
   it("stores only volatile trusted-context ownership metadata", async () => {
     const { getRecords, storageArea } = createChromeStorageArea();
     const repository = new ChromeClipboardClearTaskRepository(storageArea);
@@ -62,8 +77,8 @@ describe("ChromeClipboardClearTaskRepository", () => {
     });
     const repository = new ChromeClipboardClearTaskRepository(storageArea);
 
-    await expect(repository.get()).rejects.toThrow(
-      "Clipboard clear task metadata is malformed.",
+    await expect(repository.get()).rejects.toBeInstanceOf(
+      InvalidScheduledTaskRecordError,
     );
   });
 
@@ -88,14 +103,38 @@ describe("ChromeClipboardClearTaskRepository", () => {
       copiedValueHash: "a".repeat(64),
       expiresAt: 61_000,
     },
+    {
+      actionId: "clipboard-action-id",
+      copiedValueHash: "a".repeat(64),
+      expiresAt: -1,
+    },
+    {
+      actionId: "clipboard-action-id",
+      copiedValueHash: "a".repeat(64),
+      expiresAt: 1.5,
+    },
+    {
+      actionId: "clipboard-action-id",
+      copiedValueHash: "a".repeat(64),
+      expiresAt: Number.NaN,
+    },
+    {
+      actionId: "clipboard-action-id",
+      copiedValueHash: "a".repeat(64),
+      expiresAt: Number.MAX_SAFE_INTEGER + 1,
+    },
+    {
+      ...clipboardClearTask,
+      futureField: true,
+    },
   ])("rejects unusable clipboard ownership identities", async (storedTask) => {
     const { storageArea } = createChromeStorageArea({
       [CLIPBOARD_CLEAR_TASK_STORAGE_KEY]: storedTask,
     });
     const repository = new ChromeClipboardClearTaskRepository(storageArea);
 
-    await expect(repository.get()).rejects.toThrow(
-      "Clipboard clear task metadata is malformed.",
+    await expect(repository.get()).rejects.toBeInstanceOf(
+      InvalidScheduledTaskRecordError,
     );
   });
 

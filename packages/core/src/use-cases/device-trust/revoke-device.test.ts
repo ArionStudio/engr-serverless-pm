@@ -230,7 +230,7 @@ describe("RevokeDeviceUseCase", () => {
       }),
     );
     expect(result.providerCredentialRevocation).toBe(
-      "pending_external_disable",
+      "pending_external_deletion",
     );
     expect(result.vault.entries[0]).toEqual({
       id: singlePasswordEntry.id,
@@ -522,7 +522,7 @@ describe("RevokeDeviceUseCase", () => {
         replacementSyncConfig: ctx.values.replacementSyncConfigInput,
       }),
     ).resolves.toMatchObject({
-      providerCredentialRevocation: "pending_external_disable",
+      providerCredentialRevocation: "pending_external_deletion",
     });
   });
 

@@ -1,7 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  createDivergedTrustBaselineFixture,
-} from "../../__tests__/fixtures/device-trust";
+import { createDivergedTrustBaselineFixture } from "../../__tests__/fixtures/device-trust";
 import {
   createCoreTestPorts,
   replaceVaultSnapshotAfterNextSave,
@@ -25,6 +23,7 @@ import {
   InvalidDeviceRevocationTransitionError,
 } from "../../errors/device-revocation.errors";
 import {
+  InvalidSyncProviderOutcomeError,
   LocalSyncCredentialsMissingError,
   PreviousSyncCredentialStillActiveError,
   RemoteVaultSnapshotChangedError,
@@ -323,23 +322,19 @@ describe("PrepareDeviceRevocationConsumptionUseCase", () => {
       throw new Error("Expected local and remote trust transitions.");
     }
 
-    const {
-      divergedBaseline,
-      divergedBaselineDigest,
-      forgedRemoteSnapshot,
-    } = createDivergedTrustBaselineFixture({
-      remoteSnapshot: ctx.remoteSnapshot,
-      remotePrefix: ctx.remoteSnapshot.trustChain.certificates.slice(0, 1),
-      localBaseline,
-      remoteTransition,
-      replacementSignature: ctx.values.enrollmentRequestSignature,
-    });
-    vi.mocked(
-      ctx.ports.crypto.digestVaultTrustCertificate,
-    ).mockImplementation(async (certificate) =>
-      certificate === divergedBaseline
-        ? divergedBaselineDigest
-        : ctx.values.vaultTrustCertificateDigest,
+    const { divergedBaseline, divergedBaselineDigest, forgedRemoteSnapshot } =
+      createDivergedTrustBaselineFixture({
+        remoteSnapshot: ctx.remoteSnapshot,
+        remotePrefix: ctx.remoteSnapshot.trustChain.certificates.slice(0, 1),
+        localBaseline,
+        remoteTransition,
+        replacementSignature: ctx.values.enrollmentRequestSignature,
+      });
+    vi.mocked(ctx.ports.crypto.digestVaultTrustCertificate).mockImplementation(
+      async (certificate) =>
+        certificate === divergedBaseline
+          ? divergedBaselineDigest
+          : ctx.values.vaultTrustCertificateDigest,
     );
     vi.mocked(ctx.ports.syncProvider.downloadVaultSnapshot).mockResolvedValue(
       forgedRemoteSnapshot,
@@ -478,6 +473,54 @@ describe("PrepareDeviceRevocationConsumptionUseCase", () => {
     expect(
       ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
     ).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unknown previous-credential outcome before provider continuation or mutation", async () => {
+    const ctx = createContext();
+    const sessionBefore = ctx.ports.saved.unlockedVaultSession;
+    ctx.ports.saved.deviceSyncCredentialState =
+      ctx.values.replacementEncryptedDeviceSyncCredentialState;
+    vi.mocked(ctx.ports.syncProvider.checkVaultAccess).mockResolvedValue(
+      "provider_timeout" as never,
+    );
+    const useCase = new PrepareDeviceRevocationConsumptionUseCase(
+      ctx.ports.crypto,
+      ctx.ports.syncProvider,
+      ctx.ports.sessionServices.unlockedVaultSession,
+      ctx.snapshotService,
+      ctx.ports.vaultLocalRepository,
+    );
+
+    let thrown: unknown;
+    try {
+      await useCase.execute({
+        vaultId: ctx.values.vaultId,
+        replacementSyncConfig: ctx.values.replacementSyncConfigInput,
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(InvalidSyncProviderOutcomeError);
+    expect(thrown).toMatchObject({
+      name: "InvalidSyncProviderOutcomeError",
+      message: "Sync provider access outcome is malformed.",
+    });
+    expect(Object.hasOwn(thrown as object, "cause")).toBe(false);
+    expect(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.downloadVaultSnapshot).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.openDeviceVaultKeyEnvelope).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.crypto.encryptDeviceSyncCredentialState,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.unlockedVaultSession).toBe(sessionBefore);
   });
 
   it("rejects preparation with the current local credentials", async () => {
@@ -802,7 +845,7 @@ describe("ConsumeDeviceRevocationUseCase", () => {
       ),
     ).toBe(false);
     expect(result.providerCredentialRevocation).toBe(
-      "pending_external_disable",
+      "pending_external_deletion",
     );
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });

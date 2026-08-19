@@ -1,6 +1,8 @@
 import type { ScheduledTask, ScheduledTaskPort } from "@lfspm/core";
-
-export const SCHEDULED_TASK_ALARM_PREFIX = "lfspm:scheduled-task:";
+import {
+  decodeScheduledTaskAlarmName,
+  encodeScheduledTaskAlarmName,
+} from "./scheduled-task-record.codec";
 
 export type ChromeAlarmsApi = {
   create: (
@@ -32,43 +34,9 @@ export class ChromeAlarmsScheduledTask implements ScheduledTaskPort {
 }
 
 export function serializeScheduledTask(task: ScheduledTask): string {
-  return `${SCHEDULED_TASK_ALARM_PREFIX}${task.name}:${encodeURIComponent(task.actionId)}`;
+  return encodeScheduledTaskAlarmName(task);
 }
 
 export function parseScheduledTask(alarmName: string): ScheduledTask | null {
-  if (!alarmName.startsWith(SCHEDULED_TASK_ALARM_PREFIX)) {
-    return null;
-  }
-
-  const serializedTask = alarmName.slice(SCHEDULED_TASK_ALARM_PREFIX.length);
-  const separatorIndex = serializedTask.indexOf(":");
-
-  if (separatorIndex < 1) {
-    return null;
-  }
-
-  const name = serializedTask.slice(0, separatorIndex);
-  const encodedActionId = serializedTask.slice(separatorIndex + 1);
-
-  if (
-    (name !== "clearClipboard" && name !== "lockVault") ||
-    encodedActionId.length === 0
-  ) {
-    return null;
-  }
-
-  try {
-    const actionId = decodeURIComponent(encodedActionId);
-
-    if (actionId.trim().length === 0) {
-      return null;
-    }
-
-    return {
-      name,
-      actionId,
-    };
-  } catch {
-    return null;
-  }
+  return decodeScheduledTaskAlarmName(alarmName);
 }

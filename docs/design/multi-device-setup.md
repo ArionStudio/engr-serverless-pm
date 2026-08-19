@@ -137,7 +137,7 @@ envelope with the private wrapping key it already owns; it is not re-enrolled.
 
 For synchronized vaults, the user first creates a replacement S3 credential and
 enters it on the revoking device. After the rotated snapshot is uploaded, the
-user disables the old credential in AWS and verifies its rejection in the app.
+user deletes the old credential in AWS and verifies its rejection in the app.
 Each survivor enters the latest replacement credential once before consuming
 the complete signed suffix. It can skip multiple trust changes: each enrollment
 adds one identity without rotating the key, each revocation removes one identity
@@ -148,7 +148,7 @@ resolution flow.
 
 A revoked device may retain old local data and keys. The design does not
 remotely wipe it. Security comes from withholding all current-generation
-envelopes and disabling its old provider access.
+envelopes and deleting its old provider credential.
 
 ## Recovery
 

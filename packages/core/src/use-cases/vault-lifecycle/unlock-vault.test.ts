@@ -13,26 +13,33 @@ import { ChangeMasterPasswordUseCase } from "./change-master-password";
 
 async function expectUnlockOwnedBuffersWiped(
   ctx: ReturnType<typeof createUnlockVaultTestContext>,
+  stage: "localProtection" | "localKeys" | "vaultKey" = "vaultKey",
 ): Promise<void> {
   const localRootKey = await vi.mocked(ctx.ports.crypto.deriveLocalRootKey).mock
     .results[0]!.value;
   const localKeysProtectionKey = await vi.mocked(
     ctx.ports.crypto.deriveLocalKeysProtectionKey,
   ).mock.results[0]!.value;
-  const localKeys = await vi.mocked(ctx.ports.crypto.unwrapLocalKeysPayload)
-    .mock.results[0]!.value;
-  const vaultMasterKey = await vi.mocked(
-    ctx.ports.crypto.openDeviceVaultKeyEnvelope,
-  ).mock.results[0]!.value;
+  const buffers = [localRootKey, localKeysProtectionKey];
 
-  for (const buffer of [
-    localRootKey,
-    localKeysProtectionKey,
-    localKeys.devicePrivateSignKey,
-    localKeys.devicePrivateVaultKey,
-    localKeys.deviceLocalProtectionKey,
-    vaultMasterKey,
-  ]) {
+  if (stage !== "localProtection") {
+    const localKeys = await vi.mocked(ctx.ports.crypto.unwrapLocalKeysPayload)
+      .mock.results[0]!.value;
+    buffers.push(
+      localKeys.devicePrivateSignKey,
+      localKeys.devicePrivateVaultKey,
+      localKeys.deviceLocalProtectionKey,
+    );
+  }
+
+  if (stage === "vaultKey") {
+    const vaultMasterKey = await vi.mocked(
+      ctx.ports.crypto.openDeviceVaultKeyEnvelope,
+    ).mock.results[0]!.value;
+    buffers.push(vaultMasterKey);
+  }
+
+  for (const buffer of buffers) {
     expect(Array.from(new Uint8Array(buffer))).toEqual([0]);
   }
 }
@@ -154,6 +161,78 @@ describe("UnlockVaultUseCase", () => {
     ).rejects.toBeInstanceOf(DeviceKeySlotNotFoundError);
 
     expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
+  });
+
+  it("stops before decryption and activation when opening the vault key fails", async () => {
+    const ctx = createUnlockVaultTestContext();
+    const openedKeyError = new Error("opened key rejected by adapter");
+    vi.mocked(
+      ctx.ports.crypto.openDeviceVaultKeyEnvelope,
+    ).mockRejectedValueOnce(openedKeyError);
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 60_000,
+      }),
+    ).rejects.toBe(openedKeyError);
+
+    expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
+    expect(ctx.ports.vaultLockTasks.save).not.toHaveBeenCalled();
+    expect(ctx.ports.scheduledTasks.scheduleTask).not.toHaveBeenCalled();
+    expect(ctx.saved.unlockedVaultSession).toBeUndefined();
+    await expectUnlockOwnedBuffersWiped(ctx, "localKeys");
+  });
+
+  it("stops before key checks, decryption, or activation when authenticated local keys are malformed", async () => {
+    const ctx = createUnlockVaultTestContext();
+    const decodeError = new Error("local keys payload is malformed");
+    vi.mocked(ctx.ports.crypto.unwrapLocalKeysPayload).mockRejectedValueOnce(
+      decodeError,
+    );
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 60_000,
+      }),
+    ).rejects.toBe(decodeError);
+
+    expect(ctx.ports.crypto.verifyDeviceSignKeyPair).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.verifyDeviceVaultKeyPair).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.openDeviceVaultKeyEnvelope).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
+    expect(ctx.ports.vaultLockTasks.save).not.toHaveBeenCalled();
+    expect(ctx.ports.scheduledTasks.scheduleTask).not.toHaveBeenCalled();
+    expect(ctx.saved.unlockedVaultSession).toBeUndefined();
+    await expectUnlockOwnedBuffersWiped(ctx, "localProtection");
+  });
+
+  it("stops before activation when authenticated vault plaintext is malformed", async () => {
+    const ctx = createUnlockVaultTestContext();
+    const decodeError = new Error("vault snapshot payload is malformed");
+    vi.mocked(
+      ctx.ports.crypto.decryptVaultSnapshotContent,
+    ).mockRejectedValueOnce(decodeError);
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        masterPassword: ctx.values.masterPassword,
+        lockAfterMs: 60_000,
+      }),
+    ).rejects.toBe(decodeError);
+
+    expect(ctx.ports.vaultLockTasks.save).not.toHaveBeenCalled();
+    expect(ctx.ports.scheduledTasks.scheduleTask).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .saveUnlockedVaultSessionMaterial,
+    ).not.toHaveBeenCalled();
+    expect(ctx.saved.unlockedVaultSession).toBeUndefined();
+    await expectUnlockOwnedBuffersWiped(ctx);
   });
 
   it("rejects device access material for another vault before reading the snapshot", async () => {

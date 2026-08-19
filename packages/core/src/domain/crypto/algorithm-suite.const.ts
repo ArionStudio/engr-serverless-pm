@@ -4,6 +4,11 @@ export const CURRENT_ALGORITHM_SUITE: AlgorithmSuite = {
   id: "spm-v1",
   signing: {
     algorithm: "Ed25519",
+    canonicalization: "JCS-RFC8785",
+    publicKeyFormat: "raw",
+    publicKeyLengthBytes: 32,
+    privateKeyFormat: "pkcs8",
+    privateKeyLengthBytes: 48,
   },
   vaultMasterKeyGeneration: {
     algorithm: "AES-GCM",
@@ -15,6 +20,18 @@ export const CURRENT_ALGORITHM_SUITE: AlgorithmSuite = {
     namedCurve: "P-256",
     keyDerivation: "HKDF",
     hash: "SHA-256",
+    publicKeyFormat: "raw",
+    publicKeyLengthBytes: 65,
+    privateKeyFormat: "pkcs8",
+    privateKeyLengthBytes: 138,
+    publicKeyEncoding: "uncompressed",
+    hkdfInfoPurpose: "lfspm-vault-key-envelope-v1",
+    hkdfInfoContext: [
+      "vaultId",
+      "deviceId",
+      "vaultKeyGeneration",
+      "algorithmSuiteId",
+    ],
     encryption: "AES-256-GCM",
     keyLengthBits: 256,
     saltLengthBytes: 32,
@@ -73,5 +90,6 @@ export const CURRENT_ALGORITHM_SUITE: AlgorithmSuite = {
   vaultSnapshotSigning: {
     algorithm: "Ed25519",
     signatureFormat: "raw",
+    canonicalization: "JCS-RFC8785",
   },
 };

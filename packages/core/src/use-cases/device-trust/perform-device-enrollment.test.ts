@@ -179,14 +179,24 @@ function createContext(synced = false) {
 
 async function expectEnrollmentOwnedBuffersWiped(
   ctx: ReturnType<typeof createContext>,
+  stage: "pendingProtection" | "all" = "all",
 ): Promise<void> {
   const pendingRootKey = await vi.mocked(ctx.ports.crypto.deriveLocalRootKey)
     .mock.results[0]!.value;
-  const nextRootKey = await vi.mocked(ctx.ports.crypto.deriveLocalRootKey).mock
-    .results[1]!.value;
   const pendingProtectionKey = await vi.mocked(
     ctx.ports.crypto.deriveDeviceEnrollmentPrivateStateProtectionKey,
   ).mock.results[0]!.value;
+
+  if (stage === "pendingProtection") {
+    for (const buffer of [pendingRootKey, pendingProtectionKey]) {
+      expect(Array.from(new Uint8Array(buffer))).toEqual([0]);
+    }
+
+    return;
+  }
+
+  const nextRootKey = await vi.mocked(ctx.ports.crypto.deriveLocalRootKey).mock
+    .results[1]!.value;
   const localProtectionKey = await vi.mocked(
     ctx.ports.crypto.deriveLocalKeysProtectionKey,
   ).mock.results[0]!.value;
@@ -235,6 +245,127 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       ctx.ports.vaultLocalRepository.getPendingDeviceEnrollment,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+  });
+
+  it("stops before crypto, persistence, and activation when pending enrollment decoding fails", async () => {
+    const ctx = createContext();
+    const decodeError = new Error("pending enrollment artifact is malformed");
+    vi.mocked(
+      ctx.ports.vaultLocalRepository.getPendingDeviceEnrollment,
+    ).mockRejectedValueOnce(decodeError);
+
+    await expect(
+      ctx.useCase.execute({
+        enrollmentResponse: ctx.response,
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "New laptop",
+        lockAfterMs: 60_000,
+      }),
+    ).rejects.toBe(decodeError);
+
+    expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.crypto.unwrapDeviceEnrollmentPrivateState,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.crypto.verifyDeviceEnrollmentRequestSignature,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.signVaultSnapshot).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .saveUnlockedVaultSessionMaterial,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.vaultLockTasks.save).not.toHaveBeenCalled();
+    expect(ctx.ports.scheduledTasks.scheduleTask).not.toHaveBeenCalled();
+  });
+
+  it("stops after authenticated private-state decoding fails", async () => {
+    const ctx = createContext();
+    const decodeError = new Error(
+      "device enrollment private state is malformed",
+    );
+    vi.mocked(
+      ctx.ports.crypto.unwrapDeviceEnrollmentPrivateState,
+    ).mockRejectedValueOnce(decodeError);
+
+    await expect(
+      ctx.useCase.execute({
+        enrollmentResponse: ctx.response,
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "New laptop",
+        lockAfterMs: 60_000,
+      }),
+    ).rejects.toBe(decodeError);
+
+    expect(ctx.ports.crypto.deriveLocalRootKey).toHaveBeenCalledOnce();
+    expect(
+      ctx.ports.crypto.deriveLocalKeysProtectionKey,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.crypto.deriveRecoveryLocalKeysProtectionKey,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.crypto.verifyDeviceEnrollmentRequestSignature,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.verifyDeviceSignKeyPair).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.openDeviceVaultKeyEnvelope).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.signVaultSnapshot).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.crypto.signLocalVaultTrustCheckpoint,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .saveUnlockedVaultSessionMaterial,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.vaultLockTasks.save).not.toHaveBeenCalled();
+    expect(ctx.ports.scheduledTasks.scheduleTask).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
+    await expectEnrollmentOwnedBuffersWiped(ctx, "pendingProtection");
+  });
+
+  it("keeps request identity and private-key matching in the core semantic owner", async () => {
+    const ctx = createContext();
+    vi.mocked(
+      ctx.ports.crypto.unwrapDeviceEnrollmentPrivateState,
+    ).mockResolvedValueOnce({
+      ...ctx.values.pendingDeviceEnrollmentPrivateState,
+      request: {
+        ...ctx.values.enrollmentRequest,
+        payload: {
+          ...ctx.values.enrollmentRequestPayload,
+          requestId: "another-request-id",
+        },
+      },
+    });
+
+    await expect(
+      ctx.useCase.execute({
+        enrollmentResponse: ctx.response,
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "New laptop",
+        lockAfterMs: 60_000,
+      }),
+    ).rejects.toBeInstanceOf(PendingDeviceEnrollmentMismatchError);
+
+    expect(
+      ctx.ports.crypto.verifyDeviceEnrollmentRequestSignature,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.verifyDeviceSignKeyPair).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.openDeviceVaultKeyEnvelope).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.signVaultSnapshot).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .saveUnlockedVaultSessionMaterial,
+    ).not.toHaveBeenCalled();
   });
 
   it("accepts a maximum-strength password", async () => {
@@ -485,6 +616,19 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       }),
     ).rejects.toBeInstanceOf(PendingDeviceEnrollmentMismatchError);
 
+    expect(ctx.ports.crypto.verifyDeviceVaultKeyPair).toHaveBeenCalledOnce();
+    expect(ctx.ports.crypto.openDeviceVaultKeyEnvelope).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.crypto.deriveLocalKeysProtectionKey,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.signVaultSnapshot).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .saveUnlockedVaultSessionMaterial,
+    ).not.toHaveBeenCalled();
     expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
     expect(ctx.ports.saved.localVaultDescriptor).toBeUndefined();
   });

@@ -7,6 +7,19 @@ import {
   db,
   type VaultManagerDb,
 } from "../../infrastructure/database/dexie-db";
+import {
+  decodeEncryptedUnlockedVaultSessionPayload,
+  InvalidUnlockedVaultSessionPayloadRecordError,
+} from "../codecs/unlocked-session-payload.codec";
+import { exactRecord } from "../codecs/artifact-codec.primitives";
+
+const STORED_RECORD_KEYS = [
+  "content",
+  "id",
+  "sessionId",
+  "sourceSnapshotVersionVector",
+  "vaultId",
+] as const;
 
 export class IndexedDbEncryptedUnlockedVaultSessionPayloadRepository implements EncryptedUnlockedVaultSessionPayloadRepositoryPort {
   private readonly database: VaultManagerDb;
@@ -34,12 +47,22 @@ export class IndexedDbEncryptedUnlockedVaultSessionPayloadRepository implements 
       return null;
     }
 
-    return {
-      sessionId: record.sessionId,
-      vaultId: record.vaultId,
-      sourceSnapshotVersionVector: record.sourceSnapshotVersionVector,
-      content: record.content,
-    };
+    let stored: Record<string, unknown>;
+    try {
+      stored = exactRecord(record, STORED_RECORD_KEYS);
+    } catch {
+      throw new InvalidUnlockedVaultSessionPayloadRecordError();
+    }
+    if (stored.id !== ACTIVE_UNLOCKED_VAULT_SESSION_PAYLOAD_ID) {
+      throw new InvalidUnlockedVaultSessionPayloadRecordError();
+    }
+
+    return decodeEncryptedUnlockedVaultSessionPayload({
+      sessionId: stored.sessionId,
+      vaultId: stored.vaultId,
+      sourceSnapshotVersionVector: stored.sourceSnapshotVersionVector,
+      content: stored.content,
+    });
   }
 
   async removeEncryptedUnlockedVaultSessionPayload(): Promise<void> {

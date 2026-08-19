@@ -13,7 +13,7 @@ describe("background entrypoint", () => {
     const handleAlarm = vi.fn(async () => {
       throw alarmError;
     });
-    const composeClipboardAlarmHandler = vi.fn(() => handleAlarm);
+    const composeScheduledTaskAlarmHandler = vi.fn(() => handleAlarm);
     const consoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
@@ -25,7 +25,7 @@ describe("background entrypoint", () => {
     );
 
     vi.doMock("./clipboard-alarm-runtime", () => ({
-      composeClipboardAlarmHandler,
+      composeScheduledTaskAlarmHandler,
     }));
     vi.stubGlobal("chrome", {
       alarms: {
@@ -35,7 +35,7 @@ describe("background entrypoint", () => {
 
     await import("./background");
 
-    expect(composeClipboardAlarmHandler).toHaveBeenCalledOnce();
+    expect(composeScheduledTaskAlarmHandler).toHaveBeenCalledOnce();
     expect(addAlarmListener).toHaveBeenCalledOnce();
 
     alarmListener?.({ name: "clipboard-alarm" });
@@ -44,7 +44,7 @@ describe("background entrypoint", () => {
       expect(handleAlarm).toHaveBeenCalledWith({ name: "clipboard-alarm" });
       expect(consoleError).toHaveBeenCalledOnce();
       expect(consoleError).toHaveBeenCalledWith(
-        "Clipboard alarm handling failed; verify the clipboard is clear.",
+        "Scheduled task alarm handling failed.",
       );
     });
   });
