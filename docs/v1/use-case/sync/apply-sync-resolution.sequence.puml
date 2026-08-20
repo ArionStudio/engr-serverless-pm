@@ -35,22 +35,25 @@ UC -> UC : reject every trust-chain, vault-key-generation,\nor key-slot change; 
 UC -> Domain : findChangedEntries / Tags / DeviceProfiles
 UC -> Domain : applyVaultSyncResolution(...)
 UC -> Snapshot : persistUnlockedVault(..., mergedVector)
-UC -> Local : CAS-save same resolved snapshot + encrypted pending intent
-UC -> Sync : prepareVaultSnapshotUpload(syncAccess, resolvedSnapshot,\nremoteSnapshotIdentity { descriptor, digest })
+UC -> Guard : uploadPersistedSnapshot(...)
+Guard -> Local : CAS-save same resolved snapshot + encrypted pending intent
+Guard -> Sync : prepareVaultSnapshotUpload(syncAccess, resolvedSnapshot,\nremoteSnapshotIdentity { descriptor, digest })
 Sync --> Guard : prepared synchronous start operation
 Guard -> Session : revalidate originating active session
 Guard -> Sync : start conditional upload while session lease is held
 alt definitely not committed: remote changed
-  UC -> Snapshot : restore prior snapshot, checkpoint, and credentials
+  Guard -> Snapshot : restore prior snapshot, checkpoint, and credentials
+  Guard --> UC : throw RemoteVaultSnapshotChangedError
   UC --> Caller : throw SyncConflictDetectedError
 else definitely not committed: provider rejection
-  UC -> Snapshot : restore prior snapshot, checkpoint, and credentials
+  Guard -> Snapshot : restore prior snapshot, checkpoint, and credentials
+  Guard --> UC : throw provider rejection error
   UC --> Caller : throw provider rejection error
 else outcome unknown
   UC -> Session : commitPersistedSnapshotIfSessionIsActive(originating session, candidate, vector)
   UC --> Caller : result with syncUpload pending
 else committed
-  UC -> Local : Attempt active-session exact CAS-clear of pending intent
+  Guard -> Local : Attempt active-session exact CAS-clear of pending intent
   UC -> Session : commitPersistedSnapshotIfSessionIsActive(originating session, candidate, vector)
   alt intent clear succeeds
     UC --> Caller : result with syncUpload complete

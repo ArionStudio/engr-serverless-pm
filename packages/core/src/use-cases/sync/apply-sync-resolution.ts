@@ -325,7 +325,7 @@ export class ApplySyncResolutionUseCase {
               await this.vaultSyncGuard.prepareSyncCredentialStateWithoutPending(
                 params.vaultId,
                 unlockedVault,
-                { allowPendingSnapshotUpload: true },
+                { discardPendingSnapshotUpload: true },
               );
 
             return this.vaultSnapshot.persistVerifiedRemoteSnapshot(
@@ -408,7 +408,7 @@ export class ApplySyncResolutionUseCase {
             await this.vaultSyncGuard.prepareSyncCredentialStateWithoutPending(
               params.vaultId,
               unlockedVault,
-              { allowPendingSnapshotUpload: true },
+              { discardPendingSnapshotUpload: true },
             );
           const persistedSnapshot =
             await this.vaultSnapshot.persistUnlockedVault(

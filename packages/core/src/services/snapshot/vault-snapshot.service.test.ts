@@ -260,6 +260,14 @@ describe("VaultSnapshotService", () => {
         currentTrust,
         historicalTrust,
       );
+      expect(verifyTrustChain.mock.calls[0]?.[2]).toBe(
+        ctx.vaultSnapshot.trustChain,
+      );
+      expect(verifySnapshot).toHaveBeenCalledWith(
+        ctx.values.vaultId,
+        ctx.vaultSnapshot,
+        historicalTrust,
+      );
     } finally {
       verifyTrustChain.mockRestore();
       verifySnapshot.mockRestore();

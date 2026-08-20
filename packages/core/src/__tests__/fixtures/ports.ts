@@ -798,6 +798,26 @@ export function createCoreTestPorts(
         syncCredentialState,
       } = params;
       const currentSnapshot = saved.vaultSnapshot;
+      const replacesSyncCredentialState = syncCredentialState !== undefined;
+      const hasSyncCredentialState = Object.hasOwn(
+        params,
+        "syncCredentialState",
+      );
+      const hasExpectedSyncCredentialState = Object.hasOwn(
+        params,
+        "expectedSyncCredentialState",
+      );
+
+      if (
+        hasSyncCredentialState !== replacesSyncCredentialState ||
+        hasExpectedSyncCredentialState !== replacesSyncCredentialState ||
+        (replacesSyncCredentialState &&
+          expectedSyncCredentialState === undefined)
+      ) {
+        throw new Error(
+          "Expected valid sync credential state replacement parameters.",
+        );
+      }
 
       if (
         currentSnapshot === undefined ||
@@ -805,12 +825,11 @@ export function createCoreTestPorts(
         saved.vaultSnapshotDigest !== expectedSnapshotDigest ||
         saved.localVaultTrustCheckpoint === undefined ||
         !areJsonEqual(saved.localVaultTrustCheckpoint, expectedCheckpoint) ||
-        (syncCredentialState !== undefined &&
-          (!Object.hasOwn(params, "expectedSyncCredentialState") ||
-            !areEncryptedSyncCredentialStatesEqual(
-              saved.deviceSyncCredentialState,
-              expectedSyncCredentialState,
-            )))
+        (replacesSyncCredentialState &&
+          !areEncryptedSyncCredentialStatesEqual(
+            saved.deviceSyncCredentialState,
+            expectedSyncCredentialState,
+          ))
       ) {
         throw new LocalVaultSnapshotChangedError(snapshot.metadata.id);
       }

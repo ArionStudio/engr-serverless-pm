@@ -180,7 +180,7 @@ export class ConsumeDeviceEnrollmentUseCase {
             await this.vaultSyncGuard.prepareSyncCredentialStateWithoutPending(
               params.vaultId,
               unlockedVault,
-              { allowPendingSnapshotUpload: true },
+              { discardPendingSnapshotUpload: true },
             );
           const persistedSnapshot =
             await this.vaultSnapshot.persistUnlockedVault(
@@ -288,7 +288,7 @@ export class ConsumeDeviceEnrollmentUseCase {
           await this.vaultSyncGuard.prepareSyncCredentialStateWithoutPending(
             unlockedVault.vaultId,
             unlockedVault,
-            { allowPendingSnapshotUpload: true },
+            { discardPendingSnapshotUpload: true },
           );
 
         await this.vaultLocalRepository.saveVaultSnapshotWithCheckpoint({

@@ -290,7 +290,8 @@ export function createVaultSnapshotServiceMock(
       state: values.verifiedVaultTrustState,
       snapshotDigest:
         snapshot.metadata.id === vaultId
-          ? values.vaultSnapshotDigest
+          ? (snapshotRestoreStates.get(snapshot)?.snapshotDigest ??
+            values.vaultSnapshotDigest)
           : "different-vault-snapshot-digest",
     })),
     restoreLocalVaultSnapshot,

@@ -210,35 +210,27 @@ export class InitializeDeviceEnrollmentUseCase {
               currentSnapshot,
               unlockedVault,
             );
+          const commonSnapshotOptions = {
+            keySlots: {
+              deviceSlots: [
+                ...currentSnapshot.keySlots.deviceSlots,
+                targetSlot,
+              ],
+            },
+            nextTrust: {
+              chain: nextTrust.chain,
+              state: nextTrust.trust,
+            },
+          };
           const snapshotOptions =
             syncState.remoteSnapshotIdentity === undefined
-              ? {
-                  keySlots: {
-                    deviceSlots: [
-                      ...currentSnapshot.keySlots.deviceSlots,
-                      targetSlot,
-                    ],
-                  },
-                  nextTrust: {
-                    chain: nextTrust.chain,
-                    state: nextTrust.trust,
-                  },
-                }
+              ? commonSnapshotOptions
               : {
+                  ...commonSnapshotOptions,
                   uploadExpectedRemoteSnapshotIdentity:
                     syncState.remoteSnapshotIdentity,
                   expectedSyncCredentialState: syncState.syncCredentialState,
                   syncCredentialState: syncState.syncCredentialState,
-                  keySlots: {
-                    deviceSlots: [
-                      ...currentSnapshot.keySlots.deviceSlots,
-                      targetSlot,
-                    ],
-                  },
-                  nextTrust: {
-                    chain: nextTrust.chain,
-                    state: nextTrust.trust,
-                  },
                 };
           const persistedSnapshot =
             await this.vaultSnapshot.persistUnlockedVault(

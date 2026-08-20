@@ -74,7 +74,7 @@ export class DisableSyncUseCase {
         params.vaultId,
         unlockedVault,
         {
-          allowPendingSnapshotUpload: false,
+          discardPendingSnapshotUpload: false,
           requireProviderCredentialRevocationCompleteFor: "disable sync",
         },
       );

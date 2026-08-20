@@ -309,35 +309,25 @@ export class RevokeDeviceUseCase {
                 unlockedVault,
                 previousEncryptedCredentials,
               );
+            const commonSnapshotOptions = {
+              vaultKeyGeneration,
+              keySlots: { deviceSlots },
+              nextTrust: {
+                chain: nextTrust.chain,
+                state: nextTrust.trust,
+              },
+              ...(syncState.remoteSnapshotIdentity === undefined
+                ? {}
+                : {
+                    uploadExpectedRemoteSnapshotIdentity:
+                      syncState.remoteSnapshotIdentity,
+                  }),
+            };
             const snapshotOptions =
               encryptedCredentialState === undefined
-                ? {
-                    vaultKeyGeneration,
-                    keySlots: { deviceSlots },
-                    nextTrust: {
-                      chain: nextTrust.chain,
-                      state: nextTrust.trust,
-                    },
-                    ...(syncState.remoteSnapshotIdentity === undefined
-                      ? {}
-                      : {
-                          uploadExpectedRemoteSnapshotIdentity:
-                            syncState.remoteSnapshotIdentity,
-                        }),
-                  }
+                ? commonSnapshotOptions
                 : {
-                    vaultKeyGeneration,
-                    keySlots: { deviceSlots },
-                    nextTrust: {
-                      chain: nextTrust.chain,
-                      state: nextTrust.trust,
-                    },
-                    ...(syncState.remoteSnapshotIdentity === undefined
-                      ? {}
-                      : {
-                          uploadExpectedRemoteSnapshotIdentity:
-                            syncState.remoteSnapshotIdentity,
-                        }),
+                    ...commonSnapshotOptions,
                     expectedSyncCredentialState:
                       previousEncryptedCredentials ?? null,
                     syncCredentialState: encryptedCredentialState,

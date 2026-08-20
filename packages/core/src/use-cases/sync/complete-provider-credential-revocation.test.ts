@@ -319,30 +319,64 @@ describe("CompleteProviderCredentialRevocationUseCase", () => {
   it("restores the old encrypted credential when intent staging fails after completion persistence", async () => {
     const ctx = createContext();
     const stagingError = new Error("completion intent staging failed");
+    const encrypt = vi.mocked(
+      ctx.ports.crypto.encryptDeviceSyncCredentialState,
+    );
     const decrypt = vi.mocked(
       ctx.ports.crypto.decryptDeviceSyncCredentialState,
     );
+    const encryptImplementation = encrypt.getMockImplementation();
     const decryptImplementation = decrypt.getMockImplementation();
 
-    if (decryptImplementation === undefined) {
-      throw new Error("Expected credential decryption fixture implementation.");
+    if (
+      encryptImplementation === undefined ||
+      decryptImplementation === undefined
+    ) {
+      throw new Error("Expected credential codec fixture implementations.");
     }
 
-    let decryptCalls = 0;
-    decrypt.mockImplementation(async (...args) => {
-      decryptCalls += 1;
+    let completedCredentialState:
+      | typeof ctx.values.encryptedDeviceSyncCredentialState
+      | undefined;
+    encrypt.mockImplementation(async (...args) => {
+      const encryptedState = await encryptImplementation(...args);
+      const [state] = args;
 
-      if (decryptCalls === 3) {
+      if (
+        state.previousCredentials === undefined &&
+        state.pendingSnapshotUpload === undefined
+      ) {
+        completedCredentialState = encryptedState;
+      }
+
+      return encryptedState;
+    });
+    decrypt.mockImplementation(async (...args) => {
+      const state = await decryptImplementation(...args);
+
+      if (
+        completedCredentialState !== undefined &&
+        args[0] === completedCredentialState &&
+        ctx.saved.deviceSyncCredentialState === completedCredentialState
+      ) {
         throw stagingError;
       }
 
-      return decryptImplementation(...args);
+      return state;
     });
 
     await expect(
       ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
     ).rejects.toBe(stagingError);
 
+    expect(completedCredentialState).toBeDefined();
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        syncCredentialState: completedCredentialState,
+      }),
+    );
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
     expect(ctx.saved.deviceSyncCredentialState).toBe(
       ctx.values.replacementEncryptedDeviceSyncCredentialState,

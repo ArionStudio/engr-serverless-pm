@@ -253,16 +253,25 @@ describe("InitializeVaultUseCase", () => {
       }),
     ).rejects.toThrow("session failed");
 
+    const initializedParams = vi.mocked(
+      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
+    ).mock.calls[0]?.[0];
+
+    if (initializedParams === undefined) {
+      throw new Error("Expected initialized vault records.");
+    }
+
     expect(
       ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfArtifactsMatch,
     ).toHaveBeenCalledWith(
       expect.objectContaining({
         vaultId: ctx.values.vaultId,
-        expectedDescriptor: expect.any(Object),
-        expectedDeviceAccessMaterial: expect.any(Object),
-        expectedDeviceAccessRecoveryBackup: expect.any(Object),
+        expectedDescriptor: initializedParams.descriptor,
+        expectedDeviceAccessMaterial: initializedParams.deviceAccessMaterial,
+        expectedDeviceAccessRecoveryBackup:
+          initializedParams.deviceAccessRecoveryBackup,
         expectedSnapshotDigest: ctx.values.vaultSnapshotDigest,
-        expectedCheckpoint: expect.any(Object),
+        expectedCheckpoint: initializedParams.checkpoint,
         expectedSyncCredentialState: null,
       }),
     );

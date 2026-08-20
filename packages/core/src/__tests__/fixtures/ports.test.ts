@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createCoreTestPorts } from "./ports";
 import { createCoreTestValues } from "./values";
+import { createVaultSnapshotServiceMock } from "./vault-entries";
 
 function expectFreshCopies(
   first: ArrayBuffer,
@@ -168,5 +169,38 @@ describe("createCoreTestPorts vault lock tasks", () => {
       ports.vaultLockTasks.removeIfActionIsActive(task.actionId),
     ).resolves.toBe(true);
     await expect(ports.vaultLockTasks.get()).resolves.toBeNull();
+  });
+});
+
+describe("createCoreTestPorts vault persistence", () => {
+  it("rejects malformed credential replacement parameter shapes", async () => {
+    const values = createCoreTestValues();
+    const ports = createCoreTestPorts(values);
+    const service = createVaultSnapshotServiceMock(values, ports);
+    const snapshot = await service.requireLocalVaultSnapshot(values.vaultId);
+    const save = ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint;
+    const baseParams = {
+      expectedSnapshotDigest: values.vaultSnapshotDigest,
+      expectedCheckpoint: values.localVaultTrustCheckpoint,
+      snapshot,
+      checkpoint: values.localVaultTrustCheckpoint,
+    };
+
+    await expect(
+      save({
+        ...baseParams,
+        expectedSyncCredentialState: values.encryptedDeviceSyncCredentialState,
+      } as unknown as Parameters<typeof save>[0]),
+    ).rejects.toThrow(
+      "Expected valid sync credential state replacement parameters.",
+    );
+    await expect(
+      save({
+        ...baseParams,
+        syncCredentialState: undefined,
+      } as unknown as Parameters<typeof save>[0]),
+    ).rejects.toThrow(
+      "Expected valid sync credential state replacement parameters.",
+    );
   });
 });

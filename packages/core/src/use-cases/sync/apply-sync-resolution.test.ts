@@ -16,6 +16,7 @@ import {
   InvalidVaultSyncReviewError,
   RemoteVaultSnapshotChangedError,
   RemoteVaultSnapshotIntegrityError,
+  SyncAlreadyResolvedError,
   SyncConflictDetectedError,
   SyncTrustChangeRequiresDeviceTrustFlowError,
 } from "../../errors/sync.errors";
@@ -356,8 +357,9 @@ describe("ApplySyncResolutionUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("authenticates an equal-descriptor remote before reporting it resolved", async () => {
+  it("rejects equal descriptors with different snapshot digests", async () => {
     const ctx = createContext();
+    const remoteSnapshotDigest = "equal-descriptor-remote-snapshot-digest";
     const equalDescriptorSnapshot = {
       ...ctx.remoteSnapshot,
       metadata: {
@@ -377,7 +379,7 @@ describe("ApplySyncResolutionUseCase", () => {
       .mockResolvedValue({
         chain: ctx.values.vaultTrustChain,
         state: ctx.values.verifiedVaultTrustState,
-        snapshotDigest: "substituted-equal-remote-digest",
+        snapshotDigest: remoteSnapshotDigest,
       });
 
     try {
@@ -388,7 +390,7 @@ describe("ApplySyncResolutionUseCase", () => {
             local: ctx.localIdentity,
             remote: {
               descriptor: ctx.localDescriptor,
-              snapshotDigest: ctx.values.vaultSnapshotDigest,
+              snapshotDigest: remoteSnapshotDigest,
             },
           },
           resolution: {
@@ -397,10 +399,51 @@ describe("ApplySyncResolutionUseCase", () => {
             deviceProfileResolutions: [],
           },
         }),
-      ).rejects.toBeInstanceOf(RemoteVaultSnapshotChangedError);
+      ).rejects.toBeInstanceOf(RemoteVaultSnapshotIntegrityError);
     } finally {
       verification.mockRestore();
     }
+
+    expect(ctx.ports.syncProvider.downloadVaultSnapshot).toHaveBeenCalledOnce();
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("reports fully equal snapshot identities as already resolved", async () => {
+    const ctx = createContext();
+    const equalDescriptorSnapshot = {
+      ...ctx.remoteSnapshot,
+      metadata: {
+        ...ctx.remoteSnapshot.metadata,
+        revisionTimestamp: ctx.localDescriptor.revisionTimestamp,
+        snapshotVersionVector: ctx.localDescriptor.snapshotVersionVector,
+      },
+    };
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValue(ctx.localDescriptor);
+    vi.mocked(ctx.ports.syncProvider.downloadVaultSnapshot).mockResolvedValue(
+      equalDescriptorSnapshot,
+    );
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        reviewedSnapshotIdentities: {
+          local: ctx.localIdentity,
+          remote: {
+            descriptor: ctx.localDescriptor,
+            snapshotDigest: ctx.values.vaultSnapshotDigest,
+          },
+        },
+        resolution: {
+          entryResolutions: [],
+          tagResolutions: [],
+          deviceProfileResolutions: [],
+        },
+      }),
+    ).rejects.toBeInstanceOf(SyncAlreadyResolvedError);
 
     expect(ctx.ports.syncProvider.downloadVaultSnapshot).toHaveBeenCalledOnce();
     expect(

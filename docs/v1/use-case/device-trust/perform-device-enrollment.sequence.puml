@@ -15,6 +15,7 @@ actor "New device caller" as Caller
 participant "PerformDeviceEnrollmentUseCase" as UC
 participant "ClipboardOperationCoordinatorPort" as Coordinator
 participant "UnlockedVaultSessionService" as Session
+participant "VaultSyncGuardService" as Guard
 participant "VaultSessionActivationService" as Activation
 participant "VaultLifecycleCleanupService" as Lifecycle
 participant "VaultTrustService" as Trust
@@ -71,11 +72,13 @@ alt scheduling or session activation fails
   UC --> Caller : throw original activation failure
 else activated with fresh session identity
   opt sync access exists
-    UC -> LocalRepo : CAS-save same snapshot + encrypted pending upload intent
-    UC -> Sync : prepareVaultSnapshotUpload(syncAccess, registeredSnapshot,\nauthorizedSnapshotIdentity { descriptor, digest })
-    Sync --> UC : synchronous start operation after provider preflight
-    UC -> Session : revalidate originating session and start conditional upload
+    UC -> Guard : uploadTrackedSnapshot(...)
+    Guard -> LocalRepo : CAS-save same snapshot + encrypted pending upload intent
+    Guard -> Sync : prepareVaultSnapshotUpload(syncAccess, registeredSnapshot,\nauthorizedSnapshotIdentity { descriptor, digest })
+    Sync --> Guard : synchronous start operation after provider preflight
+    Guard -> Session : revalidate originating session and start conditional upload
     alt definitely not committed
+      Guard --> UC : throw RemoteVaultSnapshotChangedError or provider rejection
       UC -> Lifecycle : discardIfSessionIsActive(sessionId, generation, vector)
       Lifecycle -> Session : enter serialized conditional discard
       alt originating session is current
@@ -106,13 +109,13 @@ else activated with fresh session identity
         UC --> Caller : throw DeviceEnrollmentRollbackIncompleteError
       end
     else outcome unknown
-      UC -> UC : keep local enrollment and pending intent; syncUpload = pending
+      Guard --> UC : keep local enrollment and pending intent; syncUpload = pending
     else committed
-      UC -> LocalRepo : CAS-clear pending upload intent
+      Guard -> LocalRepo : CAS-clear pending upload intent
       alt clear succeeds
-        UC -> UC : syncUpload = complete
+        Guard --> UC : syncUpload = complete
       else clear races or session is no longer active
-        UC -> UC : retain reconciliation state; syncUpload = pending
+        Guard --> UC : retain reconciliation state; syncUpload = pending
       end
     end
   end

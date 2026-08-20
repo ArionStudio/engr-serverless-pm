@@ -546,7 +546,11 @@ export class VaultSyncGuardService {
     vaultId: string,
     unlockedVault: UnlockedVault,
     options: {
-      readonly allowPendingSnapshotUpload: boolean;
+      /**
+       * Accepts and removes an existing pending upload marker from `nextState`.
+       * Use only when the caller atomically replaces the marked local snapshot.
+       */
+      readonly discardPendingSnapshotUpload: boolean;
       readonly requireProviderCredentialRevocationCompleteFor?: string;
     },
   ): Promise<{
@@ -582,7 +586,7 @@ export class VaultSyncGuardService {
 
     if (
       state.pendingSnapshotUpload !== undefined &&
-      !options.allowPendingSnapshotUpload
+      !options.discardPendingSnapshotUpload
     ) {
       throw new LocalVaultSnapshotAheadError(vaultId);
     }
