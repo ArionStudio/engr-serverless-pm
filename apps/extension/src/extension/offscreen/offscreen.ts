@@ -27,12 +27,21 @@ function isOffscreenClipboardRequest(
 
   return (
     record.target === OFFSCREEN_CLIPBOARD_MESSAGE_TARGET &&
+    typeof record.deadlineEpochMs === "number" &&
+    Number.isFinite(record.deadlineEpochMs) &&
     (record.operation === "read" ||
       (record.operation === "write" && typeof record.value === "string"))
   );
 }
 
 function handleClipboardRequest(request: OffscreenClipboardRequest) {
+  if (Date.now() >= request.deadlineEpochMs) {
+    return {
+      ok: false as const,
+      error: "Clipboard request expired.",
+    };
+  }
+
   if (request.operation === "read") {
     return {
       ok: true as const,

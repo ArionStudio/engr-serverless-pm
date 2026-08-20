@@ -8,16 +8,19 @@ export const OFFSCREEN_DOCUMENT_CONTEXT =
   "OFFSCREEN_DOCUMENT" as chrome.runtime.ContextType;
 export const OFFSCREEN_CLIPBOARD_RESPONSE_TIMEOUT_MS = 5_000;
 
-export type OffscreenClipboardRequest =
+type OffscreenClipboardOperation =
   | {
-      readonly target: typeof OFFSCREEN_CLIPBOARD_MESSAGE_TARGET;
       readonly operation: "read";
     }
   | {
-      readonly target: typeof OFFSCREEN_CLIPBOARD_MESSAGE_TARGET;
       readonly operation: "write";
       readonly value: string;
     };
+
+export type OffscreenClipboardRequest = OffscreenClipboardOperation & {
+  readonly target: typeof OFFSCREEN_CLIPBOARD_MESSAGE_TARGET;
+  readonly deadlineEpochMs: number;
+};
 
 export type OffscreenClipboardResponse =
   | { readonly ok: true; readonly value?: string }
@@ -73,7 +76,6 @@ export class OffscreenClipboard implements ClipboardPort {
 
   async readText(): Promise<string> {
     const response = await this.send({
-      target: OFFSCREEN_CLIPBOARD_MESSAGE_TARGET,
       operation: "read",
     });
 
@@ -86,16 +88,20 @@ export class OffscreenClipboard implements ClipboardPort {
 
   async writeText(value: string): Promise<void> {
     await this.send({
-      target: OFFSCREEN_CLIPBOARD_MESSAGE_TARGET,
       operation: "write",
       value,
     });
   }
 
   private async send(
-    request: OffscreenClipboardRequest,
+    operation: OffscreenClipboardOperation,
   ): Promise<{ readonly ok: true; readonly value?: string }> {
     await this.ensureDocument();
+    const request: OffscreenClipboardRequest = {
+      ...operation,
+      target: OFFSCREEN_CLIPBOARD_MESSAGE_TARGET,
+      deadlineEpochMs: Date.now() + OFFSCREEN_CLIPBOARD_RESPONSE_TIMEOUT_MS,
+    };
     const response = await this.sendToOffscreenDocument(request);
 
     if (!response.ok) {

@@ -72,6 +72,7 @@ describe("OffscreenClipboard", () => {
     expect(ctx.sendMessage).toHaveBeenCalledWith({
       target: OFFSCREEN_CLIPBOARD_MESSAGE_TARGET,
       operation: "read",
+      deadlineEpochMs: expect.any(Number),
     });
   });
 
@@ -87,6 +88,7 @@ describe("OffscreenClipboard", () => {
       target: OFFSCREEN_CLIPBOARD_MESSAGE_TARGET,
       operation: "write",
       value: "next-value",
+      deadlineEpochMs: expect.any(Number),
     });
   });
 
