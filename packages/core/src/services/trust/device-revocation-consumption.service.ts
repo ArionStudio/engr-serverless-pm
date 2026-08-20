@@ -4,11 +4,13 @@ import type { UnlockedVault } from "../../domain/session";
 import type { SyncAccess, SyncSetupInput } from "../../domain/sync";
 import { requireDeviceProfilesMatchTrust } from "../../domain/sync/device-profile-review.utils";
 import {
+  areVaultSnapshotIdentitiesEqual,
   areVaultSnapshotDescriptorsEqual,
   cloneVaultSnapshotDescriptor,
   toVaultSnapshotDescriptor,
+  toVaultSnapshotIdentity,
 } from "../../domain/snapshot";
-import type { ReviewedVaultSnapshotDescriptors } from "../../domain/snapshot";
+import type { ReviewedVaultSnapshotIdentities } from "../../domain/snapshot";
 import type { Vault } from "../../domain/vault";
 import { revokeDeviceProfileFromVault } from "../../domain/vault/vault-device.mutations";
 import {
@@ -65,7 +67,7 @@ export class DeviceRevocationConsumptionService {
     readonly replacementSyncConfig: SyncSetupInput;
     readonly unlockedVault: UnlockedVault;
     readonly sourceSnapshotVersionVector: VersionVector;
-    readonly reviewedSnapshotDescriptors?: ReviewedVaultSnapshotDescriptors;
+    readonly reviewedSnapshotIdentities?: ReviewedVaultSnapshotIdentities;
   }) {
     const syncTarget = params.unlockedVault.vault.syncTarget;
 
@@ -81,10 +83,14 @@ export class DeviceRevocationConsumptionService {
       );
 
     if (
-      params.reviewedSnapshotDescriptors !== undefined &&
-      !areVaultSnapshotDescriptorsEqual(
-        toVaultSnapshotDescriptor(params.vaultId, localSnapshot),
-        params.reviewedSnapshotDescriptors.local,
+      params.reviewedSnapshotIdentities !== undefined &&
+      !areVaultSnapshotIdentitiesEqual(
+        toVaultSnapshotIdentity(
+          params.vaultId,
+          localSnapshot,
+          params.unlockedVault.trustedSnapshotContext.snapshotDigest,
+        ),
+        params.reviewedSnapshotIdentities.local,
       )
     ) {
       throw new LocalVaultSnapshotChangedError(params.vaultId);
@@ -169,10 +175,10 @@ export class DeviceRevocationConsumptionService {
     );
 
     if (
-      params.reviewedSnapshotDescriptors !== undefined &&
+      params.reviewedSnapshotIdentities !== undefined &&
       !areVaultSnapshotDescriptorsEqual(
         remoteSnapshotDescriptor,
-        params.reviewedSnapshotDescriptors.remote,
+        params.reviewedSnapshotIdentities.remote.descriptor,
       )
     ) {
       throw new RemoteVaultSnapshotChangedError(params.vaultId);
@@ -197,6 +203,20 @@ export class DeviceRevocationConsumptionService {
       remoteSnapshot,
       params.unlockedVault,
     );
+
+    if (
+      params.reviewedSnapshotIdentities !== undefined &&
+      !areVaultSnapshotIdentitiesEqual(
+        toVaultSnapshotIdentity(
+          params.vaultId,
+          remoteSnapshot,
+          remoteTrust.snapshotDigest,
+        ),
+        params.reviewedSnapshotIdentities.remote,
+      )
+    ) {
+      throw new RemoteVaultSnapshotChangedError(params.vaultId);
+    }
 
     if (
       remoteSnapshot.metadata.vaultCreationTimestamp !==

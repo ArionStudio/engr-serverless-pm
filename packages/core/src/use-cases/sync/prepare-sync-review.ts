@@ -1,11 +1,13 @@
-import type { ReviewedVaultSnapshotDescriptors } from "../../domain/snapshot/vault-snapshot-descriptor.type";
+import type { ReviewedVaultSnapshotIdentities } from "../../domain/snapshot/vault-snapshot-descriptor.type";
 import { areJsonEqual } from "../../domain/common";
 import type { VersionVectorRelation } from "../../domain/versioning/version-vector.type";
 import {
+  areVaultSnapshotIdentitiesEqual,
   areVaultSnapshotDescriptorsEqual,
   cloneVaultSnapshotDescriptor,
   compareVaultSnapshotDescriptors,
   toVaultSnapshotDescriptor,
+  toVaultSnapshotIdentity,
 } from "../../domain/snapshot/vault-snapshot-descriptor.utils";
 
 import {
@@ -40,7 +42,7 @@ export type PrepareSyncReviewCommandParams = {
 };
 
 export type PrepareSyncReviewResult = {
-  readonly reviewedSnapshotDescriptors: ReviewedVaultSnapshotDescriptors;
+  readonly reviewedSnapshotIdentities: ReviewedVaultSnapshotIdentities;
   readonly relation: VersionVectorRelation;
   readonly review: VaultSyncReview | null;
 };
@@ -120,6 +122,11 @@ export class PrepareSyncReviewUseCase {
       params.vaultId,
       localSnapshot,
     );
+    const localSnapshotIdentity = toVaultSnapshotIdentity(
+      params.vaultId,
+      localSnapshot,
+      unlockedVault.trustedSnapshotContext.snapshotDigest,
+    );
     const relation = compareVaultSnapshotDescriptors(
       localSnapshotDescriptor,
       remoteSnapshotDescriptor,
@@ -133,6 +140,21 @@ export class PrepareSyncReviewUseCase {
       throw new LocalVaultSnapshotAheadError(params.vaultId);
     }
 
+    const remoteSnapshot = await this.syncProvider.downloadVaultSnapshot(
+      syncAccess,
+      cloneVaultSnapshotDescriptor(remoteSnapshotDescriptor),
+    );
+    const remoteTrust = await this.vaultSnapshot.verifyCandidateSnapshotTrust(
+      params.vaultId,
+      remoteSnapshot,
+      unlockedVault,
+    );
+    const remoteSnapshotIdentity = toVaultSnapshotIdentity(
+      params.vaultId,
+      remoteSnapshot,
+      remoteTrust.snapshotDigest,
+    );
+
     if (relation === "equal") {
       if (
         !areVaultSnapshotDescriptorsEqual(
@@ -143,25 +165,24 @@ export class PrepareSyncReviewUseCase {
         throw new RemoteVaultSnapshotIntegrityError(params.vaultId);
       }
 
+      if (
+        !areVaultSnapshotIdentitiesEqual(
+          remoteSnapshotIdentity,
+          localSnapshotIdentity,
+        )
+      ) {
+        throw new RemoteVaultSnapshotIntegrityError(params.vaultId);
+      }
+
       return {
-        reviewedSnapshotDescriptors: {
-          local: localSnapshotDescriptor,
-          remote: cloneVaultSnapshotDescriptor(remoteSnapshotDescriptor),
+        reviewedSnapshotIdentities: {
+          local: localSnapshotIdentity,
+          remote: remoteSnapshotIdentity,
         },
         relation,
         review: null,
       };
     }
-
-    const remoteSnapshot = await this.syncProvider.downloadVaultSnapshot(
-      syncAccess,
-      cloneVaultSnapshotDescriptor(remoteSnapshotDescriptor),
-    );
-    const remoteTrust = await this.vaultSnapshot.verifyCandidateSnapshotTrust(
-      params.vaultId,
-      remoteSnapshot,
-      unlockedVault,
-    );
 
     if (
       remoteTrust.state.generation !==
@@ -266,9 +287,9 @@ export class PrepareSyncReviewUseCase {
     );
 
     return {
-      reviewedSnapshotDescriptors: {
-        local: localSnapshotDescriptor,
-        remote: cloneVaultSnapshotDescriptor(remoteSnapshotDescriptor),
+      reviewedSnapshotIdentities: {
+        local: localSnapshotIdentity,
+        remote: remoteSnapshotIdentity,
       },
       relation,
       review: {

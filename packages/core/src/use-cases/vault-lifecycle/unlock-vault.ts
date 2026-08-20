@@ -282,6 +282,7 @@ export class UnlockVaultUseCase {
       if (checkpointRelation === "newer") {
         await this.vaultLocalRepository.saveVaultSnapshotWithCheckpoint({
           expectedSnapshotDigest: snapshotDigest,
+          expectedCheckpoint: checkpoint,
           snapshot: vaultSnapshot,
           checkpoint: await this.vaultTrust.createCheckpoint(
             vaultSnapshot,

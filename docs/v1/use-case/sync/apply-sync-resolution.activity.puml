@@ -10,10 +10,10 @@ skinparam activity {
 }
 
 start
-:Input:\nvaultId, reviewedSnapshotDescriptors { local, remote },\nresolution;
+:Input:\nvaultId, reviewedSnapshotIdentities\n{ local/remote descriptor + digest }, resolution;
 :Source:\npackages/core/src/use-cases/sync/apply-sync-resolution.ts;
 :Require unlocked vault context for "apply sync resolution";
-if (syncConfig missing?) then (yes)
+if (syncTarget missing?) then (yes)
   :Throw SyncNotConfiguredError;
   stop
 endif
@@ -23,7 +23,8 @@ if (descriptor vaultId differs?) then (yes)
 endif
 
 :Require current local snapshot for unlocked vault and source vector;
-if (current local descriptor differs from reviewed descriptor?) then (yes)
+:Digest current local snapshot;
+if (current local descriptor or digest differs from reviewed local identity?) then (yes)
   :Throw LocalVaultSnapshotChangedError;
   stop
 endif
@@ -42,8 +43,15 @@ if (relation is local_ahead?) then (yes)
   :Throw LocalVaultSnapshotAheadError;
   stop
 endif
+:Download remote snapshot;
+:Digest downloaded remote snapshot;
+if (downloaded descriptor or digest differs from reviewed remote identity?) then (yes)
+  :Throw RemoteVaultSnapshotChangedError;
+  stop
+endif
+:Compare exact local and remote identities when vectors are equal;
 if (relation is equal?) then (yes)
-  if (descriptor fields exactly equal?) then (yes)
+  if (exact identities equal?) then (yes)
     :Throw SyncAlreadyResolvedError;
     stop
   else (no)
@@ -51,27 +59,16 @@ if (relation is equal?) then (yes)
     stop
   endif
 endif
-
-:Download remote snapshot;
 :Open trusted remote snapshot with trust result;
-:Verify downloaded descriptor still matches provided descriptor;
-if (descriptor changed?) then (yes)
-  :Throw RemoteVaultSnapshotChangedError;
+
+:Compare trust chain, vault-key generation, and key slots;
+if (any device-trust state changed?) then (yes)
+  :Throw SyncTrustChangeRequiresDeviceTrustFlowError;
   stop
 endif
 
-:Find key slot changes;
-if (key slots changed?) then (yes)
-  if (change is exactly one accepted completed enrollment?) then (yes)
-    :Accept remote keySlots for completed enrollment;
-  else (no)
-    :Throw SyncTrustChangeRequiresDeviceTrustFlowError;
-    stop
-  endif
-endif
-
 :Find entry, tag, and device-profile review items;
-if (no actionable changes and no accepted enrollment?) then (yes)
+if (no actionable changes?) then (yes)
   :Throw SyncAlreadyResolvedError;
   stop
 endif
@@ -88,26 +85,41 @@ if (actionable changes exist?) then (yes)
   endif
 endif
 
-if (accepted completed enrollment and enrolled profile was removed?) then (yes)
-  :Throw InvalidSyncResolutionError;
-  stop
-endif
-
 :Merge local and remote snapshot version vectors;
-:Persist resolved vault as signed local snapshot\nwith merged base vector and optional accepted keySlots;
-:Require resolved local snapshot;
-if (upload resolved snapshot succeeds?) then (yes)
-  :Commit persisted snapshot vector to unlocked session;
-  :Return snapshotVersionVector and revisionTimestamp;
+:Persist resolved vault as signed local snapshot\nwith merged base vector;
+:Persist pending upload intent bound to
+resolved candidate and reviewed remote exact identity;
+if (upload outcome is committed?) then (yes)
+  :Attempt exact CAS-clear of pending intent;
+  :Conditionally commit the candidate only if the originating session remains active;
+  if (intent clear succeeds?) then (yes)
+    :Return snapshotVersionVector, revisionTimestamp,
+and syncUpload complete;
+  else (no)
+    :Retain reconciliation state;
+    :Return snapshotVersionVector, revisionTimestamp,
+and syncUpload pending;
+  endif
   stop
 else (no)
-  :Best effort restore previous local snapshot;
-  if (failure is RemoteVaultSnapshotChangedError?) then (yes)
+  if (upload outcome is unknown?) then (yes)
+    :Retain resolved snapshot and pending intent;
+    :Conditionally commit the candidate only if the originating session remains active;
+    :Return result with syncUpload pending;
+    stop
+  endif
+  :Best effort restore previous local snapshot,
+checkpoint, and encrypted credential state by exact CAS;
+  if (definite failure is remote snapshot changed?) then (yes)
     :Throw SyncConflictDetectedError;
     stop
   else (no)
-    :Throw original upload error;
+    :Throw provider rejection error;
     stop
   endif
 endif
+note right
+After upload start, leave an expired or replaced session untouched and return
+the durable result. A failure committing the still-current session invalidates it.
+end note
 @enduml

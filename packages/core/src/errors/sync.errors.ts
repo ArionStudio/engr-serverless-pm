@@ -10,8 +10,16 @@ export class InvalidSyncConfigError extends Error {
 export class InvalidSyncProviderOutcomeError extends Error {
   override readonly name = "InvalidSyncProviderOutcomeError";
 
-  constructor() {
-    super("Sync provider access outcome is malformed.");
+  constructor(operation: "access" | "upload") {
+    super(`Sync provider ${operation} outcome is malformed.`);
+  }
+}
+
+export class SyncProviderUploadRejectedError extends Error {
+  override readonly name = "SyncProviderUploadRejectedError";
+
+  constructor(vaultId: string) {
+    super(`Sync provider rejected the upload for vault "${vaultId}".`);
   }
 }
 

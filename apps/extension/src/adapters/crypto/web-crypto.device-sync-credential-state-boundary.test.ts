@@ -25,6 +25,10 @@ import {
 import { InvalidDeviceSyncCredentialStateError } from "./index";
 import { WebCryptoPort } from "./web-crypto.port";
 
+const candidateSnapshotDigest = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+const expectedRemoteSnapshotDigest =
+  "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBA";
+
 const textEncoder = new TextEncoder();
 const syncContext: DeviceSyncCredentialEncryptionContext = {
   vaultId: "vault-id",
@@ -92,6 +96,34 @@ describe("WebCrypto device sync credential state boundary", () => {
         credentialsConfig: { region: "eu-west-1" },
       },
     });
+  });
+
+  it("round-trips the exact pending snapshot upload reconciliation intent", () => {
+    const state: DeviceSyncCredentialState = {
+      ...validCredentialState(),
+      pendingSnapshotUpload: {
+        candidateSnapshotIdentity: {
+          descriptor: {
+            vaultId: "vault-id",
+            snapshotVersionVector: { "device-id": 2 },
+            revisionTimestamp: 20,
+          },
+          snapshotDigest: candidateSnapshotDigest,
+        },
+        expectedRemoteSnapshotIdentity: {
+          descriptor: {
+            vaultId: "vault-id",
+            snapshotVersionVector: { "device-id": 1 },
+            revisionTimestamp: 10,
+          },
+          snapshotDigest: expectedRemoteSnapshotDigest,
+        },
+      },
+    };
+
+    expect(
+      decodeDeviceSyncCredentialState(encodeDeviceSyncCredentialState(state)),
+    ).toEqual(state);
   });
 
   it("rejects a non-JSON credentials configuration object", () => {
@@ -177,6 +209,75 @@ describe("WebCrypto device sync credential state boundary", () => {
         currentCredentials: {
           ...validCredentialState().currentCredentials,
           futureField: true,
+        },
+      },
+    ],
+    [
+      "extra pending upload field",
+      {
+        ...validCredentialState(),
+        pendingSnapshotUpload: {
+          candidateSnapshotIdentity: {
+            descriptor: {
+              vaultId: "vault-id",
+              snapshotVersionVector: { "device-id": 2 },
+              revisionTimestamp: 20,
+            },
+            snapshotDigest: candidateSnapshotDigest,
+          },
+          expectedRemoteSnapshotIdentity: null,
+          futureField: true,
+        },
+      },
+    ],
+    [
+      "blank pending upload candidate digest",
+      {
+        ...validCredentialState(),
+        pendingSnapshotUpload: {
+          candidateSnapshotIdentity: {
+            descriptor: {
+              vaultId: "vault-id",
+              snapshotVersionVector: { "device-id": 2 },
+              revisionTimestamp: 20,
+            },
+            snapshotDigest: "   ",
+          },
+          expectedRemoteSnapshotIdentity: null,
+        },
+      },
+    ],
+    [
+      "wrong-length pending upload candidate digest",
+      {
+        ...validCredentialState(),
+        pendingSnapshotUpload: {
+          candidateSnapshotIdentity: {
+            descriptor: {
+              vaultId: "vault-id",
+              snapshotVersionVector: { "device-id": 2 },
+              revisionTimestamp: 20,
+            },
+            snapshotDigest: "AAAA",
+          },
+          expectedRemoteSnapshotIdentity: null,
+        },
+      },
+    ],
+    [
+      "noncanonical pending upload candidate digest",
+      {
+        ...validCredentialState(),
+        pendingSnapshotUpload: {
+          candidateSnapshotIdentity: {
+            descriptor: {
+              vaultId: "vault-id",
+              snapshotVersionVector: { "device-id": 2 },
+              revisionTimestamp: 20,
+            },
+            snapshotDigest: `${candidateSnapshotDigest}=`,
+          },
+          expectedRemoteSnapshotIdentity: null,
         },
       },
     ],

@@ -26,7 +26,10 @@ import {
 import type { AsymmetricKeyValidator } from "../crypto";
 import { IndexedDbVaultLocalRepository } from "./indexeddb-vault-local.repository";
 import { InvalidDeviceEnrollmentArtifactError } from "../codecs/device-enrollment-artifact.codec";
-import { InvalidLocalVaultSecurityRecordError } from "../codecs/local-vault-security.codec";
+import {
+  encodeLocalVaultTrustCheckpoint,
+  InvalidLocalVaultSecurityRecordError,
+} from "../codecs/local-vault-security.codec";
 import { InvalidSyncCredentialRecordError } from "../codecs/sync-credential.codec";
 import { encodeVaultSnapshot } from "../codecs/vault-snapshot.codec";
 
@@ -52,6 +55,20 @@ function createContext() {
       createNoOpAsymmetricKeyValidator(),
       snapshotDigester,
     ),
+  };
+}
+
+function initializedVaultRemovalExpectation(
+  artifacts: ReturnType<typeof createArtifacts>,
+) {
+  return {
+    vaultId: artifacts.descriptor.vaultId,
+    expectedDescriptor: artifacts.descriptor,
+    expectedDeviceAccessMaterial: artifacts.deviceAccessMaterial,
+    expectedDeviceAccessRecoveryBackup: artifacts.deviceAccessRecoveryBackup,
+    expectedSnapshotDigest: snapshotDigest(1),
+    expectedCheckpoint: artifacts.checkpoint,
+    expectedSyncCredentialState: artifacts.syncCredentialState,
   };
 }
 
@@ -240,6 +257,8 @@ describe("IndexedDbVaultLocalRepository", () => {
 
     await ctx.repository.saveVaultSnapshotWithCheckpoint({
       expectedSnapshotDigest: snapshotDigest(1),
+      expectedCheckpoint: ctx.artifacts.checkpoint,
+      expectedSyncCredentialState: ctx.artifacts.syncCredentialState,
       snapshot: nextSnapshot,
       checkpoint: nextCheckpoint,
       syncCredentialState: null,
@@ -262,6 +281,7 @@ describe("IndexedDbVaultLocalRepository", () => {
     await expect(
       ctx.repository.saveVaultSnapshotWithCheckpoint({
         expectedSnapshotDigest: snapshotDigest(1),
+        expectedCheckpoint: ctx.artifacts.checkpoint,
         snapshot: createNextSnapshot(ctx.artifacts.snapshot, 3),
         checkpoint: createNextCheckpoint(ctx.artifacts.checkpoint, 3),
       }),
@@ -276,22 +296,92 @@ describe("IndexedDbVaultLocalRepository", () => {
     ).resolves.toEqual(nextCheckpoint);
   });
 
+  it("repairs an exact stale checkpoint independently of the newer snapshot digest", async () => {
+    const ctx = createContext();
+    await ctx.repository.saveInitializedLocalVault(ctx.artifacts);
+    const newerSnapshot = createNextSnapshot(ctx.artifacts.snapshot, 2);
+    const newerCheckpoint = createNextCheckpoint(ctx.artifacts.checkpoint, 2);
+
+    await ctx.repository.saveVaultSnapshotWithCheckpoint({
+      expectedSnapshotDigest: snapshotDigest(1),
+      expectedCheckpoint: ctx.artifacts.checkpoint,
+      snapshot: newerSnapshot,
+      checkpoint: ctx.artifacts.checkpoint,
+    });
+
+    await ctx.repository.saveVaultSnapshotWithCheckpoint({
+      expectedSnapshotDigest: snapshotDigest(2),
+      expectedCheckpoint: ctx.artifacts.checkpoint,
+      snapshot: newerSnapshot,
+      checkpoint: newerCheckpoint,
+    });
+
+    await expect(
+      ctx.repository.getVaultSnapshot(ctx.artifacts.descriptor.vaultId),
+    ).resolves.toEqual(newerSnapshot);
+    await expect(
+      ctx.repository.getLocalVaultTrustCheckpoint(
+        ctx.artifacts.descriptor.vaultId,
+      ),
+    ).resolves.toEqual(newerCheckpoint);
+  });
+
+  it("does not erase a newer credential marker when a stale credential write races", async () => {
+    const ctx = createContext();
+    await ctx.repository.saveInitializedLocalVault(ctx.artifacts);
+    const staleCredentialState = ctx.artifacts.syncCredentialState;
+    const installedCredentialMarker = serializedEncrypted(70);
+
+    await ctx.repository.saveVaultSnapshotWithCheckpoint({
+      expectedSnapshotDigest: snapshotDigest(1),
+      expectedCheckpoint: ctx.artifacts.checkpoint,
+      expectedSyncCredentialState: staleCredentialState,
+      snapshot: ctx.artifacts.snapshot,
+      checkpoint: ctx.artifacts.checkpoint,
+      syncCredentialState: installedCredentialMarker,
+    });
+
+    await expect(
+      ctx.repository.saveVaultSnapshotWithCheckpoint({
+        expectedSnapshotDigest: snapshotDigest(1),
+        expectedCheckpoint: ctx.artifacts.checkpoint,
+        expectedSyncCredentialState: staleCredentialState,
+        snapshot: ctx.artifacts.snapshot,
+        checkpoint: ctx.artifacts.checkpoint,
+        syncCredentialState: null,
+      }),
+    ).rejects.toBeInstanceOf(LocalVaultSnapshotChangedError);
+
+    await expect(
+      ctx.repository.getDeviceSyncCredentialState(
+        ctx.artifacts.descriptor.vaultId,
+      ),
+    ).resolves.toEqual(installedCredentialMarker);
+    await expect(
+      ctx.repository.getVaultSnapshot(ctx.artifacts.descriptor.vaultId),
+    ).resolves.toEqual(ctx.artifacts.snapshot);
+    await expect(
+      ctx.repository.getLocalVaultTrustCheckpoint(
+        ctx.artifacts.descriptor.vaultId,
+      ),
+    ).resolves.toEqual(ctx.artifacts.checkpoint);
+  });
+
   it("conditionally removes all vault records only for the current checkpoint digest", async () => {
     const ctx = createContext();
     await ctx.repository.saveInitializedLocalVault(ctx.artifacts);
 
     await expect(
-      ctx.repository.removePersistedLocalVaultIfSnapshotMatches(
-        ctx.artifacts.descriptor.vaultId,
-        snapshotDigest(99),
-      ),
+      ctx.repository.removePersistedLocalVaultIfArtifactsMatch({
+        ...initializedVaultRemovalExpectation(ctx.artifacts),
+        expectedSnapshotDigest: snapshotDigest(99),
+      }),
     ).resolves.toBe(false);
     await expect(ctx.database.vaultSnapshots.count()).resolves.toBe(1);
 
     await expect(
-      ctx.repository.removePersistedLocalVaultIfSnapshotMatches(
-        ctx.artifacts.descriptor.vaultId,
-        snapshotDigest(1),
+      ctx.repository.removePersistedLocalVaultIfArtifactsMatch(
+        initializedVaultRemovalExpectation(ctx.artifacts),
       ),
     ).resolves.toBe(true);
     await expect(ctx.database.localVaultDescriptors.count()).resolves.toBe(0);
@@ -308,6 +398,64 @@ describe("IndexedDbVaultLocalRepository", () => {
     );
   });
 
+  it("does not remove when the encrypted sync credential artifact changed", async () => {
+    const ctx = createContext();
+    const installedCredentialMarker = serializedEncrypted(71);
+    await ctx.repository.saveInitializedLocalVault(ctx.artifacts);
+    await ctx.repository.saveVaultSnapshotWithCheckpoint({
+      expectedSnapshotDigest: snapshotDigest(1),
+      expectedCheckpoint: ctx.artifacts.checkpoint,
+      expectedSyncCredentialState: ctx.artifacts.syncCredentialState,
+      snapshot: ctx.artifacts.snapshot,
+      checkpoint: ctx.artifacts.checkpoint,
+      syncCredentialState: installedCredentialMarker,
+    });
+
+    await expect(
+      ctx.repository.removePersistedLocalVaultIfArtifactsMatch(
+        initializedVaultRemovalExpectation(ctx.artifacts),
+      ),
+    ).resolves.toBe(false);
+
+    await expect(ctx.database.vaultSnapshots.count()).resolves.toBe(1);
+    await expect(
+      ctx.repository.getDeviceSyncCredentialState(
+        ctx.artifacts.descriptor.vaultId,
+      ),
+    ).resolves.toEqual(installedCredentialMarker);
+  });
+
+  it("does not remove any vault record when the access-material pair changed", async () => {
+    const ctx = createContext();
+    await ctx.repository.saveInitializedLocalVault(ctx.artifacts);
+    const replacement = createReplacementAccessRecords(ctx.artifacts, 2);
+    await ctx.repository.saveDeviceAccessRecords({
+      expectedDeviceAccessMaterialRevision: 1,
+      expectedDeviceAccessMaterialGenerationId: "generation-1",
+      expectedDeviceAccessRecoveryBackupRevision: 1,
+      expectedDeviceAccessRecoveryBackupGenerationId: "generation-1",
+      ...replacement,
+    });
+
+    await expect(
+      ctx.repository.removePersistedLocalVaultIfArtifactsMatch(
+        initializedVaultRemovalExpectation(ctx.artifacts),
+      ),
+    ).resolves.toBe(false);
+
+    await expect(
+      ctx.repository.getDeviceAccessRecords(ctx.artifacts.descriptor.vaultId),
+    ).resolves.toEqual(replacement);
+    await expect(ctx.database.localVaultDescriptors.count()).resolves.toBe(1);
+    await expect(ctx.database.vaultSnapshots.count()).resolves.toBe(1);
+    await expect(ctx.database.localVaultTrustCheckpoints.count()).resolves.toBe(
+      1,
+    );
+    await expect(ctx.database.deviceSyncCredentialStates.count()).resolves.toBe(
+      1,
+    );
+  });
+
   it("does not remove when the snapshot changed but the checkpoint claim did not", async () => {
     const ctx = createContext();
     await ctx.repository.saveInitializedLocalVault(ctx.artifacts);
@@ -318,9 +466,8 @@ describe("IndexedDbVaultLocalRepository", () => {
     });
 
     await expect(
-      ctx.repository.removePersistedLocalVaultIfSnapshotMatches(
-        ctx.artifacts.descriptor.vaultId,
-        snapshotDigest(1),
+      ctx.repository.removePersistedLocalVaultIfArtifactsMatch(
+        initializedVaultRemovalExpectation(ctx.artifacts),
       ),
     ).resolves.toBe(false);
     await expect(ctx.database.vaultSnapshots.count()).resolves.toBe(1);
@@ -339,6 +486,7 @@ describe("IndexedDbVaultLocalRepository", () => {
     await expect(
       ctx.repository.saveVaultSnapshotWithCheckpoint({
         expectedSnapshotDigest: snapshotDigest(1),
+        expectedCheckpoint: ctx.artifacts.checkpoint,
         snapshot: createNextSnapshot(ctx.artifacts.snapshot, 2),
         checkpoint: createNextCheckpoint(ctx.artifacts.checkpoint, 2),
       }),
@@ -351,6 +499,36 @@ describe("IndexedDbVaultLocalRepository", () => {
         ctx.artifacts.descriptor.vaultId,
       ),
     ).resolves.toEqual(ctx.artifacts.checkpoint);
+  });
+
+  it("does not overwrite or remove when the exact checkpoint artifact changed", async () => {
+    const ctx = createContext();
+    await ctx.repository.saveInitializedLocalVault(ctx.artifacts);
+    const substitutedCheckpoint = {
+      ...ctx.artifacts.checkpoint,
+      signature: {
+        signature: encodeBase64Url(new Uint8Array(64).fill(7)),
+      },
+    };
+    await ctx.database.localVaultTrustCheckpoints.put({
+      vaultId: ctx.artifacts.descriptor.vaultId,
+      artifact: encodeLocalVaultTrustCheckpoint(substitutedCheckpoint),
+    });
+
+    await expect(
+      ctx.repository.saveVaultSnapshotWithCheckpoint({
+        expectedSnapshotDigest: snapshotDigest(1),
+        expectedCheckpoint: ctx.artifacts.checkpoint,
+        snapshot: createNextSnapshot(ctx.artifacts.snapshot, 2),
+        checkpoint: createNextCheckpoint(ctx.artifacts.checkpoint, 2),
+      }),
+    ).rejects.toBeInstanceOf(LocalVaultSnapshotChangedError);
+    await expect(
+      ctx.repository.removePersistedLocalVaultIfArtifactsMatch(
+        initializedVaultRemovalExpectation(ctx.artifacts),
+      ),
+    ).resolves.toBe(false);
+    await expect(ctx.database.vaultSnapshots.count()).resolves.toBe(1);
   });
 
   it("exposes all individual save, read, and idempotent remove operations", async () => {

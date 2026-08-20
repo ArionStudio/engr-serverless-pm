@@ -7,7 +7,8 @@
 
 A vault without sync configured operates locally and permits offline mutations.
 Once sync is configured, every mutation requires network access and an exact
-match between the verified local snapshot and the current remote descriptor.
+match between the verified local snapshot and the current remote snapshot
+identity (descriptor plus cryptographic digest).
 This synchronized mode assumes one user operates one device at a time.
 
 The remote object coordinates synchronized state but remains hostile storage.
@@ -16,13 +17,13 @@ and read behavior is unchanged by the mutation gate.
 
 Before a synchronized mutation, descriptor relations are handled as follows:
 
-| Relation                    | Behavior                                                         |
-| --------------------------- | ---------------------------------------------------------------- |
-| Exact descriptor equality   | Permit the mutation                                              |
-| `remote_ahead`              | Block and require explicit verified download and review          |
-| `local_ahead`               | Block and require explicit upload of the existing local snapshot |
-| `broken` or crossed vectors | Reject as an integrity failure or unsupported concurrency        |
-| Remote snapshot missing     | Reject because synchronized state cannot be confirmed            |
+| Relation                    | Behavior                                                                                     |
+| --------------------------- | -------------------------------------------------------------------------------------------- |
+| Exact descriptor equality   | Download, authenticate, and require the exact snapshot digest before permitting the mutation |
+| `remote_ahead`              | Block and require explicit verified download and review                                      |
+| `local_ahead`               | Block and require explicit upload of the existing local snapshot                             |
+| `broken` or crossed vectors | Reject as an integrity failure or unsupported concurrency                                    |
+| Remote snapshot missing     | Reject because synchronized state cannot be confirmed                                        |
 
 A local-ahead snapshot is a recovery state, not a valid base for another
 mutation. The normal upload workflow must synchronize it before the mutation is
@@ -85,9 +86,14 @@ resolution. An enrollment that is still pending may remain profile-less until
 the target completes it. Other accompanying entry, tag, or device-profile
 changes use the normal review and resolution model.
 
-Remote and local writes use snapshot descriptors for compare-and-set checks.
-This prevents a reviewed snapshot from overwriting a newer remote or local
-snapshot.
+Remote writes use a descriptor plus cryptographic snapshot digest as their
+exact compare-and-set identity. Local writes compare the snapshot digest, the
+exact signed trust checkpoint, and (when applicable) the exact encrypted
+credential artifact. Every snapshot prepared for upload signs the original
+nullable remote identity into `metadata.uploadExpectedRemoteSnapshotIdentity`.
+That historical identity is the only remote state the candidate may replace. A
+later upload may observe that the remote already equals the candidate, but it
+must never adopt a newly observed remote object as the candidate's expectation.
 
 ## Initial setup
 
@@ -96,8 +102,75 @@ credentials. The target is persisted through the encrypted vault snapshot. The
 credentials are encrypted with the device-local protection key and persisted
 only in the local vault repository.
 
-If setup, snapshot persistence, or upload fails, the local credential record and
-vault state are restored to their prior state.
+If setup or snapshot persistence fails, the local credential record and vault
+state are restored to their prior state. A definite upload non-commit restores
+them as well. An indeterminate upload preserves the newly signed local snapshot,
+commits the matching session, and reports sync as pending so normal upload can
+reconcile it.
+
+## Upload outcomes
+
+The sync-provider boundary distinguishes a committed write, a definite
+non-commit, and an outcome-unknown write. Definite non-commits distinguish a
+remote compare-and-set change from a static provider rejection such as invalid
+authorization, configuration, or request input. Read-only provider preparation
+may reject before a remote write is initiated. Once the synchronous start
+operation is invoked, rejected or malformed results are treated as outcome
+unknown; recognized single-attempt provider rejections resolve as definite
+non-commits. Automatic
+provider retries mean a later rejection is not proof that an earlier attempt
+failed.
+
+A definite remote change is surfaced as a sync conflict, while a definite
+provider rejection retains its provider-rejection error; both restore the prior
+local snapshot, checkpoint, credential state, and matching session. An unknown
+outcome instead retains and commits the candidate as pending because rollback
+could diverge local state from a write that actually committed remotely.
+
+For an unknown outcome, workflows keep the candidate local snapshot and commit
+the corresponding unlocked session with `syncUpload` marked `pending`. Before
+the remote write begins, a local compare-and-set transaction stores an encrypted
+device-local reconciliation intent alongside the candidate snapshot. The intent
+binds the exact candidate descriptor and digest to the original nullable remote
+descriptor-and-digest identity used for compare-and-set; the signed candidate
+metadata carries the same historical expectation.
+
+Every synchronized snapshot mutation compares the snapshot digest, the exact
+signed checkpoint artifact, and the exact current encrypted credential
+artifact—ciphertext and nonce, or record absence—even when that credential
+artifact remains unchanged.
+Intent staging, clearing, rollback, and credential replacement use the same
+transaction. A stale writer therefore cannot persist over or remove a newer
+reconciliation intent. If intent cleanup loses that compare-and-set race, the
+workflow remains pending instead of claiming completion.
+Secret-dependent intent staging and restaging and their local compare-and-set
+writes are serialized against the originating active session. Provider
+preflight may run outside that boundary, but it returns a synchronous start
+operation; the conditional upload or removal is started only after the
+originating session is revalidated, and its network response is awaited outside
+the session boundary. A concurrent lock therefore cannot wipe the protection
+key during an intent write or allow a later remote mutation to start from revoked session authority;
+if the session disappears before post-commit cleanup, the exact encrypted
+intent remains pending for reconciliation.
+
+Each reconciliation retry first compare-and-set refreshes the encrypted intent
+artifact before invoking the provider. This makes that attempt's exact
+ciphertext and nonce its local ownership token: a definite non-commit restores
+the prior intent only while the refreshed artifact is still current, while an
+unknown outcome retains it. A fresh upload similarly clears only the exact
+intent artifact that it staged after a definite pre-write failure.
+
+The next normal upload downloads and verifies the remote before clearing an
+intent whose remote identity equals the candidate. It retries only when the
+downloaded remote still equals the recorded historical descriptor and digest,
+and reports a conflict without overwriting when the remote is
+absent, rolled back, or otherwise changed. Because IndexedDB is hostile storage,
+the signed snapshot expectation remains authoritative if the encrypted intent
+record is removed or replayed: an intent that disagrees with the signed metadata
+is an integrity failure, and an absent intent does not authorize adopting the
+fresh remote observation as a new expectation. Until reconciliation completes,
+fresh vault mutations and sync removal are blocked; only an already-persisted
+removal transition may resume its recorded compare-and-set cleanup.
 
 ## Enrollment
 
@@ -110,7 +183,7 @@ same target and current snapshot before completing local initialization.
 
 Synchronized revocation requires replacement credentials. The revoking device:
 
-1. confirms its local snapshot exactly matches the current remote descriptor;
+1. confirms its local snapshot exactly matches the current remote identity;
 2. validates and normalizes the replacement credential;
 3. confirms the normalized target is unchanged and sees the same remote
    snapshot;
@@ -120,9 +193,12 @@ Synchronized revocation requires replacement credentials. The revoking device:
 
 The rotated snapshot, trust checkpoint, and staged credential state are written
 by one local compare-and-set transaction. Failed local persistence changes none
-of them; failed upload restores all three together. If
-the remote upload succeeds but session commit fails, the local session is
-invalidated and the replacement credential is retained so a later unlock can
+of them; a definite upload non-commit restores all three together. An unknown
+upload outcome retains all three and reports sync pending for reconciliation.
+If the originating session was removed or replaced while the upload was in
+flight, finalization leaves that newer session untouched and reports the durable
+result; if persistence into the still-current session fails, that session is
+invalidated. The replacement credential remains available so a later unlock can
 recover the rotated snapshot.
 
 No other enrollment, revocation, or sync removal may bypass a pending provider
@@ -163,8 +239,9 @@ Apply repeats all remote, trust, envelope, and vault checks. If no later content
 changed, it persists the authenticated remote snapshot directly. Otherwise it
 creates and uploads a resolved snapshot using the final trust chain,
 generation, survivor slots, and rotated vault key. Local snapshot, checkpoint,
-and credential state use compare-and-set and the session receives the new key
-only after any required upload succeeds.
+and credential state use compare-and-set. The session receives the new key after
+a committed upload or an outcome-unknown upload retained for reconciliation; a
+definite non-commit restores the prior state instead.
 
 ## Completing provider revocation
 

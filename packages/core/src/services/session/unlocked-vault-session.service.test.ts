@@ -909,6 +909,35 @@ describe("UnlockedVaultSessionService", () => {
     ).not.toHaveBeenCalled();
   });
 
+  it("skips a conditional persisted snapshot commit after the session was removed", async () => {
+    const ctx = createContext();
+    ctx.ports.saved.unlockedVaultSessionMaterial = createMaterial(ctx);
+    ctx.ports.saved.encryptedUnlockedVaultSessionPayload =
+      createEncryptedPayload(ctx);
+    const context = await ctx.service.requireUnlockedVaultContext(
+      ctx.values.vaultId,
+      "test",
+    );
+    await ctx.service.remove();
+
+    await expect(
+      ctx.service.commitPersistedSnapshotIfSessionIsActive(
+        context.sessionId,
+        context.unlockedVault,
+        context.sourceSnapshotVersionVector,
+      ),
+    ).resolves.toBe(false);
+
+    expect(
+      ctx.ports.encryptedUnlockedVaultSessionPayloadRepository
+        .saveEncryptedUnlockedVaultSessionPayload,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .saveUnlockedVaultSessionMaterial,
+    ).not.toHaveBeenCalled();
+  });
+
   it("does not replace a newer session with a stale persisted snapshot commit", async () => {
     const ctx = createContext();
     ctx.ports.saved.unlockedVaultSessionMaterial = createMaterial(ctx);

@@ -73,7 +73,10 @@ describe("createVaultSnapshotServiceMock", () => {
     );
     const secondPersist = await service.persistUnlockedVault(
       values.vaultId,
-      unlockedVault,
+      {
+        ...unlockedVault,
+        trustedSnapshotContext: firstPersist.trustedSnapshotContext,
+      },
       firstPersist.snapshotVersionVector,
     );
 
@@ -90,10 +93,20 @@ describe("createVaultSnapshotServiceMock", () => {
     expect(ports.saved.vaultSnapshot?.metadata.snapshotVersionVector).toEqual(
       secondPersist.snapshotVersionVector,
     );
+    await expect(
+      service.verifyCandidateSnapshotTrust(
+        values.vaultId,
+        secondPersist.snapshot,
+        unlockedVault,
+      ),
+    ).resolves.toMatchObject({
+      snapshotDigest: secondPersist.trustedSnapshotContext.snapshotDigest,
+    });
 
     await service.restorePreparedLocalVaultSnapshot(
       firstPreparedRestore,
       secondPersist.trustedSnapshotContext.snapshotDigest,
+      secondPersist.checkpoint,
     );
 
     expect(ports.saved.vaultSnapshot).toBe(firstPersist.snapshot);

@@ -26,11 +26,20 @@ The domain mutation creates a deleted-entry tombstone
 and advances version vectors for the current device.
 end note
 :Persist updated vault as signed local snapshot;
-if (syncConfig exists?) then (yes)
-  :Require saved local snapshot;
-  :Upload persisted local mutation through sync guard;
+if (syncTarget exists?) then (yes)
+  :Persist pending upload intent and upload
+persisted local mutation through sync guard;
+  :Restore prior snapshot and credential state
+only on definite non-commit;
+  :Conditionally commit the candidate only if the originating session remains active;
+else (local-only)
+  :Strictly commit the persisted snapshot vector to the unlocked session;
 endif
-:Commit persisted snapshot vector to unlocked session;
-:Return entryId, snapshotVersionVector, revisionTimestamp;
+note right
+After upload start, leave an expired or replaced session untouched and return
+the durable result. A failure committing the still-current session invalidates it.
+end note
+:Return entryId, snapshotVersionVector,
+revisionTimestamp, and syncUpload status;
 stop
 @enduml

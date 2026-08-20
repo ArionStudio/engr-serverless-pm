@@ -4,6 +4,7 @@ import type { PasswordEntry } from "../../domain/entry/password-entry.type";
 import type { VaultSnapshot } from "../../domain/snapshot/vault-snapshot";
 import type { Tag } from "../../domain/entry/tag.type";
 import type { UnlockedVault } from "../../domain/session/unlocked-vault";
+import type { LocalVaultTrustCheckpoint } from "../../domain/device-trust";
 import type { EncryptedDeviceSyncCredentialState } from "../../domain/sync";
 import type { VersionVector } from "../../domain/versioning/version-vector.type";
 import {
@@ -204,7 +205,10 @@ export function createVaultSnapshotServiceMock(
       return {
         snapshot: vaultSnapshot,
         checkpoint,
-        ...(syncCredentialState === undefined ? {} : { syncCredentialState }),
+        syncCredentialState:
+          syncCredentialState === undefined
+            ? (ports.saved.deviceSyncCredentialState ?? null)
+            : syncCredentialState,
       };
     },
   );
@@ -213,14 +217,16 @@ export function createVaultSnapshotServiceMock(
     async (
       preparedRestore: PreparedLocalVaultSnapshotRestore,
       expectedSnapshotDigest: string,
+      expectedCheckpoint: LocalVaultTrustCheckpoint,
+      expectedSyncCredentialState: EncryptedDeviceSyncCredentialState | null = preparedRestore.syncCredentialState,
     ) => {
       await ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint({
         expectedSnapshotDigest,
+        expectedCheckpoint,
+        expectedSyncCredentialState,
         snapshot: preparedRestore.snapshot,
         checkpoint: preparedRestore.checkpoint,
-        ...(preparedRestore.syncCredentialState === undefined
-          ? {}
-          : { syncCredentialState: preparedRestore.syncCredentialState }),
+        syncCredentialState: preparedRestore.syncCredentialState,
       });
       snapshotRestoreStates.set(preparedRestore.snapshot, {
         snapshotDigest: preparedRestore.checkpoint.payload.snapshotDigest,
@@ -254,9 +260,13 @@ export function createVaultSnapshotServiceMock(
         {
           snapshot: vaultSnapshot,
           checkpoint: restoreState.checkpoint,
-          ...(syncCredentialState === undefined ? {} : { syncCredentialState }),
+          syncCredentialState:
+            syncCredentialState === undefined
+              ? (ports.saved.deviceSyncCredentialState ?? null)
+              : syncCredentialState,
         },
         replacedState.snapshotDigest,
+        replacedState.checkpoint,
       );
     },
   );
@@ -266,6 +276,24 @@ export function createVaultSnapshotServiceMock(
       requireSavedVaultSnapshot(),
     ),
     requireLocalVaultSnapshot: vi.fn(async () => requireSavedVaultSnapshot()),
+    requireCurrentCheckpointForUnlockedVault: vi.fn(async () => {
+      const checkpoint = ports.saved.localVaultTrustCheckpoint;
+
+      if (checkpoint === undefined) {
+        throw new Error("Expected a saved checkpoint fixture.");
+      }
+
+      return checkpoint;
+    }),
+    verifyCandidateSnapshotTrust: vi.fn(async (vaultId, snapshot) => ({
+      chain: snapshot.trustChain,
+      state: values.verifiedVaultTrustState,
+      snapshotDigest:
+        snapshot.metadata.id === vaultId
+          ? (snapshotRestoreStates.get(snapshot)?.snapshotDigest ??
+            values.vaultSnapshotDigest)
+          : "different-vault-snapshot-digest",
+    })),
     restoreLocalVaultSnapshot,
     prepareLocalVaultSnapshotRestore,
     restorePreparedLocalVaultSnapshot,
@@ -278,7 +306,17 @@ export function createVaultSnapshotServiceMock(
           readonly baseSnapshotVersionVector?: VersionVector;
           readonly keySlots?: VaultSnapshot["keySlots"];
           readonly vaultKeyGeneration?: number;
-        } = {},
+          readonly uploadExpectedRemoteSnapshotIdentity?: VaultSnapshot["metadata"]["uploadExpectedRemoteSnapshotIdentity"];
+        } & (
+          | {
+              readonly expectedSyncCredentialState?: undefined;
+              readonly syncCredentialState?: undefined;
+            }
+          | {
+              readonly expectedSyncCredentialState: EncryptedDeviceSyncCredentialState | null;
+              readonly syncCredentialState: EncryptedDeviceSyncCredentialState | null;
+            }
+        ) = {},
       ) => {
         const currentVaultSnapshot = requireSavedVaultSnapshot();
         const persistedVaultSnapshot = {
@@ -295,6 +333,12 @@ export function createVaultSnapshotServiceMock(
             vaultKeyGeneration:
               options.vaultKeyGeneration ??
               currentVaultSnapshot.metadata.vaultKeyGeneration,
+            ...(options.uploadExpectedRemoteSnapshotIdentity === undefined
+              ? {}
+              : {
+                  uploadExpectedRemoteSnapshotIdentity:
+                    options.uploadExpectedRemoteSnapshotIdentity,
+                }),
           },
           keySlots: options.keySlots ?? currentVaultSnapshot.keySlots,
           content: values.encryptedVault,
@@ -320,9 +364,27 @@ export function createVaultSnapshotServiceMock(
             snapshotDigest: persistedSnapshotDigest,
           },
         };
-        ports.saved.vaultSnapshot = persistedVaultSnapshot;
-        ports.saved.vaultSnapshotDigest = persistedSnapshotDigest;
-        ports.saved.localVaultTrustCheckpoint = persistedCheckpoint;
+        const persistence = {
+          expectedSnapshotDigest:
+            unlockedVault.trustedSnapshotContext.snapshotDigest,
+          expectedCheckpoint:
+            ports.saved.localVaultTrustCheckpoint ??
+            values.localVaultTrustCheckpoint,
+          snapshot: persistedVaultSnapshot,
+          checkpoint: persistedCheckpoint,
+        };
+
+        if (options.syncCredentialState === undefined) {
+          await ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint(
+            persistence,
+          );
+        } else {
+          await ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint({
+            ...persistence,
+            expectedSyncCredentialState: options.expectedSyncCredentialState,
+            syncCredentialState: options.syncCredentialState,
+          });
+        }
         snapshotRestoreStates.set(persistedVaultSnapshot, {
           snapshotDigest: persistedSnapshotDigest,
           checkpoint: persistedCheckpoint,
@@ -336,6 +398,7 @@ export function createVaultSnapshotServiceMock(
             snapshotDigest: persistedSnapshotDigest,
             trust: values.verifiedVaultTrustState,
           },
+          checkpoint: persistedCheckpoint,
           snapshot: persistedVaultSnapshot,
         };
       },

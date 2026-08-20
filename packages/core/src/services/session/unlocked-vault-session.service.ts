@@ -511,16 +511,38 @@ export class UnlockedVaultSessionService {
     sourceSnapshotVersionVector: VersionVector,
     coordinationLease?: ClipboardOperationLease,
   ): Promise<void> {
-    await this.runCoordinatedSessionMutation(coordinationLease, async () => {
+    const committed = await this.commitPersistedSnapshotIfSessionIsActive(
+      sessionId,
+      unlockedVault,
+      sourceSnapshotVersionVector,
+      coordinationLease,
+    );
+
+    if (!committed) {
+      throw new UnlockedVaultSessionExpiredError(unlockedVault.vaultId);
+    }
+  }
+
+  async commitPersistedSnapshotIfSessionIsActive(
+    sessionId: string,
+    unlockedVault: UnlockedVault,
+    sourceSnapshotVersionVector: VersionVector,
+    coordinationLease?: ClipboardOperationLease,
+  ): Promise<boolean> {
+    return this.runCoordinatedSessionMutation(coordinationLease, async () => {
       const persistedIdentity =
         await this.materialRepository.getPersistedUnlockedVaultSessionIdentity();
       const { material } =
         await this.reconcileActiveMaterial(persistedIdentity);
-      const activeMaterial = this.requireActiveSession(
-        material,
-        sessionId,
-        unlockedVault.vaultId,
-      );
+
+      if (
+        material === null ||
+        !this.isActiveSession(material, sessionId, unlockedVault.vaultId)
+      ) {
+        return false;
+      }
+
+      const activeMaterial = material;
 
       let protectedSession:
         | Awaited<ReturnType<UnlockedVaultSessionService["protect"]>>
@@ -547,6 +569,8 @@ export class UnlockedVaultSessionService {
         );
         throw error;
       }
+
+      return true;
     });
   }
 

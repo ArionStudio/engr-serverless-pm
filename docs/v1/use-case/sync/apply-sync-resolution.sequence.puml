@@ -15,33 +15,57 @@ actor Caller
 participant "ApplySyncResolutionUseCase" as UC
 participant "UnlockedVaultSessionService" as Session
 participant "VaultSnapshotService" as Snapshot
+participant "VaultSyncGuardService" as Guard
 participant "SyncProviderPort" as Sync
 participant "Domain review/resolution utilities" as Domain
+database "VaultLocalRepositoryPort" as Local
 
-Caller -> UC : execute(vaultId, reviewedSnapshotDescriptors { local, remote }, resolution)
+Caller -> UC : execute(vaultId, reviewedSnapshotIdentities\n{ local/remote descriptor + digest }, resolution)
 UC -> Session : requireUnlockedVaultContext(vaultId, "apply sync resolution")
 UC -> Snapshot : requireCurrentSnapshotForUnlockedVault(...)
-UC -> UC : verify local descriptor has not changed since review
-UC -> Sync : getLatestVaultSnapshotDescriptor(syncConfig, vaultId)
+UC -> UC : verify local descriptor + digest exactly match reviewed identity
+UC -> Guard : requireSyncAccess(vaultId, unlockedVault)
+Guard --> UC : syncAccess { syncTarget + decrypted local credentials }
+UC -> Sync : getLatestVaultSnapshotDescriptor(syncAccess, vaultId)
 UC -> UC : verify descriptor belongs to vault and has not changed
-UC -> Sync : downloadVaultSnapshot(syncConfig, remoteDescriptor)
+UC -> Sync : downloadVaultSnapshot(syncAccess, remoteDescriptor)
+UC -> UC : verify downloaded descriptor + digest exactly match reviewed identity
 UC -> Snapshot : openTrustedVaultSnapshotWithTrustResult(...)
-UC -> Domain : findChangesInKeySlots(local.keySlots, remote.keySlots)
-UC -> UC : accept only completed enrollment trust change\nor reject trust changes
+UC -> UC : reject every trust-chain, vault-key-generation,\nor key-slot change; dedicated trust flow required
 UC -> Domain : findChangedEntries / Tags / DeviceProfiles
 UC -> Domain : applyVaultSyncResolution(...)
-UC -> Snapshot : persistUnlockedVault(..., mergedVector, optional keySlots)
-UC -> Snapshot : requireLocalVaultSnapshot(vaultId)
-UC -> Sync : uploadVaultSnapshot(syncConfig, resolvedSnapshot, remoteDescriptor)
-alt upload changed remotely
-  UC -> Snapshot : restoreLocalVaultSnapshot(previousLocalSnapshot)
+UC -> Snapshot : persistUnlockedVault(..., mergedVector)
+UC -> Guard : uploadPersistedSnapshot(...)
+Guard -> Local : CAS-save same resolved snapshot + encrypted pending intent
+Guard -> Sync : prepareVaultSnapshotUpload(syncAccess, resolvedSnapshot,\nremoteSnapshotIdentity { descriptor, digest })
+Sync --> Guard : prepared synchronous start operation
+Guard -> Session : revalidate originating active session
+Guard -> Sync : start conditional upload while session lease is held
+alt definitely not committed: remote changed
+  Guard -> Snapshot : restore prior snapshot, checkpoint, and credentials
+  Guard --> UC : throw RemoteVaultSnapshotChangedError
   UC --> Caller : throw SyncConflictDetectedError
-else upload fails otherwise
-  UC -> Snapshot : restoreLocalVaultSnapshot(previousLocalSnapshot)
-  UC --> Caller : throw original upload error
-else upload succeeds
-  UC -> Session : commitPersistedSnapshot(updatedUnlockedVault, vector)
-  UC --> Caller : snapshotVersionVector, revisionTimestamp
+else definitely not committed: provider rejection
+  Guard -> Snapshot : restore prior snapshot, checkpoint, and credentials
+  Guard --> UC : throw provider rejection error
+  UC --> Caller : throw provider rejection error
+else outcome unknown
+  UC -> Session : commitPersistedSnapshotIfSessionIsActive(originating session, candidate, vector)
+  UC --> Caller : result with syncUpload pending
+else committed
+  Guard -> Local : Attempt active-session exact CAS-clear of pending intent
+  UC -> Session : commitPersistedSnapshotIfSessionIsActive(originating session, candidate, vector)
+  alt intent clear succeeds
+    UC --> Caller : result with syncUpload complete
+  else clear races or session coordination fails
+    UC --> Caller : retain exact intent; result with syncUpload pending
+  end
 end
+
+note over UC, Session
+After upload start, an expired or replaced originating session is left untouched
+and the durable complete/pending result is returned. A failure committing the
+still-current session invalidates it and propagates.
+end note
 
 @enduml

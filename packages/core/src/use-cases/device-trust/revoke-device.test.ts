@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createCoreTestPorts,
-  replaceVaultSnapshotAfterNextSave,
+  captureVaultSnapshotFromNextSave,
 } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import { singlePasswordEntry } from "../../__tests__/fixtures/vault-entries";
@@ -18,7 +18,9 @@ import {
   ProviderCredentialRevocationPendingError,
   ReplacementSyncCredentialsRequiredError,
   ReplacementSyncCredentialsUnchangedError,
+  SyncConflictDetectedError,
 } from "../../errors/sync.errors";
+import type { SyncUploadOutcome } from "../../ports/sync/sync-provider.port";
 import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import { VaultSyncGuardService } from "../../services/sync";
 import { RevokeDeviceUseCase } from "./revoke-device";
@@ -125,6 +127,15 @@ function createContext() {
   };
   ports.saved.vaultSnapshot = snapshot;
   ports.saved.vaultSnapshotDigest = values.vaultSnapshotDigest;
+  ports.saved.localVaultTrustCheckpoint = {
+    ...values.localVaultTrustCheckpoint,
+    payload: {
+      ...values.localVaultTrustCheckpoint.payload,
+      trustGeneration: trust.generation,
+      snapshotVersionVector: snapshot.metadata.snapshotVersionVector,
+      snapshotDigest: values.vaultSnapshotDigest,
+    },
+  };
   ports.saved.deviceSyncCredentialState =
     values.encryptedDeviceSyncCredentialState;
   ports.saved.unlockedVaultSession = {
@@ -157,7 +168,6 @@ function createContext() {
     ports.sessionServices.unlockedVaultSession,
     syncGuard,
     snapshotService,
-    ports.vaultLocalRepository,
   );
 
   return { values, ports, snapshot, useCase };
@@ -174,12 +184,9 @@ async function expectGeneratedVaultMasterKeyWiped(
 }
 
 describe("RevokeDeviceUseCase", () => {
-  it("uploads the signed revocation even when local storage replaces it after save", async () => {
+  it("uploads the exact signed revocation persisted by the local save", async () => {
     const ctx = createContext();
-    const getPersistedSnapshot = replaceVaultSnapshotAfterNextSave(
-      ctx.ports,
-      ctx.snapshot,
-    );
+    const getPersistedSnapshot = captureVaultSnapshotFromNextSave(ctx.ports);
 
     await ctx.useCase.execute({
       vaultId: ctx.values.vaultId,
@@ -191,8 +198,6 @@ describe("RevokeDeviceUseCase", () => {
       ctx.ports.syncProvider.uploadVaultSnapshot,
     ).mock.calls[0]?.[1];
     expect(uploadedSnapshot).toBe(getPersistedSnapshot());
-    expect(uploadedSnapshot).not.toBe(ctx.ports.saved.vaultSnapshot);
-    expect(ctx.ports.saved.vaultSnapshot).toBe(ctx.snapshot);
   });
 
   it("rotates the vault key and creates envelopes only for survivors", async () => {
@@ -219,7 +224,10 @@ describe("RevokeDeviceUseCase", () => {
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).toHaveBeenCalledWith(
       ctx.values.replacementSyncAccess,
       expect.anything(),
-      toVaultSnapshotDescriptor(ctx.values.vaultId, ctx.snapshot),
+      {
+        descriptor: toVaultSnapshotDescriptor(ctx.values.vaultId, ctx.snapshot),
+        snapshotDigest: ctx.values.vaultSnapshotDigest,
+      },
     );
     expect(
       ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
@@ -232,6 +240,7 @@ describe("RevokeDeviceUseCase", () => {
     expect(result.providerCredentialRevocation).toBe(
       "pending_external_deletion",
     );
+    expect(result.syncUpload).toBe("complete");
     expect(result.vault.entries[0]).toEqual({
       id: singlePasswordEntry.id,
       login: singlePasswordEntry.login,
@@ -337,9 +346,9 @@ describe("RevokeDeviceUseCase", () => {
 
   it("restores the old snapshot and credentials when upload fails", async () => {
     const ctx = createContext();
-    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockRejectedValue(
-      new Error("upload failed"),
-    );
+    vi.mocked(
+      ctx.ports.syncProvider.prepareVaultSnapshotUpload,
+    ).mockRejectedValue(new Error("upload failed"));
 
     await expect(
       ctx.useCase.execute({
@@ -359,6 +368,121 @@ describe("RevokeDeviceUseCase", () => {
     await expectGeneratedVaultMasterKeyWiped(ctx);
   });
 
+  it("keeps the rotated revocation and reports pending when upload outcome is unknown", async () => {
+    const ctx = createContext();
+    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockResolvedValueOnce(
+      {
+        status: "outcome_unknown",
+      },
+    );
+
+    const result = await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      deviceId: ctx.values.pendingDeviceId,
+      replacementSyncConfig: ctx.values.replacementSyncConfigInput,
+    });
+
+    expect(result.syncUpload).toBe("pending");
+    expect(ctx.ports.saved.vaultSnapshot?.metadata.vaultKeyGeneration).toBe(2);
+    await expect(
+      ctx.ports.crypto.decryptDeviceSyncCredentialState(
+        ctx.ports.saved.deviceSyncCredentialState!,
+        ctx.values.deviceLocalProtectionKey,
+        {
+          vaultId: ctx.values.vaultId,
+          deviceId: ctx.values.deviceId,
+          provider: ctx.values.syncTarget.provider,
+          target: ctx.values.syncTarget,
+        },
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        currentCredentials: ctx.values.replacementSyncCredentials,
+        previousCredentials: expect.any(Object),
+        pendingSnapshotUpload: expect.any(Object),
+      }),
+    );
+    expect(
+      ctx.ports.saved.unlockedVaultSession?.unlockedVault.vaultMasterKey,
+    ).toBe(ctx.values.rotatedVaultMasterKey);
+    expect(
+      ctx.ports.sessionServices.unlockedVaultSession
+        .commitPersistedSnapshotIfSessionIsActive,
+    ).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the durable revocation but wipes its key when the session is removed after upload start", async () => {
+    const ctx = createContext();
+    let signalUploadStarted: () => void = () => undefined;
+    let resolveUpload: (outcome: SyncUploadOutcome) => void = () => undefined;
+    const uploadStarted = new Promise<void>((resolve) => {
+      signalUploadStarted = resolve;
+    });
+    vi.mocked(
+      ctx.ports.syncProvider.uploadVaultSnapshot,
+    ).mockImplementationOnce(
+      async () =>
+        new Promise<SyncUploadOutcome>((resolve) => {
+          resolveUpload = resolve;
+          signalUploadStarted();
+        }),
+    );
+
+    const execution = ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      deviceId: ctx.values.pendingDeviceId,
+      replacementSyncConfig: ctx.values.replacementSyncConfigInput,
+    });
+    await uploadStarted;
+    await ctx.ports.sessionServices.unlockedVaultSession.remove();
+    resolveUpload({ status: "committed" });
+
+    await expect(execution).resolves.toMatchObject({ syncUpload: "pending" });
+    expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
+    expect(ctx.ports.saved.vaultSnapshot?.metadata.vaultKeyGeneration).toBe(2);
+    await expect(
+      ctx.ports.crypto.decryptDeviceSyncCredentialState(
+        ctx.ports.saved.deviceSyncCredentialState!,
+        ctx.values.deviceLocalProtectionKey,
+        {
+          vaultId: ctx.values.vaultId,
+          deviceId: ctx.values.deviceId,
+          provider: ctx.values.syncTarget.provider,
+          target: ctx.values.syncTarget,
+        },
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        currentCredentials: ctx.values.replacementSyncCredentials,
+        pendingSnapshotUpload: expect.any(Object),
+      }),
+    );
+    await expectGeneratedVaultMasterKeyWiped(ctx);
+  });
+
+  it("restores revocation state when upload is definitely not committed", async () => {
+    const ctx = createContext();
+    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockResolvedValueOnce(
+      {
+        status: "definitely_not_committed",
+        reason: "remote_snapshot_changed",
+      },
+    );
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        deviceId: ctx.values.pendingDeviceId,
+        replacementSyncConfig: ctx.values.replacementSyncConfigInput,
+      }),
+    ).rejects.toBeInstanceOf(SyncConflictDetectedError);
+
+    expect(ctx.ports.saved.vaultSnapshot?.metadata.vaultKeyGeneration).toBe(1);
+    expect(ctx.ports.saved.deviceSyncCredentialState).toBe(
+      ctx.values.encryptedDeviceSyncCredentialState,
+    );
+  });
+
   it("restores the old state when the session expires during upload", async () => {
     const ctx = createContext();
     vi.mocked(
@@ -373,7 +497,10 @@ describe("RevokeDeviceUseCase", () => {
       ctx.ports.syncProvider.uploadVaultSnapshot,
     ).mockImplementationOnce(async () => {
       await ctx.ports.sessionServices.unlockedVaultSession.remove();
-      throw new Error("upload failed");
+      return {
+        status: "definitely_not_committed",
+        reason: "remote_snapshot_changed",
+      };
     });
 
     await expect(
@@ -382,7 +509,7 @@ describe("RevokeDeviceUseCase", () => {
         deviceId: ctx.values.pendingDeviceId,
         replacementSyncConfig: ctx.values.replacementSyncConfigInput,
       }),
-    ).rejects.toThrow("upload failed");
+    ).rejects.toBeInstanceOf(SyncConflictDetectedError);
 
     expect(ctx.ports.saved.vaultSnapshot).toEqual(ctx.snapshot);
     expect(ctx.ports.saved.deviceSyncCredentialState).toBe(
@@ -458,7 +585,10 @@ describe("RevokeDeviceUseCase", () => {
       ctx.ports.syncProvider.uploadVaultSnapshot,
     ).mockImplementationOnce(async () => {
       ctx.ports.saved.vaultSnapshotDigest = "concurrent-snapshot-digest";
-      throw new Error("upload failed");
+      return {
+        status: "definitely_not_committed",
+        reason: "remote_snapshot_changed",
+      };
     });
 
     await expect(
@@ -489,9 +619,25 @@ describe("RevokeDeviceUseCase", () => {
     ).rejects.toThrow("session commit failed");
 
     expect(ctx.ports.saved.vaultSnapshot?.metadata.vaultKeyGeneration).toBe(2);
-    expect(ctx.ports.saved.deviceSyncCredentialState).toBe(
-      ctx.values.replacementEncryptedDeviceSyncCredentialState,
-    );
+    await expect(
+      ctx.ports.crypto.decryptDeviceSyncCredentialState(
+        ctx.ports.saved.deviceSyncCredentialState!,
+        ctx.values.deviceLocalProtectionKey,
+        {
+          vaultId: ctx.values.vaultId,
+          deviceId: ctx.values.deviceId,
+          provider: ctx.values.syncTarget.provider,
+          target: ctx.values.syncTarget,
+        },
+      ),
+    ).resolves.toEqual({
+      currentCredentials: ctx.values.replacementSyncCredentials,
+      previousCredentials: {
+        credentials: ctx.values.syncCredentials,
+        revokedDeviceIds: [ctx.values.pendingDeviceId],
+        vaultKeyGeneration: 2,
+      },
+    });
     expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
     await expectGeneratedVaultMasterKeyWiped(ctx);
   });

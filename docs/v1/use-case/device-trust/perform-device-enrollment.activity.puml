@@ -61,22 +61,27 @@ endif
 if (scheduling or activation fails?) then (yes)
   :Best effort cancel the matching scheduled lock;
   :Best effort remove matching lock metadata;
-  :Best effort remove prepared local state\nonly if the snapshot digest still matches;
+  :Best effort remove prepared local state only if the exact descriptor,
+access material, recovery backup, snapshot digest, signed checkpoint,
+and encrypted sync artifact or absence all still match;
   :Throw the original failure;
   stop
 endif
 :Activate a fresh session identity and transfer session-key custody;
 
 if (sync access exists?) then (yes)
-  :Upload registered snapshot against the authorized descriptor;
-  if (remote snapshot changed?) then (yes)
+  :Persist pending upload intent binding registered
+candidate to the authorized descriptor-and-digest identity;
+  :Upload registered snapshot against the authorized identity;
+  if (upload is definitely not committed?) then (yes)
     :Enter shared lifecycle cleanup and conditional-discard owner;
     :Authenticate session ID, activation generation,\nvault ID, and source version;
     if (originating session is current and cleanup succeeds?) then (yes)
       :Clear clipboard/task state, wipe and remove session records;
-      :Remove local state by snapshot-digest CAS;
+      :Remove local state only by exact descriptor, access-material pair,
+snapshot digest, checkpoint, and staged encrypted-intent CAS;
       if (local discard completed?) then (yes)
-        :Throw DeviceEnrollmentRemoteSnapshotChangedError;
+        :Throw mapped remote-change or provider-rejection error;
         stop
       else (no)
         :Wipe original enrollment session buffers\nafter session custody ended;
@@ -94,8 +99,16 @@ if (sync access exists?) then (yes)
         stop
       endif
     endif
-  elseif (other upload failure?) then (yes)
-    :Keep committed local enrollment and mark syncUpload pending;
+  elseif (upload outcome is unknown?) then (yes)
+    :Keep committed local enrollment and pending intent;
+    :Mark syncUpload pending;
+  else (committed)
+    :Attempt exact CAS-clear of pending intent;
+    if (intent clear succeeds?) then (yes)
+      :Mark syncUpload complete;
+    else (no)
+      :Retain reconciliation state and mark syncUpload pending;
+    endif
   endif
 endif
 

@@ -11,20 +11,17 @@ import { toVisibleVaultFields } from "../../domain/vault/visible-vault.mapper";
 import { revokeDeviceProfileFromVault } from "../../domain/vault/vault-device.mutations";
 import { markVaultProviderCredentialRevocationPending } from "../../domain/vault/vault-sync-config.mutations";
 import type { VersionVector } from "../../domain/versioning/version-vector.type";
+import type { SyncUploadStatus } from "../../domain/sync/sync-upload-status.type";
 import {
   InvalidSyncConfigError,
   LocalSyncCredentialsMissingError,
-  RemoteVaultSnapshotChangedError,
   ReplacementSyncCredentialsRequiredError,
   ReplacementSyncCredentialsUnchangedError,
   ReplacementSyncTargetMismatchError,
-  SyncConflictDetectedError,
 } from "../../errors/sync.errors";
-import { PersistedVaultRollbackIncompleteError } from "../../errors/vault-snapshot.errors";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
 import type { ClockPort } from "../../ports/system/clock.port";
-import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import type { VaultSyncGuardService } from "../../services/sync";
@@ -49,6 +46,7 @@ export type RevokeDeviceResult = {
   readonly providerCredentialRevocation:
     | "not_configured"
     | "pending_external_deletion";
+  readonly syncUpload: SyncUploadStatus;
 };
 
 export class RevokeDeviceUseCase {
@@ -58,7 +56,6 @@ export class RevokeDeviceUseCase {
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
   private readonly vaultSyncGuard: VaultSyncGuardService;
   private readonly vaultSnapshot: VaultSnapshotService;
-  private readonly vaultLocalRepository: VaultLocalRepositoryPort;
   private readonly vaultTrust: VaultTrustService;
 
   constructor(
@@ -68,7 +65,6 @@ export class RevokeDeviceUseCase {
     unlockedVaultSession: UnlockedVaultSessionService,
     vaultSyncGuard: VaultSyncGuardService,
     vaultSnapshot: VaultSnapshotService,
-    vaultLocalRepository: VaultLocalRepositoryPort,
   ) {
     this.clock = clock;
     this.crypto = crypto;
@@ -76,7 +72,6 @@ export class RevokeDeviceUseCase {
     this.unlockedVaultSession = unlockedVaultSession;
     this.vaultSyncGuard = vaultSyncGuard;
     this.vaultSnapshot = vaultSnapshot;
-    this.vaultLocalRepository = vaultLocalRepository;
     this.vaultTrust = new VaultTrustService(crypto);
   }
 
@@ -158,14 +153,10 @@ export class RevokeDeviceUseCase {
         throw new ReplacementSyncCredentialsRequiredError(params.vaultId);
       }
 
-      previousEncryptedCredentials =
-        await this.vaultLocalRepository.getDeviceSyncCredentialState(
-          params.vaultId,
-        );
-
-      if (previousEncryptedCredentials === null) {
+      if (syncState.syncAccess === undefined) {
         throw new LocalSyncCredentialsMissingError(params.vaultId);
       }
+      previousEncryptedCredentials = syncState.syncCredentialState;
 
       const previousState = await this.crypto.decryptDeviceSyncCredentialState(
         previousEncryptedCredentials,
@@ -216,10 +207,10 @@ export class RevokeDeviceUseCase {
 
       if (
         replacementRemoteDescriptor === null ||
-        syncState.remoteSnapshotDescriptor === undefined ||
+        syncState.remoteSnapshotIdentity === undefined ||
         !areVaultSnapshotDescriptorsEqual(
           replacementRemoteDescriptor,
-          syncState.remoteSnapshotDescriptor,
+          syncState.remoteSnapshotIdentity.descriptor,
         )
       ) {
         throw new ReplacementSyncTargetMismatchError(params.vaultId);
@@ -318,75 +309,91 @@ export class RevokeDeviceUseCase {
                 unlockedVault,
                 previousEncryptedCredentials,
               );
+            const commonSnapshotOptions = {
+              vaultKeyGeneration,
+              keySlots: { deviceSlots },
+              nextTrust: {
+                chain: nextTrust.chain,
+                state: nextTrust.trust,
+              },
+              ...(syncState.remoteSnapshotIdentity === undefined
+                ? {}
+                : {
+                    uploadExpectedRemoteSnapshotIdentity:
+                      syncState.remoteSnapshotIdentity,
+                  }),
+            };
+            const snapshotOptions =
+              encryptedCredentialState === undefined
+                ? commonSnapshotOptions
+                : {
+                    ...commonSnapshotOptions,
+                    expectedSyncCredentialState:
+                      previousEncryptedCredentials ?? null,
+                    syncCredentialState: encryptedCredentialState,
+                  };
             const persistedSnapshot =
               await this.vaultSnapshot.persistUnlockedVault(
                 params.vaultId,
                 rotatedUnlockedVault,
                 sourceSnapshotVersionVector,
-                {
-                  vaultKeyGeneration,
-                  keySlots: { deviceSlots },
-                  nextTrust: {
-                    chain: nextTrust.chain,
-                    state: nextTrust.trust,
-                  },
-                  ...(encryptedCredentialState === undefined
-                    ? {}
-                    : { syncCredentialState: encryptedCredentialState }),
-                },
+                snapshotOptions,
               );
 
             return { persistedSnapshot, preparedRestore };
           },
         );
 
-      try {
-        if (
-          replacementAccess !== undefined &&
-          syncState.remoteSnapshotDescriptor !== undefined
-        ) {
-          await this.syncProvider.uploadVaultSnapshot(
-            replacementAccess,
-            persistedSnapshot.snapshot,
-            syncState.remoteSnapshotDescriptor,
+      let syncUpload: SyncUploadStatus = "complete";
+      let sessionCommitted: boolean;
+
+      if (
+        replacementAccess !== undefined &&
+        syncState.remoteSnapshotIdentity !== undefined
+      ) {
+        if (encryptedCredentialState === undefined) {
+          throw new InvalidDeviceRevocationTransitionError(
+            params.vaultId,
+            "replacement credential state was not prepared",
           );
         }
-      } catch (error) {
-        const rollbackResult =
-          await this.unlockedVaultSession.restorePersistedState(
+
+        syncUpload = await this.vaultSyncGuard.uploadPersistedSnapshot({
+          vaultId: params.vaultId,
+          syncAccess: replacementAccess,
+          persistedSnapshot: persistedSnapshot.snapshot,
+          expectedRemoteSnapshotIdentity: syncState.remoteSnapshotIdentity,
+          previousSnapshotVersionVector: sourceSnapshotVersionVector,
+          persistedSnapshotDigest:
+            persistedSnapshot.trustedSnapshotContext.snapshotDigest,
+          checkpoint: persistedSnapshot.checkpoint,
+          persistedSyncCredentialState: encryptedCredentialState,
+          unlockedVault: rotatedUnlockedVault,
+          preparedRestore,
+          sessionId,
+        });
+
+        sessionCommitted =
+          await this.unlockedVaultSession.commitPersistedSnapshotIfSessionIsActive(
             sessionId,
-            params.vaultId,
-            sourceSnapshotVersionVector,
-            async () =>
-              this.vaultSnapshot.restorePreparedLocalVaultSnapshot(
-                preparedRestore,
-                persistedSnapshot.trustedSnapshotContext.snapshotDigest,
-              ),
+            {
+              ...rotatedUnlockedVault,
+              trustedSnapshotContext: persistedSnapshot.trustedSnapshotContext,
+            },
+            persistedSnapshot.snapshotVersionVector,
           );
-
-        if (rollbackResult === "rollback_failed") {
-          throw new PersistedVaultRollbackIncompleteError(
-            params.vaultId,
-            error,
-          );
-        }
-
-        if (error instanceof RemoteVaultSnapshotChangedError) {
-          throw new SyncConflictDetectedError(params.vaultId);
-        }
-
-        throw error;
+      } else {
+        await this.unlockedVaultSession.commitPersistedSnapshot(
+          sessionId,
+          {
+            ...rotatedUnlockedVault,
+            trustedSnapshotContext: persistedSnapshot.trustedSnapshotContext,
+          },
+          persistedSnapshot.snapshotVersionVector,
+        );
+        sessionCommitted = true;
       }
-
-      await this.unlockedVaultSession.commitPersistedSnapshot(
-        sessionId,
-        {
-          ...rotatedUnlockedVault,
-          trustedSnapshotContext: persistedSnapshot.trustedSnapshotContext,
-        },
-        persistedSnapshot.snapshotVersionVector,
-      );
-      vaultMasterKeyTransferred = true;
+      vaultMasterKeyTransferred = sessionCommitted;
 
       return {
         vault: toVisibleVaultFields(revokedVault),
@@ -398,6 +405,7 @@ export class RevokeDeviceUseCase {
           replacementAccess === undefined
             ? "not_configured"
             : "pending_external_deletion",
+        syncUpload,
       };
     } finally {
       if (!vaultMasterKeyTransferred) {

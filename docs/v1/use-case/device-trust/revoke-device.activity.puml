@@ -44,13 +44,29 @@ endif
 :Get revisionTimestamp from ClockPort;
 :Tombstone revoked device profile inside encrypted vault content;
 :Remove revoked device slot from snapshot keySlots;
-:Drop pending enrollmentKeySlot if it was authorized by revoked device;
 :Encrypt revoked vault content;
 :Sign revoked snapshot with current device private signing key;
 :Save revoked snapshot locally;
 :Build updated unlocked vault;
-:Upload persisted local mutation through sync guard;
-:Commit revoked snapshot vector to unlocked session;
-:Return visible vault projection, snapshotVersionVector,\nrevisionTimestamp, providerCredentialRevocation;
+:Persist pending upload intent and upload
+persisted local mutation through sync guard;
+if (upload is definitely not committed?) then (yes)
+  :Restore prior snapshot, checkpoint, and credentials;
+  :Throw mapped upload error;
+  stop
+elseif (upload outcome is unknown or committed-intent cleanup is incomplete?) then (yes)
+  :Retain rotated state and pending intent;
+endif
+if (sync is configured?) then (yes)
+  :Conditionally commit only if the originating session remains active;
+  note right
+  Leave an expired or replaced session untouched, wipe the operation-owned
+  rotated key, and return the durable result. A failure committing the
+  still-current session invalidates it and propagates.
+  end note
+else (local-only)
+  :Strictly commit the revoked snapshot vector to the unlocked session;
+endif
+:Return visible vault projection, snapshotVersionVector,\nrevisionTimestamp, providerCredentialRevocation, and syncUpload;
 stop
 @enduml

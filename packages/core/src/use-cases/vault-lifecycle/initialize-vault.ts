@@ -313,9 +313,17 @@ export class InitializeVaultUseCase {
             checkpoint,
           }),
         rollbackPreparedActivation: async () => {
-          await this.vaultLocalRepository.removePersistedLocalVaultIfSnapshotMatches(
-            vaultId,
-            unlockedVault.trustedSnapshotContext.snapshotDigest,
+          await this.vaultLocalRepository.removePersistedLocalVaultIfArtifactsMatch(
+            {
+              vaultId,
+              expectedDescriptor: localVaultDescriptor,
+              expectedDeviceAccessMaterial: deviceAccessMaterial,
+              expectedDeviceAccessRecoveryBackup: deviceAccessRecoveryBackup,
+              expectedSnapshotDigest:
+                unlockedVault.trustedSnapshotContext.snapshotDigest,
+              expectedCheckpoint: checkpoint,
+              expectedSyncCredentialState: null,
+            },
           );
         },
       });

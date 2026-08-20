@@ -7,11 +7,13 @@ import type {
 } from "../../domain/device-trust";
 import { toVaultSnapshotDescriptor } from "../../domain/snapshot";
 import {
+  LocalVaultSnapshotAheadError,
   ProviderCredentialRevocationPendingError,
   RemoteVaultSnapshotChangedError,
   RemoteVaultSnapshotAheadError,
   RemoteVaultSnapshotIntegrityError,
 } from "../../errors/sync.errors";
+import { LocalVaultSnapshotChangedError } from "../../errors/vault-snapshot.errors";
 import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import { VaultSyncGuardService } from "../../services/sync";
 import { DisableSyncUseCase } from "./disable-sync";
@@ -135,19 +137,60 @@ function configureMultiDeviceSync(ctx: ReturnType<typeof createContext>): void {
 }
 
 describe("DisableSyncUseCase", () => {
+  it("blocks fresh sync removal while a snapshot upload is pending reconciliation", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession!;
+    ctx.saved.deviceSyncCredentialState =
+      await ctx.ports.crypto.encryptDeviceSyncCredentialState(
+        {
+          ...ctx.values.deviceSyncCredentialState,
+          pendingSnapshotUpload: {
+            candidateSnapshotIdentity: {
+              descriptor: toVaultSnapshotDescriptor(
+                ctx.values.vaultId,
+                ctx.vaultSnapshot,
+              ),
+              snapshotDigest: ctx.values.vaultSnapshotDigest,
+            },
+            expectedRemoteSnapshotIdentity: null,
+          },
+        },
+        ctx.values.deviceLocalProtectionKey,
+        {
+          vaultId: ctx.values.vaultId,
+          deviceId: ctx.values.deviceId,
+          provider: ctx.values.syncTarget.provider,
+          target: ctx.values.syncTarget,
+        },
+      );
+
+    await expect(
+      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toBeInstanceOf(LocalVaultSnapshotAheadError);
+
+    expect(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.removeVaultSnapshots).not.toHaveBeenCalled();
+    expect(ctx.saved.unlockedVaultSession).toBe(session);
+  });
+
   it("removes remote state, local target, and local credentials", async () => {
     const ctx = createContext();
-    const expectedRemoteSnapshotDescriptor = toVaultSnapshotDescriptor(
-      ctx.values.vaultId,
-      ctx.vaultSnapshot,
-    );
+    const expectedRemoteSnapshotIdentity = {
+      descriptor: toVaultSnapshotDescriptor(
+        ctx.values.vaultId,
+        ctx.vaultSnapshot,
+      ),
+      snapshotDigest: ctx.values.vaultSnapshotDigest,
+    };
 
     await ctx.useCase.execute({ vaultId: ctx.values.vaultId });
 
     expect(ctx.ports.syncProvider.removeVaultSnapshots).toHaveBeenCalledWith(
       ctx.values.syncAccess,
       ctx.values.vaultId,
-      expectedRemoteSnapshotDescriptor,
+      expectedRemoteSnapshotIdentity,
     );
     expect(
       ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncTarget,
@@ -213,10 +256,13 @@ describe("DisableSyncUseCase", () => {
   it("retains pending removal when a remote failure has an unknown outcome", async () => {
     const ctx = createContext();
     const removalError = new Error("remove failed");
-    const expectedRemoteSnapshotDescriptor = toVaultSnapshotDescriptor(
-      ctx.values.vaultId,
-      ctx.vaultSnapshot,
-    );
+    const expectedRemoteSnapshotIdentity = {
+      descriptor: toVaultSnapshotDescriptor(
+        ctx.values.vaultId,
+        ctx.vaultSnapshot,
+      ),
+      snapshotDigest: ctx.values.vaultSnapshotDigest,
+    };
     vi.mocked(
       ctx.ports.syncProvider.removeVaultSnapshots,
     ).mockRejectedValueOnce(removalError);
@@ -228,7 +274,7 @@ describe("DisableSyncUseCase", () => {
     expect(
       ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncRemovalPending,
     ).toEqual({
-      expectedRemoteSnapshotDescriptor,
+      expectedRemoteSnapshotIdentity,
       rollbackSnapshot: ctx.vaultSnapshot,
     });
     expect(ctx.saved.deviceSyncCredentialState).toBe(
@@ -251,10 +297,13 @@ describe("DisableSyncUseCase", () => {
   it("retains pending removal when exact snapshot restoration fails", async () => {
     const ctx = createContext();
     const restorationError = new Error("snapshot restoration failed");
-    const expectedRemoteSnapshotDescriptor = toVaultSnapshotDescriptor(
-      ctx.values.vaultId,
-      ctx.vaultSnapshot,
-    );
+    const expectedRemoteSnapshotIdentity = {
+      descriptor: toVaultSnapshotDescriptor(
+        ctx.values.vaultId,
+        ctx.vaultSnapshot,
+      ),
+      snapshotDigest: ctx.values.vaultSnapshotDigest,
+    };
     const saveSnapshot = vi.mocked(
       ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     );
@@ -283,7 +332,7 @@ describe("DisableSyncUseCase", () => {
     expect(
       ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncRemovalPending,
     ).toEqual({
-      expectedRemoteSnapshotDescriptor,
+      expectedRemoteSnapshotIdentity,
       rollbackSnapshot: ctx.vaultSnapshot,
     });
     expect(ctx.saved.deviceSyncCredentialState).toBe(
@@ -291,28 +340,52 @@ describe("DisableSyncUseCase", () => {
     );
   });
 
-  it("conditions removal on remote state remaining absent after preflight", async () => {
+  it("requires upload reconciliation before a fresh removal when remote state is absent", async () => {
     const ctx = createContext();
     vi.mocked(
       ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
     ).mockResolvedValue(null);
 
-    await ctx.useCase.execute({ vaultId: ctx.values.vaultId });
+    await expect(
+      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toBeInstanceOf(LocalVaultSnapshotAheadError);
 
-    expect(ctx.ports.syncProvider.removeVaultSnapshots).toHaveBeenCalledWith(
-      ctx.values.syncAccess,
-      ctx.values.vaultId,
-      null,
-    );
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.removeVaultSnapshots).not.toHaveBeenCalled();
+  });
+
+  it("requires upload reconciliation before a fresh removal when local state is ahead", async () => {
+    const ctx = createContext();
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValue({
+      ...toVaultSnapshotDescriptor(ctx.values.vaultId, ctx.vaultSnapshot),
+      snapshotVersionVector: { [ctx.values.deviceId]: 0 },
+      revisionTimestamp: ctx.values.timestamp - 1,
+    });
+
+    await expect(
+      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toBeInstanceOf(LocalVaultSnapshotAheadError);
+
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.removeVaultSnapshots).not.toHaveBeenCalled();
   });
 
   it("retains the pending transition when final local persistence fails", async () => {
     const ctx = createContext();
     const finalPersistError = new Error("final persistence failed");
-    const expectedRemoteSnapshotDescriptor = toVaultSnapshotDescriptor(
-      ctx.values.vaultId,
-      ctx.vaultSnapshot,
-    );
+    const expectedRemoteSnapshotIdentity = {
+      descriptor: toVaultSnapshotDescriptor(
+        ctx.values.vaultId,
+        ctx.vaultSnapshot,
+      ),
+      snapshotDigest: ctx.values.vaultSnapshotDigest,
+    };
     vi.mocked(ctx.ports.crypto.encryptVaultSnapshotContent)
       .mockResolvedValueOnce(ctx.values.encryptedVault)
       .mockRejectedValueOnce(finalPersistError);
@@ -324,7 +397,7 @@ describe("DisableSyncUseCase", () => {
     expect(ctx.ports.syncProvider.removeVaultSnapshots).toHaveBeenCalledWith(
       ctx.values.syncAccess,
       ctx.values.vaultId,
-      expectedRemoteSnapshotDescriptor,
+      expectedRemoteSnapshotIdentity,
     );
     expect(
       ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncTarget,
@@ -332,7 +405,7 @@ describe("DisableSyncUseCase", () => {
     expect(
       ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncRemovalPending,
     ).toEqual({
-      expectedRemoteSnapshotDescriptor,
+      expectedRemoteSnapshotIdentity,
       rollbackSnapshot: ctx.vaultSnapshot,
     });
     expect(ctx.saved.deviceSyncCredentialState).toBe(
@@ -369,6 +442,43 @@ describe("DisableSyncUseCase", () => {
     expect(ctx.ports.syncProvider.removeVaultSnapshots).not.toHaveBeenCalled();
   });
 
+  it("does not erase replayed old-credential evidence after validating a clean record", async () => {
+    const ctx = createContext();
+    const cleanCredentialState = ctx.saved.deviceSyncCredentialState!;
+    const replayedCredentialState =
+      await ctx.ports.crypto.encryptDeviceSyncCredentialState(
+        {
+          currentCredentials: ctx.values.replacementSyncCredentials,
+          previousCredentials: {
+            credentials: ctx.values.syncCredentials,
+            revokedDeviceIds: [ctx.values.pendingDeviceId],
+            vaultKeyGeneration: 1,
+          },
+        },
+        ctx.values.deviceLocalProtectionKey,
+        {
+          vaultId: ctx.values.vaultId,
+          deviceId: ctx.values.deviceId,
+          provider: ctx.values.syncTarget.provider,
+          target: ctx.values.syncTarget,
+        },
+      );
+    vi.mocked(
+      ctx.ports.vaultLocalRepository.getDeviceSyncCredentialState,
+    ).mockImplementationOnce(async () => {
+      ctx.saved.deviceSyncCredentialState = replayedCredentialState;
+      return cleanCredentialState;
+    });
+
+    await expect(
+      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toBeInstanceOf(LocalVaultSnapshotChangedError);
+
+    expect(ctx.saved.deviceSyncCredentialState).toBe(replayedCredentialState);
+    expect(ctx.saved.vaultSnapshot).toEqual(ctx.vaultSnapshot);
+    expect(ctx.ports.syncProvider.removeVaultSnapshots).not.toHaveBeenCalled();
+  });
+
   it("rejects remote state that is ahead of the local snapshot", async () => {
     const ctx = createContext();
     vi.mocked(
@@ -401,13 +511,53 @@ describe("DisableSyncUseCase", () => {
     expect(ctx.ports.syncProvider.removeVaultSnapshots).not.toHaveBeenCalled();
   });
 
-  it("resumes remote cleanup without repeating the preflight", async () => {
+  it("rejects same-descriptor remote bytes before staging removal", async () => {
+    const ctx = createContext();
+    const verification = vi
+      .spyOn(VaultSnapshotService.prototype, "verifyCandidateSnapshotTrust")
+      .mockResolvedValue({
+        chain: ctx.values.vaultTrustChain,
+        state: ctx.values.verifiedVaultTrustState,
+        snapshotDigest: "substituted-remote-snapshot-digest",
+      });
+
+    try {
+      await expect(
+        ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+      ).rejects.toBeInstanceOf(RemoteVaultSnapshotIntegrityError);
+    } finally {
+      verification.mockRestore();
+    }
+
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.removeVaultSnapshots).not.toHaveBeenCalled();
+  });
+
+  it("rejects a local-ahead descriptor from another vault before removal", async () => {
+    const ctx = createContext();
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValue({
+      vaultId: "other-vault-id",
+      snapshotVersionVector: { [ctx.values.deviceId]: 0 },
+      revisionTimestamp: ctx.values.timestamp - 1,
+    });
+
+    await expect(
+      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toBeInstanceOf(RemoteVaultSnapshotIntegrityError);
+
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.removeVaultSnapshots).not.toHaveBeenCalled();
+  });
+
+  it("rejects a persisted descriptor from another vault before resumed removal", async () => {
     const ctx = createContext();
     const session = ctx.saved.unlockedVaultSession;
-    const expectedRemoteSnapshotDescriptor = toVaultSnapshotDescriptor(
-      ctx.values.vaultId,
-      ctx.vaultSnapshot,
-    );
 
     if (session === undefined) {
       throw new Error("Expected an unlocked test session.");
@@ -420,7 +570,102 @@ describe("DisableSyncUseCase", () => {
         vault: {
           ...session.unlockedVault.vault,
           syncRemovalPending: {
-            expectedRemoteSnapshotDescriptor,
+            expectedRemoteSnapshotIdentity: {
+              descriptor: {
+                vaultId: "other-vault-id",
+                snapshotVersionVector: { [ctx.values.deviceId]: 0 },
+                revisionTimestamp: ctx.values.timestamp - 1,
+              },
+              snapshotDigest: ctx.values.vaultSnapshotDigest,
+            },
+            rollbackSnapshot: ctx.vaultSnapshot,
+          },
+        },
+      },
+    };
+
+    await expect(
+      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toBeInstanceOf(RemoteVaultSnapshotIntegrityError);
+
+    expect(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.removeVaultSnapshots).not.toHaveBeenCalled();
+  });
+
+  it("does not start remote removal after the session is removed during provider preparation", async () => {
+    const ctx = createContext();
+    let signalPreparationStarted: () => void = () => undefined;
+    let resumePreparation: () => void = () => undefined;
+    const preparationStarted = new Promise<void>((resolve) => {
+      signalPreparationStarted = resolve;
+    });
+    const preparationCanContinue = new Promise<void>((resolve) => {
+      resumePreparation = resolve;
+    });
+    vi.mocked(
+      ctx.ports.syncProvider.prepareVaultSnapshotRemoval,
+    ).mockImplementationOnce(
+      async (syncAccess, vaultId, expectedRemoteSnapshotIdentity) => {
+        signalPreparationStarted();
+        await preparationCanContinue;
+        return {
+          status: "ready",
+          start: () => ({
+            outcome: ctx.ports.syncProvider.removeVaultSnapshots(
+              syncAccess,
+              vaultId,
+              expectedRemoteSnapshotIdentity,
+            ),
+          }),
+        };
+      },
+    );
+
+    const execution = ctx.useCase.execute({ vaultId: ctx.values.vaultId });
+    const rejectedExecution = expect(execution).rejects.toThrow();
+    await preparationStarted;
+
+    await ctx.ports.sessionServices.unlockedVaultSession.remove();
+    resumePreparation();
+    await rejectedExecution;
+
+    expect(ctx.saved.unlockedVaultSession).toBeUndefined();
+    expect(ctx.ports.syncProvider.removeVaultSnapshots).not.toHaveBeenCalled();
+    expect(
+      vi
+        .mocked(ctx.ports.crypto.encryptVaultSnapshotContent)
+        .mock.calls.some(([vault]) => vault.syncRemovalPending !== undefined),
+    ).toBe(true);
+  });
+
+  it("resumes remote cleanup without repeating the preflight", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession;
+    const expectedRemoteSnapshotIdentity = {
+      descriptor: toVaultSnapshotDescriptor(
+        ctx.values.vaultId,
+        ctx.vaultSnapshot,
+      ),
+      snapshotDigest: ctx.values.vaultSnapshotDigest,
+    };
+
+    if (session === undefined) {
+      throw new Error("Expected an unlocked test session.");
+    }
+
+    ctx.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          syncRemovalPending: {
+            expectedRemoteSnapshotIdentity,
             rollbackSnapshot: ctx.vaultSnapshot,
           },
         },
@@ -435,7 +680,7 @@ describe("DisableSyncUseCase", () => {
     expect(ctx.ports.syncProvider.removeVaultSnapshots).toHaveBeenCalledWith(
       ctx.values.syncAccess,
       ctx.values.vaultId,
-      expectedRemoteSnapshotDescriptor,
+      expectedRemoteSnapshotIdentity,
     );
     expect(
       ctx.saved.unlockedVaultSession?.unlockedVault.vault.syncTarget,

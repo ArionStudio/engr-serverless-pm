@@ -704,7 +704,7 @@ describe("WebCryptoPort", () => {
       {
         ...createVault(),
         syncRemovalPending: {
-          expectedRemoteSnapshotDescriptor: null,
+          expectedRemoteSnapshotIdentity: null,
           rollbackSnapshot: invalidRollback,
         },
       },

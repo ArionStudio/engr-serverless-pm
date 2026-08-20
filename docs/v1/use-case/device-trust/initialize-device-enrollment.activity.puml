@@ -10,71 +10,70 @@ skinparam activity {
 }
 
 start
-:Input:\nvaultId, remoteSnapshotDescriptor;
+:Input:\nvaultId, signed DeviceEnrollmentRequest;
 :Source:\npackages/core/src/use-cases/device-trust/initialize-device-enrollment.ts;
-:Require unlocked vault context for "initialize device enrollment";
-if (syncConfig missing?) then (yes)
-  :Throw SyncNotConfiguredError;
+:Validate request version, vault ID, and algorithm suite;
+if (request identity or suite invalid?) then (yes)
+  :Throw DeviceEnrollmentIntegrityError or UnsupportedAlgorithmSuiteError;
   stop
 endif
-
-:Require vault ready for local mutation via VaultSyncGuardService;
-:Build local snapshot descriptor;
-if (local descriptor does not equal provided remote descriptor?) then (yes)
-  :Throw DeviceEnrollmentVaultNotSynchronizedError;
-  stop
-endif
-
-:Find snapshot signing device in device slots;
-if (signer missing?) then (yes)
-  :Throw VaultSnapshotSignerNotTrustedError;
-  stop
-endif
-:Verify current snapshot signature;
+:Verify request self-signature;
 if (signature invalid?) then (yes)
-  :Throw VaultSnapshotSignatureVerificationFailedError;
+  :Throw DeviceEnrollmentIntegrityError;
   stop
 endif
-:Find current device slot;
-if (current device not trusted?) then (yes)
-  :Throw SnapshotSigningDeviceNotTrustedError;
-  stop
-endif
-
-:Get revisionTimestamp from ClockPort;
-:Generate enrollmentSecret, enrollmentId, pendingDeviceId;
-:Generate pending device signing key pair;
-:Digest pending public signing key;
-:Derive enrollment vault-master-key protection key;
-:Wrap vaultMasterKey for enrollment;
-:Digest protected enrollment vaultMasterKey;
-:Build enrollment authorization payload;
-:Sign authorization with current device private signing key;
-:Build unsigned snapshot with enrollmentKeySlot;
-:Encrypt unchanged vault content;
-:Sign enrollment snapshot with current device private signing key;
-:Save enrollment snapshot locally;
-
-if (commit session to enrollment snapshot vector succeeds?) then (yes)
-  :Continue;
-else (no)
-  :Best effort restore previous local snapshot;
-  :Throw original session commit error;
-  stop
-endif
-
-if (upload enrollment snapshot succeeds?) then (yes)
-  :Return enrollmentBundle,\nsnapshotVersionVector,\nrevisionTimestamp;
-  stop
-else (no)
-  :Best effort restore previous local snapshot;
-  :Best effort commit session back to source vector;
-  if (failure is RemoteVaultSnapshotChangedError?) then (yes)
-    :Throw SyncConflictDetectedError;
-    stop
-  else (no)
-    :Throw original upload error;
+:Require unlocked vault context for "authorize device enrollment";
+:Prepare local mutation through VaultSyncGuardService;
+:Require request genesis digest to match the pinned trust anchor;
+if (requested device is already currently trusted?) then (yes)
+  :Digest and compare both requested public keys;
+  :Require exactly one current-generation vault-key envelope;
+  if (keys or envelope differ?) then (yes)
+    :Throw DeviceEnrollmentIntegrityError;
     stop
   endif
+  :Return response with current snapshot and syncUpload complete;
+  stop
 endif
+
+if (requested device identity appears in trust history?) then (yes)
+  :Reject reuse of a previously revoked identity;
+  :Throw DeviceEnrollmentIntegrityError;
+  stop
+endif
+
+:Require any provider credential revocation to be complete;
+:Append signed trust transition adding the requested identity;
+:Create a current-generation vault-key envelope for the requested device;
+:Enter active-session persistence boundary;
+:Prepare exact restore state for the current snapshot and checkpoint;
+:Persist signed snapshot with added trust certificate and device slot;
+if (sync is configured?) then (yes)
+  :Bind candidate to prepared remote exact identity
+and exact encrypted credential state;
+endif
+:Upload persisted local mutation through VaultSyncGuardService;
+if (upload is definitely not committed?) then (yes)
+  :Restore the exact prior local snapshot,
+checkpoint, and credential artifact;
+  :Throw mapped sync/provider error;
+  stop
+endif
+if (upload outcome is unknown or committed intent cleanup is incomplete?) then (yes)
+  :Retain new snapshot and pending upload intent;
+  :Set syncUpload pending;
+else (committed and cleared, or local-only)
+  :Set syncUpload complete;
+endif
+if (sync is configured?) then (yes)
+  :Conditionally commit only if the originating session remains active;
+  note right
+  Leave an expired or replaced session untouched and return the durable result.
+  A failure committing the still-current session invalidates it and propagates.
+  end note
+else (local-only)
+  :Strictly commit the session to the enrollment snapshot vector;
+endif
+:Return signed enrollmentResponse and syncUpload status;
+stop
 @enduml

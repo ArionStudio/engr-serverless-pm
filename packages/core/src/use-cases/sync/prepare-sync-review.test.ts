@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
 import { createUnlockedVaultWithEntries } from "../../__tests__/fixtures/vault-entries";
 import { singlePasswordEntry } from "../../__tests__/fixtures/vault-entries";
-import { toVaultSnapshotDescriptor } from "../../domain/snapshot";
+import {
+  toVaultSnapshotDescriptor,
+  toVaultSnapshotIdentity,
+} from "../../domain/snapshot";
 import { VaultTrustStateInvalidError } from "../../errors/vault-trust.errors";
 import {
   InvalidVaultSyncReviewError,
@@ -144,8 +147,12 @@ describe("PrepareSyncReviewUseCase", () => {
     });
 
     expect(result).toMatchObject({
-      reviewedSnapshotDescriptors: {
-        local: toVaultSnapshotDescriptor(ctx.values.vaultId, ctx.vaultSnapshot),
+      reviewedSnapshotIdentities: {
+        local: toVaultSnapshotIdentity(
+          ctx.values.vaultId,
+          ctx.vaultSnapshot,
+          ctx.values.vaultSnapshotDigest,
+        ),
       },
       relation: "remote_ahead",
       review: {
@@ -160,7 +167,7 @@ describe("PrepareSyncReviewUseCase", () => {
       },
     });
 
-    result.reviewedSnapshotDescriptors.local.snapshotVersionVector[
+    result.reviewedSnapshotIdentities.local.descriptor.snapshotVersionVector[
       ctx.values.deviceId
     ] = 99;
 
@@ -192,7 +199,7 @@ describe("PrepareSyncReviewUseCase", () => {
     downloadDescriptor.snapshotVersionVector[ctx.values.deviceId] = 98;
 
     expect(
-      result.reviewedSnapshotDescriptors.remote.snapshotVersionVector,
+      result.reviewedSnapshotIdentities.remote.descriptor.snapshotVersionVector,
     ).toEqual({ [ctx.values.deviceId]: 2 });
   });
 
@@ -278,17 +285,37 @@ describe("PrepareSyncReviewUseCase", () => {
     expect(ctx.ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
   });
 
-  it("skips download for exactly equal descriptors", async () => {
+  it("verifies exact bytes for equal descriptors", async () => {
     const ctx = createContext();
     vi.mocked(
       ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
     ).mockResolvedValue(
       toVaultSnapshotDescriptor(ctx.values.vaultId, ctx.vaultSnapshot),
     );
+    vi.mocked(ctx.ports.syncProvider.downloadVaultSnapshot).mockResolvedValue(
+      ctx.vaultSnapshot,
+    );
 
     await expect(
       ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
     ).resolves.toMatchObject({ relation: "equal", review: null });
+    expect(ctx.ports.syncProvider.downloadVaultSnapshot).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a remote-ahead descriptor from another vault before download", async () => {
+    const ctx = createContext();
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValue({
+      vaultId: "other-vault-id",
+      snapshotVersionVector: { [ctx.values.deviceId]: 2 },
+      revisionTimestamp: ctx.values.timestamp + 1,
+    });
+
+    await expect(
+      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toBeInstanceOf(RemoteVaultSnapshotIntegrityError);
+
     expect(ctx.ports.syncProvider.downloadVaultSnapshot).not.toHaveBeenCalled();
   });
 
@@ -375,7 +402,7 @@ describe("PrepareSyncReviewUseCase", () => {
     vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
       ...session.unlockedVault.vault,
       syncRemovalPending: {
-        expectedRemoteSnapshotDescriptor: null,
+        expectedRemoteSnapshotIdentity: null,
         rollbackSnapshot: ctx.vaultSnapshot,
       },
     });

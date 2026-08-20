@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createCoreTestPorts,
-  replaceVaultSnapshotAfterNextInitializedSave,
+  captureVaultSnapshotFromNextInitializedSave,
 } from "../../__tests__/fixtures/ports";
 import { createUnlockVaultTestContext } from "../../__tests__/fixtures/unlock-vault";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
@@ -30,8 +30,11 @@ import { LocalVaultAlreadyInitializedError } from "../../errors/vault-lifecycle.
 import { InvalidVaultLockDelayError } from "../../errors/vault-session.errors";
 import type { ClipboardClearTaskRepositoryPort } from "../../ports/clipboard/clipboard-clear-task-repository.port";
 import type { ClipboardPort } from "../../ports/clipboard/clipboard.port";
+import type { SyncUploadOutcome } from "../../ports/sync/sync-provider.port";
 import { ClipboardClearService } from "../../services/clipboard/clipboard-clear.service";
+import { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import { VaultLifecycleCleanupService } from "../../services/session/vault-lifecycle-cleanup.service";
+import { ChangeMasterPasswordUseCase } from "../vault-lifecycle/change-master-password";
 import { LockVaultUseCase } from "../vault-lifecycle/lock-vault";
 import { PerformDeviceEnrollmentUseCase } from "./perform-device-enrollment";
 
@@ -404,11 +407,10 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("uploads the signed enrollment even when local storage replaces it after save", async () => {
+  it("uploads the exact signed enrollment persisted by the local save", async () => {
     const ctx = createContext(true);
-    const getPersistedSnapshot = replaceVaultSnapshotAfterNextInitializedSave(
+    const getPersistedSnapshot = captureVaultSnapshotFromNextInitializedSave(
       ctx.ports,
-      ctx.response.snapshot,
     );
 
     await ctx.useCase.execute({
@@ -423,8 +425,6 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       ctx.ports.syncProvider.uploadVaultSnapshot,
     ).mock.calls[0]?.[1];
     expect(uploadedSnapshot).toBe(getPersistedSnapshot());
-    expect(uploadedSnapshot).not.toBe(ctx.ports.saved.vaultSnapshot);
-    expect(ctx.ports.saved.vaultSnapshot).toBe(ctx.response.snapshot);
   });
 
   it("uses retained target keys and removes pending state only after completion", async () => {
@@ -565,9 +565,18 @@ describe("PerformDeviceEnrollmentUseCase", () => {
         target: ctx.values.syncTarget,
       },
     );
-    expect(ctx.ports.saved.deviceSyncCredentialState).toBe(
-      ctx.values.encryptedDeviceSyncCredentialState,
-    );
+    await expect(
+      ctx.ports.crypto.decryptDeviceSyncCredentialState(
+        ctx.ports.saved.deviceSyncCredentialState!,
+        ctx.values.pendingDeviceLocalProtectionKey,
+        {
+          vaultId: ctx.values.vaultId,
+          deviceId: ctx.values.pendingDeviceId,
+          provider: ctx.values.syncTarget.provider,
+          target: ctx.values.syncTarget,
+        },
+      ),
+    ).resolves.toEqual({ currentCredentials: ctx.values.syncCredentials });
     expect(result).not.toHaveProperty("credentials");
     expect(result).not.toHaveProperty("syncConfig");
     expect(result.vault).not.toHaveProperty("syncTarget");
@@ -581,7 +590,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       ...ctx.values.decryptedVault,
       syncTarget: ctx.values.syncTarget,
       syncRemovalPending: {
-        expectedRemoteSnapshotDescriptor: null,
+        expectedRemoteSnapshotIdentity: null,
         rollbackSnapshot,
       },
     });
@@ -673,8 +682,18 @@ describe("PerformDeviceEnrollmentUseCase", () => {
 
     expect(ctx.ports.saved.localVaultDescriptor).toBeUndefined();
     expect(
-      ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfSnapshotMatches,
-    ).toHaveBeenCalledWith(ctx.values.vaultId, ctx.values.vaultSnapshotDigest);
+      ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfArtifactsMatch,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        vaultId: ctx.values.vaultId,
+        expectedDescriptor: expect.any(Object),
+        expectedDeviceAccessMaterial: expect.any(Object),
+        expectedDeviceAccessRecoveryBackup: expect.any(Object),
+        expectedSnapshotDigest: ctx.values.vaultSnapshotDigest,
+        expectedCheckpoint: expect.any(Object),
+        expectedSyncCredentialState: null,
+      }),
+    );
     expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
     expect(ctx.ports.scheduledTasks.cancelTask).toHaveBeenCalledWith({
       name: "lockVault",
@@ -698,7 +717,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
         .saveUnlockedVaultSessionMaterial,
     ).mockRejectedValueOnce(activationError);
     vi.mocked(
-      ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfSnapshotMatches,
+      ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfArtifactsMatch,
     ).mockRejectedValueOnce(new Error("local cleanup failed"));
 
     await expect(
@@ -726,7 +745,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
 
   it("preserves newer local state without reporting a rejected upload as complete", async () => {
     const ctx = createContext(true);
-    let rejectUpload: (error: Error) => void = () => undefined;
+    let resolveUpload: (outcome: SyncUploadOutcome) => void = () => undefined;
     let uploadStarted: () => void = () => undefined;
     const started = new Promise<void>((resolve) => {
       uploadStarted = resolve;
@@ -735,8 +754,8 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       ctx.ports.syncProvider.uploadVaultSnapshot,
     ).mockImplementationOnce(
       async () =>
-        new Promise<never>((_resolve, reject) => {
-          rejectUpload = reject;
+        new Promise<SyncUploadOutcome>((resolve) => {
+          resolveUpload = resolve;
           uploadStarted();
         }),
     );
@@ -761,7 +780,10 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       activeSession.unlockedVault,
       { [ctx.values.deviceId]: 3 },
     );
-    rejectUpload(new RemoteVaultSnapshotChangedError(ctx.values.vaultId));
+    resolveUpload({
+      status: "definitely_not_committed",
+      reason: "remote_snapshot_changed",
+    });
 
     await expect(execution).rejects.toBeInstanceOf(
       DeviceEnrollmentRollbackIncompleteError,
@@ -771,14 +793,14 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       sourceSnapshotVersionVector: { [ctx.values.deviceId]: 3 },
     });
     expect(
-      ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfSnapshotMatches,
+      ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfArtifactsMatch,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
   });
 
   it("preserves advanced session keys when rejected-upload rollback cannot read material", async () => {
     const ctx = createContext(true);
-    let rejectUpload: (error: Error) => void = () => undefined;
+    let resolveUpload: (outcome: SyncUploadOutcome) => void = () => undefined;
     let uploadStarted: () => void = () => undefined;
     const started = new Promise<void>((resolve) => {
       uploadStarted = resolve;
@@ -787,8 +809,8 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       ctx.ports.syncProvider.uploadVaultSnapshot,
     ).mockImplementationOnce(
       async () =>
-        new Promise<never>((_resolve, reject) => {
-          rejectUpload = reject;
+        new Promise<SyncUploadOutcome>((resolve) => {
+          resolveUpload = resolve;
           uploadStarted();
         }),
     );
@@ -817,7 +839,10 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       ctx.ports.unlockedVaultSessionMaterialRepository
         .getUnlockedVaultSessionMaterial,
     ).mockRejectedValueOnce(new Error("material read failed"));
-    rejectUpload(new RemoteVaultSnapshotChangedError(ctx.values.vaultId));
+    resolveUpload({
+      status: "definitely_not_committed",
+      reason: "remote_snapshot_changed",
+    });
 
     await expect(execution).rejects.toBeInstanceOf(
       DeviceEnrollmentRollbackIncompleteError,
@@ -837,7 +862,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
 
   it("preserves shared keys owned by a replacement same-vault session", async () => {
     const ctx = createContext(true);
-    let rejectUpload: (error: Error) => void = () => undefined;
+    let resolveUpload: (outcome: SyncUploadOutcome) => void = () => undefined;
     let uploadStarted: () => void = () => undefined;
     const started = new Promise<void>((resolve) => {
       uploadStarted = resolve;
@@ -846,8 +871,8 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       ctx.ports.syncProvider.uploadVaultSnapshot,
     ).mockImplementationOnce(
       async () =>
-        new Promise<never>((_resolve, reject) => {
-          rejectUpload = reject;
+        new Promise<SyncUploadOutcome>((resolve) => {
+          resolveUpload = resolve;
           uploadStarted();
         }),
     );
@@ -879,7 +904,10 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       activeSession.unlockedVault,
       activeSession.sourceSnapshotVersionVector,
     );
-    rejectUpload(new RemoteVaultSnapshotChangedError(ctx.values.vaultId));
+    resolveUpload({
+      status: "definitely_not_committed",
+      reason: "remote_snapshot_changed",
+    });
 
     await expect(execution).rejects.toBeInstanceOf(
       DeviceEnrollmentRollbackIncompleteError,
@@ -901,7 +929,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
 
   it("does not report rejected enrollment upload as complete after concurrent lock", async () => {
     const ctx = createContext(true);
-    let rejectUpload: (error: Error) => void = () => undefined;
+    let resolveUpload: (outcome: SyncUploadOutcome) => void = () => undefined;
     let uploadStarted: () => void = () => undefined;
     const started = new Promise<void>((resolve) => {
       uploadStarted = resolve;
@@ -910,8 +938,8 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       ctx.ports.syncProvider.uploadVaultSnapshot,
     ).mockImplementationOnce(
       async () =>
-        new Promise<never>((_resolve, reject) => {
-          rejectUpload = reject;
+        new Promise<SyncUploadOutcome>((resolve) => {
+          resolveUpload = resolve;
           uploadStarted();
         }),
     );
@@ -927,7 +955,10 @@ describe("PerformDeviceEnrollmentUseCase", () => {
 
     await started;
     await lockVault.execute();
-    rejectUpload(new RemoteVaultSnapshotChangedError(ctx.values.vaultId));
+    resolveUpload({
+      status: "definitely_not_committed",
+      reason: "remote_snapshot_changed",
+    });
 
     await expect(execution).rejects.toBeInstanceOf(
       DeviceEnrollmentRollbackIncompleteError,
@@ -935,14 +966,14 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     expect(ctx.ports.saved.localVaultDescriptor).toBeDefined();
     expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
     expect(
-      ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfSnapshotMatches,
+      ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfArtifactsMatch,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
   });
 
   it("does not remove a locally replaced enrollment snapshot", async () => {
     const ctx = createContext(true);
-    let rejectUpload: (error: Error) => void = () => undefined;
+    let resolveUpload: (outcome: SyncUploadOutcome) => void = () => undefined;
     let uploadStarted: () => void = () => undefined;
     const started = new Promise<void>((resolve) => {
       uploadStarted = resolve;
@@ -951,8 +982,8 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       ctx.ports.syncProvider.uploadVaultSnapshot,
     ).mockImplementationOnce(
       async () =>
-        new Promise<never>((_resolve, reject) => {
-          rejectUpload = reject;
+        new Promise<SyncUploadOutcome>((resolve) => {
+          resolveUpload = resolve;
           uploadStarted();
         }),
     );
@@ -967,7 +998,10 @@ describe("PerformDeviceEnrollmentUseCase", () => {
 
     await started;
     ctx.ports.saved.vaultSnapshotDigest = "newer-local-snapshot-digest";
-    rejectUpload(new RemoteVaultSnapshotChangedError(ctx.values.vaultId));
+    resolveUpload({
+      status: "definitely_not_committed",
+      reason: "remote_snapshot_changed",
+    });
 
     await expect(execution).rejects.toBeInstanceOf(
       DeviceEnrollmentRollbackIncompleteError,
@@ -978,15 +1012,142 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     );
     expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
     expect(
-      ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfSnapshotMatches,
+      ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfArtifactsMatch,
     ).toHaveBeenCalledOnce();
     expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
   });
 
-  it("returns recoverable local enrollment after an indeterminate upload failure", async () => {
+  it("preserves access records changed while a rejected enrollment upload is pending", async () => {
     const ctx = createContext(true);
-    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockRejectedValueOnce(
-      new Error("upload failed"),
+    let resolveUpload: (outcome: SyncUploadOutcome) => void = () => undefined;
+    let uploadStarted: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => {
+      uploadStarted = resolve;
+    });
+    vi.mocked(
+      ctx.ports.syncProvider.uploadVaultSnapshot,
+    ).mockImplementationOnce(
+      async () =>
+        new Promise<SyncUploadOutcome>((resolve) => {
+          resolveUpload = resolve;
+          uploadStarted();
+        }),
+    );
+    const otherContextSession = new UnlockedVaultSessionService(
+      ctx.ports.unlockedVaultSessionMaterialRepository,
+      ctx.ports.encryptedUnlockedVaultSessionPayloadRepository,
+      ctx.ports.crypto,
+      ctx.ports.ids,
+      ctx.ports.clipboardOperations,
+    );
+    const changeMasterPassword = new ChangeMasterPasswordUseCase(
+      ctx.ports.crypto,
+      ctx.ports.vaultLocalRepository,
+      otherContextSession,
+      ctx.ports.ids,
+    );
+
+    const execution = ctx.useCase.execute({
+      enrollmentResponse: ctx.response,
+      masterPassword: ctx.values.masterPassword,
+      deviceName: "New laptop",
+      lockAfterMs: 60_000,
+      syncConfig: ctx.values.syncConfigInput,
+    });
+
+    await started;
+    await changeMasterPassword.execute({
+      vaultId: ctx.values.vaultId,
+      currentMasterPassword: ctx.values.masterPassword,
+      newMasterPassword: ctx.values.newMasterPassword,
+    });
+    const changedMaterial = ctx.ports.saved.deviceAccessMaterial;
+    const changedBackup = ctx.ports.saved.deviceAccessRecoveryBackup;
+    expect(changedMaterial?.revision).toBe(2);
+    expect(changedBackup?.revision).toBe(2);
+
+    resolveUpload({
+      status: "definitely_not_committed",
+      reason: "remote_snapshot_changed",
+    });
+
+    await expect(execution).rejects.toBeInstanceOf(
+      DeviceEnrollmentRollbackIncompleteError,
+    );
+    expect(ctx.ports.saved.localVaultDescriptor).toBeDefined();
+    expect(ctx.ports.saved.deviceAccessMaterial).toBe(changedMaterial);
+    expect(ctx.ports.saved.deviceAccessRecoveryBackup).toBe(changedBackup);
+    expect(ctx.ports.saved.vaultSnapshot).toBeDefined();
+    expect(ctx.ports.saved.localVaultTrustCheckpoint).toBeDefined();
+    expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
+    expect(
+      ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfArtifactsMatch,
+    ).toHaveBeenCalledOnce();
+    expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
+  });
+
+  it("does not remove enrollment state after another reconciler replaces the staged upload intent", async () => {
+    const ctx = createContext(true);
+    vi.mocked(
+      ctx.ports.syncProvider.uploadVaultSnapshot,
+    ).mockImplementationOnce(async () => {
+      const snapshot = ctx.ports.saved.vaultSnapshot;
+      const snapshotDigest = ctx.ports.saved.vaultSnapshotDigest;
+      const checkpoint = ctx.ports.saved.localVaultTrustCheckpoint;
+      const stagedCredentialState = ctx.ports.saved.deviceSyncCredentialState;
+
+      if (
+        snapshot === undefined ||
+        snapshotDigest === undefined ||
+        checkpoint === undefined ||
+        stagedCredentialState === undefined
+      ) {
+        throw new Error("Expected a staged enrollment upload intent.");
+      }
+
+      await ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint({
+        expectedSnapshotDigest: snapshotDigest,
+        expectedCheckpoint: checkpoint,
+        expectedSyncCredentialState: stagedCredentialState,
+        snapshot,
+        checkpoint,
+        syncCredentialState: ctx.values.encryptedDeviceSyncCredentialState,
+      });
+
+      return {
+        status: "definitely_not_committed",
+        reason: "remote_snapshot_changed",
+      };
+    });
+
+    await expect(
+      ctx.useCase.execute({
+        enrollmentResponse: ctx.response,
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "New laptop",
+        lockAfterMs: 60_000,
+        syncConfig: ctx.values.syncConfigInput,
+      }),
+    ).rejects.toBeInstanceOf(DeviceEnrollmentRollbackIncompleteError);
+
+    expect(ctx.ports.saved.localVaultDescriptor).toBeDefined();
+    expect(ctx.ports.saved.vaultSnapshot).toBeDefined();
+    expect(ctx.ports.saved.deviceSyncCredentialState).toEqual(
+      ctx.values.encryptedDeviceSyncCredentialState,
+    );
+    expect(ctx.ports.saved.unlockedVaultSession).toBeUndefined();
+    expect(
+      ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfArtifactsMatch,
+    ).toHaveBeenCalledOnce();
+    expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
+  });
+
+  it("returns recoverable local enrollment after an outcome-unknown upload", async () => {
+    const ctx = createContext(true);
+    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockResolvedValueOnce(
+      {
+        status: "outcome_unknown",
+      },
     );
 
     const result = await ctx.useCase.execute({
@@ -1009,8 +1170,11 @@ describe("PerformDeviceEnrollmentUseCase", () => {
 
   it("keeps local state when session invalidation fails after a rejected upload", async () => {
     const ctx = createContext(true);
-    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockRejectedValueOnce(
-      new RemoteVaultSnapshotChangedError(ctx.values.vaultId),
+    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockResolvedValueOnce(
+      {
+        status: "definitely_not_committed",
+        reason: "remote_snapshot_changed",
+      },
     );
     vi.mocked(
       ctx.ports.unlockedVaultSessionMaterialRepository
@@ -1036,11 +1200,13 @@ describe("PerformDeviceEnrollmentUseCase", () => {
 
   it("reports incomplete rollback when rejected-upload local cleanup fails", async () => {
     const ctx = createContext(true);
-    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockRejectedValueOnce(
+    vi.mocked(
+      ctx.ports.syncProvider.prepareVaultSnapshotUpload,
+    ).mockRejectedValueOnce(
       new RemoteVaultSnapshotChangedError(ctx.values.vaultId),
     );
     vi.mocked(
-      ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfSnapshotMatches,
+      ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfArtifactsMatch,
     ).mockRejectedValueOnce(new Error("local cleanup failed"));
 
     const execution = ctx.useCase.execute({
@@ -1065,13 +1231,16 @@ describe("PerformDeviceEnrollmentUseCase", () => {
   it("preserves the active session and local enrollment when rollback coordination is unavailable", async () => {
     const ctx = createContext(true);
     const coordinationError = new Error("clipboard coordination unavailable");
-    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockRejectedValueOnce(
+    vi.mocked(
+      ctx.ports.syncProvider.prepareVaultSnapshotUpload,
+    ).mockRejectedValueOnce(
       new RemoteVaultSnapshotChangedError(ctx.values.vaultId),
     );
     const runExclusive = ctx.clipboardOperations.runExclusive.bind(
       ctx.clipboardOperations,
     );
     vi.spyOn(ctx.clipboardOperations, "runExclusive")
+      .mockImplementationOnce(runExclusive)
       .mockImplementationOnce(runExclusive)
       .mockImplementationOnce(runExclusive)
       .mockRejectedValueOnce(coordinationError);
@@ -1106,7 +1275,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
         .removeEncryptedUnlockedVaultSessionPayload,
     ).not.toHaveBeenCalled();
     expect(
-      ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfSnapshotMatches,
+      ctx.ports.vaultLocalRepository.removePersistedLocalVaultIfArtifactsMatch,
     ).not.toHaveBeenCalled();
     expect(ctx.ports.saved.localVaultDescriptor).toBeDefined();
     expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
@@ -1124,8 +1293,11 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       copiedValueHash: `hash:${singlePasswordEntry.password}`,
       expiresAt: ctx.values.timestamp + 60_000,
     });
-    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockRejectedValueOnce(
-      new RemoteVaultSnapshotChangedError(ctx.values.vaultId),
+    vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockResolvedValueOnce(
+      {
+        status: "definitely_not_committed",
+        reason: "remote_snapshot_changed",
+      },
     );
 
     await expect(

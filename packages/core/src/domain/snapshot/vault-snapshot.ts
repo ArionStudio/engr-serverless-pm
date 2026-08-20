@@ -5,6 +5,7 @@ import type {
 import type { Vault } from "../vault/vault";
 import type { VersionVector } from "../versioning/version-vector.type";
 import type { DeviceKeySlot } from "./key-slot";
+import type { VaultSnapshotIdentity } from "./vault-snapshot-descriptor.type";
 import type { VaultTrustChain } from "../device-trust/vault-trust";
 
 export type VaultSnapshotSchemaVersion = 1;
@@ -18,6 +19,7 @@ export type VaultSnapshotMetadata = {
   algorithmSuiteId: string;
   createdByDeviceId: string;
   vaultKeyGeneration: number;
+  uploadExpectedRemoteSnapshotIdentity?: VaultSnapshotIdentity | null;
 };
 
 export type UnsignedVaultSnapshot = {

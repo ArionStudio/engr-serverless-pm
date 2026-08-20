@@ -11,6 +11,7 @@ import type {
   SyncSetupInput,
   VaultSnapshot,
   VaultSnapshotDescriptor,
+  VaultSnapshotIdentity,
 } from "@lfspm/core";
 import type { Base64URLString } from "@lfspm/core/lib";
 import type { AsymmetricKeyValidator } from "../crypto";
@@ -44,6 +45,11 @@ const descriptor: VaultSnapshotDescriptor = {
   vaultId: "vault/id",
   snapshotVersionVector: { "device-id": 3 },
   revisionTimestamp: 47,
+};
+const snapshotDigest = "snapshot-digest";
+const expectedRemoteSnapshotIdentity: VaultSnapshotIdentity = {
+  descriptor,
+  snapshotDigest,
 };
 
 const b64 = (value: string) => value as Base64URLString;
@@ -132,6 +138,42 @@ const syncAccess: SyncAccess = {
     },
   },
 };
+
+async function uploadVaultSnapshot(
+  provider: AwsS3SyncProvider,
+  access: SyncAccess,
+  candidate: VaultSnapshot,
+  expectedRemoteIdentity: VaultSnapshotIdentity | null,
+) {
+  const prepared = await provider.prepareVaultSnapshotUpload(
+    access,
+    candidate,
+    expectedRemoteIdentity,
+  );
+
+  if (prepared.status === "not_started") {
+    return prepared.outcome;
+  }
+
+  return prepared.start().outcome;
+}
+
+async function removeVaultSnapshots(
+  provider: AwsS3SyncProvider,
+  access: SyncAccess,
+  vaultId: string,
+  expectedRemoteIdentity: VaultSnapshotIdentity | null,
+): Promise<void> {
+  const prepared = await provider.prepareVaultSnapshotRemoval(
+    access,
+    vaultId,
+    expectedRemoteIdentity,
+  );
+
+  if (prepared.status === "ready") {
+    await prepared.start().outcome;
+  }
+}
 
 class HostileSetupInput {
   readonly provider = "aws-s3-v1" as const;
@@ -665,7 +707,9 @@ describe("AwsS3SyncProvider", () => {
     const client = createClient();
     const provider = createTestProvider(client);
 
-    await provider.uploadVaultSnapshot(syncAccess, snapshot, null);
+    await expect(
+      uploadVaultSnapshot(provider, syncAccess, snapshot, null),
+    ).resolves.toEqual({ status: "committed" });
 
     expect(client.getObject).not.toHaveBeenCalled();
     expect(client.putObject).toHaveBeenCalledWith({
@@ -684,11 +728,69 @@ describe("AwsS3SyncProvider", () => {
     );
     const provider = createTestProvider(client);
 
-    await provider.uploadVaultSnapshot(syncAccess, snapshot, descriptor);
+    const prepared = await provider.prepareVaultSnapshotUpload(
+      syncAccess,
+      snapshot,
+      expectedRemoteSnapshotIdentity,
+    );
+
+    expect(client.getObject).toHaveBeenCalledOnce();
+    expect(client.putObject).not.toHaveBeenCalled();
+    expect(prepared.status).toBe("ready");
+
+    if (prepared.status !== "ready") {
+      throw new Error("Expected a prepared conditional upload.");
+    }
+
+    const started = prepared.start();
+    expect(client.putObject).toHaveBeenCalledOnce();
+    await expect(started.outcome).resolves.toEqual({ status: "committed" });
 
     expect(client.putObject).toHaveBeenCalledWith(
       expect.objectContaining({ IfMatch: '"remote-etag"' }),
     );
+  });
+
+  it("does not replace a same-descriptor object with a different digest", async () => {
+    const client = createClient();
+    vi.mocked(client.getObject).mockResolvedValueOnce(
+      remoteResponse(descriptor, '"remote-etag"'),
+    );
+    const provider = createTestProvider(client, "substituted-snapshot-digest");
+
+    await expect(
+      uploadVaultSnapshot(
+        provider,
+        syncAccess,
+        snapshot,
+        expectedRemoteSnapshotIdentity,
+      ),
+    ).resolves.toEqual({
+      status: "definitely_not_committed",
+      reason: "remote_snapshot_changed",
+    });
+    expect(client.putObject).not.toHaveBeenCalled();
+  });
+
+  it("classifies a mismatched upload before requiring an ETag", async () => {
+    const client = createClient();
+    vi.mocked(client.getObject).mockResolvedValueOnce(
+      remoteResponse(descriptor),
+    );
+    const provider = createTestProvider(client, "substituted-snapshot-digest");
+
+    await expect(
+      uploadVaultSnapshot(
+        provider,
+        syncAccess,
+        snapshot,
+        expectedRemoteSnapshotIdentity,
+      ),
+    ).resolves.toEqual({
+      status: "definitely_not_committed",
+      reason: "remote_snapshot_changed",
+    });
+    expect(client.putObject).not.toHaveBeenCalled();
   });
 
   it("rejects a matching upload record without an ETag before writing", async () => {
@@ -699,24 +801,261 @@ describe("AwsS3SyncProvider", () => {
     const provider = createTestProvider(client);
 
     await expect(
-      provider.uploadVaultSnapshot(syncAccess, snapshot, descriptor),
+      provider.prepareVaultSnapshotUpload(
+        syncAccess,
+        snapshot,
+        expectedRemoteSnapshotIdentity,
+      ),
     ).rejects.toBeInstanceOf(codec.InvalidRemoteVaultSnapshotRecordError);
     expect(client.putObject).not.toHaveBeenCalled();
   });
 
-  it("maps conditional put conflicts to the core conflict error", async () => {
+  it("reports a mismatched expected vault as definitely not committed before remote access", async () => {
+    const client = createClient();
+    const provider = createTestProvider(client);
+
+    await expect(
+      uploadVaultSnapshot(provider, syncAccess, snapshot, {
+        ...expectedRemoteSnapshotIdentity,
+        descriptor: {
+          ...descriptor,
+          vaultId: "other-vault",
+        },
+      }),
+    ).resolves.toEqual({
+      status: "definitely_not_committed",
+      reason: "remote_snapshot_changed",
+    });
+    expect(client.getObject).not.toHaveBeenCalled();
+    expect(client.putObject).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["precondition failure", "PreconditionFailed", 412],
+    ["conditional conflict", "ConditionalRequestConflict", 409],
+    ["concurrent removal", "NoSuchKey", 404],
+  ])(
+    "maps a single-attempt %s to a definite non-commit",
+    async (_case, name, status) => {
+      const client = createClient();
+      vi.mocked(client.getObject).mockResolvedValueOnce(
+        remoteResponse(descriptor, '"remote-etag"'),
+      );
+      vi.mocked(client.putObject).mockRejectedValueOnce(
+        awsError(name, status, 1),
+      );
+      const provider = createTestProvider(client);
+
+      await expect(
+        uploadVaultSnapshot(
+          provider,
+          syncAccess,
+          snapshot,
+          expectedRemoteSnapshotIdentity,
+        ),
+      ).resolves.toEqual({
+        status: "definitely_not_committed",
+        reason: "remote_snapshot_changed",
+      });
+    },
+  );
+
+  it.each([
+    ["missing bucket", "NoSuchBucket", 404],
+    ["authorization rejection", "AccessDenied", 403],
+    ["invalid request", "InvalidRequest", 400],
+  ])(
+    "maps a single-attempt %s to a definite provider rejection",
+    async (_case, name, status) => {
+      const client = createClient();
+      vi.mocked(client.getObject).mockResolvedValueOnce(
+        remoteResponse(descriptor, '"remote-etag"'),
+      );
+      vi.mocked(client.putObject).mockRejectedValueOnce(
+        awsError(name, status, 1),
+      );
+      const provider = createTestProvider(client);
+
+      await expect(
+        uploadVaultSnapshot(
+          provider,
+          syncAccess,
+          snapshot,
+          expectedRemoteSnapshotIdentity,
+        ),
+      ).resolves.toEqual({
+        status: "definitely_not_committed",
+        reason: "provider_rejected",
+      });
+    },
+  );
+
+  it.each([
+    ["missing attempt metadata", undefined],
+    ["multiple attempts", 2],
+  ])(
+    "keeps a conditional failure outcome unknown with %s",
+    async (_case, attempts) => {
+      const client = createClient();
+      vi.mocked(client.getObject).mockResolvedValueOnce(
+        remoteResponse(descriptor, '"remote-etag"'),
+      );
+      vi.mocked(client.putObject).mockRejectedValueOnce(
+        awsError("PreconditionFailed", 412, attempts),
+      );
+      const provider = createTestProvider(client);
+
+      await expect(
+        uploadVaultSnapshot(
+          provider,
+          syncAccess,
+          snapshot,
+          expectedRemoteSnapshotIdentity,
+        ),
+      ).resolves.toEqual({ status: "outcome_unknown" });
+    },
+  );
+
+  it("keeps a generic put failure outcome unknown", async () => {
     const client = createClient();
     vi.mocked(client.getObject).mockResolvedValueOnce(
       remoteResponse(descriptor, '"remote-etag"'),
     );
     vi.mocked(client.putObject).mockRejectedValueOnce(
-      awsError("PreconditionFailed", 412),
+      new Error("network unavailable"),
     );
     const provider = createTestProvider(client);
 
     await expect(
-      provider.uploadVaultSnapshot(syncAccess, snapshot, descriptor),
-    ).rejects.toBeInstanceOf(RemoteVaultSnapshotChangedError);
+      uploadVaultSnapshot(
+        provider,
+        syncAccess,
+        snapshot,
+        expectedRemoteSnapshotIdentity,
+      ),
+    ).resolves.toEqual({ status: "outcome_unknown" });
+  });
+
+  it.each([
+    ["status-only conflict", 409],
+    ["status-only not found", 404],
+  ])(
+    "maps a single-attempt conditional %s to a remote change",
+    async (_case, status) => {
+      const client = createClient();
+      vi.mocked(client.getObject).mockResolvedValueOnce(
+        remoteResponse(descriptor, '"remote-etag"'),
+      );
+      vi.mocked(client.putObject).mockRejectedValueOnce({
+        $metadata: { httpStatusCode: status, attempts: 1 },
+      });
+      const provider = createTestProvider(client);
+
+      await expect(
+        uploadVaultSnapshot(
+          provider,
+          syncAccess,
+          snapshot,
+          expectedRemoteSnapshotIdentity,
+        ),
+      ).resolves.toEqual({
+        status: "definitely_not_committed",
+        reason: "remote_snapshot_changed",
+      });
+    },
+  );
+
+  it.each([
+    ["request timeout", "RequestTimeout", 400],
+    ["rate limit", "TooManyRequests", 429],
+  ])(
+    "keeps a single-attempt %s outcome unknown",
+    async (_case, name, status) => {
+      const client = createClient();
+      vi.mocked(client.getObject).mockResolvedValueOnce(
+        remoteResponse(descriptor, '"remote-etag"'),
+      );
+      vi.mocked(client.putObject).mockRejectedValueOnce(
+        awsError(name, status, 1),
+      );
+      const provider = createTestProvider(client);
+
+      await expect(
+        uploadVaultSnapshot(
+          provider,
+          syncAccess,
+          snapshot,
+          expectedRemoteSnapshotIdentity,
+        ),
+      ).resolves.toEqual({ status: "outcome_unknown" });
+    },
+  );
+
+  it("keeps a retried provider rejection outcome unknown", async () => {
+    const client = createClient();
+    vi.mocked(client.getObject).mockResolvedValueOnce(
+      remoteResponse(descriptor, '"remote-etag"'),
+    );
+    vi.mocked(client.putObject).mockRejectedValueOnce(
+      awsError("NoSuchBucket", 404, 2),
+    );
+    const provider = createTestProvider(client);
+
+    await expect(
+      uploadVaultSnapshot(
+        provider,
+        syncAccess,
+        snapshot,
+        expectedRemoteSnapshotIdentity,
+      ),
+    ).resolves.toEqual({ status: "outcome_unknown" });
+  });
+
+  it("keeps the outcome unknown when a hostile put rejection cannot be inspected", async () => {
+    const client = createClient();
+    vi.mocked(client.getObject).mockResolvedValueOnce(
+      remoteResponse(descriptor, '"remote-etag"'),
+    );
+    const hostileError = Object.defineProperty({}, "$metadata", {
+      get() {
+        throw new Error("metadata access denied");
+      },
+    });
+    vi.mocked(client.putObject).mockRejectedValueOnce(hostileError);
+    const provider = createTestProvider(client);
+
+    await expect(
+      uploadVaultSnapshot(
+        provider,
+        syncAccess,
+        snapshot,
+        expectedRemoteSnapshotIdentity,
+      ),
+    ).resolves.toEqual({ status: "outcome_unknown" });
+  });
+
+  it("reports outcome unknown when the remote commit succeeds before the local response fails", async () => {
+    const client = createClient();
+    let remoteCommitted = false;
+    vi.mocked(client.putObject).mockImplementationOnce(async () => {
+      remoteCommitted = true;
+      throw new Error("response lost after commit");
+    });
+    vi.mocked(client.getObject).mockImplementationOnce(async () => {
+      if (!remoteCommitted) {
+        throw awsError("NoSuchKey", 404, 1);
+      }
+
+      return remoteResponse(descriptor, '"committed-etag"');
+    });
+    const provider = createTestProvider(client);
+
+    await expect(
+      uploadVaultSnapshot(provider, syncAccess, snapshot, null),
+    ).resolves.toEqual({ status: "outcome_unknown" });
+    await expect(
+      provider.getLatestVaultSnapshotDescriptor(syncAccess, descriptor.vaultId),
+    ).resolves.toEqual(descriptor);
   });
 
   it("conditionally removes matching state and treats absence as success", async () => {
@@ -726,15 +1065,28 @@ describe("AwsS3SyncProvider", () => {
       .mockRejectedValueOnce(awsError("NoSuchKey", 404));
     const provider = createTestProvider(client);
 
-    await provider.removeVaultSnapshots(
+    const prepared = await provider.prepareVaultSnapshotRemoval(
       syncAccess,
       descriptor.vaultId,
-      descriptor,
+      expectedRemoteSnapshotIdentity,
     );
-    await provider.removeVaultSnapshots(
+
+    expect(client.getObject).toHaveBeenCalledOnce();
+    expect(client.deleteObject).not.toHaveBeenCalled();
+    expect(prepared.status).toBe("ready");
+
+    if (prepared.status !== "ready") {
+      throw new Error("Expected a prepared conditional removal.");
+    }
+
+    const started = prepared.start();
+    expect(client.deleteObject).toHaveBeenCalledOnce();
+    await started.outcome;
+    await removeVaultSnapshots(
+      provider,
       syncAccess,
       descriptor.vaultId,
-      descriptor,
+      expectedRemoteSnapshotIdentity,
     );
 
     expect(client.deleteObject).toHaveBeenCalledOnce();
@@ -753,7 +1105,11 @@ describe("AwsS3SyncProvider", () => {
     const provider = createTestProvider(client);
 
     await expect(
-      provider.removeVaultSnapshots(syncAccess, descriptor.vaultId, descriptor),
+      provider.prepareVaultSnapshotRemoval(
+        syncAccess,
+        descriptor.vaultId,
+        expectedRemoteSnapshotIdentity,
+      ),
     ).rejects.toBeInstanceOf(codec.InvalidRemoteVaultSnapshotRecordError);
     expect(client.deleteObject).not.toHaveBeenCalled();
   });
@@ -766,7 +1122,43 @@ describe("AwsS3SyncProvider", () => {
     const provider = createTestProvider(client);
 
     await expect(
-      provider.removeVaultSnapshots(syncAccess, descriptor.vaultId, null),
+      removeVaultSnapshots(provider, syncAccess, descriptor.vaultId, null),
+    ).rejects.toBeInstanceOf(RemoteVaultSnapshotChangedError);
+    expect(client.deleteObject).not.toHaveBeenCalled();
+  });
+
+  it("does not delete same-descriptor state with a different digest", async () => {
+    const client = createClient();
+    vi.mocked(client.getObject).mockResolvedValueOnce(
+      remoteResponse(descriptor, '"remote-etag"'),
+    );
+    const provider = createTestProvider(client, "different-snapshot-digest");
+
+    await expect(
+      removeVaultSnapshots(
+        provider,
+        syncAccess,
+        descriptor.vaultId,
+        expectedRemoteSnapshotIdentity,
+      ),
+    ).rejects.toBeInstanceOf(RemoteVaultSnapshotChangedError);
+    expect(client.deleteObject).not.toHaveBeenCalled();
+  });
+
+  it("classifies a mismatched removal before requiring an ETag", async () => {
+    const client = createClient();
+    vi.mocked(client.getObject).mockResolvedValueOnce(
+      remoteResponse(descriptor),
+    );
+    const provider = createTestProvider(client, "different-snapshot-digest");
+
+    await expect(
+      removeVaultSnapshots(
+        provider,
+        syncAccess,
+        descriptor.vaultId,
+        expectedRemoteSnapshotIdentity,
+      ),
     ).rejects.toBeInstanceOf(RemoteVaultSnapshotChangedError);
     expect(client.deleteObject).not.toHaveBeenCalled();
   });
@@ -779,7 +1171,12 @@ describe("AwsS3SyncProvider", () => {
     const provider = createTestProvider(client);
 
     await expect(
-      provider.removeVaultSnapshots(syncAccess, "other-vault", descriptor),
+      removeVaultSnapshots(
+        provider,
+        syncAccess,
+        "other-vault",
+        expectedRemoteSnapshotIdentity,
+      ),
     ).rejects.toBeInstanceOf(RemoteVaultSnapshotChangedError);
     expect(client.deleteObject).not.toHaveBeenCalled();
   });
@@ -853,10 +1250,14 @@ function createClientFactory(client: S3SyncClient): S3SyncClientFactory {
   return vi.fn(() => client);
 }
 
-function createTestProvider(client: S3SyncClient): AwsS3SyncProvider {
+function createTestProvider(
+  client: S3SyncClient,
+  remoteSnapshotDigest = snapshotDigest,
+): AwsS3SyncProvider {
   return new AwsS3SyncProvider(
     createClientFactory(client),
     asymmetricKeyValidator,
+    { digestVaultSnapshot: vi.fn(async () => remoteSnapshotDigest) },
   );
 }
 
@@ -925,9 +1326,12 @@ function remoteResponse(
   );
 }
 
-function awsError(name: string, httpStatusCode: number) {
+function awsError(name: string, httpStatusCode: number, attempts?: number) {
   return Object.assign(new Error(name), {
     name,
-    $metadata: { httpStatusCode },
+    $metadata: {
+      httpStatusCode,
+      ...(attempts === undefined ? {} : { attempts }),
+    },
   });
 }

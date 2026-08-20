@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  areVaultSnapshotIdentitiesEqual,
   areVaultSnapshotDescriptorsEqual,
   compareVaultSnapshotDescriptors,
 } from "./vault-snapshot-descriptor.utils";
@@ -49,6 +50,34 @@ describe("vault snapshot descriptor utils", () => {
       ),
     ).toBe("remote_ahead");
   });
+
+  it.each([
+    [{ A: 1 }, { A: 1 }],
+    [{ A: 2 }, { A: 1 }],
+    [{ A: 1 }, { A: 2 }],
+    [
+      { A: 2, B: 1 },
+      { A: 1, B: 2 },
+    ],
+  ])(
+    "treats different vaults as broken before comparing vectors",
+    (localVector, remoteVector) => {
+      expect(
+        compareVaultSnapshotDescriptors(
+          {
+            vaultId: "local-vault-id",
+            snapshotVersionVector: localVector,
+            revisionTimestamp: 1,
+          },
+          {
+            vaultId: "remote-vault-id",
+            snapshotVersionVector: remoteVector,
+            revisionTimestamp: 2,
+          },
+        ),
+      ).toBe("broken");
+    },
+  );
 
   it("checks descriptor equality by vault id, vector, and timestamp", () => {
     expect(
@@ -105,6 +134,27 @@ describe("vault snapshot descriptor utils", () => {
           snapshotVersionVector: { A: 7 },
           revisionTimestamp: 2,
         },
+      ),
+    ).toBe(false);
+  });
+
+  it("requires the digest as well as the descriptor for snapshot identity equality", () => {
+    const descriptor = {
+      vaultId: "vault-id",
+      snapshotVersionVector: { A: 7 },
+      revisionTimestamp: 1,
+    };
+
+    expect(
+      areVaultSnapshotIdentitiesEqual(
+        { descriptor, snapshotDigest: "digest-a" },
+        { descriptor: { ...descriptor }, snapshotDigest: "digest-a" },
+      ),
+    ).toBe(true);
+    expect(
+      areVaultSnapshotIdentitiesEqual(
+        { descriptor, snapshotDigest: "digest-a" },
+        { descriptor: { ...descriptor }, snapshotDigest: "digest-b" },
       ),
     ).toBe(false);
   });

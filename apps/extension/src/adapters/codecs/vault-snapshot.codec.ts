@@ -14,6 +14,7 @@ import {
   type Vault,
   type VaultSnapshot,
   type VaultSnapshotDescriptor,
+  type VaultSnapshotIdentity,
   type VaultTrustCertificate,
 } from "@lfspm/core";
 import { passwordEntryInputSchema, tagSchema } from "@lfspm/core";
@@ -250,16 +251,20 @@ export function decodeVaultSnapshot(
       "content",
       "signature",
     ]);
-    const metadata = exactRecord(record.metadata, [
-      "id",
-      "schemaVersion",
-      "vaultCreationTimestamp",
-      "revisionTimestamp",
-      "snapshotVersionVector",
-      "algorithmSuiteId",
-      "createdByDeviceId",
-      "vaultKeyGeneration",
-    ]);
+    const metadata = exactRecord(
+      record.metadata,
+      [
+        "id",
+        "schemaVersion",
+        "vaultCreationTimestamp",
+        "revisionTimestamp",
+        "snapshotVersionVector",
+        "algorithmSuiteId",
+        "createdByDeviceId",
+        "vaultKeyGeneration",
+      ],
+      ["uploadExpectedRemoteSnapshotIdentity"],
+    );
     if (metadata.schemaVersion !== 1) {
       throw new Error("version");
     }
@@ -293,6 +298,16 @@ export function decodeVaultSnapshot(
         algorithmSuiteId: nonBlankString(metadata.algorithmSuiteId),
         createdByDeviceId: nonBlankString(metadata.createdByDeviceId),
         vaultKeyGeneration: safeInteger(metadata.vaultKeyGeneration, 1),
+        ...(metadata.uploadExpectedRemoteSnapshotIdentity === undefined
+          ? {}
+          : {
+              uploadExpectedRemoteSnapshotIdentity:
+                metadata.uploadExpectedRemoteSnapshotIdentity === null
+                  ? null
+                  : decodeVaultSnapshotIdentity(
+                      metadata.uploadExpectedRemoteSnapshotIdentity,
+                    ),
+            }),
       },
       trustChain: { certificates },
       keySlots: { deviceSlots },
@@ -311,6 +326,16 @@ export function encodeVaultSnapshot(snapshot: VaultSnapshot): unknown {
       snapshotVersionVector: encodeVersionVector(
         snapshot.metadata.snapshotVersionVector,
       ),
+      ...(snapshot.metadata.uploadExpectedRemoteSnapshotIdentity === undefined
+        ? {}
+        : {
+            uploadExpectedRemoteSnapshotIdentity:
+              snapshot.metadata.uploadExpectedRemoteSnapshotIdentity === null
+                ? null
+                : encodeVaultSnapshotIdentity(
+                    snapshot.metadata.uploadExpectedRemoteSnapshotIdentity,
+                  ),
+          }),
     },
     trustChain: {
       certificates: snapshot.trustChain.certificates.map(
@@ -353,6 +378,26 @@ export function encodeVaultSnapshotDescriptor(
       descriptor.snapshotVersionVector,
     ),
     revisionTimestamp: descriptor.revisionTimestamp,
+  };
+}
+
+export function decodeVaultSnapshotIdentity(
+  value: unknown,
+): VaultSnapshotIdentity {
+  const record = exactRecord(value, ["descriptor", "snapshotDigest"]);
+
+  return {
+    descriptor: decodeVaultSnapshotDescriptor(record.descriptor),
+    snapshotDigest: canonicalDigest(record.snapshotDigest),
+  };
+}
+
+export function encodeVaultSnapshotIdentity(
+  identity: VaultSnapshotIdentity,
+): unknown {
+  return {
+    descriptor: encodeVaultSnapshotDescriptor(identity.descriptor),
+    snapshotDigest: identity.snapshotDigest,
   };
 }
 
@@ -513,15 +558,15 @@ export function decodeVault(value: unknown): Vault {
     }
     if (record.syncRemovalPending !== undefined) {
       const pending = exactRecord(record.syncRemovalPending, [
-        "expectedRemoteSnapshotDescriptor",
+        "expectedRemoteSnapshotIdentity",
         "rollbackSnapshot",
       ]);
       result.syncRemovalPending = {
-        expectedRemoteSnapshotDescriptor:
-          pending.expectedRemoteSnapshotDescriptor === null
+        expectedRemoteSnapshotIdentity:
+          pending.expectedRemoteSnapshotIdentity === null
             ? null
-            : decodeVaultSnapshotDescriptor(
-                pending.expectedRemoteSnapshotDescriptor,
+            : decodeVaultSnapshotIdentity(
+                pending.expectedRemoteSnapshotIdentity,
               ),
         rollbackSnapshot: decodeVaultSnapshot(
           pending.rollbackSnapshot,
@@ -569,11 +614,11 @@ export function encodeVault(vault: Vault): unknown {
       ? {}
       : {
           syncRemovalPending: {
-            expectedRemoteSnapshotDescriptor:
-              vault.syncRemovalPending.expectedRemoteSnapshotDescriptor === null
+            expectedRemoteSnapshotIdentity:
+              vault.syncRemovalPending.expectedRemoteSnapshotIdentity === null
                 ? null
-                : encodeVaultSnapshotDescriptor(
-                    vault.syncRemovalPending.expectedRemoteSnapshotDescriptor,
+                : encodeVaultSnapshotIdentity(
+                    vault.syncRemovalPending.expectedRemoteSnapshotIdentity,
                   ),
             rollbackSnapshot: encodeVaultSnapshot(
               vault.syncRemovalPending.rollbackSnapshot,

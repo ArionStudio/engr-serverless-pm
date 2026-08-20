@@ -25,14 +25,22 @@ export interface VaultLocalRepositoryPort {
   }) => Promise<void>;
   removePersistedLocalVault: (vaultId: string) => Promise<void>;
   /**
-   * Atomically removes all local records for a vault only when its current
-   * snapshot still matches `expectedSnapshotDigest`. Returns false without
-   * changing any record when the snapshot is absent or has changed.
+   * Atomically removes all initialized local records only when every record
+   * still exactly belongs to the operation requesting rollback. The snapshot
+   * is compared by digest; all other artifacts are compared exactly, and a
+   * `null` sync credential expectation means the record must be absent.
+   * Returns false without changing any record when an expectation changed or
+   * disappeared.
    */
-  removePersistedLocalVaultIfSnapshotMatches: (
-    vaultId: string,
-    expectedSnapshotDigest: string,
-  ) => Promise<boolean>;
+  removePersistedLocalVaultIfArtifactsMatch: (params: {
+    readonly vaultId: string;
+    readonly expectedDescriptor: LocalVaultDescriptor;
+    readonly expectedDeviceAccessMaterial: DeviceAccessMaterial;
+    readonly expectedDeviceAccessRecoveryBackup: DeviceAccessRecoveryBackup;
+    readonly expectedSnapshotDigest: string;
+    readonly expectedCheckpoint: LocalVaultTrustCheckpoint;
+    readonly expectedSyncCredentialState: EncryptedDeviceSyncCredentialState | null;
+  }) => Promise<boolean>;
 
   saveLocalVaultDescriptor: (descriptor: LocalVaultDescriptor) => Promise<void>;
   getLocalVaultDescriptor: (
@@ -104,17 +112,31 @@ export interface VaultLocalRepositoryPort {
 
   /**
    * Atomically replaces the snapshot, signed rollback checkpoint, and optional
-   * local sync credential state only when the persisted snapshot still matches
-   * `expectedSnapshotDigest`. An omitted credential state remains unchanged;
-   * `null` removes it. Rejects with `LocalVaultSnapshotChangedError` without
-   * changing any record when the expected snapshot is no longer current.
+   * local sync credential state only when the persisted snapshot and exact
+   * signed checkpoint still match their expectations. When replacing
+   * credentials, callers must also provide the exact expected encrypted
+   * credential state; `null` means absent.
+   * An omitted credential state remains unchanged; `null` removes it. Rejects
+   * with `LocalVaultSnapshotChangedError` without changing any record when
+   * either expected artifact is no longer current.
    */
-  saveVaultSnapshotWithCheckpoint: (params: {
-    readonly expectedSnapshotDigest: string;
-    readonly snapshot: VaultSnapshot;
-    readonly checkpoint: LocalVaultTrustCheckpoint;
-    readonly syncCredentialState?: EncryptedDeviceSyncCredentialState | null;
-  }) => Promise<void>;
+  saveVaultSnapshotWithCheckpoint: (
+    params: {
+      readonly expectedSnapshotDigest: string;
+      readonly expectedCheckpoint: LocalVaultTrustCheckpoint;
+      readonly snapshot: VaultSnapshot;
+      readonly checkpoint: LocalVaultTrustCheckpoint;
+    } & (
+      | {
+          readonly expectedSyncCredentialState?: never;
+          readonly syncCredentialState?: never;
+        }
+      | {
+          readonly expectedSyncCredentialState: EncryptedDeviceSyncCredentialState | null;
+          readonly syncCredentialState: EncryptedDeviceSyncCredentialState | null;
+        }
+    ),
+  ) => Promise<void>;
   getLocalVaultTrustCheckpoint: (
     vaultId: string,
   ) => Promise<LocalVaultTrustCheckpoint | null>;

@@ -36,7 +36,10 @@ import type { CryptoPort } from "../../ports/crypto/crypto.port";
 import type { EncryptedUnlockedVaultSessionPayloadRepositoryPort } from "../../ports/session/encrypted-unlocked-vault-session-payload-repository.port";
 import type { IdPort } from "../../ports/system/id.port";
 import type { ScheduledTaskPort } from "../../ports/system/scheduled-task.port";
-import type { SyncProviderPort } from "../../ports/sync/sync-provider.port";
+import type {
+  SyncProviderPort,
+  SyncUploadOutcome,
+} from "../../ports/sync/sync-provider.port";
 import type { VaultDisplayNamePort } from "../../ports/vault/vault-display-name.port";
 import type {
   VaultLockTask,
@@ -45,13 +48,18 @@ import type {
 import type { UnlockedVaultSessionMaterialRepositoryPort } from "../../ports/session/unlocked-vault-session-material-repository.port";
 import type { VaultLocalRepositoryPort } from "../../ports/vault/vault-local-repository.port";
 import { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
-import { createCoreTestValues, type CoreTestValues } from "./values";
+import { b64, createCoreTestValues, type CoreTestValues } from "./values";
 import type { LocalVaultTrustCheckpoint } from "../../domain/device-trust";
-import type { EncryptedDeviceSyncCredentialState } from "../../domain/sync";
+import type {
+  DeviceSyncCredentialState,
+  EncryptedDeviceSyncCredentialState,
+} from "../../domain/sync";
 import type { PendingDeviceEnrollment } from "../../domain/device-trust";
 import { LocalVaultSnapshotChangedError } from "../../errors/vault-snapshot.errors";
 import { LocalVaultAlreadyInitializedError } from "../../errors/vault-lifecycle.errors";
 import { DeviceAccessMaterialChangedError } from "../../errors/vault-device.errors";
+import { areJsonEqual } from "../../domain/common";
+import { areArrayBuffersEqual } from "../../domain/common/array-buffer.utils";
 
 export type SavedCoreRecords = {
   unlockedVaultSessionEpoch: number;
@@ -73,19 +81,90 @@ export type SavedCoreRecords = {
 
 export type CoreTestPorts = ReturnType<typeof createCoreTestPorts>;
 
-function requirePersistedSnapshot(
+type TestSyncProviderPort = SyncProviderPort & {
+  readonly uploadVaultSnapshot: (
+    ...args: Parameters<SyncProviderPort["prepareVaultSnapshotUpload"]>
+  ) => Promise<SyncUploadOutcome>;
+  readonly removeVaultSnapshots: (
+    ...args: Parameters<SyncProviderPort["prepareVaultSnapshotRemoval"]>
+  ) => Promise<void>;
+};
+
+function requireCapturedSnapshot(
   snapshot: VaultSnapshot | undefined,
 ): VaultSnapshot {
   if (snapshot === undefined) {
-    throw new Error("Expected the workflow to persist a vault snapshot.");
+    throw new Error("Expected the workflow to save a vault snapshot.");
   }
 
   return snapshot;
 }
 
-export function replaceVaultSnapshotAfterNextSave(
+function areEncryptedSyncCredentialStatesEqual(
+  left: EncryptedDeviceSyncCredentialState | undefined,
+  right: EncryptedDeviceSyncCredentialState | null | undefined,
+): boolean {
+  if (left === undefined || right === undefined || right === null) {
+    return left === undefined && (right === undefined || right === null);
+  }
+
+  return (
+    left.ciphertext === right.ciphertext &&
+    left.encryptionNonce === right.encryptionNonce
+  );
+}
+
+function areDeviceAccessMaterialsEqual(
+  left: DeviceAccessMaterial | undefined,
+  right: DeviceAccessMaterial,
+): boolean {
+  return (
+    left !== undefined &&
+    left.revision === right.revision &&
+    left.localAccessGenerationId === right.localAccessGenerationId &&
+    left.vaultId === right.vaultId &&
+    left.deviceId === right.deviceId &&
+    left.algorithmSuiteId === right.algorithmSuiteId &&
+    areArrayBuffersEqual(left.masterPasswordSalt, right.masterPasswordSalt) &&
+    areArrayBuffersEqual(
+      left.localKeysProtectionSalt,
+      right.localKeysProtectionSalt,
+    ) &&
+    areArrayBuffersEqual(left.devicePublicSignKey, right.devicePublicSignKey) &&
+    areArrayBuffersEqual(
+      left.devicePublicVaultKey,
+      right.devicePublicVaultKey,
+    ) &&
+    areJsonEqual(left.protectedLocalKeys, right.protectedLocalKeys)
+  );
+}
+
+function areDeviceAccessRecoveryBackupsEqual(
+  left: DeviceAccessRecoveryBackup | undefined,
+  right: DeviceAccessRecoveryBackup,
+): boolean {
+  return (
+    left !== undefined &&
+    left.revision === right.revision &&
+    left.localAccessGenerationId === right.localAccessGenerationId &&
+    left.vaultId === right.vaultId &&
+    left.deviceId === right.deviceId &&
+    left.algorithmSuiteId === right.algorithmSuiteId &&
+    areArrayBuffersEqual(
+      left.recoveryLocalKeysProtectionSalt,
+      right.recoveryLocalKeysProtectionSalt,
+    ) &&
+    areArrayBuffersEqual(left.devicePublicSignKey, right.devicePublicSignKey) &&
+    areArrayBuffersEqual(
+      left.devicePublicVaultKey,
+      right.devicePublicVaultKey,
+    ) &&
+    areJsonEqual(left.protectedLocalKeys, right.protectedLocalKeys)
+  );
+}
+
+export function captureVaultSnapshotFromNextSave(
   ports: CoreTestPorts,
-  replacement: VaultSnapshot,
 ): () => VaultSnapshot {
   const save = vi.mocked(
     ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
@@ -100,15 +179,13 @@ export function replaceVaultSnapshotAfterNextSave(
   save.mockImplementationOnce(async (params) => {
     await saveImplementation(params);
     persistedSnapshot = params.snapshot;
-    ports.saved.vaultSnapshot = replacement;
   });
 
-  return () => requirePersistedSnapshot(persistedSnapshot);
+  return () => requireCapturedSnapshot(persistedSnapshot);
 }
 
-export function replaceVaultSnapshotAfterNextInitializedSave(
+export function captureVaultSnapshotFromNextInitializedSave(
   ports: CoreTestPorts,
-  replacement: VaultSnapshot,
 ): () => VaultSnapshot {
   const save = vi.mocked(ports.vaultLocalRepository.saveInitializedLocalVault);
   const saveImplementation = save.getMockImplementation();
@@ -123,10 +200,9 @@ export function replaceVaultSnapshotAfterNextInitializedSave(
   save.mockImplementationOnce(async (params) => {
     await saveImplementation(params);
     persistedSnapshot = params.snapshot;
-    ports.saved.vaultSnapshot = replacement;
   });
 
-  return () => requirePersistedSnapshot(persistedSnapshot);
+  return () => requireCapturedSnapshot(persistedSnapshot);
 }
 
 export function createCoreTestPorts(
@@ -137,6 +213,11 @@ export function createCoreTestPorts(
     "local" | "new_local" | "recovery" | "rotated_recovery"
   >();
   const recoveryKeyKinds = new WeakMap<ArrayBuffer, "current" | "rotated">();
+  const encryptedSyncCredentialPlaintexts = new WeakMap<
+    EncryptedDeviceSyncCredentialState,
+    DeviceSyncCredentialState
+  >();
+  let pendingSyncCredentialEncryptionSequence = 0;
   const freshBuffer = <T extends ArrayBuffer>(buffer: T): T =>
     buffer.slice(0) as T;
   const saved: SavedCoreRecords = {
@@ -385,12 +466,33 @@ export function createCoreTestPorts(
     ),
     verifyDeviceEnrollmentRequestSignature: vi.fn(async () => true),
     encryptDeviceSyncCredentialState: vi.fn(async (state) => {
-      return state.previousCredentials === undefined
-        ? values.encryptedDeviceSyncCredentialState
-        : values.replacementEncryptedDeviceSyncCredentialState;
+      const baseEncryptedState =
+        state.previousCredentials === undefined
+          ? values.encryptedDeviceSyncCredentialState
+          : values.replacementEncryptedDeviceSyncCredentialState;
+      const encrypted =
+        state.pendingSnapshotUpload === undefined
+          ? { ...baseEncryptedState }
+          : {
+              ciphertext: b64(
+                `${baseEncryptedState.ciphertext}:pending:${++pendingSyncCredentialEncryptionSequence}`,
+              ),
+              encryptionNonce: b64(
+                `${baseEncryptedState.encryptionNonce}:pending:${pendingSyncCredentialEncryptionSequence}`,
+              ),
+            };
+      encryptedSyncCredentialPlaintexts.set(encrypted, state);
+      return encrypted;
     }),
-    decryptDeviceSyncCredentialState: vi.fn(async (encryptedState) =>
-      encryptedState === values.replacementEncryptedDeviceSyncCredentialState
+    decryptDeviceSyncCredentialState: vi.fn(async (encryptedState) => {
+      const plaintext = encryptedSyncCredentialPlaintexts.get(encryptedState);
+
+      if (plaintext !== undefined) {
+        return plaintext;
+      }
+
+      return encryptedState ===
+        values.replacementEncryptedDeviceSyncCredentialState
         ? {
             currentCredentials: values.replacementSyncCredentials,
             previousCredentials: {
@@ -399,8 +501,8 @@ export function createCoreTestPorts(
               vaultKeyGeneration: 2,
             },
           }
-        : values.deviceSyncCredentialState,
-    ),
+        : values.deviceSyncCredentialState;
+    }),
   };
 
   const clipboardSecretHash: ClipboardSecretHashPort = {
@@ -493,25 +595,41 @@ export function createCoreTestPorts(
       saved.localVaultTrustCheckpoint = undefined;
       saved.deviceSyncCredentialState = undefined;
     }),
-    removePersistedLocalVaultIfSnapshotMatches: vi.fn(
-      async (vaultId, expectedSnapshotDigest) => {
-        if (
-          saved.vaultSnapshot?.metadata.id !== vaultId ||
-          saved.vaultSnapshotDigest !== expectedSnapshotDigest
-        ) {
-          return false;
-        }
+    removePersistedLocalVaultIfArtifactsMatch: vi.fn(async (params) => {
+      if (
+        saved.vaultSnapshot?.metadata.id !== params.vaultId ||
+        !areJsonEqual(saved.localVaultDescriptor, params.expectedDescriptor) ||
+        !areDeviceAccessMaterialsEqual(
+          saved.deviceAccessMaterial,
+          params.expectedDeviceAccessMaterial,
+        ) ||
+        !areDeviceAccessRecoveryBackupsEqual(
+          saved.deviceAccessRecoveryBackup,
+          params.expectedDeviceAccessRecoveryBackup,
+        ) ||
+        saved.vaultSnapshotDigest !== params.expectedSnapshotDigest ||
+        saved.localVaultTrustCheckpoint === undefined ||
+        !areJsonEqual(
+          saved.localVaultTrustCheckpoint,
+          params.expectedCheckpoint,
+        ) ||
+        !areEncryptedSyncCredentialStatesEqual(
+          saved.deviceSyncCredentialState,
+          params.expectedSyncCredentialState,
+        )
+      ) {
+        return false;
+      }
 
-        saved.localVaultDescriptor = undefined;
-        saved.deviceAccessMaterial = undefined;
-        saved.deviceAccessRecoveryBackup = undefined;
-        saved.vaultSnapshot = undefined;
-        saved.vaultSnapshotDigest = undefined;
-        saved.localVaultTrustCheckpoint = undefined;
-        saved.deviceSyncCredentialState = undefined;
-        return true;
-      },
-    ),
+      saved.localVaultDescriptor = undefined;
+      saved.deviceAccessMaterial = undefined;
+      saved.deviceAccessRecoveryBackup = undefined;
+      saved.vaultSnapshot = undefined;
+      saved.vaultSnapshotDigest = undefined;
+      saved.localVaultTrustCheckpoint = undefined;
+      saved.deviceSyncCredentialState = undefined;
+      return true;
+    }),
     saveLocalVaultDescriptor: vi.fn(async (descriptor) => {
       saved.localVaultDescriptor = descriptor;
     }),
@@ -670,32 +788,60 @@ export function createCoreTestPorts(
       return vaultSnapshot.metadata.id === vaultId ? vaultSnapshot : null;
     }),
     removeVaultSnapshot: vi.fn(),
-    saveVaultSnapshotWithCheckpoint: vi.fn(
-      async ({
+    saveVaultSnapshotWithCheckpoint: vi.fn(async (params) => {
+      const {
         expectedSnapshotDigest,
+        expectedCheckpoint,
+        expectedSyncCredentialState,
         snapshot,
         checkpoint,
         syncCredentialState,
-      }) => {
-        const currentSnapshot = saved.vaultSnapshot;
+      } = params;
+      const currentSnapshot = saved.vaultSnapshot;
+      const replacesSyncCredentialState = syncCredentialState !== undefined;
+      const hasSyncCredentialState = Object.hasOwn(
+        params,
+        "syncCredentialState",
+      );
+      const hasExpectedSyncCredentialState = Object.hasOwn(
+        params,
+        "expectedSyncCredentialState",
+      );
 
-        if (
-          currentSnapshot === undefined ||
-          currentSnapshot.metadata.id !== snapshot.metadata.id ||
-          saved.vaultSnapshotDigest !== expectedSnapshotDigest
-        ) {
-          throw new LocalVaultSnapshotChangedError(snapshot.metadata.id);
-        }
+      if (
+        hasSyncCredentialState !== replacesSyncCredentialState ||
+        hasExpectedSyncCredentialState !== replacesSyncCredentialState ||
+        (replacesSyncCredentialState &&
+          expectedSyncCredentialState === undefined)
+      ) {
+        throw new Error(
+          "Expected valid sync credential state replacement parameters.",
+        );
+      }
 
-        saved.vaultSnapshot = snapshot;
-        saved.vaultSnapshotDigest = checkpoint.payload.snapshotDigest;
-        saved.localVaultTrustCheckpoint = checkpoint;
+      if (
+        currentSnapshot === undefined ||
+        currentSnapshot.metadata.id !== snapshot.metadata.id ||
+        saved.vaultSnapshotDigest !== expectedSnapshotDigest ||
+        saved.localVaultTrustCheckpoint === undefined ||
+        !areJsonEqual(saved.localVaultTrustCheckpoint, expectedCheckpoint) ||
+        (replacesSyncCredentialState &&
+          !areEncryptedSyncCredentialStatesEqual(
+            saved.deviceSyncCredentialState,
+            expectedSyncCredentialState,
+          ))
+      ) {
+        throw new LocalVaultSnapshotChangedError(snapshot.metadata.id);
+      }
 
-        if (syncCredentialState !== undefined) {
-          saved.deviceSyncCredentialState = syncCredentialState ?? undefined;
-        }
-      },
-    ),
+      saved.vaultSnapshot = snapshot;
+      saved.vaultSnapshotDigest = checkpoint.payload.snapshotDigest;
+      saved.localVaultTrustCheckpoint = checkpoint;
+
+      if (syncCredentialState !== undefined) {
+        saved.deviceSyncCredentialState = syncCredentialState ?? undefined;
+      }
+    }),
     getLocalVaultTrustCheckpoint: vi.fn(async (vaultId) => {
       const checkpoint = saved.localVaultTrustCheckpoint;
 
@@ -816,6 +962,10 @@ export function createCoreTestPorts(
     sessionServices.unlockedVaultSession.commitPersistedSnapshot.bind(
       sessionServices.unlockedVaultSession,
     );
+  const commitPersistedSnapshotIfSessionIsActiveOriginal =
+    sessionServices.unlockedVaultSession.commitPersistedSnapshotIfSessionIsActive.bind(
+      sessionServices.unlockedVaultSession,
+    );
   const removeSessionOriginal =
     sessionServices.unlockedVaultSession.remove.bind(
       sessionServices.unlockedVaultSession,
@@ -899,6 +1049,34 @@ export function createCoreTestPorts(
       };
     },
   );
+  vi.spyOn(
+    sessionServices.unlockedVaultSession,
+    "commitPersistedSnapshotIfSessionIsActive",
+  ).mockImplementation(
+    async (
+      sessionId,
+      unlockedVault,
+      sourceSnapshotVersionVector,
+      coordinationLease,
+    ) => {
+      const committed = await commitPersistedSnapshotIfSessionIsActiveOriginal(
+        sessionId,
+        unlockedVault,
+        sourceSnapshotVersionVector,
+        coordinationLease,
+      );
+
+      if (committed) {
+        unlockedVaultSessionMirror = {
+          sessionId,
+          unlockedVault,
+          sourceSnapshotVersionVector,
+        };
+      }
+
+      return committed;
+    },
+  );
   vi.spyOn(sessionServices.unlockedVaultSession, "get").mockImplementation(
     async () => {
       const session = await getSessionOriginal();
@@ -951,16 +1129,52 @@ export function createCoreTestPorts(
     cancelTask: vi.fn(async () => undefined),
   };
 
-  const syncProvider: SyncProviderPort = {
+  const uploadVaultSnapshot: TestSyncProviderPort["uploadVaultSnapshot"] =
+    vi.fn<TestSyncProviderPort["uploadVaultSnapshot"]>(async () => ({
+      status: "committed",
+    }));
+  const removeVaultSnapshots: TestSyncProviderPort["removeVaultSnapshots"] =
+    vi.fn<TestSyncProviderPort["removeVaultSnapshots"]>(async () => undefined);
+  const syncProvider: TestSyncProviderPort = {
     setup: vi.fn(async (input) =>
       input === values.replacementSyncConfigInput
         ? values.replacementSyncAccess
         : values.syncAccess,
     ),
     getLatestVaultSnapshotDescriptor: vi.fn(async () => null),
-    downloadVaultSnapshot: vi.fn(),
-    uploadVaultSnapshot: vi.fn(async () => undefined),
-    removeVaultSnapshots: vi.fn(async () => undefined),
+    downloadVaultSnapshot: vi.fn(async () => {
+      if (saved.vaultSnapshot === undefined) {
+        throw new Error("Expected a saved remote snapshot fixture.");
+      }
+
+      return saved.vaultSnapshot;
+    }),
+    prepareVaultSnapshotUpload: vi.fn(
+      async (syncAccess, vaultSnapshot, expectedRemoteSnapshotIdentity) => ({
+        status: "ready" as const,
+        start: () => ({
+          outcome: uploadVaultSnapshot(
+            syncAccess,
+            vaultSnapshot,
+            expectedRemoteSnapshotIdentity,
+          ),
+        }),
+      }),
+    ),
+    prepareVaultSnapshotRemoval: vi.fn(
+      async (syncAccess, vaultId, expectedRemoteSnapshotIdentity) => ({
+        status: "ready" as const,
+        start: () => ({
+          outcome: removeVaultSnapshots(
+            syncAccess,
+            vaultId,
+            expectedRemoteSnapshotIdentity,
+          ),
+        }),
+      }),
+    ),
+    uploadVaultSnapshot,
+    removeVaultSnapshots,
     checkVaultAccess: vi.fn(async () => "authentication_rejected" as const),
   };
 

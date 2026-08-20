@@ -311,6 +311,7 @@ export class RecoverDeviceAccessUseCase {
         await this.vaultLocalRepository.saveVaultSnapshotWithCheckpoint({
           expectedSnapshotDigest:
             await this.crypto.digestVaultSnapshot(vaultSnapshot),
+          expectedCheckpoint: checkpoint,
           snapshot: vaultSnapshot,
           checkpoint: await this.vaultTrust.createCheckpoint(
             vaultSnapshot,

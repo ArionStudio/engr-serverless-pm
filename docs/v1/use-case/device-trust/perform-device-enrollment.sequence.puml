@@ -15,6 +15,7 @@ actor "New device caller" as Caller
 participant "PerformDeviceEnrollmentUseCase" as UC
 participant "ClipboardOperationCoordinatorPort" as Coordinator
 participant "UnlockedVaultSessionService" as Session
+participant "VaultSyncGuardService" as Guard
 participant "VaultSessionActivationService" as Activation
 participant "VaultLifecycleCleanupService" as Lifecycle
 participant "VaultTrustService" as Trust
@@ -67,12 +68,17 @@ alt scheduling or session activation fails
   Session -> Activation : invoke rollback callback
   Activation -> Tasks : best effort cancelTask(lockVault, actionId)
   Activation -> LockRepo : best effort removeIfActionIsActive(actionId)
-  Activation -> LocalRepo : best effort removePersistedLocalVaultIfSnapshotMatches(...)
+  Activation -> LocalRepo : best effort removePersistedLocalVaultIfArtifactsMatch(\nexact complete initialized artifact set)
   UC --> Caller : throw original activation failure
 else activated with fresh session identity
   opt sync access exists
-    UC -> Sync : uploadVaultSnapshot(syncAccess, registeredSnapshot,\nauthorizedDescriptor)
-    alt remote snapshot changed
+    UC -> Guard : uploadTrackedSnapshot(...)
+    Guard -> LocalRepo : CAS-save same snapshot + encrypted pending upload intent
+    Guard -> Sync : prepareVaultSnapshotUpload(syncAccess, registeredSnapshot,\nauthorizedSnapshotIdentity { descriptor, digest })
+    Sync --> Guard : synchronous start operation after provider preflight
+    Guard -> Session : revalidate originating session and start conditional upload
+    alt definitely not committed
+      Guard --> UC : throw RemoteVaultSnapshotChangedError or provider rejection
       UC -> Lifecycle : discardIfSessionIsActive(sessionId, generation, vector)
       Lifecycle -> Session : enter serialized conditional discard
       alt originating session is current
@@ -82,9 +88,9 @@ else activated with fresh session identity
         Lifecycle -> LockRepo : removeIfActionIsActive(lockActionId)
         Session -> Session : wipe and remove matching session records
         alt cleanup and session removal completed
-          Session -> LocalRepo : removePersistedLocalVaultIfSnapshotMatches(...)
+          Session -> LocalRepo : removePersistedLocalVaultIfArtifactsMatch(\nexact complete initialized artifact set + staged intent)
           alt local discard completed
-            UC --> Caller : throw DeviceEnrollmentRemoteSnapshotChangedError
+            UC --> Caller : throw mapped remote-change or provider-rejection error
           else local discard incomplete
             UC -> UC : wipe original buffers after session custody ended
             UC --> Caller : throw DeviceEnrollmentRollbackIncompleteError
@@ -102,8 +108,15 @@ else activated with fresh session identity
         UC -> UC : wipe original buffers; preserve local state
         UC --> Caller : throw DeviceEnrollmentRollbackIncompleteError
       end
-    else other upload failure
-      UC -> UC : keep local enrollment; syncUpload = pending
+    else outcome unknown
+      Guard --> UC : keep local enrollment and pending intent; syncUpload = pending
+    else committed
+      Guard -> LocalRepo : CAS-clear pending upload intent
+      alt clear succeeds
+        Guard --> UC : syncUpload = complete
+      else clear races or session is no longer active
+        Guard --> UC : retain reconciliation state; syncUpload = pending
+      end
     end
   end
   UC -> LocalRepo : best effort removePendingDeviceEnrollment(requestId)

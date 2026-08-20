@@ -9,10 +9,16 @@ import type { UnlockedVaultSessionService } from "../../services/session/unlocke
 import type { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.service";
 import type { VaultSyncGuardService } from "../../services/sync";
 import { VaultTrustService } from "../../services/trust/vault-trust.service";
+import type { SyncUploadStatus } from "../../domain/sync/sync-upload-status.type";
 
 export type InitializeDeviceEnrollmentCommandParams = {
   readonly vaultId: string;
   readonly request: DeviceEnrollmentRequest;
+};
+
+export type InitializeDeviceEnrollmentResult = {
+  readonly enrollmentResponse: DeviceEnrollmentResponse;
+  readonly syncUpload: SyncUploadStatus;
 };
 
 export class InitializeDeviceEnrollmentUseCase {
@@ -37,7 +43,7 @@ export class InitializeDeviceEnrollmentUseCase {
 
   async execute(
     params: InitializeDeviceEnrollmentCommandParams,
-  ): Promise<DeviceEnrollmentResponse> {
+  ): Promise<InitializeDeviceEnrollmentResult> {
     const { request } = params;
 
     if (
@@ -132,11 +138,14 @@ export class InitializeDeviceEnrollmentUseCase {
       }
 
       return {
-        version: 1,
-        requestId: request.payload.requestId,
-        vaultId: params.vaultId,
-        vaultTrustAnchor: unlockedVault.vaultTrustAnchor,
-        snapshot: currentSnapshot,
+        enrollmentResponse: {
+          version: 1,
+          requestId: request.payload.requestId,
+          vaultId: params.vaultId,
+          vaultTrustAnchor: unlockedVault.vaultTrustAnchor,
+          snapshot: currentSnapshot,
+        },
+        syncUpload: "complete",
       };
     }
 
@@ -201,53 +210,79 @@ export class InitializeDeviceEnrollmentUseCase {
               currentSnapshot,
               unlockedVault,
             );
+          const commonSnapshotOptions = {
+            keySlots: {
+              deviceSlots: [
+                ...currentSnapshot.keySlots.deviceSlots,
+                targetSlot,
+              ],
+            },
+            nextTrust: {
+              chain: nextTrust.chain,
+              state: nextTrust.trust,
+            },
+          };
+          const snapshotOptions =
+            syncState.remoteSnapshotIdentity === undefined
+              ? commonSnapshotOptions
+              : {
+                  ...commonSnapshotOptions,
+                  uploadExpectedRemoteSnapshotIdentity:
+                    syncState.remoteSnapshotIdentity,
+                  expectedSyncCredentialState: syncState.syncCredentialState,
+                  syncCredentialState: syncState.syncCredentialState,
+                };
           const persistedSnapshot =
             await this.vaultSnapshot.persistUnlockedVault(
               params.vaultId,
               unlockedVault,
               sourceSnapshotVersionVector,
-              {
-                keySlots: {
-                  deviceSlots: [
-                    ...currentSnapshot.keySlots.deviceSlots,
-                    targetSlot,
-                  ],
-                },
-                nextTrust: {
-                  chain: nextTrust.chain,
-                  state: nextTrust.trust,
-                },
-              },
+              snapshotOptions,
             );
 
           return { persistedSnapshot, preparedRestore };
         },
       );
 
-    await this.vaultSyncGuard.uploadPersistedLocalMutation(
+    const syncUpload = await this.vaultSyncGuard.uploadPersistedLocalMutation(
       params.vaultId,
       syncState,
       persistedSnapshot.snapshot,
       persistedSnapshot.trustedSnapshotContext.snapshotDigest,
+      persistedSnapshot.checkpoint,
+      unlockedVault,
       preparedRestore,
       sessionId,
     );
 
-    await this.unlockedVaultSession.commitPersistedSnapshot(
-      sessionId,
-      {
-        ...unlockedVault,
-        trustedSnapshotContext: persistedSnapshot.trustedSnapshotContext,
-      },
-      persistedSnapshot.snapshotVersionVector,
-    );
+    const committedUnlockedVault = {
+      ...unlockedVault,
+      trustedSnapshotContext: persistedSnapshot.trustedSnapshotContext,
+    };
+
+    if (syncState.syncAccess === undefined) {
+      await this.unlockedVaultSession.commitPersistedSnapshot(
+        sessionId,
+        committedUnlockedVault,
+        persistedSnapshot.snapshotVersionVector,
+      );
+    } else {
+      await this.unlockedVaultSession.commitPersistedSnapshotIfSessionIsActive(
+        sessionId,
+        committedUnlockedVault,
+        persistedSnapshot.snapshotVersionVector,
+      );
+    }
 
     return {
-      version: 1,
-      requestId: request.payload.requestId,
-      vaultId: params.vaultId,
-      vaultTrustAnchor: unlockedVault.vaultTrustAnchor,
-      snapshot: persistedSnapshot.snapshot,
+      enrollmentResponse: {
+        version: 1,
+        requestId: request.payload.requestId,
+        vaultId: params.vaultId,
+        vaultTrustAnchor: unlockedVault.vaultTrustAnchor,
+        snapshot: persistedSnapshot.snapshot,
+      },
+      syncUpload,
     };
   }
 }

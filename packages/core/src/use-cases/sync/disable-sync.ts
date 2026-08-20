@@ -5,6 +5,7 @@ import {
   areVaultSnapshotDescriptorsEqual,
   compareVaultSnapshotDescriptors,
   toVaultSnapshotDescriptor,
+  toVaultSnapshotIdentity,
 } from "../../domain/snapshot/vault-snapshot-descriptor.utils";
 import {
   clearVaultSyncRemovalPending,
@@ -13,6 +14,7 @@ import {
 } from "../../domain/vault/vault-sync-config.mutations";
 import { removeOtherDeviceProfilesFromVault } from "../../domain/vault/vault-device.mutations";
 import {
+  LocalVaultSnapshotAheadError,
   RemoteVaultSnapshotAheadError,
   RemoteVaultSnapshotChangedError,
   RemoteVaultSnapshotIntegrityError,
@@ -67,15 +69,16 @@ export class DisableSyncUseCase {
       throw new SyncNotConfiguredError(params.vaultId, "disable sync");
     }
 
-    await this.vaultSyncGuard.requireProviderCredentialRevocationComplete(
-      params.vaultId,
-      unlockedVault,
-      "disable sync",
-    );
-    const syncAccess = await this.vaultSyncGuard.requireSyncAccess(
-      params.vaultId,
-      unlockedVault,
-    );
+    const syncCredentialStateTransition =
+      await this.vaultSyncGuard.prepareSyncCredentialStateWithoutPending(
+        params.vaultId,
+        unlockedVault,
+        {
+          discardPendingSnapshotUpload: false,
+          requireProviderCredentialRevocationCompleteFor: "disable sync",
+        },
+      );
+    const { syncAccess } = syncCredentialStateTransition;
     let currentUnlockedVault = unlockedVault;
     let currentSnapshotVersionVector = sourceSnapshotVersionVector;
     let currentSnapshot =
@@ -85,48 +88,122 @@ export class DisableSyncUseCase {
         currentSnapshotVersionVector,
       );
 
-    let expectedRemoteSnapshotDescriptor =
-      currentUnlockedVault.vault.syncRemovalPending
-        ?.expectedRemoteSnapshotDescriptor;
+    const syncRemovalPending = currentUnlockedVault.vault.syncRemovalPending;
+    let expectedRemoteSnapshotIdentity =
+      syncRemovalPending?.expectedRemoteSnapshotIdentity;
 
-    if (expectedRemoteSnapshotDescriptor === undefined) {
-      expectedRemoteSnapshotDescriptor =
+    if (expectedRemoteSnapshotIdentity === undefined) {
+      const remoteSnapshotDescriptor =
         await this.syncProvider.getLatestVaultSnapshotDescriptor(
           syncAccess,
           params.vaultId,
         );
 
-      if (expectedRemoteSnapshotDescriptor !== null) {
+      if (remoteSnapshotDescriptor === null) {
+        expectedRemoteSnapshotIdentity = null;
+      } else {
         const localSnapshotDescriptor = toVaultSnapshotDescriptor(
           params.vaultId,
           currentSnapshot,
         );
         const relation = compareVaultSnapshotDescriptors(
           localSnapshotDescriptor,
-          expectedRemoteSnapshotDescriptor,
+          remoteSnapshotDescriptor,
         );
 
         if (relation === "remote_ahead") {
           throw new RemoteVaultSnapshotAheadError(params.vaultId);
         }
 
+        if (relation === "local_ahead") {
+          throw new LocalVaultSnapshotAheadError(params.vaultId);
+        }
+
         if (
           relation === "broken" ||
-          (relation === "equal" &&
-            !areVaultSnapshotDescriptorsEqual(
-              expectedRemoteSnapshotDescriptor,
-              localSnapshotDescriptor,
-            ))
+          !areVaultSnapshotDescriptorsEqual(
+            remoteSnapshotDescriptor,
+            localSnapshotDescriptor,
+          )
         ) {
           throw new RemoteVaultSnapshotIntegrityError(params.vaultId);
         }
+
+        const remoteSnapshot = await this.syncProvider.downloadVaultSnapshot(
+          syncAccess,
+          remoteSnapshotDescriptor,
+        );
+        const remoteTrust =
+          await this.vaultSnapshot.verifyCandidateSnapshotTrust(
+            params.vaultId,
+            remoteSnapshot,
+            currentUnlockedVault,
+          );
+
+        if (
+          remoteTrust.snapshotDigest !==
+          currentUnlockedVault.trustedSnapshotContext.snapshotDigest
+        ) {
+          throw new RemoteVaultSnapshotIntegrityError(params.vaultId);
+        }
+
+        expectedRemoteSnapshotIdentity = toVaultSnapshotIdentity(
+          params.vaultId,
+          remoteSnapshot,
+          remoteTrust.snapshotDigest,
+        );
+
+        if (
+          !areVaultSnapshotDescriptorsEqual(
+            expectedRemoteSnapshotIdentity.descriptor,
+            remoteSnapshotDescriptor,
+          )
+        ) {
+          throw new RemoteVaultSnapshotChangedError(params.vaultId);
+        }
+      }
+    }
+
+    if (expectedRemoteSnapshotIdentity === null) {
+      if (syncRemovalPending === undefined) {
+        throw new LocalVaultSnapshotAheadError(params.vaultId);
+      }
+    } else {
+      const localSnapshotDescriptor = toVaultSnapshotDescriptor(
+        params.vaultId,
+        currentSnapshot,
+      );
+      const relation = compareVaultSnapshotDescriptors(
+        localSnapshotDescriptor,
+        expectedRemoteSnapshotIdentity.descriptor,
+      );
+
+      if (relation === "remote_ahead") {
+        throw new RemoteVaultSnapshotAheadError(params.vaultId);
       }
 
+      if (relation === "local_ahead" && syncRemovalPending === undefined) {
+        throw new LocalVaultSnapshotAheadError(params.vaultId);
+      }
+
+      if (
+        relation === "broken" ||
+        (relation === "equal" &&
+          !areVaultSnapshotDescriptorsEqual(
+            expectedRemoteSnapshotIdentity.descriptor,
+            localSnapshotDescriptor,
+          ))
+      ) {
+        throw new RemoteVaultSnapshotIntegrityError(params.vaultId);
+      }
+    }
+
+    if (syncRemovalPending === undefined) {
       const pendingUnlockedVault = {
         ...unlockedVault,
         vault: markVaultSyncRemovalPending(
           unlockedVault.vault,
-          expectedRemoteSnapshotDescriptor,
+          expectedRemoteSnapshotIdentity,
           currentSnapshot,
         ),
       };
@@ -139,6 +216,12 @@ export class DisableSyncUseCase {
               params.vaultId,
               pendingUnlockedVault,
               sourceSnapshotVersionVector,
+              {
+                expectedSyncCredentialState:
+                  syncCredentialStateTransition.expectedState,
+                syncCredentialState:
+                  syncCredentialStateTransition.expectedState,
+              },
             ),
         );
 
@@ -157,11 +240,12 @@ export class DisableSyncUseCase {
     }
 
     try {
-      await this.syncProvider.removeVaultSnapshots(
+      await this.vaultSyncGuard.removeTrackedRemoteSnapshot({
+        sessionId,
+        vaultId: params.vaultId,
         syncAccess,
-        params.vaultId,
-        expectedRemoteSnapshotDescriptor,
-      );
+        expectedRemoteSnapshotIdentity,
+      });
     } catch (error) {
       if (!(error instanceof RemoteVaultSnapshotChangedError)) {
         throw error;
@@ -294,6 +378,8 @@ export class DisableSyncUseCase {
                   chain: nextTrust.chain,
                   state: nextTrust.trust,
                 },
+                expectedSyncCredentialState:
+                  syncCredentialStateTransition.expectedState,
                 syncCredentialState: null,
               },
             ),

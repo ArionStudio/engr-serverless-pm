@@ -11,14 +11,21 @@ import {
   toVaultSnapshotDescriptor,
 } from "@lfspm/core";
 import type {
+  DefiniteSyncUploadNonCommit,
   SyncAccess,
+  PreparedSyncRemoval,
+  PreparedSyncUpload,
   SyncProviderPort,
   SyncSetupInput,
+  SyncUploadOutcome,
+  CryptoPort,
   VaultSnapshot,
   VaultSnapshotDescriptor,
+  VaultSnapshotIdentity,
 } from "@lfspm/core";
 import {
   WebCryptoAsymmetricKeyValidator,
+  WebCryptoPort,
   validateVaultSnapshotPublicKeys,
   type AsymmetricKeyValidator,
 } from "../crypto";
@@ -97,7 +104,17 @@ const DEFINITIVE_CREDENTIAL_REJECTION_CODES = new Set([
 const NOT_FOUND_ERROR_CODES = new Set(["NoSuchKey", "NotFound"]);
 const CONDITIONAL_CONFLICT_ERROR_CODES = new Set([
   "ConditionalRequestConflict",
+  "OperationAborted",
   "PreconditionFailed",
+]);
+const DEFINITIVE_UPLOAD_REJECTION_CODES = new Set([
+  "AccessDenied",
+  "AuthorizationHeaderMalformed",
+  "InvalidAccessKeyId",
+  "InvalidBucketName",
+  "InvalidRequest",
+  "NoSuchBucket",
+  "SignatureDoesNotMatch",
 ]);
 
 export class InvalidSyncProviderResponseError extends Error {
@@ -111,13 +128,19 @@ export class InvalidSyncProviderResponseError extends Error {
 export class AwsS3SyncProvider implements SyncProviderPort {
   private readonly createClient: S3SyncClientFactory;
   private readonly asymmetricKeyValidator: AsymmetricKeyValidator;
+  private readonly snapshotDigester: Pick<CryptoPort, "digestVaultSnapshot">;
 
   constructor(
     createClient: S3SyncClientFactory = createAwsS3Client,
     asymmetricKeyValidator: AsymmetricKeyValidator = new WebCryptoAsymmetricKeyValidator(),
+    snapshotDigester: Pick<
+      CryptoPort,
+      "digestVaultSnapshot"
+    > = new WebCryptoPort(),
   ) {
     this.createClient = createClient;
     this.asymmetricKeyValidator = asymmetricKeyValidator;
+    this.snapshotDigester = snapshotDigester;
   }
 
   async setup(syncConfig: SyncSetupInput): Promise<SyncAccess> {
@@ -152,11 +175,11 @@ export class AwsS3SyncProvider implements SyncProviderPort {
     return remote.snapshot;
   }
 
-  async uploadVaultSnapshot(
+  async prepareVaultSnapshotUpload(
     syncAccess: SyncAccess,
     vaultSnapshot: VaultSnapshot,
-    expectedRemoteSnapshotDescriptor: VaultSnapshotDescriptor | null,
-  ): Promise<void> {
+    expectedRemoteSnapshotIdentity: VaultSnapshotIdentity | null,
+  ): Promise<PreparedSyncUpload> {
     const vaultId = vaultSnapshot.metadata.id;
     const { client, location } = createOperationContext(
       syncAccess,
@@ -168,57 +191,67 @@ export class AwsS3SyncProvider implements SyncProviderPort {
       snapshot: vaultSnapshot,
     });
 
-    try {
-      if (expectedRemoteSnapshotDescriptor === null) {
-        await client.putObject({
+    if (expectedRemoteSnapshotIdentity === null) {
+      return {
+        status: "ready",
+        start: () => ({
+          outcome: uploadRemoteVaultSnapshot(client, {
+            ...location,
+            Body: body,
+            ContentType: JSON_CONTENT_TYPE,
+            IfNoneMatch: "*",
+          }),
+        }),
+      };
+    }
+
+    if (expectedRemoteSnapshotIdentity.descriptor.vaultId !== vaultId) {
+      return {
+        status: "not_started",
+        outcome: remoteSnapshotChangedUploadOutcome(),
+      };
+    }
+
+    const current = await getRemoteVaultSnapshotObject(
+      client,
+      location,
+      this.asymmetricKeyValidator,
+    );
+
+    if (
+      current === null ||
+      !areVaultSnapshotDescriptorsEqual(
+        current.descriptor,
+        expectedRemoteSnapshotIdentity.descriptor,
+      ) ||
+      (await this.snapshotDigester.digestVaultSnapshot(current.snapshot)) !==
+        expectedRemoteSnapshotIdentity.snapshotDigest
+    ) {
+      return {
+        status: "not_started",
+        outcome: remoteSnapshotChangedUploadOutcome(),
+      };
+    }
+    const currentEtag = requireEtag(current);
+
+    return {
+      status: "ready",
+      start: () => ({
+        outcome: uploadRemoteVaultSnapshot(client, {
           ...location,
           Body: body,
           ContentType: JSON_CONTENT_TYPE,
-          IfNoneMatch: "*",
-        });
-        return;
-      }
-
-      if (expectedRemoteSnapshotDescriptor.vaultId !== vaultId) {
-        throw new RemoteVaultSnapshotChangedError(vaultId);
-      }
-
-      const current = await getRemoteVaultSnapshotObject(
-        client,
-        location,
-        this.asymmetricKeyValidator,
-      );
-
-      if (
-        current === null ||
-        !areVaultSnapshotDescriptorsEqual(
-          current.descriptor,
-          expectedRemoteSnapshotDescriptor,
-        )
-      ) {
-        throw new RemoteVaultSnapshotChangedError(vaultId);
-      }
-
-      await client.putObject({
-        ...location,
-        Body: body,
-        ContentType: JSON_CONTENT_TYPE,
-        IfMatch: requireEtag(current),
-      });
-    } catch (error) {
-      if (isConditionalConflict(error)) {
-        throw new RemoteVaultSnapshotChangedError(vaultId);
-      }
-
-      throw error;
-    }
+          IfMatch: currentEtag,
+        }),
+      }),
+    };
   }
 
-  async removeVaultSnapshots(
+  async prepareVaultSnapshotRemoval(
     syncAccess: SyncAccess,
     vaultId: string,
-    expectedRemoteSnapshotDescriptor: VaultSnapshotDescriptor | null,
-  ): Promise<void> {
+    expectedRemoteSnapshotIdentity: VaultSnapshotIdentity | null,
+  ): Promise<PreparedSyncRemoval> {
     const { client, location } = createOperationContext(
       syncAccess,
       this.createClient,
@@ -230,37 +263,33 @@ export class AwsS3SyncProvider implements SyncProviderPort {
     );
 
     if (current === null) {
-      return;
+      return { status: "already_absent" };
     }
 
     if (
-      expectedRemoteSnapshotDescriptor === null ||
-      expectedRemoteSnapshotDescriptor.vaultId !== vaultId ||
+      expectedRemoteSnapshotIdentity === null ||
+      expectedRemoteSnapshotIdentity.descriptor.vaultId !== vaultId ||
       current.descriptor.vaultId !== vaultId ||
       !areVaultSnapshotDescriptorsEqual(
         current.descriptor,
-        expectedRemoteSnapshotDescriptor,
-      )
+        expectedRemoteSnapshotIdentity.descriptor,
+      ) ||
+      (await this.snapshotDigester.digestVaultSnapshot(current.snapshot)) !==
+        expectedRemoteSnapshotIdentity.snapshotDigest
     ) {
       throw new RemoteVaultSnapshotChangedError(vaultId);
     }
+    const currentEtag = requireEtag(current);
 
-    try {
-      await client.deleteObject({
-        ...location,
-        IfMatch: requireEtag(current),
-      });
-    } catch (error) {
-      if (isNotFound(error)) {
-        return;
-      }
-
-      if (isConditionalConflict(error)) {
-        throw new RemoteVaultSnapshotChangedError(vaultId);
-      }
-
-      throw error;
-    }
+    return {
+      status: "ready",
+      start: () => ({
+        outcome: removeRemoteVaultSnapshot(client, vaultId, {
+          ...location,
+          IfMatch: currentEtag,
+        }),
+      }),
+    };
   }
 
   async checkVaultAccess(
@@ -316,6 +345,102 @@ export class AwsS3SyncProvider implements SyncProviderPort {
 
     return remote;
   }
+}
+
+async function uploadRemoteVaultSnapshot(
+  client: S3SyncClient,
+  input: Parameters<S3SyncClient["putObject"]>[0],
+): Promise<SyncUploadOutcome> {
+  try {
+    await client.putObject(input);
+    return { status: "committed" };
+  } catch (error) {
+    return classifyRemoteUploadFailure(error, input);
+  }
+}
+
+async function removeRemoteVaultSnapshot(
+  client: S3SyncClient,
+  vaultId: string,
+  input: Parameters<S3SyncClient["deleteObject"]>[0],
+): Promise<void> {
+  try {
+    await client.deleteObject(input);
+  } catch (error) {
+    if (isNotFound(error)) {
+      return;
+    }
+
+    if (isConditionalConflict(error)) {
+      throw new RemoteVaultSnapshotChangedError(vaultId);
+    }
+
+    throw error;
+  }
+}
+
+function classifyRemoteUploadFailure(
+  error: unknown,
+  input: Parameters<S3SyncClient["putObject"]>[0],
+): SyncUploadOutcome {
+  try {
+    if (isDefiniteConditionalUploadNonCommit(error, input)) {
+      return remoteSnapshotChangedUploadOutcome();
+    }
+
+    if (isDefiniteProviderUploadRejection(error)) {
+      return providerRejectedUploadOutcome();
+    }
+  } catch {
+    // Provider rejection objects are untrusted. Inspection failure cannot prove
+    // that an initiated write did not commit.
+  }
+
+  return { status: "outcome_unknown" };
+}
+
+function isDefiniteProviderUploadRejection(error: unknown): boolean {
+  return (
+    getRequestAttempts(error) === 1 &&
+    DEFINITIVE_UPLOAD_REJECTION_CODES.has(getErrorCode(error) ?? "")
+  );
+}
+
+function isDefiniteConditionalUploadNonCommit(
+  error: unknown,
+  input: Parameters<S3SyncClient["putObject"]>[0],
+): boolean {
+  if (getRequestAttempts(error) !== 1) {
+    return false;
+  }
+
+  const errorCode = getErrorCode(error);
+  const status = getHttpStatusCode(error);
+  return (
+    status === 409 ||
+    status === 412 ||
+    (status === 404 &&
+      input.IfMatch !== undefined &&
+      (errorCode === undefined || NOT_FOUND_ERROR_CODES.has(errorCode))) ||
+    errorCode === "PreconditionFailed" ||
+    errorCode === "ConditionalRequestConflict" ||
+    errorCode === "OperationAborted" ||
+    (errorCode === "NoSuchKey" && input.IfMatch !== undefined)
+  );
+}
+
+function remoteSnapshotChangedUploadOutcome(): DefiniteSyncUploadNonCommit {
+  return {
+    status: "definitely_not_committed",
+    reason: "remote_snapshot_changed",
+  };
+}
+
+function providerRejectedUploadOutcome(): SyncUploadOutcome {
+  return {
+    status: "definitely_not_committed",
+    reason: "provider_rejected",
+  };
 }
 
 function createAwsS3Client(
@@ -593,6 +718,21 @@ function getHttpStatusCode(error: unknown): number | undefined {
 
   const status = (metadata as Record<string, unknown>).httpStatusCode;
   return typeof status === "number" ? status : undefined;
+}
+
+function getRequestAttempts(error: unknown): number | undefined {
+  if (typeof error !== "object" || error === null) {
+    return undefined;
+  }
+
+  const metadata = (error as Record<string, unknown>).$metadata;
+
+  if (typeof metadata !== "object" || metadata === null) {
+    return undefined;
+  }
+
+  const attempts = (metadata as Record<string, unknown>).attempts;
+  return typeof attempts === "number" ? attempts : undefined;
 }
 
 function getErrorCode(error: unknown): string | undefined {
