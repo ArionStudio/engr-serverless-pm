@@ -44,19 +44,19 @@ function handleClipboardRequest(request: OffscreenClipboardRequest) {
   return { ok: true as const };
 }
 
-navigator.serviceWorker.addEventListener("message", (event) => {
-  const responsePort = event.ports[0];
+chrome.runtime.onMessage.addListener(
+  (request: unknown, _sender, sendResponse) => {
+    if (!isOffscreenClipboardRequest(request)) {
+      return;
+    }
 
-  if (responsePort === undefined || !isOffscreenClipboardRequest(event.data)) {
-    return;
-  }
-
-  try {
-    responsePort.postMessage(handleClipboardRequest(event.data));
-  } catch {
-    responsePort.postMessage({
-      ok: false,
-      error: "Clipboard operation failed.",
-    });
-  }
-});
+    try {
+      sendResponse(handleClipboardRequest(request));
+    } catch {
+      sendResponse({
+        ok: false,
+        error: "Clipboard operation failed.",
+      });
+    }
+  },
+);

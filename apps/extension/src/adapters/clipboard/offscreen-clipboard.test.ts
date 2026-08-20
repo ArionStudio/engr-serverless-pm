@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
   type ChromeOffscreenApi,
   type ChromeRuntimeMessenger,
-  type OffscreenClientDirectory,
   OFFSCREEN_CLIPBOARD_MESSAGE_TARGET,
   OFFSCREEN_CLIPBOARD_REASON,
   OFFSCREEN_CLIPBOARD_RESPONSE_TIMEOUT_MS,
@@ -17,55 +16,35 @@ function createContext(documentExists = false) {
   };
   let nextResponse: unknown;
   let respond = true;
-  const postMessage = vi.fn(
-    (request: { readonly operation?: unknown }, transfer: Transferable[]) => {
-      const responsePort = transfer[0];
+  const sendMessage = vi.fn((request: unknown): Promise<unknown> => {
+    if (!respond) {
+      return new Promise(() => undefined);
+    }
 
-      if (!(responsePort instanceof MessagePort)) {
-        throw new Error("Expected a response message port.");
-      }
-
-      if (!respond) {
-        return;
-      }
-
-      responsePort.postMessage(
-        nextResponse ??
-          (request.operation === "read"
-            ? { ok: true, value: "clipboard-value" }
-            : { ok: true }),
-      );
-      nextResponse = undefined;
-    },
-  );
-  const otherClientPostMessage = vi.fn();
+    const operation =
+      typeof request === "object" && request !== null
+        ? (request as Record<string, unknown>).operation
+        : undefined;
+    const response =
+      nextResponse ??
+      (operation === "read"
+        ? { ok: true, value: "clipboard-value" }
+        : { ok: true });
+    nextResponse = undefined;
+    return Promise.resolve(response);
+  });
   const documentUrl = "chrome-extension://extension-id/offscreen.html";
-  const matchAll = vi.fn(async () => [
-    {
-      url: "chrome-extension://extension-id/options.html",
-      postMessage: otherClientPostMessage,
-    },
-    { url: documentUrl, postMessage },
-  ]);
-  const clients: OffscreenClientDirectory = { matchAll };
   const getContexts = vi.fn(async () =>
     documentExists ? [{ contextType: OFFSCREEN_DOCUMENT_CONTEXT }] : [],
   );
-  const runtime: ChromeRuntimeMessenger = { getContexts };
-  const clipboard = new OffscreenClipboard(
-    offscreen,
-    runtime,
-    documentUrl,
-    clients,
-  );
+  const runtime: ChromeRuntimeMessenger = { getContexts, sendMessage };
+  const clipboard = new OffscreenClipboard(offscreen, runtime, documentUrl);
 
   return {
     clipboard,
     createDocument,
     getContexts,
-    matchAll,
-    otherClientPostMessage,
-    postMessage,
+    sendMessage,
     setNextResponse(response: unknown) {
       nextResponse = response;
     },
@@ -90,14 +69,9 @@ describe("OffscreenClipboard", () => {
       contextTypes: [OFFSCREEN_DOCUMENT_CONTEXT],
       documentUrls: ["chrome-extension://extension-id/offscreen.html"],
     });
-    expect(ctx.postMessage.mock.calls[0]?.[0]).toEqual({
+    expect(ctx.sendMessage).toHaveBeenCalledWith({
       target: OFFSCREEN_CLIPBOARD_MESSAGE_TARGET,
       operation: "read",
-    });
-    expect(ctx.otherClientPostMessage).not.toHaveBeenCalled();
-    expect(ctx.matchAll).toHaveBeenCalledWith({
-      includeUncontrolled: true,
-      type: "window",
     });
   });
 
@@ -109,7 +83,7 @@ describe("OffscreenClipboard", () => {
     ).resolves.toBeUndefined();
 
     expect(ctx.createDocument).not.toHaveBeenCalled();
-    expect(ctx.postMessage.mock.calls[0]?.[0]).toEqual({
+    expect(ctx.sendMessage).toHaveBeenCalledWith({
       target: OFFSCREEN_CLIPBOARD_MESSAGE_TARGET,
       operation: "write",
       value: "next-value",
@@ -128,12 +102,25 @@ describe("OffscreenClipboard", () => {
     );
   });
 
-  it("rejects when the offscreen document client is unavailable", async () => {
+  it("rejects when runtime messaging cannot reach the offscreen document", async () => {
     const ctx = createContext(true);
-    ctx.matchAll.mockResolvedValueOnce([]);
+    ctx.sendMessage.mockRejectedValueOnce(
+      new Error("Receiving end does not exist."),
+    );
 
     await expect(ctx.clipboard.readText()).rejects.toThrow(
-      "Offscreen clipboard document client is unavailable.",
+      "Receiving end does not exist.",
+    );
+  });
+
+  it("rejects a synchronous runtime messaging failure", async () => {
+    const ctx = createContext(true);
+    ctx.sendMessage.mockImplementationOnce(() => {
+      throw new Error("Runtime messaging is unavailable.");
+    });
+
+    await expect(ctx.clipboard.readText()).rejects.toThrow(
+      "Runtime messaging is unavailable.",
     );
   });
 
@@ -164,5 +151,28 @@ describe("OffscreenClipboard", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("keeps concurrent runtime responses associated with their requests", async () => {
+    const ctx = createContext(true);
+    let resolveFirstResponse:
+      | ((response: { readonly ok: true; readonly value: string }) => void)
+      | undefined;
+    const firstResponse = new Promise<{
+      readonly ok: true;
+      readonly value: string;
+    }>((resolve) => {
+      resolveFirstResponse = resolve;
+    });
+    ctx.sendMessage
+      .mockImplementationOnce(() => firstResponse)
+      .mockResolvedValueOnce({ ok: true, value: "second-value" });
+
+    const firstRead = ctx.clipboard.readText();
+    const secondRead = ctx.clipboard.readText();
+
+    await expect(secondRead).resolves.toBe("second-value");
+    resolveFirstResponse?.({ ok: true, value: "first-value" });
+    await expect(firstRead).resolves.toBe("first-value");
   });
 });

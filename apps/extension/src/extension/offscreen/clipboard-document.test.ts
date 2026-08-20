@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   type ClipboardCommandExecutor,
+  type ClipboardCopyEventTarget,
   type ClipboardTransferControl,
   readClipboardText,
   writeClipboardText,
@@ -38,30 +39,100 @@ describe("offscreen clipboard document", () => {
 
   it("writes through the selected transfer control and clears plaintext", () => {
     const transferControl = createControl();
-    const observedValues: string[] = [];
-    const commandExecutor: ClipboardCommandExecutor = {
-      execCommand: vi.fn(() => {
-        observedValues.push(transferControl.value);
-        return true;
-      }),
-    };
+    let copyListener: ((event: ClipboardEvent) => void) | undefined;
+    const setData = vi.fn();
+    const preventDefault = vi.fn();
+    const commandExecutor: ClipboardCommandExecutor & ClipboardCopyEventTarget =
+      {
+        addEventListener: vi.fn((_type, listener) => {
+          copyListener = listener;
+        }),
+        execCommand: vi.fn(() => {
+          copyListener?.({
+            clipboardData: { setData },
+            preventDefault,
+          } as unknown as ClipboardEvent);
+          return true;
+        }),
+        removeEventListener: vi.fn(),
+      };
 
     writeClipboardText(commandExecutor, transferControl, "password");
 
-    expect(observedValues).toEqual(["password"]);
+    expect(setData).toHaveBeenCalledWith("text/plain", "password");
+    expect(preventDefault).toHaveBeenCalledOnce();
     expect(commandExecutor.execCommand).toHaveBeenCalledWith("copy");
+    expect(commandExecutor.removeEventListener).toHaveBeenCalledWith(
+      "copy",
+      copyListener,
+    );
+    expect(transferControl.value).toBe("");
+  });
+
+  it("overwrites the clipboard with an exact empty value", () => {
+    const transferControl = createControl();
+    let copyListener: ((event: ClipboardEvent) => void) | undefined;
+    const setData = vi.fn();
+    const commandExecutor: ClipboardCommandExecutor & ClipboardCopyEventTarget =
+      {
+        addEventListener: vi.fn((_type, listener) => {
+          copyListener = listener;
+        }),
+        execCommand: vi.fn(() => {
+          expect(transferControl.value).toBe(" ");
+          copyListener?.({
+            clipboardData: { setData },
+            preventDefault: vi.fn(),
+          } as unknown as ClipboardEvent);
+          return true;
+        }),
+        removeEventListener: vi.fn(),
+      };
+
+    writeClipboardText(commandExecutor, transferControl, "");
+
+    expect(setData).toHaveBeenCalledWith("text/plain", "");
     expect(transferControl.value).toBe("");
   });
 
   it("clears plaintext when the browser rejects a clipboard command", () => {
     const transferControl = createControl();
-    const commandExecutor: ClipboardCommandExecutor = {
-      execCommand: vi.fn(() => false),
-    };
+    const commandExecutor: ClipboardCommandExecutor & ClipboardCopyEventTarget =
+      {
+        addEventListener: vi.fn(),
+        execCommand: vi.fn(() => false),
+        removeEventListener: vi.fn(),
+      };
 
     expect(() =>
       writeClipboardText(commandExecutor, transferControl, "password"),
     ).toThrow("Clipboard copy command failed.");
+    expect(commandExecutor.removeEventListener).toHaveBeenCalledOnce();
+    expect(transferControl.value).toBe("");
+  });
+
+  it("rejects a copy event without writable clipboard data", () => {
+    const transferControl = createControl();
+    let copyListener: ((event: ClipboardEvent) => void) | undefined;
+    const commandExecutor: ClipboardCommandExecutor & ClipboardCopyEventTarget =
+      {
+        addEventListener: vi.fn((_type, listener) => {
+          copyListener = listener;
+        }),
+        execCommand: vi.fn(() => {
+          copyListener?.({
+            clipboardData: null,
+            preventDefault: vi.fn(),
+          } as unknown as ClipboardEvent);
+          return true;
+        }),
+        removeEventListener: vi.fn(),
+      };
+
+    expect(() =>
+      writeClipboardText(commandExecutor, transferControl, "password"),
+    ).toThrow("Clipboard copy event did not expose writable data.");
+    expect(commandExecutor.removeEventListener).toHaveBeenCalledOnce();
     expect(transferControl.value).toBe("");
   });
 
