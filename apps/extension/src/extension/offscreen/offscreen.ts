@@ -27,12 +27,21 @@ function isOffscreenClipboardRequest(
 
   return (
     record.target === OFFSCREEN_CLIPBOARD_MESSAGE_TARGET &&
+    typeof record.deadlineEpochMs === "number" &&
+    Number.isFinite(record.deadlineEpochMs) &&
     (record.operation === "read" ||
       (record.operation === "write" && typeof record.value === "string"))
   );
 }
 
 function handleClipboardRequest(request: OffscreenClipboardRequest) {
+  if (Date.now() >= request.deadlineEpochMs) {
+    return {
+      ok: false as const,
+      error: "Clipboard request expired.",
+    };
+  }
+
   if (request.operation === "read") {
     return {
       ok: true as const,
@@ -44,19 +53,19 @@ function handleClipboardRequest(request: OffscreenClipboardRequest) {
   return { ok: true as const };
 }
 
-navigator.serviceWorker.addEventListener("message", (event) => {
-  const responsePort = event.ports[0];
+chrome.runtime.onMessage.addListener(
+  (request: unknown, _sender, sendResponse) => {
+    if (!isOffscreenClipboardRequest(request)) {
+      return;
+    }
 
-  if (responsePort === undefined || !isOffscreenClipboardRequest(event.data)) {
-    return;
-  }
-
-  try {
-    responsePort.postMessage(handleClipboardRequest(event.data));
-  } catch {
-    responsePort.postMessage({
-      ok: false,
-      error: "Clipboard operation failed.",
-    });
-  }
-});
+    try {
+      sendResponse(handleClipboardRequest(request));
+    } catch {
+      sendResponse({
+        ok: false,
+        error: "Clipboard operation failed.",
+      });
+    }
+  },
+);

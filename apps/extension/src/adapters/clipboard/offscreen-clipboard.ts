@@ -8,16 +8,19 @@ export const OFFSCREEN_DOCUMENT_CONTEXT =
   "OFFSCREEN_DOCUMENT" as chrome.runtime.ContextType;
 export const OFFSCREEN_CLIPBOARD_RESPONSE_TIMEOUT_MS = 5_000;
 
-export type OffscreenClipboardRequest =
+type OffscreenClipboardOperation =
   | {
-      readonly target: typeof OFFSCREEN_CLIPBOARD_MESSAGE_TARGET;
       readonly operation: "read";
     }
   | {
-      readonly target: typeof OFFSCREEN_CLIPBOARD_MESSAGE_TARGET;
       readonly operation: "write";
       readonly value: string;
     };
+
+export type OffscreenClipboardRequest = OffscreenClipboardOperation & {
+  readonly target: typeof OFFSCREEN_CLIPBOARD_MESSAGE_TARGET;
+  readonly deadlineEpochMs: number;
+};
 
 export type OffscreenClipboardResponse =
   | { readonly ok: true; readonly value?: string }
@@ -36,33 +39,8 @@ export type ChromeRuntimeMessenger = {
     readonly contextTypes: chrome.runtime.ContextType[];
     readonly documentUrls: string[];
   }) => Promise<readonly unknown[]>;
+  sendMessage: (message: unknown) => Promise<unknown>;
 };
-
-export type OffscreenDocumentClient = {
-  readonly url: string;
-  postMessage(message: unknown, transfer: Transferable[]): void;
-};
-
-export type OffscreenClientDirectory = {
-  matchAll(options: {
-    readonly includeUncontrolled: true;
-    readonly type: "window";
-  }): Promise<readonly OffscreenDocumentClient[]>;
-};
-
-type MessageChannelFactory = () => MessageChannel;
-
-function getServiceWorkerClients(): OffscreenClientDirectory {
-  const serviceWorkerScope = globalThis as typeof globalThis & {
-    readonly clients?: OffscreenClientDirectory;
-  };
-
-  if (serviceWorkerScope.clients === undefined) {
-    throw new Error("Offscreen clipboard requires a service-worker context.");
-  }
-
-  return serviceWorkerScope.clients;
-}
 
 function isOffscreenClipboardResponse(
   response: unknown,
@@ -84,27 +62,20 @@ export class OffscreenClipboard implements ClipboardPort {
   private readonly offscreen: ChromeOffscreenApi;
   private readonly runtime: ChromeRuntimeMessenger;
   private readonly documentUrl: string;
-  private readonly clients: OffscreenClientDirectory;
-  private readonly createMessageChannel: MessageChannelFactory;
   private documentCreation: Promise<void> | undefined;
 
   constructor(
     offscreen: ChromeOffscreenApi = chrome.offscreen,
     runtime: ChromeRuntimeMessenger = chrome.runtime,
     documentUrl = chrome.runtime.getURL(OFFSCREEN_CLIPBOARD_DOCUMENT_PATH),
-    clients: OffscreenClientDirectory = getServiceWorkerClients(),
-    createMessageChannel: MessageChannelFactory = () => new MessageChannel(),
   ) {
     this.offscreen = offscreen;
     this.runtime = runtime;
     this.documentUrl = documentUrl;
-    this.clients = clients;
-    this.createMessageChannel = createMessageChannel;
   }
 
   async readText(): Promise<string> {
     const response = await this.send({
-      target: OFFSCREEN_CLIPBOARD_MESSAGE_TARGET,
       operation: "read",
     });
 
@@ -117,16 +88,20 @@ export class OffscreenClipboard implements ClipboardPort {
 
   async writeText(value: string): Promise<void> {
     await this.send({
-      target: OFFSCREEN_CLIPBOARD_MESSAGE_TARGET,
       operation: "write",
       value,
     });
   }
 
   private async send(
-    request: OffscreenClipboardRequest,
+    operation: OffscreenClipboardOperation,
   ): Promise<{ readonly ok: true; readonly value?: string }> {
     await this.ensureDocument();
+    const request: OffscreenClipboardRequest = {
+      ...operation,
+      target: OFFSCREEN_CLIPBOARD_MESSAGE_TARGET,
+      deadlineEpochMs: Date.now() + OFFSCREEN_CLIPBOARD_RESPONSE_TIMEOUT_MS,
+    };
     const response = await this.sendToOffscreenDocument(request);
 
     if (!response.ok) {
@@ -139,53 +114,46 @@ export class OffscreenClipboard implements ClipboardPort {
   private async sendToOffscreenDocument(
     request: OffscreenClipboardRequest,
   ): Promise<OffscreenClipboardResponse> {
-    const documentClients = await this.clients.matchAll({
-      includeUncontrolled: true,
-      type: "window",
-    });
-    const documentClient = documentClients.find(
-      (candidate) => candidate.url === this.documentUrl,
-    );
-
-    if (documentClient === undefined) {
-      throw new Error("Offscreen clipboard document client is unavailable.");
-    }
-
     return new Promise((resolve, reject) => {
-      const channel = this.createMessageChannel();
+      let completed = false;
       const responseTimeout = globalThis.setTimeout(() => {
-        channel.port1.close();
+        completed = true;
         reject(new Error("Offscreen clipboard response timed out."));
       }, OFFSCREEN_CLIPBOARD_RESPONSE_TIMEOUT_MS);
 
-      const closeResponsePort = () => {
-        globalThis.clearTimeout(responseTimeout);
-        channel.port1.close();
-      };
-
-      channel.port1.onmessage = (event) => {
-        closeResponsePort();
-
-        if (!isOffscreenClipboardResponse(event.data)) {
-          reject(
-            new Error("Offscreen clipboard returned an invalid response."),
-          );
+      const complete = (callback: () => void) => {
+        if (completed) {
           return;
         }
 
-        resolve(event.data);
-      };
-      channel.port1.onmessageerror = () => {
-        closeResponsePort();
-        reject(new Error("Offscreen clipboard response could not be decoded."));
+        completed = true;
+        globalThis.clearTimeout(responseTimeout);
+        callback();
       };
 
-      try {
-        documentClient.postMessage(request, [channel.port2]);
-      } catch (error) {
-        closeResponsePort();
-        reject(error);
-      }
+      void Promise.resolve()
+        .then(() => this.runtime.sendMessage(request))
+        .then(
+          (response) => {
+            complete(() => {
+              if (!isOffscreenClipboardResponse(response)) {
+                reject(
+                  new Error(
+                    "Offscreen clipboard returned an invalid response.",
+                  ),
+                );
+                return;
+              }
+
+              resolve(response);
+            });
+          },
+          (error: unknown) => {
+            complete(() => {
+              reject(error);
+            });
+          },
+        );
     });
   }
 
