@@ -42,7 +42,10 @@
 
 - **Requirement:** Code MUST authenticate a checkpoint, snapshot, or metadata
   record before using it as CAS authority. The persistence transaction MUST
-  recompute identities derived from the actual stored bytes where possible.
+  derive every byte-derived identity from the current persisted artifact using
+  its canonical identity algorithm. It MUST reject the mutation when that
+  artifact cannot be read, decoded, or re-derived, and MUST NOT trust a claimed
+  identity stored beside it.
 - **Scope:** Security-sensitive local transactions.
 - **Reason:** Hostile storage cannot authorize its own replacement.
 - **Compliant:** Verify the checkpoint and recompute the stored snapshot digest

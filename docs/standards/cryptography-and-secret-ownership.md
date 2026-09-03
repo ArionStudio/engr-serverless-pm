@@ -31,13 +31,17 @@ govern their implementation.
 
 ## CRYPTO-003: Bind cryptography to its context
 
-- **Requirement:** Signatures, HKDF derivation, wrapping, and authenticated
-  encryption MUST use canonical, purpose-bound context and AAD fields declared
-  by the specification.
-- **Scope:** Signed and encrypted artifacts.
+- **Requirement:** Signatures MUST bind the complete canonical protocol payload.
+  HKDF derivation MUST use canonical operation-purpose information and any
+  declared context. Wrapping and authenticated encryption MUST bind purpose and
+  context exactly as declared by the security specification, using canonical
+  AAD and, where specified, HKDF-derived key separation.
+- **Scope:** Signed and encrypted artifacts and HKDF-derived keys. PBKDF2
+  root-key derivation is governed by `CRYPTO-001` and the active suite.
 - **Reason:** Context binding prevents valid material from being replayed for a
   different vault, device, generation, or operation.
-- **Compliant:** Include the declared vault and session identity in canonical AAD.
+- **Compliant:** Sign the complete snapshot payload and include the declared
+  purpose and session identity in canonical AAD.
 - **Noncompliant:** Encrypt a session payload with empty AAD.
 - **Enforcement:** Cross-context substitution and canonical-byte tests.
 - **Exceptions:** None.

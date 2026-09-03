@@ -52,9 +52,14 @@
 
 ## SESSION-005: Authenticate destructive cleanup
 
-- **Requirement:** Cleanup MUST authenticate ownership with the relevant action
-  ID, session identity and generation, version vector, digest, or CAS token
-  before mutation.
+- **Requirement:** Cleanup MUST authenticate the exact state it can destroy.
+  Scheduled cleanup MUST prove its action ID is current within the task's atomic
+  or serialized ownership boundary. Work based on a captured session MUST match
+  its session identity and freshness token. Immediate lock or deletion MAY
+  target the current session read inside the same serialized boundary; deletion
+  MUST also match the requested vault. Clipboard mutation MUST match the current
+  value hash, and snapshot restoration MUST use exact authenticated state with
+  CAS. A digest or version vector alone MUST NOT prove session or task ownership.
 - **Scope:** Lock, deletion, rollback, and scheduled cleanup.
 - **Reason:** A stale action must not destroy newer state.
 - **Compliant:** Remove a lock task only when its action ID still matches.
@@ -77,9 +82,13 @@
 
 ## TASK-001: Make stale scheduled actions inert
 
-- **Requirement:** A stale scheduled action MUST perform zero mutations. Cleanup
-  MUST arm retry before risky work, remove matching metadata before cancelling
-  its alarm, and preserve newer tasks and sessions.
+- **Requirement:** A scheduled action proven not current by its initial
+  ownership check MUST return without mutation. If that check is indeterminate,
+  the action MAY arm its own retry but MUST NOT perform destructive cleanup.
+  After ownership is proven, cleanup MAY arm retry state owned by that action
+  before risky work. If ownership changes later, it MAY cancel only that retry
+  and MUST preserve newer tasks, sessions, and clipboard state. Cleanup MUST
+  remove matching metadata before cancelling its alarm.
 - **Scope:** Vault lock and clipboard clear tasks.
 - **Reason:** Alarm delivery is delayed, repeated, and concurrent with newer
   actions.

@@ -30,7 +30,9 @@
 
 ## DOC-003: Use the strongest available source
 
-- **Requirement:** Documentation updates MUST prefer enforced configuration,
+- **Requirement:** Documentation about exact protocol behavior, data formats, or
+  algorithm choices MUST follow the owning product or security specification.
+  For implementation facts, updates MUST prefer enforced configuration,
   schemas, exports, and tests, followed by accepted decisions and repeated
   current implementation. Old examples and isolated proposals MUST not override
   stronger evidence.

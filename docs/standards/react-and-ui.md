@@ -3,8 +3,9 @@
 ## UI-001: Keep workflow policy out of React
 
 - **Requirement:** Components and hooks MUST NOT implement cryptography,
-  persistence, sync, trust, or multi-step application policy. They MUST invoke
-  composed use cases and render explicit results.
+  persistence, sync, trust, or multi-step application policy. When UI code
+  initiates application workflow behavior, it MUST invoke composed use cases and
+  render explicit results.
 - **Scope:** `apps/extension/src/ui`.
 - **Reason:** React lifecycle code is not the owner of security workflows.
 - **Compliant:** A hook invokes `UnlockVault.execute` and stores visible status.

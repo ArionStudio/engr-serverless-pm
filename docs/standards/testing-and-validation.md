@@ -15,12 +15,17 @@
 
 ## TEST-002: Assert ordering and absence of effects
 
-- **Requirement:** Validation and rejection tests MUST assert both the reported
-  error and the absence of forbidden IDs, crypto, persistence, provider calls,
-  session commits, or cleanup mutations.
+- **Requirement:** Failure-path tests MUST assert the reported error or outcome
+  and the exact effects allowed for that path. Pre-effect rejection and actions
+  proven stale by their initial ownership check MUST assert zero downstream
+  mutation. Later-race stale tests MUST assert only action-owned retry effects
+  and preservation of newer state. Failures after partial effects MUST assert
+  required rollback and safely independent cleanup. Every test MUST assert that
+  effects forbidden for its path did not occur.
 - **Scope:** Failure-path tests.
 - **Reason:** The right error after the wrong side effect is still a defect.
-- **Compliant:** Assert zero adapter calls after an invalid master password.
+- **Compliant:** Assert zero downstream calls after an invalid lock delay, and
+  assert required rollback after an activation failure.
 - **Noncompliant:** Assert only the error class.
 - **Enforcement:** Test review.
 - **Exceptions:** None.

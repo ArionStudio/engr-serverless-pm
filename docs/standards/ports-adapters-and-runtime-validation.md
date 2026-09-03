@@ -69,13 +69,15 @@
 
 ## BOUNDARY-006: Clone mutable boundary values
 
-- **Requirement:** An adapter MUST clone mutable DTO data before returning it or
-  retaining it across asynchronous work. Callers MUST capture reviewed mutable
-  input before an `await` when it acts as authorization.
+- **Requirement:** An adapter MUST detach every mutable DTO component before
+  returning it or retaining it across asynchronous work. Before an `await`,
+  callers MUST make an owned snapshot of every mutable descendant used by an
+  authorization comparison, using the artifact's established clone operation.
+  A documented immutable value type MAY be retained by reference.
 - **Scope:** Adapters, repositories, and provider calls.
 - **Reason:** External mutation must not change the object that a CAS or review
   approved.
-- **Compliant:** Clone descriptors, vectors, tags, and byte arrays.
+- **Compliant:** Clone descriptors, nested vectors, tags, and byte arrays.
 - **Noncompliant:** Return an internal repository object's version-vector
   reference.
 - **Enforcement:** Alias-mutation tests.

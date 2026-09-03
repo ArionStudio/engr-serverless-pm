@@ -39,7 +39,7 @@ do not narrow the normative requirement.
 - Keep an ID stable when wording or file placement changes.
 - Never reuse an ID that has been removed or deprecated.
 - Reference another rule instead of copying its requirement.
-- Add every standards file to the index below.
+- Add every other standards file to the index below.
 
 ## 4. Excluded content
 

@@ -1,4 +1,10 @@
-// EFF's Long Wordlist from https://www.eff.org/dice
+// Generated list: pnpm core:generate-username-words
+// Do not edit GENERATED_USERNAME_WORDS manually.
+// EFF Long Wordlist source:
+// https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt
+// Source SHA-256: addd35536511597a02fa0a9ff1e5284677b8883b83e986e43f15a3db996b903e
+// Transformations: parse diceword rows, NFC normalize, lowercase, and retain
+// the first word for each unique alphanumeric username normalization.
 export const GENERATED_USERNAME_WORDS = [
   "abacus",
   "abdomen",

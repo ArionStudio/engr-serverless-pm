@@ -30,7 +30,7 @@
 ## PASSWORD-003: Limit the weak-entry override
 
 - **Requirement:** Entry add and update MUST enforce the current entry-password
-  score by default. `allowWeakPassword: true` MAY bypass only that strength
+  score by default. `allowWeakPassword: true` MUST bypass only that strength
   decision and MUST NOT be persisted.
 - **Scope:** Password-entry mutation.
 - **Reason:** A caller override must not bypass schema, URL, session, existence,
@@ -44,8 +44,9 @@
 ## PASSWORD-004: Keep scoring local and bounded
 
 - **Requirement:** Password scoring MUST run locally without network access or a
-  newly added runtime dependency. It MUST bound input complexity and MUST be
-  described as a policy heuristic, not an entropy or breach guarantee.
+  newly added runtime dependency. Its work MUST satisfy the complexity bound in
+  the security specification, and it MUST be described as a policy heuristic,
+  not an entropy or breach guarantee.
 - **Scope:** Password-strength implementation and documentation.
 - **Reason:** Password input is secret, and heuristic scoring has known limits.
 - **Compliant:** Use the pinned in-repo corpus and deterministic rules.
@@ -69,12 +70,16 @@
 ## DATA-002: Test normalized corpus integrity
 
 - **Requirement:** Corpus tests MUST run the production normalization path and
-  assert exact cardinality, no empty values, no normalized duplicates, storage
-  limits, dynamic sampler bounds, and retained unbiased sampling behavior.
+  verify the exact retained normalized values, cardinality, absence of empty or
+  duplicate values, and storage limits. Tests of `RandomSamplerService.pickIndex`
+  MUST deterministically preserve its dynamic uint32 bounds, rejection, and
+  retry behavior. Cryptographic randomness tests MUST NOT require a fixed seed
+  or statistical tolerance.
 - **Scope:** Generated password and username datasets.
 - **Reason:** Normalization can silently reduce the actual choice set and bias a
   sampler.
-- **Compliant:** Inject source data through the production normalization seam.
+- **Compliant:** Verify normalized corpus output, then inject uint32 values that
+  exercise sampler acceptance and rejection paths.
 - **Noncompliant:** Copy the normalizer into the test or deduplicate only at
   runtime.
 - **Enforcement:** Exhaustive corpus and sampler tests.

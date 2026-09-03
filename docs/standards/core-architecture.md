@@ -16,8 +16,11 @@ states a broader scope.
 
 ## CORE-ARCH-002: Point dependencies inward
 
-- **Requirement:** Runtime and UI code MAY depend on composition and adapters;
-  adapters MAY depend on core; core MUST NOT import outward.
+- **Requirement:** Composition roots MAY depend on core and concrete adapters;
+  adapters MAY depend on core; core MUST NOT import outward. UI code and runtime
+  event handlers that initiate application workflows MUST follow
+  `CORE-ARCH-010` and MUST NOT bypass composed use cases through concrete
+  adapters or internal services.
 - **Scope:** The monorepo dependency graph.
 - **Reason:** Technology choices must not control domain and application policy.
 - **Compliant:** A Chrome repository implements a core repository port.

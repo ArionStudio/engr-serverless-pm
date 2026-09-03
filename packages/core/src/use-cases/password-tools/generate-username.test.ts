@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../__tests__/fixtures/values";
@@ -77,9 +78,26 @@ describe("GenerateUsernameUseCase", () => {
         ),
       ),
     );
+    const normalizedSourceWords = generatedUsernames.map((username) =>
+      username.slice(0, username.length / 2),
+    );
 
     expect(GENERATED_USERNAME_WORDS).toHaveLength(7_775);
-    expect(new Set(generatedUsernames).size).toBe(generatedUsernames.length);
+    expect(
+      generatedUsernames.every(
+        (username, index) =>
+          username ===
+          `${normalizedSourceWords[index]}${normalizedSourceWords[index]}`,
+      ),
+    ).toBe(true);
+    expect(
+      createHash("sha256")
+        .update(normalizedSourceWords.join("\n"))
+        .digest("hex"),
+    ).toBe("9037b99d77ab77391c169754f0790b4e6a7ec7d4064ca93976d60bfd4696d2c5");
+    expect(new Set(normalizedSourceWords).size).toBe(
+      normalizedSourceWords.length,
+    );
     expect(
       generatedUsernames.every((username) => /^[a-z0-9]+$/.test(username)),
     ).toBe(true);

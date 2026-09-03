@@ -80,12 +80,26 @@ cryptographic primitives. Arbitrary mixing of algorithms is not permitted.
 - **Existing vaults:** unlock and current-password verification MUST continue to attempt the supplied password regardless of its score. The score requirement applies only when establishing a new master password.
 - **Rationale:** in this serverless, client-side, open-source design there is no server-held secret protecting the vault. Resistance to offline guessing depends primarily on the password strength, the random salt, and the PBKDF2 cost factor. A local score is a policy heuristic, not a guarantee of cryptographic entropy.
 
+The scoring algorithm has no hard input-length cap. Its pattern and variant
+searches use fixed upper bounds, and total scoring work MUST grow at most
+linearly with the input's Unicode code-point length. Callers that own a narrower
+domain limit, such as stored entry passwords, reject that input before scoring.
+
+Local HKDF-derived protection keys use JCS-encoded operation-purpose objects as
+their `info` values:
+
+| Protected material                 | HKDF `info` purpose                                   |
+| ---------------------------------- | ----------------------------------------------------- |
+| Local key payload                  | `lfspm-local-keys-protection-v1`                      |
+| Recovery copy of local key payload | `lfspm-recovery-local-keys-protection-v1`             |
+| Pending-enrollment private state   | `lfspm-device-enrollment-private-state-protection-v1` |
+
 ### 3.3 Payload Encryption (Data Lock)
 
 - Algorithm: AES-256-GCM
 - IV: 12 random bytes, **must be unique per encryption**
 - Tag length: 128 bits
-- AAD: Defined in §6.3 (Must bind Envelope metadata)
+- AAD: the family-specific canonical input defined in §6.3
 
 ### 3.4 Vault-Key Envelopes
 
@@ -222,8 +236,20 @@ envelopeAad = JCS({
 });
 ```
 
-Vault-content, envelope, pending-enrollment, session, and local-credential
-encryption each use a suite-defined AAD context. Contexts are not interchangeable.
+For `spm-v1`, the complete canonical AAD inputs are:
+
+| Protected material               | JCS input                                                                                                              |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Recipient vault-key envelope     | `{ vaultId, deviceId, vaultKeyGeneration, algorithmSuiteId }`                                                          |
+| Local key payload                | `{ purpose: "lfspm-local-keys-payload-v1" }`                                                                           |
+| Pending-enrollment private state | `{ purpose: "lfspm-device-enrollment-private-state-v1" }`                                                              |
+| Vault snapshot content           | `{ purpose: "lfspm-vault-snapshot-content-v1" }`                                                                       |
+| Unlocked session payload         | `{ purpose: "lfspm-unlocked-vault-session-payload-v1", context: { sessionId, vaultId, sourceSnapshotVersionVector } }` |
+| Local sync credential state      | `{ purpose: "lfspm-device-sync-credential-state-v1", context: { vaultId, deviceId, provider, target } }`               |
+
+The fixed purposes domain-separate artifact families. Only the envelope,
+session, and local sync credential families add the identity context shown
+above. These AAD inputs are not interchangeable.
 
 ---
 
@@ -684,7 +710,8 @@ Strict CSP required in manifest.json:
 
 ### Data Format & Integrity
 
-- [ ] **AAD Binding:** AES-GCM decryption MUST verify the envelope metadata (signerId, timestamp) as Additional Authenticated Data (AAD).
+- [ ] **AAD Binding:** AES-GCM decryption MUST verify the exact family-specific
+      canonical AAD input defined in §6.3.
 - [ ] **Canonical Signing:** Ed25519 signatures are computed over Canonical JSON (JCS) bytes to ensure deterministic verification.
 - [ ] **Slot Structure:** Exactly one current-generation envelope exists per
       trusted identity, with matching recipient and authenticated context.
@@ -693,7 +720,9 @@ Strict CSP required in manifest.json:
 
 - [ ] **Revision Monotonicity:** Every "Safe Save" operation increments the revision counter and updates the timestamp.
 - [ ] **Rollback Warning:** The app warns the user if the loaded vault's timestamp is older than the last locally seen timestamp.
-- [ ] **Signature Verification:** The app rejects any vault where the Ed25519 signature does not match the signerId public key.
+- [ ] **Signature Verification:** The app rejects any vault whose complete
+      canonical unsigned snapshot does not verify with the trusted public key
+      identified by `metadata.createdByDeviceId`.
 - [ ] **Sync Credential Boundary:** Sync credentials are absent from shared
       snapshots and enrollment artifacts and exist only in context-bound local
       ciphertext.

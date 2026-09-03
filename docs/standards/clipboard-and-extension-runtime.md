@@ -44,13 +44,16 @@
 ## RUNTIME-001: Use supported Chrome context messaging
 
 - **Requirement:** Background and offscreen contexts MUST communicate through
-  supported `chrome.runtime` messaging with request targeting, correlation,
-  response validation, timeout handling, and listener cleanup.
+  supported `chrome.runtime` messaging with request targeting, response
+  validation, and timeout handling. One-shot `sendMessage` exchanges MAY use
+  the returned promise and `sendResponse` channel for response correlation.
+  Protocols that install separate response listeners MUST use explicit request
+  IDs and remove those listeners on completion or timeout.
 - **Scope:** Extension cross-context communication.
 - **Reason:** A service-worker client transport can pass unit tests but fail in an
   installed extension.
-- **Compliant:** Send a targeted request ID and remove its response listener on
-  completion or timeout.
+- **Compliant:** Await the response promise for a targeted one-shot request, or
+  correlate and clean up a separately registered response listener.
 - **Noncompliant:** Treat the offscreen document as a service-worker client.
 - **Enforcement:** Messaging tests and unpacked-extension smoke tests.
 - **Exceptions:** None.
