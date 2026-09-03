@@ -10,9 +10,11 @@
   },
   "scripts": {
     "generate:common-passwords": "node ./scripts/generate-common-passwords.mjs",
+    "generate:username-words": "node ./scripts/generate-username-words.mjs",
     "test": "vitest",
     "type-check": "tsc --noEmit -p tsconfig.json",
-    "verify:common-passwords": "node ./scripts/generate-common-passwords.mjs --check"
+    "verify:common-passwords": "node ./scripts/generate-common-passwords.mjs --check",
+    "verify:username-words": "node ./scripts/generate-username-words.mjs --check"
   },
   "dependencies": {
     "zod": "^4.3.6"

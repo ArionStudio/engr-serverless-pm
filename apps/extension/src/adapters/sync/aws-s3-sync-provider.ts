@@ -8,6 +8,8 @@ import {
   RemoteVaultSnapshotChangedError,
   RemoteVaultSnapshotNotFoundError,
   areVaultSnapshotDescriptorsEqual,
+  cloneVaultSnapshotDescriptor,
+  cloneVaultSnapshotIdentity,
   toVaultSnapshotDescriptor,
 } from "@lfspm/core";
 import type {
@@ -159,17 +161,20 @@ export class AwsS3SyncProvider implements SyncProviderPort {
     syncAccess: SyncAccess,
     descriptor: VaultSnapshotDescriptor,
   ): Promise<VaultSnapshot> {
+    const capturedDescriptor = cloneVaultSnapshotDescriptor(descriptor);
     const remote = await this.getRemoteVaultSnapshot(
       syncAccess,
-      descriptor.vaultId,
+      capturedDescriptor.vaultId,
     );
 
     if (remote === null) {
-      throw new RemoteVaultSnapshotNotFoundError(descriptor.vaultId);
+      throw new RemoteVaultSnapshotNotFoundError(capturedDescriptor.vaultId);
     }
 
-    if (!areVaultSnapshotDescriptorsEqual(remote.descriptor, descriptor)) {
-      throw new RemoteVaultSnapshotChangedError(descriptor.vaultId);
+    if (
+      !areVaultSnapshotDescriptorsEqual(remote.descriptor, capturedDescriptor)
+    ) {
+      throw new RemoteVaultSnapshotChangedError(capturedDescriptor.vaultId);
     }
 
     return remote.snapshot;
@@ -180,6 +185,10 @@ export class AwsS3SyncProvider implements SyncProviderPort {
     vaultSnapshot: VaultSnapshot,
     expectedRemoteSnapshotIdentity: VaultSnapshotIdentity | null,
   ): Promise<PreparedSyncUpload> {
+    const capturedExpectedRemoteSnapshotIdentity =
+      expectedRemoteSnapshotIdentity === null
+        ? null
+        : cloneVaultSnapshotIdentity(expectedRemoteSnapshotIdentity);
     const vaultId = vaultSnapshot.metadata.id;
     const { client, location } = createOperationContext(
       syncAccess,
@@ -191,7 +200,7 @@ export class AwsS3SyncProvider implements SyncProviderPort {
       snapshot: vaultSnapshot,
     });
 
-    if (expectedRemoteSnapshotIdentity === null) {
+    if (capturedExpectedRemoteSnapshotIdentity === null) {
       return {
         status: "ready",
         start: () => ({
@@ -205,7 +214,7 @@ export class AwsS3SyncProvider implements SyncProviderPort {
       };
     }
 
-    if (expectedRemoteSnapshotIdentity.descriptor.vaultId !== vaultId) {
+    if (capturedExpectedRemoteSnapshotIdentity.descriptor.vaultId !== vaultId) {
       return {
         status: "not_started",
         outcome: remoteSnapshotChangedUploadOutcome(),
@@ -222,10 +231,10 @@ export class AwsS3SyncProvider implements SyncProviderPort {
       current === null ||
       !areVaultSnapshotDescriptorsEqual(
         current.descriptor,
-        expectedRemoteSnapshotIdentity.descriptor,
+        capturedExpectedRemoteSnapshotIdentity.descriptor,
       ) ||
       (await this.snapshotDigester.digestVaultSnapshot(current.snapshot)) !==
-        expectedRemoteSnapshotIdentity.snapshotDigest
+        capturedExpectedRemoteSnapshotIdentity.snapshotDigest
     ) {
       return {
         status: "not_started",
@@ -252,6 +261,10 @@ export class AwsS3SyncProvider implements SyncProviderPort {
     vaultId: string,
     expectedRemoteSnapshotIdentity: VaultSnapshotIdentity | null,
   ): Promise<PreparedSyncRemoval> {
+    const capturedExpectedRemoteSnapshotIdentity =
+      expectedRemoteSnapshotIdentity === null
+        ? null
+        : cloneVaultSnapshotIdentity(expectedRemoteSnapshotIdentity);
     const { client, location } = createOperationContext(
       syncAccess,
       this.createClient,
@@ -267,15 +280,15 @@ export class AwsS3SyncProvider implements SyncProviderPort {
     }
 
     if (
-      expectedRemoteSnapshotIdentity === null ||
-      expectedRemoteSnapshotIdentity.descriptor.vaultId !== vaultId ||
+      capturedExpectedRemoteSnapshotIdentity === null ||
+      capturedExpectedRemoteSnapshotIdentity.descriptor.vaultId !== vaultId ||
       current.descriptor.vaultId !== vaultId ||
       !areVaultSnapshotDescriptorsEqual(
         current.descriptor,
-        expectedRemoteSnapshotIdentity.descriptor,
+        capturedExpectedRemoteSnapshotIdentity.descriptor,
       ) ||
       (await this.snapshotDigester.digestVaultSnapshot(current.snapshot)) !==
-        expectedRemoteSnapshotIdentity.snapshotDigest
+        capturedExpectedRemoteSnapshotIdentity.snapshotDigest
     ) {
       throw new RemoteVaultSnapshotChangedError(vaultId);
     }

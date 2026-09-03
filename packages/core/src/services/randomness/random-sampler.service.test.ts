@@ -52,6 +52,7 @@ describe("RandomSamplerService", () => {
       1.5,
       Number.NaN,
       Number.POSITIVE_INFINITY,
+      0x1_0000_0001,
       Number.MAX_SAFE_INTEGER + 1,
     ];
 
@@ -68,6 +69,15 @@ describe("RandomSamplerService", () => {
 
       expect(ctx.ports.crypto.generateRandomBytes).not.toHaveBeenCalled();
     }
+  });
+
+  it("accepts the complete uint32 range", async () => {
+    const ctx = createContext([0xffffffff]);
+
+    await expect(ctx.service.pickIndex(0x1_0000_0000)).resolves.toBe(
+      0xffffffff,
+    );
+    expect(ctx.ports.crypto.generateRandomBytes).toHaveBeenCalledOnce();
   });
 
   it("retries when sampled value would introduce modulo bias", async () => {

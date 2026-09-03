@@ -690,6 +690,34 @@ describe("AwsS3SyncProvider", () => {
     ).rejects.toBeInstanceOf(RemoteVaultSnapshotChangedError);
   });
 
+  it("captures the download descriptor before awaiting remote state", async () => {
+    const client = createClient();
+    let resolveRemoteRead!: (
+      value: Awaited<ReturnType<S3SyncClient["getObject"]>>,
+    ) => void;
+    vi.mocked(client.getObject).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveRemoteRead = resolve;
+        }),
+    );
+    const provider = createTestProvider(client);
+    const mutableDescriptor: VaultSnapshotDescriptor = {
+      ...descriptor,
+      snapshotVersionVector: { ...descriptor.snapshotVersionVector },
+    };
+
+    const downloading = provider.downloadVaultSnapshot(
+      syncAccess,
+      mutableDescriptor,
+    );
+    await vi.waitFor(() => expect(client.getObject).toHaveBeenCalledOnce());
+    mutableDescriptor.snapshotVersionVector["device-id"] = 99;
+    resolveRemoteRead(remoteResponse(descriptor));
+
+    await expect(downloading).resolves.toEqual(snapshot);
+  });
+
   it("reports a missing requested snapshot without decoding", async () => {
     const client = createClient();
     vi.mocked(client.getObject).mockRejectedValueOnce(
@@ -749,6 +777,38 @@ describe("AwsS3SyncProvider", () => {
     expect(client.putObject).toHaveBeenCalledWith(
       expect.objectContaining({ IfMatch: '"remote-etag"' }),
     );
+  });
+
+  it("captures the expected upload identity before awaiting remote state", async () => {
+    const client = createClient();
+    let resolveRemoteRead!: (
+      value: Awaited<ReturnType<S3SyncClient["getObject"]>>,
+    ) => void;
+    vi.mocked(client.getObject).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveRemoteRead = resolve;
+        }),
+    );
+    const provider = createTestProvider(client);
+    const mutableExpectedIdentity: VaultSnapshotIdentity = {
+      descriptor: {
+        ...descriptor,
+        snapshotVersionVector: { ...descriptor.snapshotVersionVector },
+      },
+      snapshotDigest,
+    };
+
+    const preparing = provider.prepareVaultSnapshotUpload(
+      syncAccess,
+      snapshot,
+      mutableExpectedIdentity,
+    );
+    await vi.waitFor(() => expect(client.getObject).toHaveBeenCalledOnce());
+    mutableExpectedIdentity.descriptor.snapshotVersionVector["device-id"] = 99;
+    resolveRemoteRead(remoteResponse(descriptor, '"remote-etag"'));
+
+    await expect(preparing).resolves.toMatchObject({ status: "ready" });
   });
 
   it("does not replace a same-descriptor object with a different digest", async () => {
@@ -1095,6 +1155,38 @@ describe("AwsS3SyncProvider", () => {
       Key: "vaults/vault.enc",
       IfMatch: '"remote-etag"',
     });
+  });
+
+  it("captures the expected removal identity before awaiting remote state", async () => {
+    const client = createClient();
+    let resolveRemoteRead!: (
+      value: Awaited<ReturnType<S3SyncClient["getObject"]>>,
+    ) => void;
+    vi.mocked(client.getObject).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveRemoteRead = resolve;
+        }),
+    );
+    const provider = createTestProvider(client);
+    const mutableExpectedIdentity: VaultSnapshotIdentity = {
+      descriptor: {
+        ...descriptor,
+        snapshotVersionVector: { ...descriptor.snapshotVersionVector },
+      },
+      snapshotDigest,
+    };
+
+    const preparing = provider.prepareVaultSnapshotRemoval(
+      syncAccess,
+      descriptor.vaultId,
+      mutableExpectedIdentity,
+    );
+    await vi.waitFor(() => expect(client.getObject).toHaveBeenCalledOnce());
+    mutableExpectedIdentity.descriptor.snapshotVersionVector["device-id"] = 99;
+    resolveRemoteRead(remoteResponse(descriptor, '"remote-etag"'));
+
+    await expect(preparing).resolves.toMatchObject({ status: "ready" });
   });
 
   it("rejects a matching removal record without an ETag before deleting", async () => {
