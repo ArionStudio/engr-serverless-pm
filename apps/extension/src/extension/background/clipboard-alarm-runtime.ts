@@ -1,7 +1,6 @@
 import type {
   ClipboardClearTaskRepositoryPort,
   ClockPort,
-  IdPort,
   ScheduledTaskPort,
   VaultLockTaskRepositoryPort,
 } from "@lfspm/core";
@@ -12,20 +11,22 @@ import {
   VaultLifecycleCleanupService,
 } from "@lfspm/core/services";
 import {
-  OffscreenClipboard,
-  WebCryptoClipboardSecretHash,
-  WebLocksClipboardOperationCoordinator,
+  OffscreenClipboardAdapter,
+  WebCryptoClipboardSecretHashAdapter,
+  WebLocksClipboardOperationCoordinatorAdapter,
 } from "../../adapters/clipboard";
-import { WebCryptoPort } from "../../adapters/crypto";
+import { WebCryptoAdapter } from "../../adapters/crypto/web-crypto.adapter";
 import {
-  ChromeClipboardClearTaskRepository,
-  ChromeUnlockedVaultSessionMaterialRepository,
-  ChromeVaultLockTaskRepository,
-  IndexedDbEncryptedUnlockedVaultSessionPayloadRepository,
+  ChromeClipboardClearTaskRepositoryAdapter,
+  ChromeUnlockedVaultSessionMaterialRepositoryAdapter,
+  ChromeVaultLockTaskRepositoryAdapter,
+  IndexedDbEncryptedUnlockedVaultSessionPayloadRepositoryAdapter,
 } from "../../adapters/storage";
 import {
-  ChromeAlarmsScheduledTask,
+  ChromeAlarmsScheduledTaskAdapter,
   parseScheduledTask,
+  SystemClockAdapter,
+  WebCryptoIdAdapter,
 } from "../../adapters/system";
 
 export const CLIPBOARD_CLEAR_RETRY_DELAY_MS = 60_000;
@@ -186,16 +187,17 @@ export function createVaultLockAlarmHandler(
 }
 
 export function composeClipboardAlarmHandler(): ClipboardAlarmHandler {
-  const clock: ClockPort = { now: () => Date.now() };
-  const clipboard = new OffscreenClipboard();
-  const clipboardClearTasks = new ChromeClipboardClearTaskRepository();
-  const clipboardOperations = new WebLocksClipboardOperationCoordinator();
-  const scheduledTasks = new ChromeAlarmsScheduledTask();
+  const clock = new SystemClockAdapter();
+  const clipboard = new OffscreenClipboardAdapter();
+  const clipboardClearTasks = new ChromeClipboardClearTaskRepositoryAdapter();
+  const clipboardOperations =
+    new WebLocksClipboardOperationCoordinatorAdapter();
+  const scheduledTasks = new ChromeAlarmsScheduledTaskAdapter();
   const clipboardClear = new ClipboardClearService(
     clipboard,
     clipboardClearTasks,
     clock,
-    new WebCryptoClipboardSecretHash(),
+    new WebCryptoClipboardSecretHashAdapter(),
   );
   const clearClipboardTask = new ClearClipboardTaskUseCase(
     clipboardClear,
@@ -211,25 +213,24 @@ export function composeClipboardAlarmHandler(): ClipboardAlarmHandler {
 }
 
 export function composeScheduledTaskAlarmHandler(): ClipboardAlarmHandler {
-  const clock: ClockPort = { now: () => Date.now() };
-  const ids: IdPort = {
-    generateId: async () => globalThis.crypto.randomUUID(),
-  };
-  const clipboard = new OffscreenClipboard();
-  const clipboardClearTasks = new ChromeClipboardClearTaskRepository();
-  const clipboardOperations = new WebLocksClipboardOperationCoordinator();
-  const scheduledTasks = new ChromeAlarmsScheduledTask();
-  const vaultLockTasks = new ChromeVaultLockTaskRepository();
+  const clock = new SystemClockAdapter();
+  const ids = new WebCryptoIdAdapter();
+  const clipboard = new OffscreenClipboardAdapter();
+  const clipboardClearTasks = new ChromeClipboardClearTaskRepositoryAdapter();
+  const clipboardOperations =
+    new WebLocksClipboardOperationCoordinatorAdapter();
+  const scheduledTasks = new ChromeAlarmsScheduledTaskAdapter();
+  const vaultLockTasks = new ChromeVaultLockTaskRepositoryAdapter();
   const clipboardClear = new ClipboardClearService(
     clipboard,
     clipboardClearTasks,
     clock,
-    new WebCryptoClipboardSecretHash(),
+    new WebCryptoClipboardSecretHashAdapter(),
   );
   const unlockedVaultSession = new UnlockedVaultSessionService(
-    new ChromeUnlockedVaultSessionMaterialRepository(),
-    new IndexedDbEncryptedUnlockedVaultSessionPayloadRepository(),
-    new WebCryptoPort(),
+    new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(),
+    new IndexedDbEncryptedUnlockedVaultSessionPayloadRepositoryAdapter(),
+    new WebCryptoAdapter(),
     ids,
     clipboardOperations,
   );

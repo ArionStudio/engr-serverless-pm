@@ -7,6 +7,7 @@ import type {
   GeneratedUsernamePickIndex,
   GeneratedUsernameSettings,
 } from "./generated-username.type";
+import { normalizeGeneratedUsernameWord } from "./generated-username-word.policy";
 
 export async function generateUsernameValue(
   settings: GeneratedUsernameSettings,
@@ -23,7 +24,7 @@ export async function generateUsernameValue(
       GENERATED_USERNAME_WORDS[
         await pickIndex(GENERATED_USERNAME_WORDS.length)
       ];
-    const usernameWord = normalizeUsernameWord(word);
+    const usernameWord = normalizeGeneratedUsernameWord(word);
     words.push(
       settings.capitalize ? capitalizeWord(usernameWord) : usernameWord,
     );
@@ -50,8 +51,4 @@ async function generateUsernameNumber(
 
 function capitalizeWord(word: string): string {
   return `${word.charAt(0).toUpperCase()}${word.slice(1)}`;
-}
-
-function normalizeUsernameWord(word: string): string {
-  return word.toLowerCase().replaceAll(/[^a-z0-9]/g, "");
 }

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createInitializeVaultTestContext } from "../../__tests__/fixtures/initialize-vault";
 import type { RawMasterPassword } from "../../domain/master-password";
 import { InvalidNewMasterPasswordError } from "../../errors/master-password.errors";
+import { RecoveryMnemonicEncodingError } from "../../errors/recovery.errors";
 import { DeviceAccessMaterialChangedError } from "../../errors/vault-device.errors";
 import { InvalidVaultLockDelayError } from "../../errors/vault-session.errors";
 import type { VaultSessionActivationAuthorization } from "../../services/session/unlocked-vault-session.service";
@@ -154,6 +155,58 @@ describe("InitializeVaultUseCase", () => {
     expect(
       ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
     ).not.toHaveBeenCalled();
+  });
+
+  it("preserves mnemonic encoding failures without persisting state and wipes owned secrets", async () => {
+    const ctx = createInitializeVaultTestContext();
+    const encodingError = new RecoveryMnemonicEncodingError();
+    vi.mocked(ctx.ports.bip39.recoveryKeyToMnemonic).mockRejectedValueOnce(
+      encodingError,
+    );
+
+    await expect(
+      ctx.useCase.execute({
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "Laptop",
+        lockAfterMs: 60_000,
+      }),
+    ).rejects.toBe(encodingError);
+
+    expect(ctx.ports.crypto.generateMasterPasswordSalt).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .saveUnlockedVaultSessionMaterial,
+    ).not.toHaveBeenCalled();
+    expect(ctx.saved.localVaultDescriptor).toBeUndefined();
+    expect(ctx.saved.unlockedVaultSession).toBeUndefined();
+
+    const vaultMasterKey = await vi.mocked(
+      ctx.ports.crypto.generateVaultMasterKey,
+    ).mock.results[0]!.value;
+    const deviceSignKeyPair = await vi.mocked(
+      ctx.ports.crypto.generateDeviceSignKeyPair,
+    ).mock.results[0]!.value;
+    const deviceVaultKeyPair = await vi.mocked(
+      ctx.ports.crypto.generateDeviceVaultKeyPair,
+    ).mock.results[0]!.value;
+    const deviceLocalProtectionKey = await vi.mocked(
+      ctx.ports.crypto.generateDeviceLocalProtectionKey,
+    ).mock.results[0]!.value;
+    const recoveryKey = await vi.mocked(ctx.ports.crypto.generateRecoveryKey)
+      .mock.results[0]!.value;
+
+    for (const buffer of [
+      vaultMasterKey,
+      deviceSignKeyPair.privateKey,
+      deviceVaultKeyPair.privateKey,
+      deviceLocalProtectionKey,
+      recoveryKey,
+    ]) {
+      expect(Array.from(new Uint8Array(buffer))).toEqual([0]);
+    }
   });
 
   it("rolls back initialized state when lock scheduling fails", async () => {

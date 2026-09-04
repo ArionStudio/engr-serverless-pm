@@ -24,7 +24,7 @@ import {
   type VaultManagerDb,
 } from "../../infrastructure/database/dexie-db";
 import type { AsymmetricKeyValidator } from "../crypto";
-import { IndexedDbVaultLocalRepository } from "./indexeddb-vault-local.repository";
+import { IndexedDbVaultLocalRepositoryAdapter } from "./indexeddb-vault-local-repository.adapter";
 import { InvalidDeviceEnrollmentArtifactError } from "../codecs/device-enrollment-artifact.codec";
 import {
   encodeLocalVaultTrustCheckpoint,
@@ -50,7 +50,7 @@ function createContext() {
     artifacts,
     database,
     snapshotDigester,
-    repository: new IndexedDbVaultLocalRepository(
+    repository: new IndexedDbVaultLocalRepositoryAdapter(
       database,
       createNoOpAsymmetricKeyValidator(),
       snapshotDigester,
@@ -77,7 +77,7 @@ afterEach(async () => {
   database = undefined;
 });
 
-describe("IndexedDbVaultLocalRepository", () => {
+describe("IndexedDbVaultLocalRepositoryAdapter", () => {
   it("persists and reads an initialized vault as one complete record set", async () => {
     const ctx = createContext();
 
@@ -808,9 +808,8 @@ describe("IndexedDbVaultLocalRepository", () => {
         encodeBase64Url(new Uint8Array(65)),
       ),
     });
-    const repositoryWithWebCryptoValidation = new IndexedDbVaultLocalRepository(
-      ctx.database,
-    );
+    const repositoryWithWebCryptoValidation =
+      new IndexedDbVaultLocalRepositoryAdapter(ctx.database);
 
     await expect(
       repositoryWithWebCryptoValidation.getDeviceAccessMaterial(vaultId),

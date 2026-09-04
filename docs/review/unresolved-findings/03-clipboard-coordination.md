@@ -19,7 +19,7 @@ sequence through `ClipboardOperationCoordinatorPort`. Clipboard alarms and vault
 lifecycle cleanup use the same coordinator.
 
 The extension implements that port with
-[`WebLocksClipboardOperationCoordinator`](../../../apps/extension/src/adapters/clipboard/web-locks-clipboard-operation-coordinator.ts).
+[`WebLocksClipboardOperationCoordinatorAdapter`](../../../apps/extension/src/adapters/clipboard/web-locks-clipboard-operation-coordinator.adapter.ts).
 Its fixed, origin-scoped Web Lock serializes independent coordinator instances
 across extension contexts. The lease prevents session activation or cleanup
 from escaping the same ownership boundary.

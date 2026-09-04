@@ -61,6 +61,7 @@ export default defineConfig({
     }),
   ],
   build: {
+    manifest: true,
     rollupOptions: {
       input: {
         popup: resolve(__dirname, "..", "popup.html"),

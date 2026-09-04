@@ -15,8 +15,8 @@ import { ClipboardClearService } from "../../../../../packages/core/src/services
 import { VaultLifecycleCleanupService } from "../../../../../packages/core/src/services/session/vault-lifecycle-cleanup.service";
 import { createVaultManagerDb } from "../../infrastructure/database/dexie-db";
 import type { VaultManagerDb } from "../../infrastructure/database/dexie-db";
-import { WebCryptoPort } from "../crypto";
-import { IndexedDbVaultLocalRepository } from "../storage";
+import { ScureBip39Adapter, WebCryptoAdapter } from "../crypto";
+import { IndexedDbVaultLocalRepositoryAdapter } from "../storage";
 import { JsonTextDeviceEnrollmentTransport } from "./json-text-device-enrollment.transport";
 
 let databaseCounter = 0;
@@ -31,10 +31,11 @@ describe("JSON-text enrollment workflow integration", () => {
   it("carries a response through PerformDeviceEnrollmentUseCase with concrete IndexedDB and WebCrypto", async () => {
     const values = createCoreTestValues();
     const ports = createCoreTestPorts(values);
-    const crypto = new WebCryptoPort();
+    const bip39 = new ScureBip39Adapter();
+    const crypto = new WebCryptoAdapter();
     databaseCounter += 1;
     database = createVaultManagerDb(`lfspm-enrollment-${databaseCounter}`);
-    const vaults = new IndexedDbVaultLocalRepository(database);
+    const vaults = new IndexedDbVaultLocalRepositoryAdapter(database);
     const vaultId = "integrated-vault-id";
     const sourceDeviceId = "source-device-id";
     const sourceSignKeys = await crypto.generateDeviceSignKeyPair();
@@ -222,7 +223,7 @@ describe("JSON-text enrollment workflow integration", () => {
       ports.clock,
       crypto,
       ports.ids,
-      ports.bip39,
+      bip39,
       ports.syncProvider,
       ports.sessionServices.unlockedVaultSession,
       ports.vaultDisplayName,
@@ -241,6 +242,8 @@ describe("JSON-text enrollment workflow integration", () => {
     });
 
     expect(result.deviceId).toBe(request.payload.deviceId);
+    expect(result.recoveryMnemonicKey).toMatchObject({ format: "BIP39" });
+    expect(result.recoveryMnemonicKey.words).toHaveLength(24);
     await expect(
       vaults.getLocalVaultDescriptor(vaultId),
     ).resolves.toMatchObject({ vaultId });

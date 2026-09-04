@@ -5,14 +5,14 @@ import { describe, expect, it, vi } from "vitest";
 import { createChromeStorageArea } from "../../__tests__/fixtures/chrome-storage-area";
 import {
   type WebLockManager,
-  WebCryptoClipboardSecretHash,
-  WebLocksClipboardOperationCoordinator,
+  WebCryptoClipboardSecretHashAdapter,
+  WebLocksClipboardOperationCoordinatorAdapter,
 } from "../../adapters/clipboard";
-import { ChromeClipboardClearTaskRepository } from "../../adapters/storage";
+import { ChromeClipboardClearTaskRepositoryAdapter } from "../../adapters/storage";
 import { CLIPBOARD_CLEAR_TASK_STORAGE_KEY } from "../../adapters/storage";
 import {
   type ChromeAlarmsApi,
-  ChromeAlarmsScheduledTask,
+  ChromeAlarmsScheduledTaskAdapter,
   InvalidScheduledTaskRecordError,
   serializeScheduledTask,
 } from "../../adapters/system";
@@ -28,14 +28,14 @@ const immediateLockManager: WebLockManager = {
 function createContext() {
   const clock = { now: vi.fn(() => 1_000) };
   const { storageArea } = createChromeStorageArea();
-  const clipboardClearTasks = new ChromeClipboardClearTaskRepository(
+  const clipboardClearTasks = new ChromeClipboardClearTaskRepositoryAdapter(
     storageArea,
   );
-  const clipboardOperations = new WebLocksClipboardOperationCoordinator(
+  const clipboardOperations = new WebLocksClipboardOperationCoordinatorAdapter(
     immediateLockManager,
   );
-  const copyContextSecretHash = new WebCryptoClipboardSecretHash();
-  const alarmContextSecretHash = new WebCryptoClipboardSecretHash();
+  const copyContextSecretHash = new WebCryptoClipboardSecretHashAdapter();
+  const alarmContextSecretHash = new WebCryptoClipboardSecretHashAdapter();
   let clipboardValue = "copied-password";
   const clipboard: ClipboardPort = {
     readText: vi.fn(async () => clipboardValue),
@@ -49,7 +49,7 @@ function createContext() {
     create: createAlarm,
     clear: clearAlarm,
   };
-  const scheduledTasks = new ChromeAlarmsScheduledTask(alarms);
+  const scheduledTasks = new ChromeAlarmsScheduledTaskAdapter(alarms);
   const clearClipboardTask = new ClearClipboardTaskUseCase(
     new ClipboardClearService(
       clipboard,

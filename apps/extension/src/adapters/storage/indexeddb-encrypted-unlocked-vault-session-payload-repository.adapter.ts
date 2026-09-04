@@ -21,7 +21,7 @@ const STORED_RECORD_KEYS = [
   "vaultId",
 ] as const;
 
-export class IndexedDbEncryptedUnlockedVaultSessionPayloadRepository implements EncryptedUnlockedVaultSessionPayloadRepositoryPort {
+export class IndexedDbEncryptedUnlockedVaultSessionPayloadRepositoryAdapter implements EncryptedUnlockedVaultSessionPayloadRepositoryPort {
   private readonly database: VaultManagerDb;
 
   constructor(database: VaultManagerDb = db) {

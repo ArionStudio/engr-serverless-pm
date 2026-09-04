@@ -5,9 +5,9 @@ extension. Cryptographic and application behavior lives in the TypeScript core
 package. Browser storage, WebCrypto, clipboard, scheduling, and AWS S3 support
 live in extension adapters.
 
-The core workflows and the existing extension adapters are implemented and
-tested. Some runtime ports, the full production composition root, and UI
-wiring remain unfinished; the popup and options pages are still a small shell.
+The core workflows and current extension ports have concrete implementations
+and tests. The full production composition root and UI wiring remain
+unfinished; the popup and options pages are still a small shell.
 
 ## Security model
 
@@ -32,6 +32,7 @@ as a non-normative legacy design reference.
 | `packages/core`    | Domain contracts, use cases, services, and runtime ports           |
 | `apps/extension`   | Chrome extension UI, runtime code, and browser/AWS adapters        |
 | `docs/core`        | Current core architecture, model, workflows, security, and testing |
+| `docs/adapters`    | Current extension adapter architecture and development guide       |
 | `docs/standards`   | Normative implementation and contribution rules                    |
 | `docs/security`    | Legacy v1 security design reference                                |
 | `docs/v1/use-case` | PlantUML workflow diagrams                                         |
@@ -72,6 +73,7 @@ that directory through `chrome://extensions` with developer mode enabled.
 
 - [Core package guide](./packages/core/README.md)
 - [Core documentation](./docs/core/README.md)
+- [Extension adapter documentation](./docs/adapters/README.md)
 - [Coding standards](./docs/standards/README.md)
 - [AWS S3 setup](./docs/aws/s3/README.md)
 - [Development references](./docs/development/reference-links.md)

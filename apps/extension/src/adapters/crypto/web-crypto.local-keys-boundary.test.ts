@@ -8,14 +8,14 @@ import {
 } from "@lfspm/core";
 import { encodeBase64Url } from "@lfspm/core/lib";
 import { InvalidLocalKeysPayloadError } from "./index";
-import { WebCryptoPort } from "./web-crypto.port";
+import { WebCryptoAdapter } from "./web-crypto.adapter";
 
 const encoder = new TextEncoder();
 const LOCAL_KEYS_PURPOSE = "lfspm-local-keys-payload-v1";
 
-describe("WebCryptoPort local-keys hostile plaintext boundary", () => {
+describe("WebCryptoAdapter local-keys hostile plaintext boundary", () => {
   it("rejects an authenticated local-keys payload with an extra field", async () => {
-    const crypto = new WebCryptoPort();
+    const crypto = new WebCryptoAdapter();
     const signing = await crypto.generateDeviceSignKeyPair();
     const vault = await crypto.generateDeviceVaultKeyPair();
     const protectionKey =
@@ -46,7 +46,7 @@ describe("WebCryptoPort local-keys hostile plaintext boundary", () => {
   });
 
   it("rejects an authenticated, valid-length, non-importable private key", async () => {
-    const crypto = new WebCryptoPort();
+    const crypto = new WebCryptoAdapter();
     const signing = await crypto.generateDeviceSignKeyPair();
     const vault = await crypto.generateDeviceVaultKeyPair();
     const protectionKey =
@@ -90,7 +90,7 @@ describe("WebCryptoPort local-keys hostile plaintext boundary", () => {
   ] as const)(
     "rejects a wrong-length %s private key before returning local keys",
     async (_label, field, suite) => {
-      const crypto = new WebCryptoPort();
+      const crypto = new WebCryptoAdapter();
       const signing = await crypto.generateDeviceSignKeyPair();
       const vault = await crypto.generateDeviceVaultKeyPair();
       const protectionKey =

@@ -23,8 +23,9 @@ paths and are not consumer entry points.
 The services entry point exports `ClipboardClearService`,
 `RandomSamplerService`, `UnlockedVaultSessionService`,
 `VaultLifecycleCleanupService`, `VaultSessionActivationService`,
-`VaultSnapshotService`, and `VaultSyncGuardService`. Internal trust services are
-not exported through this path. Supporting public types are
+`VaultSnapshotService`, `VaultSyncGuardService`, and
+`RandomVaultDisplayNameService`. Internal trust services are not exported
+through this path. Supporting public types are
 `VaultSessionActivationAuthorization`.
 
 ```ts
@@ -89,6 +90,8 @@ pnpm ext:build
 ## Documentation authority
 
 - [Core documentation](../../docs/core/README.md) describes current behavior.
+- [Extension adapter documentation](../../docs/adapters/README.md) maps ports to
+  concrete implementations and composition ownership.
 - [Code standards](../../docs/standards/README.md) define implementation rules.
 - [Current security model](../../docs/core/security-model.md) summarizes the
   implemented trust boundary and safeguards.

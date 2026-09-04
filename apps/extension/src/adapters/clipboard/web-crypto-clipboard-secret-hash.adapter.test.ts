@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { WebCryptoClipboardSecretHash } from "./web-crypto-clipboard-secret-hash";
+import { WebCryptoClipboardSecretHashAdapter } from "./web-crypto-clipboard-secret-hash.adapter";
 
-describe("WebCryptoClipboardSecretHash", () => {
+describe("WebCryptoClipboardSecretHashAdapter", () => {
   it("uses the same canonical digest across independent extension contexts", async () => {
-    const copyContextHash = new WebCryptoClipboardSecretHash();
-    const alarmContextHash = new WebCryptoClipboardSecretHash();
+    const copyContextHash = new WebCryptoClipboardSecretHashAdapter();
+    const alarmContextHash = new WebCryptoClipboardSecretHashAdapter();
     const copiedValueHash = await copyContextHash.hashSecretValue("password");
 
     expect(copiedValueHash).toBe(

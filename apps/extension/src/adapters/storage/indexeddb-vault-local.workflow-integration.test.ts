@@ -5,14 +5,12 @@ import {
   InitializeVaultUseCase,
   RecoverDeviceAccessUseCase,
   type RawMasterPassword,
-  type RecoveryKeyMnemonic,
-  type RecoverySecretKey,
 } from "@lfspm/core";
 import { createCoreTestPorts } from "../../../../../packages/core/src/__tests__/fixtures/ports";
 import { createCoreTestValues } from "../../../../../packages/core/src/__tests__/fixtures/values";
 import { createVaultManagerDb } from "../../infrastructure/database/dexie-db";
-import { WebCryptoPort } from "../crypto";
-import { IndexedDbVaultLocalRepository } from "./indexeddb-vault-local.repository";
+import { ScureBip39Adapter, WebCryptoAdapter } from "../crypto";
+import { IndexedDbVaultLocalRepositoryAdapter } from "./indexeddb-vault-local-repository.adapter";
 import { InvalidLocalVaultSecurityRecordError } from "../codecs/local-vault-security.codec";
 
 let databaseCounter = 0;
@@ -23,30 +21,15 @@ afterEach(async () => {
   database = undefined;
 });
 
-describe("IndexedDbVaultLocalRepository workflow integration", () => {
+describe("IndexedDbVaultLocalRepositoryAdapter workflow integration", () => {
   it("round-trips initialization, password-change, and recovery writers", async () => {
     const values = createCoreTestValues();
     const ports = createCoreTestPorts(values);
-    const crypto = new WebCryptoPort();
+    const bip39 = new ScureBip39Adapter();
+    const crypto = new WebCryptoAdapter();
     databaseCounter += 1;
     database = createVaultManagerDb(`lfspm-workflow-${databaseCounter}`);
-    const vaults = new IndexedDbVaultLocalRepository(database);
-    let recoveryKey: RecoverySecretKey | undefined;
-
-    vi.mocked(ports.bip39.recoveryKeyToMnemonic).mockImplementation(
-      async (key) => {
-        recoveryKey = key.slice(0) as RecoverySecretKey;
-        return values.recoveryMnemonicKey;
-      },
-    );
-    vi.mocked(ports.bip39.mnemonicToRecoveryKey).mockImplementation(
-      async () => {
-        if (recoveryKey === undefined) {
-          throw new Error("Recovery key was not captured by initialization.");
-        }
-        return recoveryKey.slice(0) as RecoverySecretKey;
-      },
-    );
+    const vaults = new IndexedDbVaultLocalRepositoryAdapter(database);
     vi.mocked(ports.ids.generateId).mockReset();
     vi.mocked(ports.ids.generateId)
       .mockResolvedValueOnce(values.vaultId)
@@ -57,7 +40,7 @@ describe("IndexedDbVaultLocalRepository workflow integration", () => {
 
     const initialize = new InitializeVaultUseCase(
       crypto,
-      ports.bip39,
+      bip39,
       vaults,
       ports.sessionServices.unlockedVaultSession,
       ports.ids,
@@ -67,7 +50,7 @@ describe("IndexedDbVaultLocalRepository workflow integration", () => {
       ports.vaultLockTasks,
       ports.clipboardOperations,
     );
-    await initialize.execute({
+    const initializationResult = await initialize.execute({
       masterPassword: values.masterPassword,
       deviceName: "Integrated device",
       lockAfterMs: 60_000,
@@ -108,15 +91,15 @@ describe("IndexedDbVaultLocalRepository workflow integration", () => {
       "local-access-generation-3",
     );
     const recover = new RecoverDeviceAccessUseCase(
-      ports.bip39,
+      bip39,
       crypto,
       ports.ids,
       ports.sessionServices.unlockedVaultSession,
       vaults,
     );
-    await recover.execute({
+    const recoveryResult = await recover.execute({
       vaultId: values.vaultId,
-      recoveryMnemonicKey: values.recoveryMnemonicKey as RecoveryKeyMnemonic,
+      recoveryMnemonicKey: initializationResult.recoveryMnemonicKey,
       newMasterPassword: "A9!recovered-master-password" as RawMasterPassword,
     });
 
@@ -153,7 +136,7 @@ describe("IndexedDbVaultLocalRepository workflow integration", () => {
     await expect(
       recover.execute({
         vaultId: values.vaultId,
-        recoveryMnemonicKey: values.recoveryMnemonicKey,
+        recoveryMnemonicKey: recoveryResult.recoveryMnemonicKey,
         newMasterPassword: "B8!another-recovered-password" as RawMasterPassword,
       }),
     ).rejects.toBeInstanceOf(InvalidLocalVaultSecurityRecordError);

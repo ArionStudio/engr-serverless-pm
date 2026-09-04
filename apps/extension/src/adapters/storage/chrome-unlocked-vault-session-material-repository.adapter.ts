@@ -11,14 +11,14 @@ import {
   deserializeUnlockedVaultSessionMaterial,
   serializeUnlockedVaultSessionMaterial,
 } from "./unlocked-vault-session-material.codec";
-import type { ChromeStorageArea } from "./chrome-storage-area";
+import type { ChromeStorageArea } from "./chrome-storage-area.type";
 
 export const UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY =
   "unlockedVaultSessionMaterial";
 export const UNLOCKED_VAULT_SESSION_EPOCH_STORAGE_KEY =
   "unlockedVaultSessionEpoch";
 
-export class ChromeUnlockedVaultSessionMaterialRepository implements UnlockedVaultSessionMaterialRepositoryPort {
+export class ChromeUnlockedVaultSessionMaterialRepositoryAdapter implements UnlockedVaultSessionMaterialRepositoryPort {
   private readonly storageArea: ChromeStorageArea;
   private readonly storageKey: string;
   private readonly epochStorageKey: string;

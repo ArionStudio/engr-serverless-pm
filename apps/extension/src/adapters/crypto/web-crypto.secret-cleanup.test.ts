@@ -16,7 +16,10 @@ import {
   decodeLocalKeysPayload,
   encodeLocalKeysPayload,
 } from "../codecs/local-vault-security.codec";
-import { type AsymmetricKeyValidator, WebCryptoPort } from "./web-crypto.port";
+import {
+  type AsymmetricKeyValidator,
+  WebCryptoAdapter,
+} from "./web-crypto.adapter";
 
 const { bestEffortWipeArrayBuffersSpy, secureWipeSpy } = vi.hoisted(() => ({
   bestEffortWipeArrayBuffersSpy: vi.fn(
@@ -46,9 +49,9 @@ beforeEach(() => {
   secureWipeSpy.mockClear();
 });
 
-describe("WebCryptoPort secret cleanup", () => {
+describe("WebCryptoAdapter secret cleanup", () => {
   it("wipes partially decoded local secrets when a late trust-anchor field is malformed", async () => {
-    const producer = new WebCryptoPort();
+    const producer = new WebCryptoAdapter();
     const signing = await producer.generateDeviceSignKeyPair();
     const vault = await producer.generateDeviceVaultKeyPair();
     const encoded = encodeLocalKeysPayload({
@@ -146,8 +149,8 @@ describe("WebCryptoPort secret cleanup", () => {
           return typeof value === "function" ? value.bind(target) : value;
         },
       });
-      const crypto = new WebCryptoPort(withSubtle(subtle));
-      const salt = await new WebCryptoPort().generateMasterPasswordSalt();
+      const crypto = new WebCryptoAdapter(withSubtle(subtle));
+      const salt = await new WebCryptoAdapter().generateMasterPasswordSalt();
       const operation = crypto.deriveLocalRootKey(password, salt);
 
       if (outcome === "success") {
@@ -165,7 +168,7 @@ describe("WebCryptoPort secret cleanup", () => {
   );
 
   it("waits for every local-key import and wipes every decoded local secret after one import fails", async () => {
-    const producer = new WebCryptoPort();
+    const producer = new WebCryptoAdapter();
     const signing = await producer.generateDeviceSignKeyPair();
     const vault = await producer.generateDeviceVaultKeyPair();
     const localProtectionKey =
@@ -206,7 +209,7 @@ describe("WebCryptoPort secret cleanup", () => {
       },
     };
     bestEffortWipeArrayBuffersSpy.mockClear();
-    const operation = new WebCryptoPort(
+    const operation = new WebCryptoAdapter(
       globalThis.crypto,
       validator,
     ).unwrapLocalKeysPayload(wrapped, protectionKey);
@@ -262,7 +265,7 @@ describe("WebCryptoPort secret cleanup", () => {
       },
     };
     bestEffortWipeArrayBuffersSpy.mockClear();
-    const operation = new WebCryptoPort(
+    const operation = new WebCryptoAdapter(
       globalThis.crypto,
       validator,
     ).unwrapDeviceEnrollmentPrivateState(
@@ -299,7 +302,7 @@ describe("WebCryptoPort secret cleanup", () => {
   });
 
   it("wipes an ECDH shared secret when envelope salt generation fails", async () => {
-    const producer = new WebCryptoPort();
+    const producer = new WebCryptoAdapter();
     const recipient = await producer.generateDeviceVaultKeyPair();
     const vaultMasterKey = await producer.generateVaultMasterKey();
     const sharedSecret = new Uint8Array(32).fill(73).buffer;
@@ -321,7 +324,7 @@ describe("WebCryptoPort secret cleanup", () => {
     bestEffortWipeArrayBuffersSpy.mockClear();
 
     await expect(
-      new WebCryptoPort(cryptoApi).createDeviceVaultKeyEnvelope(
+      new WebCryptoAdapter(cryptoApi).createDeviceVaultKeyEnvelope(
         vaultMasterKey,
         recipient.publicKey,
         {
@@ -338,7 +341,7 @@ describe("WebCryptoPort secret cleanup", () => {
   });
 
   it("wipes the first ECDH probe when the second key-pair probe rejects", async () => {
-    const producer = new WebCryptoPort();
+    const producer = new WebCryptoAdapter();
     const pair = await producer.generateDeviceVaultKeyPair();
     const firstProbe = new Uint8Array(32).fill(91).buffer;
     let deriveCallCount = 0;
@@ -360,7 +363,7 @@ describe("WebCryptoPort secret cleanup", () => {
     bestEffortWipeArrayBuffersSpy.mockClear();
 
     await expect(
-      new WebCryptoPort(withSubtle(subtle)).verifyDeviceVaultKeyPair(
+      new WebCryptoAdapter(withSubtle(subtle)).verifyDeviceVaultKeyPair(
         pair.publicKey,
         pair.privateKey,
       ),
@@ -376,7 +379,7 @@ describe("WebCryptoPort secret cleanup", () => {
 });
 
 async function createEnrollmentFixture() {
-  const producer = new WebCryptoPort();
+  const producer = new WebCryptoAdapter();
   const signing = await producer.generateDeviceSignKeyPair();
   const vault = await producer.generateDeviceVaultKeyPair();
   const requestPayload: DeviceEnrollmentRequestPayload = {

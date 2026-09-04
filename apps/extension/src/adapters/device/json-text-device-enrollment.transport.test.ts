@@ -8,7 +8,7 @@ import {
 } from "@lfspm/core";
 import { encodeBase64Url } from "@lfspm/core/lib";
 import type { AsymmetricKeyValidator } from "../crypto";
-import { WebCryptoPort } from "../crypto";
+import { WebCryptoAdapter } from "../crypto";
 import { InvalidDeviceEnrollmentArtifactError } from "./index";
 import { JsonTextDeviceEnrollmentTransport } from "./json-text-device-enrollment.transport";
 
@@ -229,7 +229,7 @@ describe("JsonTextDeviceEnrollmentTransport", () => {
 });
 
 async function createEnrollmentArtifacts(): Promise<EnrollmentArtifacts> {
-  const crypto = new WebCryptoPort();
+  const crypto = new WebCryptoAdapter();
   const signKeys = await crypto.generateDeviceSignKeyPair();
   const vaultKeys = await crypto.generateDeviceVaultKeyPair();
   const vaultMasterKey = await crypto.generateVaultMasterKey();

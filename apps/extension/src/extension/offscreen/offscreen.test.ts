@@ -3,7 +3,7 @@ import {
   OFFSCREEN_CLIPBOARD_DOCUMENT_PATH,
   OFFSCREEN_CLIPBOARD_MESSAGE_TARGET,
   OFFSCREEN_CLIPBOARD_RESPONSE_TIMEOUT_MS,
-} from "../../adapters/clipboard/offscreen-clipboard";
+} from "../../adapters/clipboard/offscreen-clipboard.adapter";
 
 class FakeTextAreaElement {
   value = "";
@@ -81,9 +81,9 @@ describe("offscreen clipboard bridge", () => {
     });
 
     await import("./offscreen");
-    const { OffscreenClipboard } =
-      await import("../../adapters/clipboard/offscreen-clipboard");
-    const clipboard = new OffscreenClipboard();
+    const { OffscreenClipboardAdapter } =
+      await import("../../adapters/clipboard/offscreen-clipboard.adapter");
+    const clipboard = new OffscreenClipboardAdapter();
 
     await expect(clipboard.writeText("bridge-value")).resolves.toBeUndefined();
 
@@ -140,9 +140,9 @@ describe("offscreen clipboard bridge", () => {
       });
 
       await import("./offscreen");
-      const { OffscreenClipboard } =
-        await import("../../adapters/clipboard/offscreen-clipboard");
-      const clipboard = new OffscreenClipboard();
+      const { OffscreenClipboardAdapter } =
+        await import("../../adapters/clipboard/offscreen-clipboard.adapter");
+      const clipboard = new OffscreenClipboardAdapter();
       const pendingWrite = expect(
         clipboard.writeText("expired-value"),
       ).rejects.toThrow("Offscreen clipboard response timed out.");

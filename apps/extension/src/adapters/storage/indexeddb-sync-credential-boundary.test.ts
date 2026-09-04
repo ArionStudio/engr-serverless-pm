@@ -14,7 +14,7 @@ import {
   type PersistedVaultArtifactRecord,
   type VaultManagerDb,
 } from "../../infrastructure/database/dexie-db";
-import { IndexedDbVaultLocalRepository } from "./indexeddb-vault-local.repository";
+import { IndexedDbVaultLocalRepositoryAdapter } from "./indexeddb-vault-local-repository.adapter";
 import { InvalidSyncCredentialRecordError } from "../codecs/sync-credential.codec";
 
 let databaseCounter = 0;
@@ -189,13 +189,13 @@ describe("IndexedDB sync credential boundary", () => {
 
 function createContext(): {
   readonly database: VaultManagerDb;
-  readonly repository: IndexedDbVaultLocalRepository;
+  readonly repository: IndexedDbVaultLocalRepositoryAdapter;
 } {
   databaseCounter += 1;
   database = createVaultManagerDb(`lfspm-sync-credential-${databaseCounter}`);
   return {
     database,
-    repository: new IndexedDbVaultLocalRepository(database),
+    repository: new IndexedDbVaultLocalRepositoryAdapter(database),
   };
 }
 

@@ -28,17 +28,17 @@ import {
   singlePasswordEntry,
 } from "../../../../../packages/core/src/__tests__/fixtures/vault-entries";
 import { createChromeStorageArea } from "../../__tests__/fixtures/chrome-storage-area";
-import { ChromeClipboardClearTaskRepository } from "../storage/chrome-clipboard-clear-task.repository";
+import { ChromeClipboardClearTaskRepositoryAdapter } from "../storage/chrome-clipboard-clear-task-repository.adapter";
 import {
-  ChromeUnlockedVaultSessionMaterialRepository,
+  ChromeUnlockedVaultSessionMaterialRepositoryAdapter,
   UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY,
-} from "../storage/chrome-unlocked-vault-session-material.repository";
+} from "../storage/chrome-unlocked-vault-session-material-repository.adapter";
 import {
   CLIPBOARD_OPERATION_LOCK_NAME,
   type WebLockManager,
-  WebLocksClipboardOperationCoordinator,
-} from "./web-locks-clipboard-operation-coordinator";
-import { WebCryptoClipboardSecretHash } from "./web-crypto-clipboard-secret-hash";
+  WebLocksClipboardOperationCoordinatorAdapter,
+} from "./web-locks-clipboard-operation-coordinator.adapter";
+import { WebCryptoClipboardSecretHashAdapter } from "./web-crypto-clipboard-secret-hash.adapter";
 
 const ED25519_PUBLIC_KEY =
   "Fqs-ZEF094DwnmgIP_3vW66vR7a3roKY4a6rHcf_Mbg" as Base64URLString;
@@ -159,15 +159,21 @@ function createDeferred() {
   return { promise, resolve };
 }
 
-describe("WebLocksClipboardOperationCoordinator", () => {
+describe("WebLocksClipboardOperationCoordinatorAdapter", () => {
   it("serializes independent adapter instances around shared task storage", async () => {
     const hashA = "a".repeat(64);
     const hashB = "b".repeat(64);
     const lockManager = new SerializedWebLockManager();
-    const coordinatorA = new WebLocksClipboardOperationCoordinator(lockManager);
-    const coordinatorB = new WebLocksClipboardOperationCoordinator(lockManager);
+    const coordinatorA = new WebLocksClipboardOperationCoordinatorAdapter(
+      lockManager,
+    );
+    const coordinatorB = new WebLocksClipboardOperationCoordinatorAdapter(
+      lockManager,
+    );
     const { storageArea } = createChromeStorageArea();
-    const repository = new ChromeClipboardClearTaskRepository(storageArea);
+    const repository = new ChromeClipboardClearTaskRepositoryAdapter(
+      storageArea,
+    );
     const firstStarted = createDeferred();
     const releaseFirst = createDeferred();
     let secondStarted = false;
@@ -219,7 +225,9 @@ describe("WebLocksClipboardOperationCoordinator", () => {
 
   it("returns values and preserves operation failures", async () => {
     const lockManager = new SerializedWebLockManager();
-    const coordinator = new WebLocksClipboardOperationCoordinator(lockManager);
+    const coordinator = new WebLocksClipboardOperationCoordinatorAdapter(
+      lockManager,
+    );
     const error = new Error("operation failed");
 
     await expect(coordinator.runExclusive(async () => "result")).resolves.toBe(
@@ -233,7 +241,7 @@ describe("WebLocksClipboardOperationCoordinator", () => {
   });
 
   it("keeps each lease active only during its own lock callback", async () => {
-    const coordinator = new WebLocksClipboardOperationCoordinator(
+    const coordinator = new WebLocksClipboardOperationCoordinatorAdapter(
       new SerializedWebLockManager(),
     );
     let capturedLease: Parameters<typeof coordinator.isLeaseActive>[0] | null =
@@ -253,13 +261,17 @@ describe("WebLocksClipboardOperationCoordinator", () => {
     const portsA = createStrictSessionTestPorts(values);
     const portsB = createStrictSessionTestPorts(values);
     const lockManager = new SerializedWebLockManager();
-    const coordinatorA = new WebLocksClipboardOperationCoordinator(lockManager);
-    const coordinatorB = new WebLocksClipboardOperationCoordinator(lockManager);
+    const coordinatorA = new WebLocksClipboardOperationCoordinatorAdapter(
+      lockManager,
+    );
+    const coordinatorB = new WebLocksClipboardOperationCoordinatorAdapter(
+      lockManager,
+    );
     const { storageArea } = createChromeStorageArea();
     const materialRepositoryA =
-      new ChromeUnlockedVaultSessionMaterialRepository(storageArea);
+      new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(storageArea);
     const materialRepositoryB =
-      new ChromeUnlockedVaultSessionMaterialRepository(storageArea);
+      new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(storageArea);
     const sessionA = new UnlockedVaultSessionService(
       materialRepositoryA,
       portsA.encryptedUnlockedVaultSessionPayloadRepository,
@@ -347,19 +359,16 @@ describe("WebLocksClipboardOperationCoordinator", () => {
     const values = createCoreTestValues();
     const ports = createStrictSessionTestPorts(values);
     const lockManager = new SerializedWebLockManager();
-    const activationCoordinator = new WebLocksClipboardOperationCoordinator(
-      lockManager,
-    );
-    const cleanupCoordinator = new WebLocksClipboardOperationCoordinator(
+    const activationCoordinator =
+      new WebLocksClipboardOperationCoordinatorAdapter(lockManager);
+    const cleanupCoordinator = new WebLocksClipboardOperationCoordinatorAdapter(
       lockManager,
     );
     const { storageArea } = createChromeStorageArea();
-    const activationMaterial = new ChromeUnlockedVaultSessionMaterialRepository(
-      storageArea,
-    );
-    const cleanupMaterial = new ChromeUnlockedVaultSessionMaterialRepository(
-      storageArea,
-    );
+    const activationMaterial =
+      new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(storageArea);
+    const cleanupMaterial =
+      new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(storageArea);
     const activationSession = new UnlockedVaultSessionService(
       activationMaterial,
       ports.encryptedUnlockedVaultSessionPayloadRepository,
@@ -376,7 +385,9 @@ describe("WebLocksClipboardOperationCoordinator", () => {
     );
     const activationAuthorization =
       await activationSession.requireVaultCanBeActivated(values.vaultId);
-    const clipboardTasks = new ChromeClipboardClearTaskRepository(storageArea);
+    const clipboardTasks = new ChromeClipboardClearTaskRepositoryAdapter(
+      storageArea,
+    );
     const cleanup = new LockVaultUseCase(
       new VaultLifecycleCleanupService(
         new ClipboardClearService(
@@ -386,7 +397,7 @@ describe("WebLocksClipboardOperationCoordinator", () => {
           },
           clipboardTasks,
           ports.clock,
-          new WebCryptoClipboardSecretHash(),
+          new WebCryptoClipboardSecretHashAdapter(),
         ),
         clipboardTasks,
         cleanupCoordinator,
@@ -434,19 +445,16 @@ describe("WebLocksClipboardOperationCoordinator", () => {
     const values = createCoreTestValues();
     const ports = createStrictSessionTestPorts(values);
     const lockManager = new SerializedWebLockManager();
-    const activationCoordinator = new WebLocksClipboardOperationCoordinator(
-      lockManager,
-    );
-    const cleanupCoordinator = new WebLocksClipboardOperationCoordinator(
+    const activationCoordinator =
+      new WebLocksClipboardOperationCoordinatorAdapter(lockManager);
+    const cleanupCoordinator = new WebLocksClipboardOperationCoordinatorAdapter(
       lockManager,
     );
     const { storageArea } = createChromeStorageArea();
-    const activationMaterial = new ChromeUnlockedVaultSessionMaterialRepository(
-      storageArea,
-    );
-    const cleanupMaterial = new ChromeUnlockedVaultSessionMaterialRepository(
-      storageArea,
-    );
+    const activationMaterial =
+      new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(storageArea);
+    const cleanupMaterial =
+      new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(storageArea);
     await cleanupMaterial.removeUnlockedVaultSessionMaterial();
     const activationSession = new UnlockedVaultSessionService(
       activationMaterial,
@@ -481,14 +489,16 @@ describe("WebLocksClipboardOperationCoordinator", () => {
       readText: vi.fn(async () => ""),
       writeText: vi.fn(async () => undefined),
     };
-    const clipboardTasks = new ChromeClipboardClearTaskRepository(storageArea);
+    const clipboardTasks = new ChromeClipboardClearTaskRepositoryAdapter(
+      storageArea,
+    );
     const cleanup = new LockVaultUseCase(
       new VaultLifecycleCleanupService(
         new ClipboardClearService(
           clipboard,
           clipboardTasks,
           ports.clock,
-          new WebCryptoClipboardSecretHash(),
+          new WebCryptoClipboardSecretHashAdapter(),
         ),
         clipboardTasks,
         cleanupCoordinator,
@@ -533,9 +543,11 @@ describe("WebLocksClipboardOperationCoordinator", () => {
     const values = createCoreTestValues();
     const ports = createStrictSessionTestPorts(values);
     const lockManager = new SerializedWebLockManager();
-    const coordinator = new WebLocksClipboardOperationCoordinator(lockManager);
+    const coordinator = new WebLocksClipboardOperationCoordinatorAdapter(
+      lockManager,
+    );
     const { getRecords, storageArea } = createChromeStorageArea();
-    const material = new ChromeUnlockedVaultSessionMaterialRepository(
+    const material = new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(
       storageArea,
     );
     const session = new UnlockedVaultSessionService(
@@ -569,7 +581,9 @@ describe("WebLocksClipboardOperationCoordinator", () => {
         sessionId: 7,
       },
     });
-    const clipboardTasks = new ChromeClipboardClearTaskRepository(storageArea);
+    const clipboardTasks = new ChromeClipboardClearTaskRepositoryAdapter(
+      storageArea,
+    );
     const lifecycle = new VaultLifecycleCleanupService(
       new ClipboardClearService(
         {
@@ -578,7 +592,7 @@ describe("WebLocksClipboardOperationCoordinator", () => {
         },
         clipboardTasks,
         ports.clock,
-        new WebCryptoClipboardSecretHash(),
+        new WebCryptoClipboardSecretHashAdapter(),
       ),
       clipboardTasks,
       coordinator,
@@ -607,13 +621,17 @@ describe("WebLocksClipboardOperationCoordinator", () => {
     const portsA = createStrictSessionTestPorts(valuesA);
     const portsB = createStrictSessionTestPorts(valuesB);
     const lockManager = new SerializedWebLockManager();
-    const coordinatorA = new WebLocksClipboardOperationCoordinator(lockManager);
-    const coordinatorB = new WebLocksClipboardOperationCoordinator(lockManager);
+    const coordinatorA = new WebLocksClipboardOperationCoordinatorAdapter(
+      lockManager,
+    );
+    const coordinatorB = new WebLocksClipboardOperationCoordinatorAdapter(
+      lockManager,
+    );
     const { storageArea } = createChromeStorageArea();
-    const materialA = new ChromeUnlockedVaultSessionMaterialRepository(
+    const materialA = new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(
       storageArea,
     );
-    const materialB = new ChromeUnlockedVaultSessionMaterialRepository(
+    const materialB = new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(
       storageArea,
     );
     const sessionA = new UnlockedVaultSessionService(
@@ -674,7 +692,9 @@ describe("WebLocksClipboardOperationCoordinator", () => {
       sourceSnapshotVersionVector: { [valuesB.deviceId]: 2 },
       lockAfterMs: 60_000,
     });
-    const clipboardTasks = new ChromeClipboardClearTaskRepository(storageArea);
+    const clipboardTasks = new ChromeClipboardClearTaskRepositoryAdapter(
+      storageArea,
+    );
     const getClipboardTask = vi.spyOn(clipboardTasks, "get");
     const clipboard: ClipboardPort = {
       readText: vi.fn(async () => ""),
@@ -686,7 +706,7 @@ describe("WebLocksClipboardOperationCoordinator", () => {
         clipboard,
         clipboardTasks,
         portsA.clock,
-        new WebCryptoClipboardSecretHash(),
+        new WebCryptoClipboardSecretHashAdapter(),
       ),
       clipboardTasks,
       coordinatorA,
@@ -727,19 +747,17 @@ describe("WebLocksClipboardOperationCoordinator", () => {
     const values = createCoreTestValues();
     const ports = createStrictSessionTestPorts(values);
     const lockManager = new SerializedWebLockManager();
-    const commitCoordinator = new WebLocksClipboardOperationCoordinator(
+    const commitCoordinator = new WebLocksClipboardOperationCoordinatorAdapter(
       lockManager,
     );
-    const cleanupCoordinator = new WebLocksClipboardOperationCoordinator(
+    const cleanupCoordinator = new WebLocksClipboardOperationCoordinatorAdapter(
       lockManager,
     );
     const { storageArea } = createChromeStorageArea();
-    const commitMaterial = new ChromeUnlockedVaultSessionMaterialRepository(
-      storageArea,
-    );
-    const cleanupMaterial = new ChromeUnlockedVaultSessionMaterialRepository(
-      storageArea,
-    );
+    const commitMaterial =
+      new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(storageArea);
+    const cleanupMaterial =
+      new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(storageArea);
     const commitSession = new UnlockedVaultSessionService(
       commitMaterial,
       ports.encryptedUnlockedVaultSessionPayloadRepository,
@@ -796,7 +814,9 @@ describe("WebLocksClipboardOperationCoordinator", () => {
     );
     await commitStarted.promise;
 
-    const clipboardTasks = new ChromeClipboardClearTaskRepository(storageArea);
+    const clipboardTasks = new ChromeClipboardClearTaskRepositoryAdapter(
+      storageArea,
+    );
     const clipboard: ClipboardPort = {
       readText: vi.fn(async () => ""),
       writeText: vi.fn(async () => undefined),
@@ -806,7 +826,7 @@ describe("WebLocksClipboardOperationCoordinator", () => {
         clipboard,
         clipboardTasks,
         ports.clock,
-        new WebCryptoClipboardSecretHash(),
+        new WebCryptoClipboardSecretHashAdapter(),
       ),
       clipboardTasks,
       cleanupCoordinator,
@@ -847,19 +867,17 @@ describe("WebLocksClipboardOperationCoordinator", () => {
     const values = createCoreTestValues();
     const ports = createStrictSessionTestPorts(values);
     const lockManager = new SerializedWebLockManager();
-    const writerCoordinator = new WebLocksClipboardOperationCoordinator(
+    const writerCoordinator = new WebLocksClipboardOperationCoordinatorAdapter(
       lockManager,
     );
-    const readerCoordinator = new WebLocksClipboardOperationCoordinator(
+    const readerCoordinator = new WebLocksClipboardOperationCoordinatorAdapter(
       lockManager,
     );
     const { storageArea } = createChromeStorageArea();
-    const writerMaterial = new ChromeUnlockedVaultSessionMaterialRepository(
-      storageArea,
-    );
-    const readerMaterial = new ChromeUnlockedVaultSessionMaterialRepository(
-      storageArea,
-    );
+    const writerMaterial =
+      new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(storageArea);
+    const readerMaterial =
+      new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(storageArea);
     const writer = new UnlockedVaultSessionService(
       writerMaterial,
       ports.encryptedUnlockedVaultSessionPayloadRepository,
@@ -932,13 +950,13 @@ describe("WebLocksClipboardOperationCoordinator", () => {
       vi.mocked(ports.ids.generateId).mockResolvedValue("clipboard-action-id");
 
       const lockManager = new SerializedWebLockManager();
-      const copyCoordinator = new WebLocksClipboardOperationCoordinator(
+      const copyCoordinator = new WebLocksClipboardOperationCoordinatorAdapter(
         lockManager,
       );
-      const clearCoordinator = new WebLocksClipboardOperationCoordinator(
+      const clearCoordinator = new WebLocksClipboardOperationCoordinatorAdapter(
         lockManager,
       );
-      const lockCoordinator = new WebLocksClipboardOperationCoordinator(
+      const lockCoordinator = new WebLocksClipboardOperationCoordinatorAdapter(
         lockManager,
       );
       const copySession = new UnlockedVaultSessionService(
@@ -956,7 +974,9 @@ describe("WebLocksClipboardOperationCoordinator", () => {
         lockCoordinator,
       );
       const { storageArea } = createChromeStorageArea();
-      const repository = new ChromeClipboardClearTaskRepository(storageArea);
+      const repository = new ChromeClipboardClearTaskRepositoryAdapter(
+        storageArea,
+      );
       const copyWriteStarted = createDeferred();
       const releaseCopyWrite = createDeferred();
       let clipboardValue = "";
@@ -972,7 +992,7 @@ describe("WebLocksClipboardOperationCoordinator", () => {
         }),
       };
       const clock = { now: vi.fn(() => 1_000) };
-      const secretHash = new WebCryptoClipboardSecretHash();
+      const secretHash = new WebCryptoClipboardSecretHashAdapter();
       const clipboardClear = new ClipboardClearService(
         clipboard,
         repository,

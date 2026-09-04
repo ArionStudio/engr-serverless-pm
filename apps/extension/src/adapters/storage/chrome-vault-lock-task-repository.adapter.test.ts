@@ -3,11 +3,11 @@ import { createChromeStorageArea } from "../../__tests__/fixtures/chrome-storage
 import type { WebLockManager } from "../clipboard";
 import { InvalidScheduledTaskRecordError } from "../system";
 import {
-  ChromeVaultLockTaskRepository,
+  ChromeVaultLockTaskRepositoryAdapter,
   VAULT_LOCK_TASK_STORAGE_ACCESS_LEVEL,
   VAULT_LOCK_TASK_STORAGE_KEY,
   VAULT_LOCK_TASK_STORAGE_LOCK_NAME,
-} from "./chrome-vault-lock-task.repository";
+} from "./chrome-vault-lock-task-repository.adapter";
 
 const immediateLockManager: WebLockManager = {
   request: async (_name, operation) => operation(null),
@@ -19,13 +19,13 @@ const vaultLockTask = {
   expiresAt: 61_000,
 };
 
-describe("ChromeVaultLockTaskRepository", () => {
+describe("ChromeVaultLockTaskRepositoryAdapter", () => {
   it("stores only volatile trusted-context lock ownership metadata", async () => {
     const { getRecords, storageArea } = createChromeStorageArea();
     const lockManager: WebLockManager = {
       request: vi.fn(async (_name, operation) => operation(null)),
     };
-    const repository = new ChromeVaultLockTaskRepository(
+    const repository = new ChromeVaultLockTaskRepositoryAdapter(
       storageArea,
       lockManager,
     );
@@ -44,7 +44,7 @@ describe("ChromeVaultLockTaskRepository", () => {
 
   it("round-trips and replaces the active lock task", async () => {
     const { storageArea } = createChromeStorageArea();
-    const repository = new ChromeVaultLockTaskRepository(
+    const repository = new ChromeVaultLockTaskRepositoryAdapter(
       storageArea,
       immediateLockManager,
     );
@@ -66,7 +66,7 @@ describe("ChromeVaultLockTaskRepository", () => {
 
   it("atomically removes only the matching action", async () => {
     const { storageArea } = createChromeStorageArea();
-    const repository = new ChromeVaultLockTaskRepository(
+    const repository = new ChromeVaultLockTaskRepositoryAdapter(
       storageArea,
       immediateLockManager,
     );
@@ -84,7 +84,7 @@ describe("ChromeVaultLockTaskRepository", () => {
 
   it("runs only a matching action while retaining its ownership metadata", async () => {
     const { storageArea } = createChromeStorageArea();
-    const repository = new ChromeVaultLockTaskRepository(
+    const repository = new ChromeVaultLockTaskRepositoryAdapter(
       storageArea,
       immediateLockManager,
     );
@@ -105,7 +105,7 @@ describe("ChromeVaultLockTaskRepository", () => {
 
   it("retains matching ownership when the claimed operation rejects", async () => {
     const { storageArea } = createChromeStorageArea();
-    const repository = new ChromeVaultLockTaskRepository(
+    const repository = new ChromeVaultLockTaskRepositoryAdapter(
       storageArea,
       immediateLockManager,
     );
@@ -140,7 +140,7 @@ describe("ChromeVaultLockTaskRepository", () => {
       }),
     };
     const { getRecords, storageArea } = createChromeStorageArea();
-    const repository = new ChromeVaultLockTaskRepository(
+    const repository = new ChromeVaultLockTaskRepositoryAdapter(
       storageArea,
       lockManager,
     );
@@ -185,7 +185,7 @@ describe("ChromeVaultLockTaskRepository", () => {
       throw new Error("Expected the storage fixture to restrict access.");
     }
     vi.mocked(setAccessLevel).mockReturnValueOnce(Promise.reject(error));
-    const repository = new ChromeVaultLockTaskRepository(
+    const repository = new ChromeVaultLockTaskRepositoryAdapter(
       storageArea,
       immediateLockManager,
     );
@@ -208,7 +208,7 @@ describe("ChromeVaultLockTaskRepository", () => {
     const { storageArea } = createChromeStorageArea({
       [VAULT_LOCK_TASK_STORAGE_KEY]: record,
     });
-    const repository = new ChromeVaultLockTaskRepository(
+    const repository = new ChromeVaultLockTaskRepositoryAdapter(
       storageArea,
       immediateLockManager,
     );
@@ -223,7 +223,7 @@ describe("ChromeVaultLockTaskRepository", () => {
     const { getRecords, storageArea } = createChromeStorageArea({
       [VAULT_LOCK_TASK_STORAGE_KEY]: malformed,
     });
-    const repository = new ChromeVaultLockTaskRepository(
+    const repository = new ChromeVaultLockTaskRepositoryAdapter(
       storageArea,
       immediateLockManager,
     );

@@ -1,3 +1,3 @@
-export * from "./offscreen-clipboard";
-export * from "./web-crypto-clipboard-secret-hash";
-export * from "./web-locks-clipboard-operation-coordinator";
+export * from "./offscreen-clipboard.adapter";
+export * from "./web-crypto-clipboard-secret-hash.adapter";
+export * from "./web-locks-clipboard-operation-coordinator.adapter";

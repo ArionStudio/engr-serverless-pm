@@ -27,7 +27,7 @@ import type {
 } from "@lfspm/core";
 import {
   WebCryptoAsymmetricKeyValidator,
-  WebCryptoPort,
+  WebCryptoAdapter,
   validateVaultSnapshotPublicKeys,
   type AsymmetricKeyValidator,
 } from "../crypto";
@@ -127,7 +127,7 @@ export class InvalidSyncProviderResponseError extends Error {
   }
 }
 
-export class AwsS3SyncProvider implements SyncProviderPort {
+export class AwsS3SyncProviderAdapter implements SyncProviderPort {
   private readonly createClient: S3SyncClientFactory;
   private readonly asymmetricKeyValidator: AsymmetricKeyValidator;
   private readonly snapshotDigester: Pick<CryptoPort, "digestVaultSnapshot">;
@@ -138,7 +138,7 @@ export class AwsS3SyncProvider implements SyncProviderPort {
     snapshotDigester: Pick<
       CryptoPort,
       "digestVaultSnapshot"
-    > = new WebCryptoPort(),
+    > = new WebCryptoAdapter(),
   ) {
     this.createClient = createClient;
     this.asymmetricKeyValidator = asymmetricKeyValidator;

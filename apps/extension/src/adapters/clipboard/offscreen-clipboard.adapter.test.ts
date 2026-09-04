@@ -6,8 +6,8 @@ import {
   OFFSCREEN_CLIPBOARD_REASON,
   OFFSCREEN_CLIPBOARD_RESPONSE_TIMEOUT_MS,
   OFFSCREEN_DOCUMENT_CONTEXT,
-  OffscreenClipboard,
-} from "./offscreen-clipboard";
+  OffscreenClipboardAdapter,
+} from "./offscreen-clipboard.adapter";
 
 function createContext(documentExists = false) {
   const createDocument = vi.fn(async () => undefined);
@@ -38,7 +38,11 @@ function createContext(documentExists = false) {
     documentExists ? [{ contextType: OFFSCREEN_DOCUMENT_CONTEXT }] : [],
   );
   const runtime: ChromeRuntimeMessenger = { getContexts, sendMessage };
-  const clipboard = new OffscreenClipboard(offscreen, runtime, documentUrl);
+  const clipboard = new OffscreenClipboardAdapter(
+    offscreen,
+    runtime,
+    documentUrl,
+  );
 
   return {
     clipboard,
@@ -54,7 +58,7 @@ function createContext(documentExists = false) {
   };
 }
 
-describe("OffscreenClipboard", () => {
+describe("OffscreenClipboardAdapter", () => {
   it("creates the offscreen document and reads clipboard text", async () => {
     const ctx = createContext();
 
