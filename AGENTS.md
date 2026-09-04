@@ -68,6 +68,9 @@ Run project commands from repo root unless a task explicitly requires a subdirec
   internal modules, and do not use policy validation to assert a broader raw
   input brand or export internal policy helpers through domain barrels.
 - **Device enrollment expiry**: Do not model enrollment expiry in core device-trust state; without a trusted time authority, local `expiresAt` checks are not security boundaries.
+- **Initialization result**: `InitializeVaultUseCase` returns recovery words and
+  the display name. Read the new vault ID through `GetVaultSessionStatusUseCase`
+  after activation; do not assume initialization returns `vaultId`.
 
 ---
 

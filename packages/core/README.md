@@ -39,9 +39,10 @@ import {
 ```
 
 Composition code constructs one instance of each shared stateful service and
-passes those instances to related use cases. The extension compile-time fixture
-at `apps/extension/src/core-composition-api.typecheck.ts` is the current
-consumer example.
+passes those instances to related use cases. The production consumer example is
+`apps/extension/src/extension/composition/extension-application.ts`. The
+extension also retains `core-composition-api.typecheck.ts` as a compile-time
+public API fixture.
 
 ## Source layout
 

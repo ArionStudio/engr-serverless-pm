@@ -1,33 +1,14 @@
 import type {
+  ClearClipboardTaskUseCase,
   ClipboardClearTaskRepositoryPort,
   ClockPort,
+  LockVaultUseCase,
   ScheduledTaskPort,
   VaultLockTaskRepositoryPort,
 } from "@lfspm/core";
-import { ClearClipboardTaskUseCase, LockVaultUseCase } from "@lfspm/core";
-import {
-  ClipboardClearService,
-  UnlockedVaultSessionService,
-  VaultLifecycleCleanupService,
-} from "@lfspm/core/services";
-import {
-  OffscreenClipboardAdapter,
-  WebCryptoClipboardSecretHashAdapter,
-  WebLocksClipboardOperationCoordinatorAdapter,
-} from "../../adapters/clipboard";
-import { WebCryptoAdapter } from "../../adapters/crypto/web-crypto.adapter";
-import {
-  ChromeClipboardClearTaskRepositoryAdapter,
-  ChromeUnlockedVaultSessionMaterialRepositoryAdapter,
-  ChromeVaultLockTaskRepositoryAdapter,
-  IndexedDbEncryptedUnlockedVaultSessionPayloadRepositoryAdapter,
-} from "../../adapters/storage";
-import {
-  ChromeAlarmsScheduledTaskAdapter,
-  parseScheduledTask,
-  SystemClockAdapter,
-  WebCryptoIdAdapter,
-} from "../../adapters/system";
+import { parseScheduledTask } from "../../adapters/system";
+import type { VaultManagerDb } from "../../infrastructure/database/dexie-db";
+import { composeSession } from "../composition/session.composition";
 
 export const CLIPBOARD_CLEAR_RETRY_DELAY_MS = 60_000;
 export const VAULT_LOCK_RETRY_DELAY_MS = 60_000;
@@ -186,70 +167,25 @@ export function createVaultLockAlarmHandler(
   };
 }
 
-export function composeClipboardAlarmHandler(): ClipboardAlarmHandler {
-  const clock = new SystemClockAdapter();
-  const clipboard = new OffscreenClipboardAdapter();
-  const clipboardClearTasks = new ChromeClipboardClearTaskRepositoryAdapter();
-  const clipboardOperations =
-    new WebLocksClipboardOperationCoordinatorAdapter();
-  const scheduledTasks = new ChromeAlarmsScheduledTaskAdapter();
-  const clipboardClear = new ClipboardClearService(
-    clipboard,
+export function composeScheduledTaskAlarmHandler(
+  database?: VaultManagerDb,
+): ClipboardAlarmHandler {
+  const {
+    clearClipboardTask,
+    lockVault,
     clipboardClearTasks,
+    vaultLockTasks,
+    scheduledTasks,
     clock,
-    new WebCryptoClipboardSecretHashAdapter(),
-  );
-  const clearClipboardTask = new ClearClipboardTaskUseCase(
-    clipboardClear,
-    clipboardOperations,
-  );
-
-  return createClipboardAlarmHandler(
+  } = composeSession(database);
+  const clearClipboardAlarm = createClipboardAlarmHandler(
     clearClipboardTask,
     clipboardClearTasks,
     scheduledTasks,
     clock,
   );
-}
-
-export function composeScheduledTaskAlarmHandler(): ClipboardAlarmHandler {
-  const clock = new SystemClockAdapter();
-  const ids = new WebCryptoIdAdapter();
-  const clipboard = new OffscreenClipboardAdapter();
-  const clipboardClearTasks = new ChromeClipboardClearTaskRepositoryAdapter();
-  const clipboardOperations =
-    new WebLocksClipboardOperationCoordinatorAdapter();
-  const scheduledTasks = new ChromeAlarmsScheduledTaskAdapter();
-  const vaultLockTasks = new ChromeVaultLockTaskRepositoryAdapter();
-  const clipboardClear = new ClipboardClearService(
-    clipboard,
-    clipboardClearTasks,
-    clock,
-    new WebCryptoClipboardSecretHashAdapter(),
-  );
-  const unlockedVaultSession = new UnlockedVaultSessionService(
-    new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(),
-    new IndexedDbEncryptedUnlockedVaultSessionPayloadRepositoryAdapter(),
-    new WebCryptoAdapter(),
-    ids,
-    clipboardOperations,
-  );
-  const lifecycleCleanup = new VaultLifecycleCleanupService(
-    clipboardClear,
-    clipboardClearTasks,
-    clipboardOperations,
-    scheduledTasks,
-    vaultLockTasks,
-    unlockedVaultSession,
-  );
-  const clearClipboardAlarm = createClipboardAlarmHandler(
-    new ClearClipboardTaskUseCase(clipboardClear, clipboardOperations),
-    clipboardClearTasks,
-    scheduledTasks,
-    clock,
-  );
   const lockVaultAlarm = createVaultLockAlarmHandler(
-    new LockVaultUseCase(lifecycleCleanup),
+    lockVault,
     vaultLockTasks,
     scheduledTasks,
     clock,

@@ -1,0 +1,283 @@
+import {
+  CopyEntryPasswordUseCase,
+  ConsumeDeviceEnrollmentUseCase,
+  ConsumeDeviceRevocationUseCase,
+  CreateDeviceEnrollmentRequestUseCase,
+  InitializeDeviceEnrollmentUseCase,
+  PerformDeviceEnrollmentUseCase,
+  PrepareDeviceEnrollmentConsumptionUseCase,
+  PrepareDeviceRevocationConsumptionUseCase,
+  RecoverDeviceAccessUseCase,
+  RevokeDeviceUseCase,
+  CheckPasswordStrengthUseCase,
+  GeneratePasswordUseCase,
+  GenerateUsernameUseCase,
+  GetVaultSessionStatusUseCase,
+  ApplySyncResolutionUseCase,
+  CompleteProviderCredentialRevocationUseCase,
+  DisableSyncUseCase,
+  PrepareSyncReviewUseCase,
+  SetupSyncUseCase,
+  SyncUploadUseCase,
+  AddEntryUseCase,
+  GetEntryPasswordUseCase,
+  ReadEntryUseCase,
+  RemoveEntryUseCase,
+  SearchEntriesUseCase,
+  UpdateEntryUseCase,
+  ChangeMasterPasswordUseCase,
+  DeleteLocalVaultUseCase,
+  InitializeVaultUseCase,
+  ListLocalVaultsUseCase,
+  UnlockVaultUseCase,
+} from "@lfspm/core";
+import {
+  RandomSamplerService,
+  RandomVaultDisplayNameService,
+  VaultSnapshotService,
+  VaultSyncGuardService,
+} from "@lfspm/core/services";
+import { ScureBip39Adapter } from "../../adapters/crypto/scure-bip39.adapter";
+import { IndexedDbVaultLocalRepositoryAdapter } from "../../adapters/storage";
+import { AwsS3SyncProviderAdapter } from "../../adapters/sync";
+import { db } from "../../infrastructure/database/dexie-db";
+import type { VaultManagerDb } from "../../infrastructure/database/dexie-db";
+import { composeSession } from "./session.composition";
+
+// Construct once per trusted application context and pass the needed use cases
+// explicitly to callers. Separate contexts coordinate through storage/Web Locks.
+export function composeExtensionApplication(database: VaultManagerDb = db) {
+  const {
+    clock,
+    ids,
+    crypto,
+    clipboard,
+    clipboardSecretHash,
+    clipboardClearTasks,
+    clipboardOperations,
+    scheduledTasks,
+    vaultLockTasks,
+    clipboardClear,
+    unlockedVaultSession,
+    lifecycleCleanup,
+    clearClipboardTask,
+    lockVault,
+  } = composeSession(database);
+  const bip39 = new ScureBip39Adapter();
+  const vaultLocalRepository = new IndexedDbVaultLocalRepositoryAdapter(
+    database,
+    undefined,
+    crypto,
+  );
+  const syncProvider = new AwsS3SyncProviderAdapter(
+    undefined,
+    undefined,
+    crypto,
+  );
+  const randomSampler = new RandomSamplerService(crypto);
+  const vaultDisplayName = new RandomVaultDisplayNameService(randomSampler);
+  const vaultSnapshot = new VaultSnapshotService(
+    crypto,
+    clock,
+    vaultLocalRepository,
+  );
+  const vaultSyncGuard = new VaultSyncGuardService(
+    syncProvider,
+    vaultSnapshot,
+    unlockedVaultSession,
+    crypto,
+    vaultLocalRepository,
+  );
+
+  return {
+    clearClipboardTask,
+    lockVault,
+    copyEntryPassword: new CopyEntryPasswordUseCase(
+      clipboard,
+      clipboardClear,
+      clipboardOperations,
+      clipboardSecretHash,
+      ids,
+      clipboardClearTasks,
+      scheduledTasks,
+      clock,
+      unlockedVaultSession,
+    ),
+    consumeDeviceEnrollment: new ConsumeDeviceEnrollmentUseCase(
+      crypto,
+      syncProvider,
+      unlockedVaultSession,
+      vaultSnapshot,
+      vaultLocalRepository,
+      vaultSyncGuard,
+    ),
+    consumeDeviceRevocation: new ConsumeDeviceRevocationUseCase(
+      crypto,
+      syncProvider,
+      unlockedVaultSession,
+      vaultSnapshot,
+      vaultLocalRepository,
+    ),
+    createDeviceEnrollmentRequest: new CreateDeviceEnrollmentRequestUseCase(
+      crypto,
+      ids,
+      vaultLocalRepository,
+    ),
+    initializeDeviceEnrollment: new InitializeDeviceEnrollmentUseCase(
+      crypto,
+      unlockedVaultSession,
+      vaultSyncGuard,
+      vaultSnapshot,
+    ),
+    performDeviceEnrollment: new PerformDeviceEnrollmentUseCase(
+      clock,
+      crypto,
+      ids,
+      bip39,
+      syncProvider,
+      unlockedVaultSession,
+      vaultDisplayName,
+      vaultLocalRepository,
+      lifecycleCleanup,
+      scheduledTasks,
+      vaultLockTasks,
+      clipboardOperations,
+    ),
+    prepareDeviceEnrollmentConsumption:
+      new PrepareDeviceEnrollmentConsumptionUseCase(
+        crypto,
+        syncProvider,
+        unlockedVaultSession,
+        vaultSnapshot,
+        vaultSyncGuard,
+      ),
+    prepareDeviceRevocationConsumption:
+      new PrepareDeviceRevocationConsumptionUseCase(
+        crypto,
+        syncProvider,
+        unlockedVaultSession,
+        vaultSnapshot,
+        vaultLocalRepository,
+      ),
+    recoverDeviceAccess: new RecoverDeviceAccessUseCase(
+      bip39,
+      crypto,
+      ids,
+      unlockedVaultSession,
+      vaultLocalRepository,
+    ),
+    revokeDevice: new RevokeDeviceUseCase(
+      clock,
+      crypto,
+      syncProvider,
+      unlockedVaultSession,
+      vaultSyncGuard,
+      vaultSnapshot,
+    ),
+    checkPasswordStrength: new CheckPasswordStrengthUseCase(),
+    generatePassword: new GeneratePasswordUseCase(randomSampler),
+    generateUsername: new GenerateUsernameUseCase(randomSampler),
+    getVaultSessionStatus: new GetVaultSessionStatusUseCase(
+      unlockedVaultSession,
+    ),
+    applySyncResolution: new ApplySyncResolutionUseCase(
+      syncProvider,
+      unlockedVaultSession,
+      vaultSnapshot,
+      vaultSyncGuard,
+    ),
+    completeProviderCredentialRevocation:
+      new CompleteProviderCredentialRevocationUseCase(
+        crypto,
+        syncProvider,
+        unlockedVaultSession,
+        vaultSnapshot,
+        vaultLocalRepository,
+        vaultSyncGuard,
+      ),
+    disableSync: new DisableSyncUseCase(
+      clock,
+      crypto,
+      syncProvider,
+      unlockedVaultSession,
+      vaultSnapshot,
+      vaultSyncGuard,
+    ),
+    prepareSyncReview: new PrepareSyncReviewUseCase(
+      unlockedVaultSession,
+      syncProvider,
+      vaultSnapshot,
+      vaultSyncGuard,
+    ),
+    setupSync: new SetupSyncUseCase(
+      syncProvider,
+      unlockedVaultSession,
+      vaultSyncGuard,
+      vaultSnapshot,
+      crypto,
+    ),
+    syncUpload: new SyncUploadUseCase(
+      syncProvider,
+      unlockedVaultSession,
+      vaultSnapshot,
+      vaultSyncGuard,
+    ),
+    addEntry: new AddEntryUseCase(
+      ids,
+      unlockedVaultSession,
+      vaultSyncGuard,
+      vaultSnapshot,
+    ),
+    getEntryPassword: new GetEntryPasswordUseCase(unlockedVaultSession),
+    readEntry: new ReadEntryUseCase(unlockedVaultSession),
+    removeEntry: new RemoveEntryUseCase(
+      clock,
+      unlockedVaultSession,
+      vaultSyncGuard,
+      vaultSnapshot,
+    ),
+    searchEntries: new SearchEntriesUseCase(unlockedVaultSession),
+    updateEntry: new UpdateEntryUseCase(
+      unlockedVaultSession,
+      vaultSyncGuard,
+      vaultSnapshot,
+    ),
+    changeMasterPassword: new ChangeMasterPasswordUseCase(
+      crypto,
+      vaultLocalRepository,
+      unlockedVaultSession,
+      ids,
+    ),
+    deleteLocalVault: new DeleteLocalVaultUseCase(
+      vaultLocalRepository,
+      lifecycleCleanup,
+    ),
+    initializeVault: new InitializeVaultUseCase(
+      crypto,
+      bip39,
+      vaultLocalRepository,
+      unlockedVaultSession,
+      ids,
+      clock,
+      vaultDisplayName,
+      scheduledTasks,
+      vaultLockTasks,
+      clipboardOperations,
+    ),
+    listLocalVaults: new ListLocalVaultsUseCase(vaultLocalRepository),
+    unlockVault: new UnlockVaultUseCase(
+      clock,
+      crypto,
+      ids,
+      scheduledTasks,
+      vaultLocalRepository,
+      vaultLockTasks,
+      unlockedVaultSession,
+      clipboardOperations,
+    ),
+  };
+}
+
+export type ExtensionApplication = ReturnType<
+  typeof composeExtensionApplication
+>;
