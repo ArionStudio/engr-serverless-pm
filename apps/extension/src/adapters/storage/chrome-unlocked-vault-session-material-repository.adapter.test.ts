@@ -13,11 +13,11 @@ import { decodeBase64Url, encodeBase64Url } from "@lfspm/core/lib";
 import type { Base64URLString } from "@lfspm/core/lib";
 import { createChromeStorageArea } from "../../__tests__/fixtures/chrome-storage-area";
 import {
-  ChromeUnlockedVaultSessionMaterialRepository,
+  ChromeUnlockedVaultSessionMaterialRepositoryAdapter,
   UNLOCKED_VAULT_SESSION_EPOCH_STORAGE_KEY,
   UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY,
-} from "./chrome-unlocked-vault-session-material.repository";
-import type { ChromeStorageArea } from "./chrome-storage-area";
+} from "./chrome-unlocked-vault-session-material-repository.adapter";
+import type { ChromeStorageArea } from "./chrome-storage-area.type";
 import { InvalidUnlockedVaultSessionMaterialError } from "./unlocked-vault-session-material.codec";
 
 const ED25519_PUBLIC_KEY = "Fqs-ZEF094DwnmgIP_3vW66vR7a3roKY4a6rHcf_Mbg";
@@ -150,10 +150,10 @@ function createStoredMaterial() {
   };
 }
 
-describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
+describe("ChromeUnlockedVaultSessionMaterialRepositoryAdapter", () => {
   it("saves session material as storage-safe strings", async () => {
     const { getRecords, storageArea } = createChromeStorageArea();
-    const repository = new ChromeUnlockedVaultSessionMaterialRepository(
+    const repository = new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(
       storageArea,
     );
     const material = createMaterial();
@@ -172,7 +172,7 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
     const { storageArea } = createChromeStorageArea({
       [UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY]: createStoredMaterial(),
     });
-    const repository = new ChromeUnlockedVaultSessionMaterialRepository(
+    const repository = new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(
       storageArea,
     );
 
@@ -185,12 +185,12 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
 
   it("returns one decoded material identity to concurrent cold readers", async () => {
     const { storageArea } = createChromeStorageArea();
-    const writer = new ChromeUnlockedVaultSessionMaterialRepository(
+    const writer = new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(
       storageArea,
     );
     await writer.saveUnlockedVaultSessionMaterial(createMaterial());
     const get = vi.fn(storageArea.get);
-    const reader = new ChromeUnlockedVaultSessionMaterialRepository({
+    const reader = new ChromeUnlockedVaultSessionMaterialRepositoryAdapter({
       ...storageArea,
       get,
     });
@@ -207,10 +207,10 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
 
   it("reads the shared identity without trusting a cached absence", async () => {
     const { storageArea } = createChromeStorageArea();
-    const reader = new ChromeUnlockedVaultSessionMaterialRepository(
+    const reader = new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(
       storageArea,
     );
-    const writer = new ChromeUnlockedVaultSessionMaterialRepository(
+    const writer = new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(
       storageArea,
     );
 
@@ -234,8 +234,10 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
 
   it("shares a volatile lifecycle epoch across repository instances", async () => {
     const { getRecords, storageArea } = createChromeStorageArea();
-    const first = new ChromeUnlockedVaultSessionMaterialRepository(storageArea);
-    const second = new ChromeUnlockedVaultSessionMaterialRepository(
+    const first = new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(
+      storageArea,
+    );
+    const second = new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(
       storageArea,
     );
 
@@ -250,7 +252,7 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
     const { storageArea } = createChromeStorageArea({
       [UNLOCKED_VAULT_SESSION_EPOCH_STORAGE_KEY]: 7,
     });
-    const repository = new ChromeUnlockedVaultSessionMaterialRepository(
+    const repository = new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(
       storageArea,
     );
     await repository.saveUnlockedVaultSessionMaterial(createMaterial());
@@ -266,9 +268,8 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
       const { storageArea } = createChromeStorageArea({
         [UNLOCKED_VAULT_SESSION_EPOCH_STORAGE_KEY]: epoch,
       });
-      const repository = new ChromeUnlockedVaultSessionMaterialRepository(
-        storageArea,
-      );
+      const repository =
+        new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(storageArea);
 
       await expect(repository.getUnlockedVaultSessionEpoch()).rejects.toThrow(
         "Unlocked vault session epoch is malformed.",
@@ -280,7 +281,7 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
     const { storageArea } = createChromeStorageArea({
       [UNLOCKED_VAULT_SESSION_EPOCH_STORAGE_KEY]: Number.MAX_SAFE_INTEGER,
     });
-    const repository = new ChromeUnlockedVaultSessionMaterialRepository(
+    const repository = new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(
       storageArea,
     );
 
@@ -292,14 +293,14 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
   it("does not roll back an epoch that storage committed before rejecting", async () => {
     const { storageArea } = createChromeStorageArea();
     const setError = new Error("storage acknowledgement failed");
-    const writer = new ChromeUnlockedVaultSessionMaterialRepository({
+    const writer = new ChromeUnlockedVaultSessionMaterialRepositoryAdapter({
       ...storageArea,
       set: vi.fn(async (items) => {
         await storageArea.set(items);
         throw setError;
       }),
     });
-    const reader = new ChromeUnlockedVaultSessionMaterialRepository(
+    const reader = new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(
       storageArea,
     );
 
@@ -311,10 +312,10 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
 
   it("evicts only the matching local cache and reloads shared material", async () => {
     const { storageArea } = createChromeStorageArea();
-    const writer = new ChromeUnlockedVaultSessionMaterialRepository(
+    const writer = new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(
       storageArea,
     );
-    const reader = new ChromeUnlockedVaultSessionMaterialRepository(
+    const reader = new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(
       storageArea,
     );
     await writer.saveUnlockedVaultSessionMaterial(createMaterial());
@@ -350,7 +351,7 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
 
   it("does not let a delayed cold read repopulate material after removal", async () => {
     const { storageArea } = createChromeStorageArea();
-    const writer = new ChromeUnlockedVaultSessionMaterialRepository(
+    const writer = new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(
       storageArea,
     );
     await writer.saveUnlockedVaultSessionMaterial(createMaterial());
@@ -370,7 +371,7 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
       return delayedRecords;
     });
     const remove = vi.fn(storageArea.remove);
-    const reader = new ChromeUnlockedVaultSessionMaterialRepository({
+    const reader = new ChromeUnlockedVaultSessionMaterialRepositoryAdapter({
       ...storageArea,
       get,
       remove,
@@ -391,7 +392,7 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
 
   it("returns null when session material is missing", async () => {
     const { storageArea } = createChromeStorageArea();
-    const repository = new ChromeUnlockedVaultSessionMaterialRepository(
+    const repository = new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(
       storageArea,
     );
 
@@ -408,7 +409,7 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
     const { storageArea } = createChromeStorageArea({
       [UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY]: hostileMaterial,
     });
-    const repository = new ChromeUnlockedVaultSessionMaterialRepository(
+    const repository = new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(
       storageArea,
     );
 
@@ -660,7 +661,7 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
         ),
       },
     });
-    const repository = new ChromeUnlockedVaultSessionMaterialRepository(
+    const repository = new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(
       storageArea,
     );
 
@@ -690,7 +691,7 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
         unexpected: true,
       },
     });
-    const repository = new ChromeUnlockedVaultSessionMaterialRepository(
+    const repository = new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(
       storageArea,
       UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY,
       UNLOCKED_VAULT_SESSION_EPOCH_STORAGE_KEY,
@@ -714,7 +715,7 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
         devicePrivateVaultKey: "!",
       },
     });
-    const repository = new ChromeUnlockedVaultSessionMaterialRepository(
+    const repository = new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(
       storageArea,
     );
 
@@ -732,7 +733,7 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
 
   it("removes session material", async () => {
     const { getRecords, storageArea } = createChromeStorageArea();
-    const repository = new ChromeUnlockedVaultSessionMaterialRepository(
+    const repository = new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(
       storageArea,
     );
     const material = createMaterial();
@@ -759,7 +760,7 @@ describe("ChromeUnlockedVaultSessionMaterialRepository", () => {
         throw removeError;
       }),
     };
-    const repository = new ChromeUnlockedVaultSessionMaterialRepository(
+    const repository = new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(
       failingStorageArea,
     );
     await repository.saveUnlockedVaultSessionMaterial(createMaterial());
@@ -810,7 +811,7 @@ async function expectInvalidMaterial(material: unknown): Promise<void> {
   const { storageArea } = createChromeStorageArea({
     [UNLOCKED_VAULT_SESSION_MATERIAL_STORAGE_KEY]: material,
   });
-  const repository = new ChromeUnlockedVaultSessionMaterialRepository(
+  const repository = new ChromeUnlockedVaultSessionMaterialRepositoryAdapter(
     storageArea,
   );
 

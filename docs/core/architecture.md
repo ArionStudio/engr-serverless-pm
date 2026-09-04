@@ -88,15 +88,16 @@ examples are:
 - `ClipboardClearService`, which clears only clipboard values still owned by the
   scheduled action;
 - `RandomSamplerService`, which converts runtime randomness into unbiased
-  bounded samples.
+  bounded samples;
+- `RandomVaultDisplayNameService`, which applies the shared readable local-name
+  policy using those unbiased samples.
 
 The package exposes shared constructors needed for public use-case composition
 and runtime coordination through `@lfspm/core/services`. Current extension
-composition imports session, snapshot, sync, lifecycle, and clipboard services
-from that path. The randomness service is available for password-tool
-composition. Internal trust services are not part of the entry point. The old
-development document that called all services private predates this package
-contract.
+composition imports session, snapshot, sync, lifecycle, clipboard, randomness,
+and vault display-name services from that path. Internal trust services are not
+part of the entry point. The old development document that called all services
+private predates this package contract.
 
 ## Ports and adapters
 
@@ -110,7 +111,8 @@ Core defines ports for:
 - vault display names and task ownership records.
 
 Concrete implementations live under `apps/extension/src/adapters`. They include
-WebCrypto, IndexedDB, Chrome storage and alarms, Web Locks, the offscreen
+WebCrypto, library-backed English BIP39 conversion, the platform wall clock and
+UUID generator, IndexedDB, Chrome storage and alarms, Web Locks, the offscreen
 clipboard bridge, and AWS S3.
 
 Provider-specific configuration schemas and semantic validation stay outside
@@ -136,3 +138,4 @@ outside the core package.
 - [Security model](./security-model.md)
 - [Core architecture standard](../standards/core-architecture.md)
 - [Ports and adapters standard](../standards/ports-adapters-and-runtime-validation.md)
+- [Extension adapter documentation](../adapters/README.md)

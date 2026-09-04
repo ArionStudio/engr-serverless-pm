@@ -14,7 +14,7 @@ import {
   type EncryptedUnlockedVaultSessionPayloadRecord,
   type VaultManagerDb,
 } from "../../infrastructure/database/dexie-db";
-import { IndexedDbEncryptedUnlockedVaultSessionPayloadRepository } from "./indexeddb-encrypted-unlocked-vault-session-payload.repository";
+import { IndexedDbEncryptedUnlockedVaultSessionPayloadRepositoryAdapter } from "./indexeddb-encrypted-unlocked-vault-session-payload-repository.adapter";
 import { InvalidUnlockedVaultSessionPayloadRecordError } from "../codecs/unlocked-session-payload.codec";
 
 let databaseCounter = 0;
@@ -34,9 +34,10 @@ function createContext() {
 
   return {
     database,
-    repository: new IndexedDbEncryptedUnlockedVaultSessionPayloadRepository(
-      database,
-    ),
+    repository:
+      new IndexedDbEncryptedUnlockedVaultSessionPayloadRepositoryAdapter(
+        database,
+      ),
   };
 }
 
@@ -45,7 +46,7 @@ afterEach(async () => {
   database = undefined;
 });
 
-describe("IndexedDbEncryptedUnlockedVaultSessionPayloadRepository", () => {
+describe("IndexedDbEncryptedUnlockedVaultSessionPayloadRepositoryAdapter", () => {
   it("saves one active encrypted payload record", async () => {
     const ctx = createContext();
     const payload = createPayload({ "device-id": 7 });

@@ -15,13 +15,13 @@ import { describe, expect, it, vi } from "vitest";
 import { createChromeStorageArea } from "../../__tests__/fixtures/chrome-storage-area";
 import {
   type WebLockManager,
-  WebCryptoClipboardSecretHash,
-  WebLocksClipboardOperationCoordinator,
+  WebCryptoClipboardSecretHashAdapter,
+  WebLocksClipboardOperationCoordinatorAdapter,
 } from "../../adapters/clipboard";
-import { WebCryptoPort } from "../../adapters/crypto";
+import { WebCryptoAdapter } from "../../adapters/crypto";
 import {
-  ChromeClipboardClearTaskRepository,
-  ChromeVaultLockTaskRepository,
+  ChromeClipboardClearTaskRepositoryAdapter,
+  ChromeVaultLockTaskRepositoryAdapter,
 } from "../../adapters/storage";
 import {
   InvalidScheduledTaskRecordError,
@@ -39,10 +39,10 @@ const immediateLockManager: WebLockManager = {
 
 function createContext() {
   const { storageArea } = createChromeStorageArea();
-  const clipboardClearTasks = new ChromeClipboardClearTaskRepository(
+  const clipboardClearTasks = new ChromeClipboardClearTaskRepositoryAdapter(
     storageArea,
   );
-  const vaultLockTasks = new ChromeVaultLockTaskRepository(
+  const vaultLockTasks = new ChromeVaultLockTaskRepositoryAdapter(
     storageArea,
     immediateLockManager,
   );
@@ -72,19 +72,19 @@ function createContext() {
   const ids: IdPort = {
     generateId: vi.fn(async () => "unused-id"),
   };
-  const clipboardOperations = new WebLocksClipboardOperationCoordinator(
+  const clipboardOperations = new WebLocksClipboardOperationCoordinatorAdapter(
     immediateLockManager,
   );
   const clipboardClear = new ClipboardClearService(
     clipboard,
     clipboardClearTasks,
     { now: () => 1_000 },
-    new WebCryptoClipboardSecretHash(),
+    new WebCryptoClipboardSecretHashAdapter(),
   );
   const unlockedVaultSession = new UnlockedVaultSessionService(
     materialRepository,
     encryptedPayloadRepository,
-    new WebCryptoPort(),
+    new WebCryptoAdapter(),
     ids,
     clipboardOperations,
   );

@@ -1,6 +1,6 @@
 import {
   OFFSCREEN_CLIPBOARD_MESSAGE_TARGET,
-  type OffscreenClipboardRequest,
+  type OffscreenClipboardAdapterRequest,
 } from "../../adapters/clipboard";
 import { readClipboardText, writeClipboardText } from "./clipboard-document";
 
@@ -16,9 +16,9 @@ function getTransferControl(): HTMLTextAreaElement {
 
 const transferControl = getTransferControl();
 
-function isOffscreenClipboardRequest(
+function isOffscreenClipboardAdapterRequest(
   request: unknown,
-): request is OffscreenClipboardRequest {
+): request is OffscreenClipboardAdapterRequest {
   if (typeof request !== "object" || request === null) {
     return false;
   }
@@ -34,7 +34,7 @@ function isOffscreenClipboardRequest(
   );
 }
 
-function handleClipboardRequest(request: OffscreenClipboardRequest) {
+function handleClipboardRequest(request: OffscreenClipboardAdapterRequest) {
   if (Date.now() >= request.deadlineEpochMs) {
     return {
       ok: false as const,
@@ -55,7 +55,7 @@ function handleClipboardRequest(request: OffscreenClipboardRequest) {
 
 chrome.runtime.onMessage.addListener(
   (request: unknown, _sender, sendResponse) => {
-    if (!isOffscreenClipboardRequest(request)) {
+    if (!isOffscreenClipboardAdapterRequest(request)) {
       return;
     }
 

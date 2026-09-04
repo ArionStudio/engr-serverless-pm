@@ -1,6 +1,8 @@
 # Conventions
 
-This document describes the current conventions for the browser extension code in `apps/extension/src`.
+This document is a descriptive overview of conventions for browser extension
+code in `apps/extension/src`. The normative naming and boundary rules live in
+the [port and adapter standard](../standards/ports-adapters-and-runtime-validation.md).
 
 ## Architecture Concepts
 

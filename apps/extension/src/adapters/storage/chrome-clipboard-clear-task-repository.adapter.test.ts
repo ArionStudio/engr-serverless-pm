@@ -2,10 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import { createChromeStorageArea } from "../../__tests__/fixtures/chrome-storage-area";
 import { InvalidScheduledTaskRecordError } from "../system";
 import {
-  ChromeClipboardClearTaskRepository,
+  ChromeClipboardClearTaskRepositoryAdapter,
   CLIPBOARD_CLEAR_TASK_STORAGE_ACCESS_LEVEL,
   CLIPBOARD_CLEAR_TASK_STORAGE_KEY,
-} from "./chrome-clipboard-clear-task.repository";
+} from "./chrome-clipboard-clear-task-repository.adapter";
 
 const clipboardClearTask = {
   actionId: "clipboard-action-id",
@@ -13,13 +13,15 @@ const clipboardClearTask = {
   expiresAt: 61_000,
 };
 
-describe("ChromeClipboardClearTaskRepository", () => {
+describe("ChromeClipboardClearTaskRepositoryAdapter", () => {
   it("observes access restriction rejection immediately and preserves it for callers", async () => {
     const accessError = new Error("access restriction unavailable");
     const { getRecords, storageArea } = createChromeStorageArea();
     vi.mocked(storageArea.setAccessLevel!).mockRejectedValueOnce(accessError);
     const setStoredRecords = vi.spyOn(storageArea, "set");
-    const repository = new ChromeClipboardClearTaskRepository(storageArea);
+    const repository = new ChromeClipboardClearTaskRepositoryAdapter(
+      storageArea,
+    );
 
     await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -30,7 +32,9 @@ describe("ChromeClipboardClearTaskRepository", () => {
 
   it("stores only volatile trusted-context ownership metadata", async () => {
     const { getRecords, storageArea } = createChromeStorageArea();
-    const repository = new ChromeClipboardClearTaskRepository(storageArea);
+    const repository = new ChromeClipboardClearTaskRepositoryAdapter(
+      storageArea,
+    );
 
     await repository.save(clipboardClearTask);
 
@@ -44,7 +48,9 @@ describe("ChromeClipboardClearTaskRepository", () => {
 
   it("retrieves and replaces the current clipboard ownership task", async () => {
     const { storageArea } = createChromeStorageArea();
-    const repository = new ChromeClipboardClearTaskRepository(storageArea);
+    const repository = new ChromeClipboardClearTaskRepositoryAdapter(
+      storageArea,
+    );
 
     await repository.save(clipboardClearTask);
     await repository.save({
@@ -62,7 +68,9 @@ describe("ChromeClipboardClearTaskRepository", () => {
 
   it("returns null when clipboard ownership metadata is missing", async () => {
     const { storageArea } = createChromeStorageArea();
-    const repository = new ChromeClipboardClearTaskRepository(storageArea);
+    const repository = new ChromeClipboardClearTaskRepositoryAdapter(
+      storageArea,
+    );
 
     await expect(repository.get()).resolves.toBeNull();
   });
@@ -75,7 +83,9 @@ describe("ChromeClipboardClearTaskRepository", () => {
         expiresAt: "tomorrow",
       },
     });
-    const repository = new ChromeClipboardClearTaskRepository(storageArea);
+    const repository = new ChromeClipboardClearTaskRepositoryAdapter(
+      storageArea,
+    );
 
     await expect(repository.get()).rejects.toBeInstanceOf(
       InvalidScheduledTaskRecordError,
@@ -131,7 +141,9 @@ describe("ChromeClipboardClearTaskRepository", () => {
     const { storageArea } = createChromeStorageArea({
       [CLIPBOARD_CLEAR_TASK_STORAGE_KEY]: storedTask,
     });
-    const repository = new ChromeClipboardClearTaskRepository(storageArea);
+    const repository = new ChromeClipboardClearTaskRepositoryAdapter(
+      storageArea,
+    );
 
     await expect(repository.get()).rejects.toBeInstanceOf(
       InvalidScheduledTaskRecordError,
@@ -142,7 +154,9 @@ describe("ChromeClipboardClearTaskRepository", () => {
     const { getRecords, storageArea } = createChromeStorageArea({
       [CLIPBOARD_CLEAR_TASK_STORAGE_KEY]: clipboardClearTask,
     });
-    const repository = new ChromeClipboardClearTaskRepository(storageArea);
+    const repository = new ChromeClipboardClearTaskRepositoryAdapter(
+      storageArea,
+    );
 
     await repository.remove();
 
@@ -154,7 +168,9 @@ describe("ChromeClipboardClearTaskRepository", () => {
     const { getRecords, storageArea } = createChromeStorageArea({
       [CLIPBOARD_CLEAR_TASK_STORAGE_KEY]: clipboardClearTask,
     });
-    const repository = new ChromeClipboardClearTaskRepository(storageArea);
+    const repository = new ChromeClipboardClearTaskRepositoryAdapter(
+      storageArea,
+    );
     vi.spyOn(storageArea, "remove").mockRejectedValueOnce(error);
 
     await expect(repository.remove()).rejects.toBe(error);

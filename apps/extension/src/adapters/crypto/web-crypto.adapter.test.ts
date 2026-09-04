@@ -29,7 +29,7 @@ import {
   InvalidUnlockedVaultSessionPayloadError,
   InvalidVaultSnapshotPayloadError,
 } from "./index";
-import { WebCryptoPort } from "./web-crypto.port";
+import { WebCryptoAdapter } from "./web-crypto.adapter";
 
 const encoder = new TextEncoder();
 
@@ -37,9 +37,9 @@ function artifactDigest(seed: number): string {
   return encodeBase64Url(new Uint8Array(32).fill(seed));
 }
 
-describe("WebCryptoPort", () => {
+describe("WebCryptoAdapter", () => {
   it("implements the declared suite and returns fresh correctly sized random material", async () => {
-    const crypto = new WebCryptoPort();
+    const crypto = new WebCryptoAdapter();
 
     expect(crypto.algorithmSuite).toBe(CURRENT_ALGORITHM_SUITE);
     const largeRandom = await crypto.generateRandomBytes(65_537);
@@ -114,7 +114,7 @@ describe("WebCryptoPort", () => {
     Object.defineProperty(cryptoApi, "getRandomValues", {
       value: globalThis.crypto.getRandomValues.bind(globalThis.crypto),
     });
-    const crypto = new WebCryptoPort(cryptoApi);
+    const crypto = new WebCryptoAdapter(cryptoApi);
     const rootBytes = Uint8Array.from({ length: 32 }, (_, index) => index);
     const saltBytes = new Uint8Array(32).fill(0xa5);
     const localRootKey = rootBytes.buffer as LocalRootKey;
@@ -258,7 +258,7 @@ describe("WebCryptoPort", () => {
   });
 
   it("generates importable signing and vault key pairs and rejects mismatches", async () => {
-    const crypto = new WebCryptoPort();
+    const crypto = new WebCryptoAdapter();
     const signing = await crypto.generateDeviceSignKeyPair();
     const otherSigning = await crypto.generateDeviceSignKeyPair();
     const vault = await crypto.generateDeviceVaultKeyPair();
@@ -319,7 +319,7 @@ describe("WebCryptoPort", () => {
   });
 
   it("derives stable purpose-separated protection keys", async () => {
-    const crypto = new WebCryptoPort();
+    const crypto = new WebCryptoAdapter();
     const salt = await crypto.generateMasterPasswordSalt();
     const root = await crypto.deriveLocalRootKey(
       "correct horse battery staple" as RawMasterPassword,
@@ -346,7 +346,7 @@ describe("WebCryptoPort", () => {
   });
 
   it("wraps and unwraps local keys and enrollment private state", async () => {
-    const crypto = new WebCryptoPort();
+    const crypto = new WebCryptoAdapter();
     const signing = await crypto.generateDeviceSignKeyPair();
     const vaultKeys = await crypto.generateDeviceVaultKeyPair();
     const localProtection = await crypto.generateDeviceLocalProtectionKey();
@@ -534,7 +534,7 @@ describe("WebCryptoPort", () => {
   );
 
   it("round-trips a recipient envelope and authenticates its full context", async () => {
-    const crypto = new WebCryptoPort();
+    const crypto = new WebCryptoAdapter();
     const recipient = await crypto.generateDeviceVaultKeyPair();
     const masterKey = await crypto.generateVaultMasterKey();
     const context = {
@@ -590,7 +590,7 @@ describe("WebCryptoPort", () => {
   });
 
   it("keeps the ephemeral ECDH private key non-extractable", async () => {
-    const producer = new WebCryptoPort();
+    const producer = new WebCryptoAdapter();
     const recipient = await producer.generateDeviceVaultKeyPair();
     const requestedExtractability: boolean[] = [];
     const subtle = new Proxy(globalThis.crypto.subtle, {
@@ -614,7 +614,7 @@ describe("WebCryptoPort", () => {
     Object.defineProperty(cryptoApi, "getRandomValues", {
       value: globalThis.crypto.getRandomValues.bind(globalThis.crypto),
     });
-    const crypto = new WebCryptoPort(cryptoApi);
+    const crypto = new WebCryptoAdapter(cryptoApi);
 
     await crypto.createDeviceVaultKeyEnvelope(
       await producer.generateVaultMasterKey(),
@@ -631,7 +631,7 @@ describe("WebCryptoPort", () => {
   });
 
   it("encrypts vault, session, and credential payloads with context binding", async () => {
-    const crypto = new WebCryptoPort();
+    const crypto = new WebCryptoAdapter();
     const vault = createVault();
     const vaultKey = await crypto.generateVaultMasterKey();
     const encryptedVault = await crypto.encryptVaultSnapshotContent(
@@ -742,7 +742,7 @@ describe("WebCryptoPort", () => {
   });
 
   it("uses JCS for signatures and digests independently of property insertion order", async () => {
-    const crypto = new WebCryptoPort();
+    const crypto = new WebCryptoAdapter();
     const signing = await crypto.generateDeviceSignKeyPair();
     const vaultKeys = await crypto.generateDeviceVaultKeyPair();
     const checkpoint: LocalVaultTrustCheckpointPayload = {
@@ -831,7 +831,7 @@ describe("WebCryptoPort", () => {
   });
 
   it("signs and verifies snapshots and detects content changes", async () => {
-    const crypto = new WebCryptoPort();
+    const crypto = new WebCryptoAdapter();
     const signing = await crypto.generateDeviceSignKeyPair();
     const snapshot = await createSnapshot(
       crypto,
@@ -857,7 +857,7 @@ describe("WebCryptoPort", () => {
   });
 
   it("rejects authenticated malformed plaintext with the family error", async () => {
-    const crypto = new WebCryptoPort();
+    const crypto = new WebCryptoAdapter();
     const key = await crypto.generateVaultMasterKey();
     const malformed = await encryptAuthenticatedJson<Vault>(
       key,
@@ -871,7 +871,7 @@ describe("WebCryptoPort", () => {
   });
 
   it("rejects authenticated domain-invalid vault fields and nested rollback keys", async () => {
-    const crypto = new WebCryptoPort();
+    const crypto = new WebCryptoAdapter();
     const key = await crypto.generateVaultMasterKey();
     const invalidEntryVault: Vault = {
       ...createVault(),
@@ -951,7 +951,7 @@ describe("WebCryptoPort", () => {
   });
 
   it("rejects an authenticated opened vault key with the wrong byte length", async () => {
-    const producer = new WebCryptoPort();
+    const producer = new WebCryptoAdapter();
     const recipient = await producer.generateDeviceVaultKeyPair();
     const context = {
       vaultId: "vault-id",
@@ -975,7 +975,7 @@ describe("WebCryptoPort", () => {
     });
     const cryptoApi = Object.create(globalThis.crypto) as Crypto;
     Object.defineProperty(cryptoApi, "subtle", { value: subtle });
-    const consumer = new WebCryptoPort(cryptoApi);
+    const consumer = new WebCryptoAdapter(cryptoApi);
 
     await expect(
       consumer.openDeviceVaultKeyEnvelope(
@@ -1010,7 +1010,7 @@ function createVault(): Vault {
 }
 
 async function createEnrollmentPrivateStateFixture() {
-  const crypto = new WebCryptoPort();
+  const crypto = new WebCryptoAdapter();
   const signing = await crypto.generateDeviceSignKeyPair();
   const vault = await crypto.generateDeviceVaultKeyPair();
   const requestPayload: DeviceEnrollmentRequestPayload = {
@@ -1084,10 +1084,10 @@ async function encryptEnrollmentPrivateState(
 }
 
 async function createSnapshot(
-  crypto: WebCryptoPort,
+  crypto: WebCryptoAdapter,
   publicSignKey: DevicePublicSignKey,
   privateSignKey: Awaited<
-    ReturnType<WebCryptoPort["generateDeviceSignKeyPair"]>
+    ReturnType<WebCryptoAdapter["generateDeviceSignKeyPair"]>
   >["privateKey"],
 ): Promise<VaultSnapshot> {
   const vaultKeys = await crypto.generateDeviceVaultKeyPair();

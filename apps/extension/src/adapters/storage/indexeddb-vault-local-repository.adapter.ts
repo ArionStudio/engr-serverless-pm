@@ -24,7 +24,7 @@ import {
 import { exactRecord } from "../codecs/artifact-codec.primitives";
 import {
   WebCryptoAsymmetricKeyValidator,
-  WebCryptoPort,
+  WebCryptoAdapter,
   validateVaultSnapshotPublicKeys,
   type AsymmetricKeyValidator,
 } from "../crypto";
@@ -73,7 +73,7 @@ function areEncryptedSyncCredentialStatesEqual(
 
 type ErrorConstructor = new () => Error;
 
-export class IndexedDbVaultLocalRepository implements VaultLocalRepositoryPort {
+export class IndexedDbVaultLocalRepositoryAdapter implements VaultLocalRepositoryPort {
   private readonly database: VaultManagerDb;
   private readonly asymmetricKeyValidator: AsymmetricKeyValidator;
   private readonly snapshotDigester: Pick<CryptoPort, "digestVaultSnapshot">;
@@ -84,7 +84,7 @@ export class IndexedDbVaultLocalRepository implements VaultLocalRepositoryPort {
     snapshotDigester: Pick<
       CryptoPort,
       "digestVaultSnapshot"
-    > = new WebCryptoPort(),
+    > = new WebCryptoAdapter(),
   ) {
     this.database = database;
     this.asymmetricKeyValidator = asymmetricKeyValidator;

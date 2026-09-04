@@ -8,7 +8,7 @@ export const OFFSCREEN_DOCUMENT_CONTEXT =
   "OFFSCREEN_DOCUMENT" as chrome.runtime.ContextType;
 export const OFFSCREEN_CLIPBOARD_RESPONSE_TIMEOUT_MS = 5_000;
 
-type OffscreenClipboardOperation =
+type OffscreenClipboardAdapterOperation =
   | {
       readonly operation: "read";
     }
@@ -17,12 +17,13 @@ type OffscreenClipboardOperation =
       readonly value: string;
     };
 
-export type OffscreenClipboardRequest = OffscreenClipboardOperation & {
-  readonly target: typeof OFFSCREEN_CLIPBOARD_MESSAGE_TARGET;
-  readonly deadlineEpochMs: number;
-};
+export type OffscreenClipboardAdapterRequest =
+  OffscreenClipboardAdapterOperation & {
+    readonly target: typeof OFFSCREEN_CLIPBOARD_MESSAGE_TARGET;
+    readonly deadlineEpochMs: number;
+  };
 
-export type OffscreenClipboardResponse =
+export type OffscreenClipboardAdapterResponse =
   | { readonly ok: true; readonly value?: string }
   | { readonly ok: false; readonly error: string };
 
@@ -42,9 +43,9 @@ export type ChromeRuntimeMessenger = {
   sendMessage: (message: unknown) => Promise<unknown>;
 };
 
-function isOffscreenClipboardResponse(
+function isOffscreenClipboardAdapterResponse(
   response: unknown,
-): response is OffscreenClipboardResponse {
+): response is OffscreenClipboardAdapterResponse {
   if (typeof response !== "object" || response === null) {
     return false;
   }
@@ -58,7 +59,7 @@ function isOffscreenClipboardResponse(
   );
 }
 
-export class OffscreenClipboard implements ClipboardPort {
+export class OffscreenClipboardAdapter implements ClipboardPort {
   private readonly offscreen: ChromeOffscreenApi;
   private readonly runtime: ChromeRuntimeMessenger;
   private readonly documentUrl: string;
@@ -94,10 +95,10 @@ export class OffscreenClipboard implements ClipboardPort {
   }
 
   private async send(
-    operation: OffscreenClipboardOperation,
+    operation: OffscreenClipboardAdapterOperation,
   ): Promise<{ readonly ok: true; readonly value?: string }> {
     await this.ensureDocument();
-    const request: OffscreenClipboardRequest = {
+    const request: OffscreenClipboardAdapterRequest = {
       ...operation,
       target: OFFSCREEN_CLIPBOARD_MESSAGE_TARGET,
       deadlineEpochMs: Date.now() + OFFSCREEN_CLIPBOARD_RESPONSE_TIMEOUT_MS,
@@ -112,8 +113,8 @@ export class OffscreenClipboard implements ClipboardPort {
   }
 
   private async sendToOffscreenDocument(
-    request: OffscreenClipboardRequest,
-  ): Promise<OffscreenClipboardResponse> {
+    request: OffscreenClipboardAdapterRequest,
+  ): Promise<OffscreenClipboardAdapterResponse> {
     return new Promise((resolve, reject) => {
       let completed = false;
       const responseTimeout = globalThis.setTimeout(() => {
@@ -136,7 +137,7 @@ export class OffscreenClipboard implements ClipboardPort {
         .then(
           (response) => {
             complete(() => {
-              if (!isOffscreenClipboardResponse(response)) {
+              if (!isOffscreenClipboardAdapterResponse(response)) {
                 reject(
                   new Error(
                     "Offscreen clipboard returned an invalid response.",

@@ -8,3 +8,4 @@ export { VaultLifecycleCleanupService } from "./session/vault-lifecycle-cleanup.
 export { VaultSessionActivationService } from "./session/vault-session-activation.service";
 export { VaultSnapshotService } from "./snapshot/vault-snapshot.service";
 export { VaultSyncGuardService } from "./sync/vault-sync-guard.service";
+export { RandomVaultDisplayNameService } from "./vault/random-vault-display-name.service";

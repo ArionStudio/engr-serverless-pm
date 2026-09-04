@@ -15,12 +15,12 @@ import {
   createVaultManagerDb,
   type VaultManagerDb,
 } from "../../infrastructure/database/dexie-db";
-import { IndexedDbEncryptedUnlockedVaultSessionPayloadRepository } from "../storage/indexeddb-encrypted-unlocked-vault-session-payload.repository";
+import { IndexedDbEncryptedUnlockedVaultSessionPayloadRepositoryAdapter } from "../storage/indexeddb-encrypted-unlocked-vault-session-payload-repository.adapter";
 import {
   encodeUnlockedVaultSessionPayload,
   InvalidUnlockedVaultSessionPayloadError,
 } from "../codecs/unlocked-session-payload.codec";
-import { WebCryptoPort } from "./web-crypto.port";
+import { WebCryptoAdapter } from "./web-crypto.adapter";
 
 const textEncoder = new TextEncoder();
 const sessionContext = {
@@ -40,7 +40,7 @@ afterEach(async () => {
 describe("WebCrypto unlocked-session payload boundary", () => {
   it("round-trips a complete authenticated payload", async () => {
     const values = createCoreTestValues();
-    const crypto = new WebCryptoPort();
+    const crypto = new WebCryptoAdapter();
     const key = await crypto.generateUnlockedVaultSessionPayloadKey();
     const payload = { vault: values.decryptedVault };
 
@@ -69,7 +69,7 @@ describe("WebCrypto unlocked-session payload boundary", () => {
     "rejects authenticated plaintext with %s",
     async (_label, variant) => {
       const values = createCoreTestValues();
-      const crypto = new WebCryptoPort();
+      const crypto = new WebCryptoAdapter();
       const key = await crypto.generateUnlockedVaultSessionPayloadKey();
       const encoded = record(
         structuredClone(
@@ -94,7 +94,7 @@ describe("WebCrypto unlocked-session payload boundary", () => {
   );
 
   it("rejects authenticated malformed JSON with the exact static error", async () => {
-    const crypto = new WebCryptoPort();
+    const crypto = new WebCryptoAdapter();
     const key = await crypto.generateUnlockedVaultSessionPayloadKey();
     const encrypted = await encryptAuthenticatedPlaintext(
       '{"vault":{"entries":}}',
@@ -110,7 +110,7 @@ describe("WebCrypto unlocked-session payload boundary", () => {
   it("maps authenticated decode failure to an invalid session with only a secret-free cause and installs no session", async () => {
     const values = createCoreTestValues();
     const ports = createCoreTestPorts(values);
-    const crypto = new WebCryptoPort();
+    const crypto = new WebCryptoAdapter();
     const key = await crypto.generateUnlockedVaultSessionPayloadKey();
     const sourceSnapshotVersionVector = { [values.deviceId]: 7 };
     const context = {
@@ -133,7 +133,9 @@ describe("WebCrypto unlocked-session payload boundary", () => {
     databaseCounter += 1;
     database = createVaultManagerDb(`lfspm-session-payload-${databaseCounter}`);
     const encryptedPayloads =
-      new IndexedDbEncryptedUnlockedVaultSessionPayloadRepository(database);
+      new IndexedDbEncryptedUnlockedVaultSessionPayloadRepositoryAdapter(
+        database,
+      );
     await encryptedPayloads.saveEncryptedUnlockedVaultSessionPayload({
       ...context,
       content: encryptedContent,

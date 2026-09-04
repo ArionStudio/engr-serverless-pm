@@ -8,6 +8,8 @@ do not automatically describe the current implementation.
 ## Current technical documentation
 
 - [Core documentation](./core/README.md) describes the implemented core package.
+- [Extension adapter documentation](./adapters/README.md) describes concrete
+  browser, persistence, crypto, transport, and sync implementations.
 - [Core package guide](../packages/core/README.md) lists supported imports,
   source layout, and commands.
 - [AWS S3 setup](./aws/s3/README.md) explains deployment and credential setup for

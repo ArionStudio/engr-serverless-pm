@@ -1,17 +1,17 @@
 import type { VaultLockTask, VaultLockTaskRepositoryPort } from "@lfspm/core";
-import type { WebLockManager } from "../clipboard/web-locks-clipboard-operation-coordinator";
+import type { WebLockManager } from "../clipboard/web-locks-clipboard-operation-coordinator.adapter";
 import {
   decodeActionId,
   decodeVaultLockTaskRecord,
   encodeVaultLockTaskRecord,
 } from "../system/scheduled-task-record.codec";
-import type { ChromeStorageArea } from "./chrome-storage-area";
+import type { ChromeStorageArea } from "./chrome-storage-area.type";
 
 export const VAULT_LOCK_TASK_STORAGE_KEY = "vaultLockTask";
 export const VAULT_LOCK_TASK_STORAGE_ACCESS_LEVEL = "TRUSTED_CONTEXTS";
 export const VAULT_LOCK_TASK_STORAGE_LOCK_NAME = "lfspm:vault-lock-task";
 
-export class ChromeVaultLockTaskRepository implements VaultLockTaskRepositoryPort {
+export class ChromeVaultLockTaskRepositoryAdapter implements VaultLockTaskRepositoryPort {
   private readonly storageArea: ChromeStorageArea;
   private readonly storageKey: string;
   private readonly lockManager: WebLockManager;

@@ -16,7 +16,7 @@ export type WebLockManager = {
  * Uses one origin-scoped Web Lock so independent extension contexts coordinate
  * clipboard ownership with vault-session activation and cleanup transitions.
  */
-export class WebLocksClipboardOperationCoordinator implements ClipboardOperationCoordinatorPort {
+export class WebLocksClipboardOperationCoordinatorAdapter implements ClipboardOperationCoordinatorPort {
   private readonly lockManager: WebLockManager;
   private readonly activeLeases = new WeakSet<ClipboardOperationLease>();
 

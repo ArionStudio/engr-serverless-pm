@@ -17,13 +17,13 @@ import {
   createVaultManagerDb,
   type VaultManagerDb,
 } from "../../infrastructure/database/dexie-db";
-import { IndexedDbVaultLocalRepository } from "../storage";
+import { IndexedDbVaultLocalRepositoryAdapter } from "../storage";
 import {
   decodeDeviceSyncCredentialState,
   encodeDeviceSyncCredentialState,
 } from "../codecs/sync-credential.codec";
 import { InvalidDeviceSyncCredentialStateError } from "./index";
-import { WebCryptoPort } from "./web-crypto.port";
+import { WebCryptoAdapter } from "./web-crypto.adapter";
 
 const candidateSnapshotDigest = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 const expectedRemoteSnapshotDigest =
@@ -138,7 +138,7 @@ describe("WebCrypto device sync credential state boundary", () => {
   });
 
   it("round-trips the complete current and previous credential state", async () => {
-    const crypto = new WebCryptoPort();
+    const crypto = new WebCryptoAdapter();
     const key = await crypto.generateDeviceLocalProtectionKey();
     const state = validCredentialState();
 
@@ -284,7 +284,7 @@ describe("WebCrypto device sync credential state boundary", () => {
   ] as const)(
     "rejects authenticated plaintext with %s",
     async (_label, value) => {
-      const crypto = new WebCryptoPort();
+      const crypto = new WebCryptoAdapter();
       const key = await crypto.generateDeviceLocalProtectionKey();
       const encrypted = await encryptAuthenticatedPlaintext(
         JSON.stringify(value),
@@ -308,7 +308,7 @@ describe("WebCrypto device sync credential state boundary", () => {
       '{"currentCredentials":{"provider":"aws-s3-v1","credentialsConfig":{"timeout":}}}',
     ],
   ] as const)("rejects authenticated %s", async (_label, plaintext) => {
-    const crypto = new WebCryptoPort();
+    const crypto = new WebCryptoAdapter();
     const key = await crypto.generateDeviceLocalProtectionKey();
     const encrypted = await encryptAuthenticatedPlaintext(
       plaintext,
@@ -323,11 +323,11 @@ describe("WebCrypto device sync credential state boundary", () => {
 
   it("prevents provider calls, writes, and session mutation after authenticated plaintext decode fails", async () => {
     const ctx = createUnlockVaultTestContext();
-    const crypto = new WebCryptoPort();
+    const crypto = new WebCryptoAdapter();
     const key = await crypto.generateDeviceLocalProtectionKey();
     databaseCounter += 1;
     database = createVaultManagerDb(`lfspm-sync-state-${databaseCounter}`);
-    const repository = new IndexedDbVaultLocalRepository(database);
+    const repository = new IndexedDbVaultLocalRepositoryAdapter(database);
     const unlockedVault = createUnlockedVaultWithEntries(ctx.values, []);
     ctx.saved.unlockedVaultSession = {
       sessionId: ctx.values.sessionId,

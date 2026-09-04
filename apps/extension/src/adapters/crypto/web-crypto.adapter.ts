@@ -213,7 +213,7 @@ export async function validateVaultSnapshotPublicKeys(
   }
 }
 
-export class WebCryptoPort implements CryptoPort {
+export class WebCryptoAdapter implements CryptoPort {
   readonly algorithmSuite = CURRENT_ALGORITHM_SUITE;
 
   private readonly crypto: Crypto;

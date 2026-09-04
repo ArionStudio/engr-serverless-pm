@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { ChromeStorageArea } from "../../adapters/storage/chrome-storage-area";
+import type { ChromeStorageArea } from "../../adapters/storage/chrome-storage-area.type";
 
 export function createChromeStorageArea(
   initialRecords: Record<string, unknown> = {},

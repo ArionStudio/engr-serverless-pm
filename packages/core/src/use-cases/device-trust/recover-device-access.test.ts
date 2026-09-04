@@ -9,6 +9,10 @@ import type { RawMasterPassword } from "../../domain/master-password";
 import type { VaultMasterKey } from "../../domain/snapshot";
 import { InvalidNewMasterPasswordError } from "../../errors/master-password.errors";
 import {
+  InvalidRecoveryMnemonicError,
+  RecoveryMnemonicEncodingError,
+} from "../../errors/recovery.errors";
+import {
   DeviceKeySlotNotFoundError,
   DeviceKeySlotVerificationFailedError,
 } from "../../errors/unlock-vault.errors";
@@ -49,6 +53,45 @@ async function expectInitialRecoverySecretsWiped(
   ).mock.results[0]!.value;
 
   for (const buffer of [recoverySecretKey, recoveryLocalKeysProtectionKey]) {
+    expect(Array.from(new Uint8Array(buffer))).toEqual([0]);
+  }
+}
+
+async function expectRecoverySecretsThroughReplacementEncodingWiped(
+  ctx: ReturnType<typeof createContext>,
+): Promise<void> {
+  const recoverySecretKey = await vi.mocked(
+    ctx.ports.bip39.mnemonicToRecoveryKey,
+  ).mock.results[0]!.value;
+  const recoveryLocalKeysProtectionKey = await vi.mocked(
+    ctx.ports.crypto.deriveRecoveryLocalKeysProtectionKey,
+  ).mock.results[0]!.value;
+  const localKeysPayload = await vi.mocked(
+    ctx.ports.crypto.unwrapLocalKeysPayload,
+  ).mock.results[0]!.value;
+  const vaultMasterKey = await vi.mocked(
+    ctx.ports.crypto.openDeviceVaultKeyEnvelope,
+  ).mock.results[0]!.value;
+  const localRootKey = await vi.mocked(ctx.ports.crypto.deriveLocalRootKey).mock
+    .results[0]!.value;
+  const localKeysProtectionKey = await vi.mocked(
+    ctx.ports.crypto.deriveLocalKeysProtectionKey,
+  ).mock.results[0]!.value;
+  const nextRecoverySecretKey = await vi.mocked(
+    ctx.ports.crypto.generateRecoveryKey,
+  ).mock.results[0]!.value;
+
+  for (const buffer of [
+    recoverySecretKey,
+    recoveryLocalKeysProtectionKey,
+    localKeysPayload.devicePrivateSignKey,
+    localKeysPayload.devicePrivateVaultKey,
+    localKeysPayload.deviceLocalProtectionKey,
+    vaultMasterKey,
+    localRootKey,
+    localKeysProtectionKey,
+    nextRecoverySecretKey,
+  ]) {
     expect(Array.from(new Uint8Array(buffer))).toEqual([0]);
   }
 }
@@ -159,6 +202,37 @@ describe("RecoverDeviceAccessUseCase", () => {
       newMasterPassword,
       ctx.values.masterPasswordSalt,
     );
+  });
+
+  it("preserves mnemonic decoding failures without changing access records", async () => {
+    const ctx = createContext();
+    const decodingError = new InvalidRecoveryMnemonicError();
+    const originalDeviceAccessMaterial = ctx.saved.deviceAccessMaterial;
+    const originalRecoveryBackup = ctx.saved.deviceAccessRecoveryBackup;
+    vi.mocked(ctx.ports.bip39.mnemonicToRecoveryKey).mockRejectedValueOnce(
+      decodingError,
+    );
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        recoveryMnemonicKey: ctx.values.recoveryMnemonicKey,
+        newMasterPassword: ctx.values.newMasterPassword,
+      }),
+    ).rejects.toBe(decodingError);
+
+    expect(
+      ctx.ports.crypto.deriveRecoveryLocalKeysProtectionKey,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.unwrapLocalKeysPayload).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
+    ).not.toHaveBeenCalled();
+    expect(ctx.saved.deviceAccessMaterial).toBe(originalDeviceAccessMaterial);
+    expect(ctx.saved.deviceAccessRecoveryBackup).toBe(originalRecoveryBackup);
   });
 
   it("stops recovery before key checks, decryption, wrapping, or persistence when authenticated local keys are malformed", async () => {
@@ -272,6 +346,47 @@ describe("RecoverDeviceAccessUseCase", () => {
     expect(Array.from(new Uint8Array(ctx.values.recoverySecretKey))).toEqual([
       2,
     ]);
+  });
+
+  it("preserves replacement mnemonic encoding failures after only an authorized checkpoint refresh", async () => {
+    const ctx = createContext();
+    const encodingError = new RecoveryMnemonicEncodingError();
+    const originalDeviceAccessMaterial = ctx.saved.deviceAccessMaterial;
+    const originalRecoveryBackup = ctx.saved.deviceAccessRecoveryBackup;
+    ctx.saved.vaultSnapshot = {
+      ...ctx.vaultSnapshot,
+      metadata: {
+        ...ctx.vaultSnapshot.metadata,
+        snapshotVersionVector: { [ctx.values.deviceId]: 2 },
+      },
+    };
+    vi.mocked(ctx.ports.bip39.recoveryKeyToMnemonic).mockRejectedValueOnce(
+      encodingError,
+    );
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        recoveryMnemonicKey: ctx.values.recoveryMnemonicKey,
+        newMasterPassword: ctx.values.newMasterPassword,
+      }),
+    ).rejects.toBe(encodingError);
+
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).toHaveBeenCalledOnce();
+    expect(
+      ctx.ports.vaultLocalRepository.saveDeviceAccessRecords,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.crypto.generateRecoveryLocalKeysProtectionSalt,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.crypto.deriveRecoveryLocalKeysProtectionKey,
+    ).toHaveBeenCalledOnce();
+    expect(ctx.saved.deviceAccessMaterial).toBe(originalDeviceAccessMaterial);
+    expect(ctx.saved.deviceAccessRecoveryBackup).toBe(originalRecoveryBackup);
+    await expectRecoverySecretsThroughReplacementEncodingWiped(ctx);
   });
 
   it("rejects an old backup replay without matching access material", async () => {

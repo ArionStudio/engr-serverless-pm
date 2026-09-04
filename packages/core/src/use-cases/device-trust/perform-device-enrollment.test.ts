@@ -21,6 +21,7 @@ import {
   PendingDeviceEnrollmentMismatchError,
 } from "../../errors/device-enrollment.errors";
 import { InvalidNewMasterPasswordError } from "../../errors/master-password.errors";
+import { RecoveryMnemonicEncodingError } from "../../errors/recovery.errors";
 import { DeviceAccessMaterialChangedError } from "../../errors/vault-device.errors";
 import {
   RemoteVaultSnapshotChangedError,
@@ -182,7 +183,7 @@ function createContext(synced = false) {
 
 async function expectEnrollmentOwnedBuffersWiped(
   ctx: ReturnType<typeof createContext>,
-  stage: "pendingProtection" | "all" = "all",
+  stage: "pendingProtection" | "recoveryEncoding" | "all" = "all",
 ): Promise<void> {
   const pendingRootKey = await vi.mocked(ctx.ports.crypto.deriveLocalRootKey)
     .mock.results[0]!.value;
@@ -198,16 +199,8 @@ async function expectEnrollmentOwnedBuffersWiped(
     return;
   }
 
-  const nextRootKey = await vi.mocked(ctx.ports.crypto.deriveLocalRootKey).mock
-    .results[1]!.value;
-  const localProtectionKey = await vi.mocked(
-    ctx.ports.crypto.deriveLocalKeysProtectionKey,
-  ).mock.results[0]!.value;
   const recoveryKey = await vi.mocked(ctx.ports.crypto.generateRecoveryKey).mock
     .results[0]!.value;
-  const recoveryProtectionKey = await vi.mocked(
-    ctx.ports.crypto.deriveRecoveryLocalKeysProtectionKey,
-  ).mock.results[0]!.value;
   const privateState = await vi.mocked(
     ctx.ports.crypto.unwrapDeviceEnrollmentPrivateState,
   ).mock.results[0]!.value;
@@ -215,17 +208,38 @@ async function expectEnrollmentOwnedBuffersWiped(
     ctx.ports.crypto.openDeviceVaultKeyEnvelope,
   ).mock.results[0]!.value;
 
-  for (const buffer of [
+  const throughRecoveryEncoding = [
     pendingRootKey,
-    nextRootKey,
     pendingProtectionKey,
-    localProtectionKey,
     recoveryKey,
-    recoveryProtectionKey,
     privateState.devicePrivateSignKey,
     privateState.devicePrivateVaultKey,
     privateState.deviceLocalProtectionKey,
     vaultMasterKey,
+  ];
+
+  if (stage === "recoveryEncoding") {
+    for (const buffer of throughRecoveryEncoding) {
+      expect(Array.from(new Uint8Array(buffer))).toEqual([0]);
+    }
+
+    return;
+  }
+
+  const nextRootKey = await vi.mocked(ctx.ports.crypto.deriveLocalRootKey).mock
+    .results[1]!.value;
+  const localProtectionKey = await vi.mocked(
+    ctx.ports.crypto.deriveLocalKeysProtectionKey,
+  ).mock.results[0]!.value;
+  const recoveryProtectionKey = await vi.mocked(
+    ctx.ports.crypto.deriveRecoveryLocalKeysProtectionKey,
+  ).mock.results[0]!.value;
+
+  for (const buffer of [
+    ...throughRecoveryEncoding,
+    nextRootKey,
+    localProtectionKey,
+    recoveryProtectionKey,
   ]) {
     expect(Array.from(new Uint8Array(buffer))).toEqual([0]);
   }
@@ -330,6 +344,38 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     expect(ctx.ports.scheduledTasks.scheduleTask).not.toHaveBeenCalled();
     expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
     await expectEnrollmentOwnedBuffersWiped(ctx, "pendingProtection");
+  });
+
+  it("preserves mnemonic encoding failures, leaves enrollment retryable, and wipes owned secrets", async () => {
+    const ctx = createContext();
+    const encodingError = new RecoveryMnemonicEncodingError();
+    vi.mocked(ctx.ports.bip39.recoveryKeyToMnemonic).mockRejectedValueOnce(
+      encodingError,
+    );
+
+    await expect(
+      ctx.useCase.execute({
+        enrollmentResponse: ctx.response,
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "New laptop",
+        lockAfterMs: 60_000,
+      }),
+    ).rejects.toBe(encodingError);
+
+    expect(ctx.ports.crypto.generateMasterPasswordSalt).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.unlockedVaultSessionMaterialRepository
+        .saveUnlockedVaultSessionMaterial,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.removePendingDeviceEnrollment,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
+    expect(ctx.ports.saved.localVaultDescriptor).toBeUndefined();
+    await expectEnrollmentOwnedBuffersWiped(ctx, "recoveryEncoding");
   });
 
   it("keeps request identity and private-key matching in the core semantic owner", async () => {

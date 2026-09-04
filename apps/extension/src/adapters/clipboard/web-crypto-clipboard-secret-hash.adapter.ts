@@ -1,6 +1,6 @@
 import type { ClipboardSecretHashPort } from "@lfspm/core";
 
-export class WebCryptoClipboardSecretHash implements ClipboardSecretHashPort {
+export class WebCryptoClipboardSecretHashAdapter implements ClipboardSecretHashPort {
   private readonly subtleCrypto: SubtleCrypto;
 
   constructor(subtleCrypto: SubtleCrypto = crypto.subtle) {

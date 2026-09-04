@@ -12,7 +12,7 @@ export type ChromeAlarmsApi = {
   clear: (name: string) => boolean | Promise<boolean>;
 };
 
-export class ChromeAlarmsScheduledTask implements ScheduledTaskPort {
+export class ChromeAlarmsScheduledTaskAdapter implements ScheduledTaskPort {
   private readonly alarms: ChromeAlarmsApi;
 
   constructor(alarms: ChromeAlarmsApi = chrome.alarms) {

@@ -6,7 +6,7 @@ import {
   type VaultSnapshotDescriptor,
   type VaultSnapshotIdentity,
 } from "@lfspm/core";
-import { WebCryptoPort } from "../crypto/web-crypto.port";
+import { WebCryptoAdapter } from "../crypto/web-crypto.adapter";
 import { encodeVersionVector } from "../codecs/artifact-codec.primitives";
 import {
   InvalidLocalVaultSnapshotRecordError,
@@ -249,7 +249,7 @@ async function expectRejectedLocalSnapshot(value: unknown): Promise<void> {
 }
 
 async function createSnapshot(): Promise<VaultSnapshot> {
-  const crypto = new WebCryptoPort();
+  const crypto = new WebCryptoAdapter();
   const signing = await crypto.generateDeviceSignKeyPair();
   const vaultKeys = await crypto.generateDeviceVaultKeyPair();
   const vaultMasterKey = await crypto.generateVaultMasterKey();

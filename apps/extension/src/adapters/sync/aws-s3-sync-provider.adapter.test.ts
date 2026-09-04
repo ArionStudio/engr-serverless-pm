@@ -16,11 +16,11 @@ import type {
 import type { Base64URLString } from "@lfspm/core/lib";
 import type { AsymmetricKeyValidator } from "../crypto";
 import {
-  AwsS3SyncProvider,
+  AwsS3SyncProviderAdapter,
   InvalidSyncProviderResponseError,
   type S3SyncClient,
   type S3SyncClientFactory,
-} from "./aws-s3-sync-provider";
+} from "./aws-s3-sync-provider.adapter";
 
 const codec = vi.hoisted(() => {
   class InvalidRemoteVaultSnapshotRecordError extends Error {
@@ -140,7 +140,7 @@ const syncAccess: SyncAccess = {
 };
 
 async function uploadVaultSnapshot(
-  provider: AwsS3SyncProvider,
+  provider: AwsS3SyncProviderAdapter,
   access: SyncAccess,
   candidate: VaultSnapshot,
   expectedRemoteIdentity: VaultSnapshotIdentity | null,
@@ -159,7 +159,7 @@ async function uploadVaultSnapshot(
 }
 
 async function removeVaultSnapshots(
-  provider: AwsS3SyncProvider,
+  provider: AwsS3SyncProviderAdapter,
   access: SyncAccess,
   vaultId: string,
   expectedRemoteIdentity: VaultSnapshotIdentity | null,
@@ -191,7 +191,7 @@ beforeEach(() => {
   codec.encodeVaultSnapshot.mockImplementation((value) => value);
 });
 
-describe("AwsS3SyncProvider", () => {
+describe("AwsS3SyncProviderAdapter", () => {
   it("strictly normalizes setup target and credentials", async () => {
     const provider = createTestProvider(createClient());
 
@@ -355,7 +355,7 @@ describe("AwsS3SyncProvider", () => {
   ])("rejects %s without creating an AWS client", async (_label, input) => {
     const client = createClient();
     const clientFactory = createClientFactory(client);
-    const provider = new AwsS3SyncProvider(
+    const provider = new AwsS3SyncProviderAdapter(
       clientFactory,
       asymmetricKeyValidator,
     );
@@ -420,7 +420,7 @@ describe("AwsS3SyncProvider", () => {
   ])("rejects %s before any remote call", async (_label, access) => {
     const client = createClient();
     const clientFactory = createClientFactory(client);
-    const provider = new AwsS3SyncProvider(
+    const provider = new AwsS3SyncProviderAdapter(
       clientFactory,
       asymmetricKeyValidator,
     );
@@ -443,7 +443,7 @@ describe("AwsS3SyncProvider", () => {
       awsError("NoSuchKey", 404),
     );
     const clientFactory = createClientFactory(client);
-    const provider = new AwsS3SyncProvider(
+    const provider = new AwsS3SyncProviderAdapter(
       clientFactory,
       asymmetricKeyValidator,
     );
@@ -663,7 +663,7 @@ describe("AwsS3SyncProvider", () => {
     vi.mocked(client.getObject).mockResolvedValueOnce(
       remoteResponse(descriptor),
     );
-    const provider = new AwsS3SyncProvider(createClientFactory(client));
+    const provider = new AwsS3SyncProviderAdapter(createClientFactory(client));
 
     await expect(
       provider.getLatestVaultSnapshotDescriptor(syncAccess, descriptor.vaultId),
@@ -1345,8 +1345,8 @@ function createClientFactory(client: S3SyncClient): S3SyncClientFactory {
 function createTestProvider(
   client: S3SyncClient,
   remoteSnapshotDigest = snapshotDigest,
-): AwsS3SyncProvider {
-  return new AwsS3SyncProvider(
+): AwsS3SyncProviderAdapter {
+  return new AwsS3SyncProviderAdapter(
     createClientFactory(client),
     asymmetricKeyValidator,
     { digestVaultSnapshot: vi.fn(async () => remoteSnapshotDigest) },

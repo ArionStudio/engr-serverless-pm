@@ -2,7 +2,7 @@ import type {
   ClipboardClearTask,
   ClipboardClearTaskRepositoryPort,
 } from "@lfspm/core";
-import type { ChromeStorageArea } from "./chrome-storage-area";
+import type { ChromeStorageArea } from "./chrome-storage-area.type";
 import {
   decodeClipboardClearTaskRecord,
   encodeClipboardClearTaskRecord,
@@ -11,7 +11,7 @@ import {
 export const CLIPBOARD_CLEAR_TASK_STORAGE_KEY = "clipboardClearTask";
 export const CLIPBOARD_CLEAR_TASK_STORAGE_ACCESS_LEVEL = "TRUSTED_CONTEXTS";
 
-export class ChromeClipboardClearTaskRepository implements ClipboardClearTaskRepositoryPort {
+export class ChromeClipboardClearTaskRepositoryAdapter implements ClipboardClearTaskRepositoryPort {
   private readonly storageArea: ChromeStorageArea;
   private readonly storageKey: string;
   private readonly accessRestriction: Promise<void>;

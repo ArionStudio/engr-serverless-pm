@@ -9,6 +9,7 @@ export * from "./generate-password.errors";
 export * from "./generate-username.errors";
 export * from "./master-password.errors";
 export * from "./randomness.errors";
+export * from "./recovery.errors";
 export * from "./sync.errors";
 export * from "./unlock-vault.errors";
 export * from "./vault-device.errors";

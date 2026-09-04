@@ -8,59 +8,60 @@ import {
   SyncUploadUseCase,
 } from "@lfspm/core";
 import type {
-  Bip39Port,
   ClipboardClearTaskRepositoryPort,
   ClipboardOperationCoordinatorPort,
   ClipboardPort,
   ClipboardSecretHashPort,
-  ClockPort,
   CryptoPort,
   EncryptedUnlockedVaultSessionPayloadRepositoryPort,
-  IdPort,
   ScheduledTaskPort,
   SyncProviderPort,
   UnlockedVaultSessionMaterialRepositoryPort,
-  VaultDisplayNamePort,
   VaultLockTaskRepositoryPort,
   VaultLocalRepositoryPort,
 } from "@lfspm/core";
 import {
   ClipboardClearService,
+  RandomSamplerService,
+  RandomVaultDisplayNameService,
   UnlockedVaultSessionService,
   VaultLifecycleCleanupService,
   VaultSnapshotService,
   VaultSyncGuardService,
 } from "@lfspm/core/services";
+import { ScureBip39Adapter } from "./adapters/crypto";
+import { SystemClockAdapter, WebCryptoIdAdapter } from "./adapters/system";
 
 type CoreCompositionPorts = {
-  readonly bip39: Bip39Port;
   readonly clipboard: ClipboardPort;
   readonly clipboardClearTasks: ClipboardClearTaskRepositoryPort;
   readonly clipboardOperations: ClipboardOperationCoordinatorPort;
   readonly clipboardSecretHash: ClipboardSecretHashPort;
-  readonly clock: ClockPort;
   readonly crypto: CryptoPort;
   readonly encryptedSessionPayloads: EncryptedUnlockedVaultSessionPayloadRepositoryPort;
-  readonly ids: IdPort;
   readonly scheduledTasks: ScheduledTaskPort;
   readonly sessionMaterials: UnlockedVaultSessionMaterialRepositoryPort;
   readonly syncProvider: SyncProviderPort;
-  readonly vaultDisplayName: VaultDisplayNamePort;
   readonly vaultLockTasks: VaultLockTaskRepositoryPort;
   readonly vaults: VaultLocalRepositoryPort;
 };
 
 export function composeCoreApi(ports: CoreCompositionPorts) {
+  const bip39 = new ScureBip39Adapter();
+  const clock = new SystemClockAdapter();
+  const ids = new WebCryptoIdAdapter();
+  const randomSampler = new RandomSamplerService(ports.crypto);
+  const vaultDisplayName = new RandomVaultDisplayNameService(randomSampler);
   const unlockedVaultSession = new UnlockedVaultSessionService(
     ports.sessionMaterials,
     ports.encryptedSessionPayloads,
     ports.crypto,
-    ports.ids,
+    ids,
     ports.clipboardOperations,
   );
   const vaultSnapshot = new VaultSnapshotService(
     ports.crypto,
-    ports.clock,
+    clock,
     ports.vaults,
   );
   const vaultSyncGuard = new VaultSyncGuardService(
@@ -73,7 +74,7 @@ export function composeCoreApi(ports: CoreCompositionPorts) {
   const clipboardClear = new ClipboardClearService(
     ports.clipboard,
     ports.clipboardClearTasks,
-    ports.clock,
+    clock,
     ports.clipboardSecretHash,
   );
   const lifecycleCleanup = new VaultLifecycleCleanupService(
@@ -88,12 +89,12 @@ export function composeCoreApi(ports: CoreCompositionPorts) {
   return {
     vaultLifecycle: new InitializeVaultUseCase(
       ports.crypto,
-      ports.bip39,
+      bip39,
       ports.vaults,
       unlockedVaultSession,
-      ports.ids,
-      ports.clock,
-      ports.vaultDisplayName,
+      ids,
+      clock,
+      vaultDisplayName,
       ports.scheduledTasks,
       ports.vaultLockTasks,
       ports.clipboardOperations,
@@ -104,13 +105,13 @@ export function composeCoreApi(ports: CoreCompositionPorts) {
       lifecycleCleanup,
     ),
     performDeviceEnrollment: new PerformDeviceEnrollmentUseCase(
-      ports.clock,
+      clock,
       ports.crypto,
-      ports.ids,
-      ports.bip39,
+      ids,
+      bip39,
       ports.syncProvider,
       unlockedVaultSession,
-      ports.vaultDisplayName,
+      vaultDisplayName,
       ports.vaults,
       lifecycleCleanup,
       ports.scheduledTasks,
@@ -118,7 +119,7 @@ export function composeCoreApi(ports: CoreCompositionPorts) {
       ports.clipboardOperations,
     ),
     vaultEntry: new AddEntryUseCase(
-      ports.ids,
+      ids,
       unlockedVaultSession,
       vaultSyncGuard,
       vaultSnapshot,
@@ -128,10 +129,10 @@ export function composeCoreApi(ports: CoreCompositionPorts) {
       clipboardClear,
       ports.clipboardOperations,
       ports.clipboardSecretHash,
-      ports.ids,
+      ids,
       ports.clipboardClearTasks,
       ports.scheduledTasks,
-      ports.clock,
+      clock,
       unlockedVaultSession,
     ),
     sync: new SyncUploadUseCase(
