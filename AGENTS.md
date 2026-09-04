@@ -87,10 +87,13 @@ Run project commands from repo root unless a task explicitly requires a subdirec
 └─────────────────────────────────────┘
 ```
 
-**Import direction**: `core` → `adapters` → `ui`
+Dependencies point inward: adapters implement and depend on core ports;
+composition roots depend on core and adapters; UI and runtime initiators call
+composed use cases. Core never imports extension layers.
 
-Follow this project import direction. Core-specific architecture decisions live
-in `docs/development/core-architecture.md`.
+Normative core architecture decisions live in
+`docs/standards/core-architecture.md`; the implemented structure is described
+in `docs/core/architecture.md`.
 
 ---
 

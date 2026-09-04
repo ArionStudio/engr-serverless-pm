@@ -44,15 +44,17 @@
 ## PASSWORD-004: Keep scoring local and bounded
 
 - **Requirement:** Password scoring MUST run locally without network access or a
-  newly added runtime dependency. Its work MUST satisfy the complexity bound in
-  the security specification, and it MUST be described as a policy heuristic,
-  not an entropy or breach guarantee.
+  newly added runtime dependency. Its work MUST grow at most linearly with the
+  password's Unicode code-point length, with fixed limits on candidate pattern
+  searches. It MUST be described as a policy heuristic, not an entropy or
+  breach guarantee.
 - **Scope:** Password-strength implementation and documentation.
 - **Reason:** Password input is secret, and heuristic scoring has known limits.
 - **Compliant:** Use the pinned in-repo corpus and deterministic rules.
 - **Noncompliant:** Send a password to a breach API or download scoring data at
   runtime.
-- **Enforcement:** Dependency, network, complexity, and documentation review.
+- **Enforcement:** Dependency and network review, deterministic work-bound
+  tests, and documentation review.
 - **Exceptions:** None.
 
 ## DATA-001: Generate source data reproducibly

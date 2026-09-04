@@ -25,7 +25,8 @@
 - **Compliant:** An existing trusted device authorizes an enrollment transition.
 - **Noncompliant:** Accept a chain that rewrites a historical certificate.
 - **Enforcement:** Fork, prefix, authorizer, signature, and generation tests.
-- **Exceptions:** The genesis procedure defined by the security specification.
+- **Exceptions:** The initial self-signed genesis certificate, which MUST be
+  pinned by the local trust anchor.
 
 ## TRUST-003: Separate content order from trust authority
 

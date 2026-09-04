@@ -8,8 +8,11 @@ import {
   type DevicePublicSignKey,
   type DeviceVaultPublicKey,
   type LocalKeysPayload,
+  type LocalRootKey,
   type LocalVaultTrustCheckpointPayload,
+  type RandomBytes,
   type RawMasterPassword,
+  type RecoverySecretKey,
   type SerializedEncrypted,
   type SerializedWrapped,
   type SyncTarget,
@@ -60,6 +63,198 @@ describe("WebCryptoPort", () => {
     await expect(crypto.generateRandomBytes(-1)).rejects.toBeInstanceOf(
       RangeError,
     );
+  });
+
+  it("pins the spm-v1 domain-separation inputs", async () => {
+    const hkdfInfo: string[] = [];
+    const envelopeHkdfInfo: string[] = [];
+    const authenticatedData: string[] = [];
+    const nonceLengths: number[] = [];
+    const tagLengths: number[] = [];
+    const subtle = new Proxy(globalThis.crypto.subtle, {
+      get(target, property, receiver) {
+        if (property === "deriveBits") {
+          return async (...args: Parameters<SubtleCrypto["deriveBits"]>) => {
+            const [algorithm] = args;
+            if (typeof algorithm !== "string" && algorithm.name === "HKDF") {
+              hkdfInfo.push(decodeUtf8((algorithm as HkdfParams).info));
+            }
+            return target.deriveBits(...args);
+          };
+        }
+        if (property === "encrypt") {
+          return async (...args: Parameters<SubtleCrypto["encrypt"]>) => {
+            const [algorithm] = args;
+            if (typeof algorithm !== "string" && algorithm.name === "AES-GCM") {
+              const parameters = algorithm as AesGcmParams;
+              if (parameters.additionalData !== undefined) {
+                authenticatedData.push(decodeUtf8(parameters.additionalData));
+              }
+              nonceLengths.push(parameters.iv.byteLength);
+              tagLengths.push(parameters.tagLength ?? 128);
+            }
+            return target.encrypt(...args);
+          };
+        }
+        if (property === "deriveKey") {
+          return async (...args: Parameters<SubtleCrypto["deriveKey"]>) => {
+            const [algorithm] = args;
+            if (typeof algorithm !== "string" && algorithm.name === "HKDF") {
+              envelopeHkdfInfo.push(decodeUtf8((algorithm as HkdfParams).info));
+            }
+            return target.deriveKey(...args);
+          };
+        }
+        const value: unknown = Reflect.get(target, property, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const cryptoApi = Object.create(globalThis.crypto) as Crypto;
+    Object.defineProperty(cryptoApi, "subtle", { value: subtle });
+    Object.defineProperty(cryptoApi, "getRandomValues", {
+      value: globalThis.crypto.getRandomValues.bind(globalThis.crypto),
+    });
+    const crypto = new WebCryptoPort(cryptoApi);
+    const rootBytes = Uint8Array.from({ length: 32 }, (_, index) => index);
+    const saltBytes = new Uint8Array(32).fill(0xa5);
+    const localRootKey = rootBytes.buffer as LocalRootKey;
+    const recoveryKey = rootBytes.slice().buffer as RecoverySecretKey;
+    const salt = saltBytes.buffer as RandomBytes;
+
+    const localProtection = await crypto.deriveLocalKeysProtectionKey(
+      localRootKey,
+      salt,
+    );
+    const recoveryProtection =
+      await crypto.deriveRecoveryLocalKeysProtectionKey(recoveryKey, salt);
+    const enrollmentProtection =
+      await crypto.deriveDeviceEnrollmentPrivateStateProtectionKey(
+        localRootKey,
+        salt,
+      );
+
+    expect(
+      [localProtection, recoveryProtection, enrollmentProtection].map((key) =>
+        encodeBase64Url(new Uint8Array(key)),
+      ),
+    ).toEqual([
+      "89_Iz8bcigPMmX-ZpGD8wV0Kslenupp8tYZ6wuk-Rzc",
+      "EDfPV9xgzaCR62nJy1ySNztj_jckZXytwXusNoanppo",
+      "iciGp_pumk5PK_OdVJIx0yffORcdNbbCao27MuMhzwI",
+    ]);
+
+    const signing = await crypto.generateDeviceSignKeyPair();
+    const vaultKeys = await crypto.generateDeviceVaultKeyPair();
+    const deviceLocalProtectionKey =
+      await crypto.generateDeviceLocalProtectionKey();
+    await crypto.createDeviceVaultKeyEnvelope(
+      await crypto.generateVaultMasterKey(),
+      vaultKeys.publicKey,
+      {
+        vaultId: "vault-id",
+        deviceId: "device-id",
+        vaultKeyGeneration: 1,
+        algorithmSuiteId: "spm-v1",
+      },
+    );
+    const localPayload: LocalKeysPayload = {
+      devicePrivateSignKey: signing.privateKey,
+      devicePrivateVaultKey: vaultKeys.privateKey,
+      deviceLocalProtectionKey,
+      vaultTrustAnchor: {
+        version: 1,
+        vaultId: "vault-id",
+        genesisDeviceId: "device-id",
+        genesisPublicSignKey: signing.publicKey,
+        genesisCertificateDigest: artifactDigest(1),
+      },
+    };
+    await crypto.wrapLocalKeysPayload(localPayload, localProtection);
+
+    const requestPayload: DeviceEnrollmentRequestPayload = {
+      version: 1,
+      requestId: "request-id",
+      vaultId: "vault-id",
+      expectedGenesisCertificateDigest: artifactDigest(1),
+      deviceId: "device-id",
+      algorithmSuiteId: "spm-v1",
+      publicSignKey: signing.publicKey,
+      publicVaultKey: vaultKeys.publicKey,
+    };
+    await crypto.wrapDeviceEnrollmentPrivateState(
+      {
+        request: {
+          payload: requestPayload,
+          signature: await crypto.signDeviceEnrollmentRequest(
+            requestPayload,
+            signing.privateKey,
+          ),
+        },
+        devicePrivateSignKey: signing.privateKey,
+        devicePrivateVaultKey: vaultKeys.privateKey,
+        deviceLocalProtectionKey,
+      },
+      enrollmentProtection,
+    );
+
+    const vault = createVault();
+    await crypto.encryptVaultSnapshotContent(
+      vault,
+      await crypto.generateVaultMasterKey(),
+    );
+    await crypto.encryptUnlockedVaultSessionPayload(
+      { vault },
+      await crypto.generateUnlockedVaultSessionPayloadKey(),
+      {
+        sessionId: "session-id",
+        vaultId: "vault-id",
+        sourceSnapshotVersionVector: { "device-id": 1 },
+      },
+    );
+    await crypto.encryptDeviceSyncCredentialState(
+      {
+        currentCredentials: {
+          provider: "aws-s3-v1",
+          credentialsConfig: {
+            accessKeyId: "access-key",
+            secretAccessKey: "secret-key",
+          },
+        },
+      },
+      deviceLocalProtectionKey,
+      {
+        vaultId: "vault-id",
+        deviceId: "device-id",
+        provider: "aws-s3-v1",
+        target: {
+          provider: "aws-s3-v1",
+          targetConfig: {
+            bucket: "bucket",
+            prefix: "vault/",
+            region: "eu-west-1",
+          },
+        },
+      },
+    );
+
+    expect(hkdfInfo).toEqual([
+      '{"purpose":"lfspm-local-keys-protection-v1"}',
+      '{"purpose":"lfspm-recovery-local-keys-protection-v1"}',
+      '{"purpose":"lfspm-device-enrollment-private-state-protection-v1"}',
+    ]);
+    expect(envelopeHkdfInfo).toEqual([
+      '{"context":{"algorithmSuiteId":"spm-v1","deviceId":"device-id","vaultId":"vault-id","vaultKeyGeneration":1},"purpose":"lfspm-vault-key-envelope-v1"}',
+    ]);
+    expect(authenticatedData).toEqual([
+      '{"algorithmSuiteId":"spm-v1","deviceId":"device-id","vaultId":"vault-id","vaultKeyGeneration":1}',
+      '{"purpose":"lfspm-local-keys-payload-v1"}',
+      '{"purpose":"lfspm-device-enrollment-private-state-v1"}',
+      '{"purpose":"lfspm-vault-snapshot-content-v1"}',
+      '{"context":{"sessionId":"session-id","sourceSnapshotVersionVector":{"device-id":1},"vaultId":"vault-id"},"purpose":"lfspm-unlocked-vault-session-payload-v1"}',
+      '{"context":{"deviceId":"device-id","provider":"aws-s3-v1","target":{"provider":"aws-s3-v1","targetConfig":{"bucket":"bucket","prefix":"vault/","region":"eu-west-1"}},"vaultId":"vault-id"},"purpose":"lfspm-device-sync-credential-state-v1"}',
+    ]);
+    expect(nonceLengths).toEqual([12, 12, 12, 12, 12, 12]);
+    expect(tagLengths).toEqual([128, 128, 128, 128, 128, 128]);
   });
 
   it("generates importable signing and vault key pairs and rejects mismatches", async () => {
@@ -458,11 +653,28 @@ describe("WebCryptoPort", () => {
       sessionKey,
       sessionContext,
     );
+    const sessionContextWithRuntimeExtra = {
+      ...sessionContext,
+      undeclaredContext: "ignored",
+    };
+    const encryptedSessionWithRuntimeExtra =
+      await crypto.encryptUnlockedVaultSessionPayload(
+        { vault },
+        sessionKey,
+        sessionContextWithRuntimeExtra,
+      );
+    await expect(
+      crypto.decryptUnlockedVaultSessionPayload(
+        encryptedSessionWithRuntimeExtra,
+        sessionKey,
+        sessionContext,
+      ),
+    ).resolves.toEqual({ vault });
     await expect(
       crypto.decryptUnlockedVaultSessionPayload(
         encryptedSession,
         sessionKey,
-        sessionContext,
+        sessionContextWithRuntimeExtra,
       ),
     ).resolves.toEqual({ vault });
     await expect(
@@ -492,16 +704,33 @@ describe("WebCryptoPort", () => {
         },
       },
     };
+    const syncContextWithRuntimeExtra = {
+      ...syncContext,
+      undeclaredContext: "ignored",
+    };
     const encryptedState = await crypto.encryptDeviceSyncCredentialState(
       state,
       syncKey,
-      syncContext,
+      syncContextWithRuntimeExtra,
     );
     await expect(
       crypto.decryptDeviceSyncCredentialState(
         encryptedState,
         syncKey,
         syncContext,
+      ),
+    ).resolves.toEqual(state);
+    const encryptedStateWithDeclaredContext =
+      await crypto.encryptDeviceSyncCredentialState(
+        state,
+        syncKey,
+        syncContext,
+      );
+    await expect(
+      crypto.decryptDeviceSyncCredentialState(
+        encryptedStateWithDeclaredContext,
+        syncKey,
+        syncContextWithRuntimeExtra,
       ),
     ).resolves.toEqual(state);
     await expect(
@@ -942,4 +1171,11 @@ async function encryptAuthenticatedJson<Payload>(
 
 function bytes(value: ArrayBuffer): number[] {
   return Array.from(new Uint8Array(value));
+}
+
+function decodeUtf8(value: BufferSource): string {
+  const bytes = ArrayBuffer.isView(value)
+    ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
+    : new Uint8Array(value);
+  return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 }

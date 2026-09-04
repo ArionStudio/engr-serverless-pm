@@ -31,11 +31,12 @@
 ## DOC-003: Use the strongest available source
 
 - **Requirement:** Documentation about exact protocol behavior, data formats, or
-  algorithm choices MUST follow the owning product or security specification.
-  For implementation facts, updates MUST prefer enforced configuration,
-  schemas, exports, and tests, followed by accepted decisions and repeated
-  current implementation. Old examples and isolated proposals MUST not override
-  stronger evidence.
+  algorithm choices MUST follow the active sections of the owning product or
+  security specification. A section explicitly marked stale or historical MUST
+  NOT override current implementation facts. For implementation facts, updates
+  MUST prefer enforced configuration, schemas, exports, and tests, followed by
+  accepted decisions and repeated current implementation. A documented gap
+  does not silently turn current code into a new protocol requirement.
 - **Scope:** Documentation research and updates.
 - **Reason:** The repository contains stale documents from earlier architecture
   stages.

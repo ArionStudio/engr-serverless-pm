@@ -731,7 +731,11 @@ export class WebCryptoPort implements CryptoPort {
       CURRENT_ALGORITHM_SUITE.unlockedVaultSessionPayloadEncryption
         .nonceLengthBytes,
       "lfspm-unlocked-vault-session-payload-v1",
-      context,
+      projectDeclaredFields(
+        context,
+        CURRENT_ALGORITHM_SUITE.unlockedVaultSessionPayloadEncryption
+          .authenticatedData,
+      ),
     );
   }
 
@@ -748,7 +752,11 @@ export class WebCryptoPort implements CryptoPort {
       "lfspm-unlocked-vault-session-payload-v1",
       decodeUnlockedVaultSessionPayload,
       InvalidUnlockedVaultSessionPayloadError,
-      context,
+      projectDeclaredFields(
+        context,
+        CURRENT_ALGORITHM_SUITE.unlockedVaultSessionPayloadEncryption
+          .authenticatedData,
+      ),
     );
   }
 
@@ -912,7 +920,11 @@ export class WebCryptoPort implements CryptoPort {
       protectionKey,
       CURRENT_ALGORITHM_SUITE.deviceSyncCredentialEncryption.nonceLengthBytes,
       "lfspm-device-sync-credential-state-v1",
-      context,
+      projectDeclaredFields(
+        context,
+        CURRENT_ALGORITHM_SUITE.deviceSyncCredentialEncryption
+          .authenticatedData,
+      ),
     );
   }
 
@@ -928,7 +940,11 @@ export class WebCryptoPort implements CryptoPort {
       "lfspm-device-sync-credential-state-v1",
       decodeDeviceSyncCredentialState,
       InvalidDeviceSyncCredentialStateError,
-      context,
+      projectDeclaredFields(
+        context,
+        CURRENT_ALGORITHM_SUITE.deviceSyncCredentialEncryption
+          .authenticatedData,
+      ),
     );
   }
 
