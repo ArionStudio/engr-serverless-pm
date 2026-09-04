@@ -106,10 +106,32 @@ adapters may have separate instances in separate graphs. Chrome popup,
 background, options, and offscreen contexts cannot share JavaScript objects, so
 cross-context coordination uses Web Locks, storage, alarms, or messaging.
 
-`apps/extension/src/core-composition-api.typecheck.ts` currently verifies the
-public construction graph. Background composition runs the clipboard-clear and
-vault-lock alarm workflows. The full popup and options workflow container is
-still application work.
+`apps/extension/src/extension/composition/extension-application.ts` constructs
+all 33 public use cases and returns only use cases. Create one application per
+trusted UI context, outside React rendering, and pass the needed use cases
+explicitly to callers. Construction does not activate a vault, create alarms,
+contact S3, or access the clipboard. Chrome task repositories restrict their
+session-storage access during construction.
+
+`session.composition.ts` owns construction of the shared session service,
+clipboard coordinator, cleanup service, clock, IDs, crypto, and task adapters.
+Both the application and background alarm roots use it. Within each graph, copy,
+activation, lock, and deletion use the same coordinator and session service.
+The application also shares one vault repository, snapshot service, sync guard,
+provider, and random sampler across the workflows that need them. Both
+IndexedDB repositories receive the same database handle. The factory accepts
+an explicit database handle for isolated integration tests; its default is the
+existing extension database.
+
+Background construction imports only the session graph, keeping BIP39 and S3
+out of alarm construction. The background entry point still registers the
+clipboard-clear and vault-lock handlers synchronously. No application instance
+is shared through a global registry or a new messaging protocol.
+
+The compile-only `core-composition-api.typecheck.ts` remains a representative
+public-package contract fixture. The production factory is covered by the
+extension build and integration tests. Popup and options controls remain a
+separate application step; neither currently calls the full factory.
 
 ## Related documentation
 

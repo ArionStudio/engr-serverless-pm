@@ -121,15 +121,17 @@ provider records and passes them to the selected sync adapter.
 
 ## Composition status
 
-`apps/extension/src/core-composition-api.typecheck.ts` proves at compile time
-that extension ports can compose shared service instances and representative
-use cases through the public package entry points. Background runtime modules
-also compose the lock and clipboard alarm workflows.
+`apps/extension/src/extension/composition/extension-application.ts` constructs
+all public use cases with concrete adapters through the public package entry
+points. Its session construction is shared with the production background lock
+and clipboard alarm root. Each graph preserves identity-sensitive dependencies;
+separate extension contexts coordinate through storage and Web Locks.
 
-The compile-time fixture is not a full production application container. The
-popup currently renders a placeholder and the options page exposes theme
-settings. Wiring the complete core API into the UI remains application work
-outside the core package.
+`apps/extension/src/core-composition-api.typecheck.ts` remains a compile-only
+public API fixture. The production factory has integration tests using actual
+crypto and storage adapters. The popup currently renders a placeholder and the
+options page exposes theme settings. Calling the factory and exposing its use
+cases in those UIs remains application work outside the core package.
 
 ## Related documentation
 

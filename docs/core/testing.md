@@ -80,6 +80,14 @@ constructed through supported package imports. The extension `type-check`
 command includes this fixture; the extension build and Vitest suite do not. It
 does not exercise a complete production UI workflow.
 
+The production factory is tested in the extension's
+`src/extension/composition/extension-application.test.ts`. These tests run real
+WebCrypto, BIP39, IndexedDB, Chrome storage, alarm, and clipboard adapters with
+fake IndexedDB and browser API fixtures. They cover initialization, entry
+persistence, copy/lock cleanup, unlock, stale alarms, locking from a fresh
+background graph, deletion, and rollback when alarm creation fails. Installed
+Chrome validation remains necessary for browser transport and lifecycle behavior.
+
 ## Generated corpora
 
 The common-password and username word corpora have deterministic generator

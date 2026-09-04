@@ -117,9 +117,12 @@ composition graph. Reuse the same object only when its state or identity matters
 to correctness. Namespace imports and global registries do not control
 instance lifetime.
 
-Until the full application container exists, update
-`core-composition-api.typecheck.ts` so TypeScript resolves the production class
-through supported package and adapter exports.
+Wire application capabilities in
+`apps/extension/src/extension/composition/extension-application.ts`. Put session
+and cleanup dependencies shared with alarms in `session.composition.ts`.
+Keep BIP39 and provider dependencies out of that shared alarm graph. Use public
+core package imports and add runtime evidence to the composition integration
+tests when changing dependency ownership.
 
 ## Test and validate
 
