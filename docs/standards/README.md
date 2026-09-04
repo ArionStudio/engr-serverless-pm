@@ -76,10 +76,13 @@ deprecated.
 Active standards are normative for implementation and review. Conflicting code
 is noncompliant. Conflicting descriptive documentation is stale.
 
-Security and product specifications own exact protocol behavior, data formats,
-and algorithm choices. A coding standard may constrain how code implements
-those specifications, but it references the specification instead of copying
-it.
+Active security and product specification sections own protocol requirements
+and algorithm choices. A section explicitly marked as stale or historical is
+not a current implementation source. Exported schemas, enforced codecs, and
+tests describe the current implementation during a documented reconciliation
+gap; they do not silently establish a new protocol requirement. A coding
+standard may constrain implementation but references the owning specification
+instead of copying it.
 
 When two active standards conflict, stop the affected change and resolve the
 standards conflict first.

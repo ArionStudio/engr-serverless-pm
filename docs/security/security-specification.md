@@ -1,5 +1,14 @@
 # Serverless Zero-Knowledge Password Manager (Browser Extension) — Security Spec (v1.0)
 
+> **Status: legacy design reference — non-normative.** This document preserves
+> the original v1 security design and contains requirements that conflict with
+> the finished core. No section is authoritative for the current implementation.
+> Use `docs/core/security-model.md` for the current security summary,
+> `docs/standards/` for active implementation rules, and the exported TypeScript
+> contracts, extension codecs, and tests for implemented protocol shapes and
+> behavior. A future normative security specification must be reconciled with
+> those sources before it is marked active.
+
 ## 0. Summary
 
 A serverless password manager where **confidentiality and tamper-detection** are enforced cryptographically in a **hostile storage** environment (S3 + IndexedDB assumed readable/writable by an attacker). Only the **volatile RAM** of the running extension is trusted.

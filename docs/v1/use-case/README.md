@@ -22,7 +22,8 @@ find docs/v1/use-case -name '*.puml' -print0 | xargs -0 plantuml -checkonly
 
 Device-access recovery replaces the current local recovery backup; it does not
 revoke words for retained older copies. Recovery instructions and future UI copy
-must include the [accepted rollback limitation](../../security/security-specification.md#86-device-access-recovery).
+must include the
+[accepted rollback limitation](../../core/security-model.md#local-access-and-recovery).
 
 ## Diagram Index
 

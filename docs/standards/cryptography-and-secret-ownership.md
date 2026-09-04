@@ -1,14 +1,17 @@
 # Cryptography and secret-ownership standards
 
-Exact algorithms, encodings, and protocol fields belong to the
-[security specification](../security/security-specification.md). These rules
-govern their implementation.
+The active algorithm-suite constants, protected-artifact contracts, codecs, and
+tests define the current implementation. The
+[v1 security specification](../security/security-specification.md) is a legacy
+design reference and is not normative. These rules govern changes until a
+reconciled security specification is accepted.
 
 ## CRYPTO-001: Implement the declared suite exactly
 
 - **Requirement:** Cryptographic code MUST use the algorithms, sizes, encodings,
   canonicalization, and parameters declared by the active algorithm suite and
-  security specification. It MUST reject unsupported suites before secret use.
+  protected-artifact contracts. It MUST reject unsupported suites before secret
+  use.
 - **Scope:** Core crypto contracts, codecs, and WebCrypto adapters.
 - **Reason:** An approximate implementation is not interoperable or reviewable.
 - **Compliant:** Import a suite-specific key only after exact encoding checks.
@@ -19,8 +22,9 @@ govern their implementation.
 ## CRYPTO-002: Separate keys by purpose
 
 - **Requirement:** Signing, key agreement, wrapping, local protection, recovery,
-  and session encryption MUST use the key purpose defined by the specification.
-  Code MUST NOT reuse one key pair for signing and wrapping.
+  and session encryption MUST use the purpose defined by the active
+  algorithm-suite and protected-artifact contracts. Code MUST NOT reuse one key
+  pair for signing and wrapping.
 - **Scope:** Key generation, storage, and use.
 - **Reason:** Key reuse joins trust domains and can invalidate protocol
   assumptions.
@@ -34,8 +38,9 @@ govern their implementation.
 - **Requirement:** Signatures MUST bind the complete canonical protocol payload.
   HKDF derivation MUST use canonical operation-purpose information and any
   declared context. Wrapping and authenticated encryption MUST bind purpose and
-  context exactly as declared by the security specification, using canonical
-  AAD and, where specified, HKDF-derived key separation.
+  context exactly as declared by the active suite and protected-artifact
+  contracts, using canonical AAD and, where specified, HKDF-derived key
+  separation.
 - **Scope:** Signed and encrypted artifacts and HKDF-derived keys. PBKDF2
   root-key derivation is governed by `CRYPTO-001` and the active suite.
 - **Reason:** Context binding prevents valid material from being replayed for a
@@ -44,6 +49,27 @@ govern their implementation.
   purpose and session identity in canonical AAD.
 - **Noncompliant:** Encrypt a session payload with empty AAD.
 - **Enforcement:** Cross-context substitution and canonical-byte tests.
+- **Exceptions:** None.
+
+## CRYPTO-004: Freeze the current protocol during specification reconciliation
+
+- **Requirement:** Changes MUST preserve the algorithms, parameters, purposes,
+  canonical payloads, AAD contexts, and persisted and transferred artifact
+  shapes currently identified as `spm-v1`. An incompatible change requires
+  explicit user approval, a new applicable suite, schema, or purpose identifier,
+  and a reconciled normative security specification before implementation.
+- **Scope:** Cryptographic adapters, algorithm suites, protected artifacts,
+  codecs, persistence, enrollment transfers, recovery material, sessions, and
+  sync snapshots.
+- **Reason:** The legacy v1 specification is not an accurate independent
+  protocol source, but changing self-consistent code and tests under existing
+  identifiers would silently break compatibility or weaken domain separation.
+- **Compliant:** Refactor a codec while preserving canonical bytes and existing
+  known-answer fixtures.
+- **Noncompliant:** Change an AAD purpose literal and its tests while retaining
+  the same `spm-v1` and artifact identifiers.
+- **Enforcement:** Protocol-diff review, compatibility and known-answer fixtures,
+  identifier review, and evidence of explicit approval for a protocol revision.
 - **Exceptions:** None.
 
 ## SECRET-001: Make buffer ownership explicit

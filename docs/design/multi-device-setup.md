@@ -170,7 +170,7 @@ retained older backup copies: copied or rolled-back backups remain usable with
 their older words while the restored identity remains trusted. The recovery UI
 must warn users about this accepted limitation and must not claim that the
 replacement words invalidate older copies. See the
-[threat-model explanation](../security/security-specification.md#86-device-access-recovery).
+[current security explanation](../core/security-model.md#local-access-and-recovery).
 
 After revocation, a recovered copy of the revoked private key remains unable to
 open the current snapshot because no envelope is addressed to it.
