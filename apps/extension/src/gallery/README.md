@@ -11,7 +11,17 @@ From the repository root:
 pnpm --filter @lfspm/extension run gallery:build
 ```
 
-For browser review, run `serverctl start gallery --repo <repository-path>`.
+For browser review, create the ignored local `.codex/servers.toml` profile:
+
+```toml
+[server.gallery]
+cwd = "apps/extension"
+build = ["pnpm", "run", "gallery:build"]
+start = ["pnpm", "run", "gallery:preview", "--host", "0.0.0.0", "--port", "{port}", "--strictPort"]
+health_path = "/gallery.html"
+```
+
+Run `serverctl start gallery --repo <repository-path>`.
 The profile builds first and returns the allocated URL. Open `/gallery.html`.
 Run `serverctl stop gallery --repo <repository-path>` after review.
 

@@ -128,10 +128,6 @@ The [TanStack verification report](./tanstack-verification.md) records pinned ar
 - Device-local lock examples include the accepted 10-minute default; actual inactivity semantics and persistence still need an application contract.
 - No live setup, session invalidation, cross-context lock or cancellation guarantees follow from this standalone gallery. The [setup gaps](./vault-setup.md#implementation-gaps) remain blocking for production workflow integration.
 
-## Recovery of the agreed scope
-
-Rewind read relevant messages from T3 thread `b347c5f7-5efd-4190-911c-efee1d697ac8`, **Merge Main Changes Locally**, in this repository. The focused extracts covered 2026-09-05 00:34:20–00:48:34 UTC and 02:00:58–02:31:15 UTC. They confirm full-library-before-screens ordering, the expanded controls and the subsequent TanStack verification correction. The latest widget-classification request is incorporated above. No SQLite state was modified.
-
 ## Validation on 2026-09-05
 
 - Extension production build, gallery production build, TypeScript and lint passed.

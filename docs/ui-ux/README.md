@@ -115,16 +115,3 @@ Later user clarifications supersede the initial setup-first implementation order
 The authorized library implementation now includes CLI-generated controls and
 Table 9.2.4. It does not connect live vault workflows. The component gallery can
 proceed independently of unresolved recovery contracts; production setup cannot.
-
-## Conversation provenance
-
-Synthesized from T3 thread `b347c5f7-5efd-4190-911c-efee1d697ac8`,
-**Merge Main Changes Locally**, in this repository. Rewind recovered the UI planning
-messages from 2026-09-04 23:21:43 UTC through 2026-09-05 00:11:42 UTC.
-The later frontend-architecture request and D15/D16 clarifications were added from
-the active conversation.
-Only relevant decisions are summarized here; no raw transcript or unrelated history
-is attached. Times are UTC, two hours behind the user's Warsaw time on these dates.
-
-The latest focused rewind and widget-classification decision are recorded in the
-[review inventory provenance](./review-inventory.md#recovery-of-the-agreed-scope).
