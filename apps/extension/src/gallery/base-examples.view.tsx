@@ -1,3 +1,4 @@
+import { vaultLockOptions } from "@/ui/lib/vault-lock-options";
 import { Specimen } from "./specimen.view";
 import type { CatalogId } from "./usage";
 import { useId, useState, type ReactNode } from "react";
@@ -163,10 +164,12 @@ export function BaseExamples() {
           <FieldLabel htmlFor={`${id}-duration`}>
             Example lock duration
           </FieldLabel>
-          <NativeSelect id={`${id}-duration`} defaultValue="10">
-            <NativeSelectOption value="5">5 minutes</NativeSelectOption>
-            <NativeSelectOption value="10">10 minutes</NativeSelectOption>
-            <NativeSelectOption value="30">30 minutes</NativeSelectOption>
+          <NativeSelect id={`${id}-duration`} defaultValue={600_000}>
+            {vaultLockOptions.map(({ value, label }) => (
+              <NativeSelectOption key={value} value={value}>
+                {label}
+              </NativeSelectOption>
+            ))}
           </NativeSelect>
         </Field>
       </Example>

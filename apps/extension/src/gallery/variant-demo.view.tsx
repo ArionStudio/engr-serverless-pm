@@ -1,3 +1,4 @@
+import { vaultLockOptions } from "@/ui/lib/vault-lock-options";
 import * as Dialog from "@/ui/components/primitives/dialog";
 import * as Table from "@/ui/components/primitives/table";
 import { useId, useState, type CSSProperties } from "react";
@@ -120,10 +121,14 @@ export function VariantDemo({
         <N.NativeSelect
           {...p(N.NativeSelect, "NativeSelect")}
           aria-label="Example lock setting"
+          defaultValue={600_000}
         >
-          <N.NativeSelectOptGroup label="Minutes">
-            <N.NativeSelectOption>10</N.NativeSelectOption>
-            <N.NativeSelectOption>30</N.NativeSelectOption>
+          <N.NativeSelectOptGroup label="Lock duration">
+            {vaultLockOptions.map(({ value, label }) => (
+              <N.NativeSelectOption key={value} value={value}>
+                {label}
+              </N.NativeSelectOption>
+            ))}
           </N.NativeSelectOptGroup>
         </N.NativeSelect>
       );

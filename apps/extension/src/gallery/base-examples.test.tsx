@@ -11,10 +11,34 @@ import {
 import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom/vitest";
 import { BaseExamples } from "./base-examples.view";
+import { VariantPreview } from "./variant-preview.view";
 
 afterEach(cleanup);
 
 describe("generated base controls in the gallery", () => {
+  it.each(["base", "variant"] as const)(
+    "uses the core millisecond contract in the %s lock select",
+    async (example) => {
+      const user = userEvent.setup();
+      render(
+        example === "base"
+          ? createElement(BaseExamples)
+          : createElement(VariantPreview, { id: "B06" }),
+      );
+      const select = screen.getByRole("combobox", {
+        name:
+          example === "base" ? "Example lock duration" : "Example lock setting",
+      });
+      expect(select).toHaveValue("600000");
+      expect(
+        within(select)
+          .getAllByRole("option")
+          .map((option) => option.getAttribute("value")),
+      ).toEqual(["60000", "300000", "600000", "1800000", "3600000"]);
+      await user.selectOptions(select, "3600000");
+      expect(select).toHaveValue("3600000");
+    },
+  );
   it("opens confirmation with safe focus and restores focus after cancellation", async () => {
     const user = userEvent.setup();
     render(createElement(BaseExamples));
