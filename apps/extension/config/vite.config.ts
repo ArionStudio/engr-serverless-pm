@@ -62,6 +62,9 @@ export default defineConfig({
   ],
   build: {
     manifest: true,
+    // Extension documents load local ES modules directly. Preload hints cause
+    // Chrome cross-world resource warnings in the extension origin.
+    modulePreload: false,
     rollupOptions: {
       input: {
         popup: resolve(__dirname, "..", "popup.html"),
@@ -75,7 +78,8 @@ export default defineConfig({
       },
       output: {
         entryFileNames: "[name].js",
-        chunkFileNames: "[name].js",
+        // Rollup helper names can begin with "_", which Chrome reserves.
+        chunkFileNames: "chunk-[name].js",
         assetFileNames: "[name].[ext]",
       },
     },

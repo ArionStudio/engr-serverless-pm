@@ -1,0 +1,15 @@
+{
+  "browser": "152.0.7977.75",
+  "pages": [
+    {
+      "entry": "popup",
+      "title": "SPM Extension"
+    },
+    {
+      "entry": "options",
+      "title": "SPM Extension Options"
+    }
+  ],
+  "backgroundRunning": true,
+  "errors": []
+}

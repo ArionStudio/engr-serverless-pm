@@ -6,19 +6,20 @@
   "tailwind": {
     "config": "",
     "css": "src/ui/styles/index.css",
-    "baseColor": "gray",
+    "baseColor": "mauve",
     "cssVariables": true,
     "prefix": ""
   },
-  "iconLibrary": "phosphor",
+  "iconLibrary": "hugeicons",
   "aliases": {
     "components": "@/ui/components",
-    "utils": "@/ui/lib/utils",
+    "utils": "@/ui/lib/cn.util",
     "ui": "@/ui/components/primitives",
     "lib": "@/ui/lib",
     "hooks": "@/ui/hooks"
   },
-  "menuColor": "default",
+  "menuColor": "default-translucent",
   "menuAccent": "subtle",
+  "rtl": false,
   "registries": {}
 }

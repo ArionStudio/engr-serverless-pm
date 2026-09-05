@@ -1,0 +1,1133 @@
+{
+  "date": "2026-09-05T17:19:43.725Z",
+  "browser": "152.0.7977.75",
+  "measurements": 62462,
+  "coverage": {
+    "light:S01": 6,
+    "light:S02": 6,
+    "light:B29": 66,
+    "light:B30": 66,
+    "light:B31": 66,
+    "light:B32": 66,
+    "light:B33": 66,
+    "light:B34": 66,
+    "light:B35": 66,
+    "light:B36": 66,
+    "light:B37": 66,
+    "light:B38": 66,
+    "light:B01": 80,
+    "light:B02": 80,
+    "light:B03": 80,
+    "light:B04": 80,
+    "light:B05": 80,
+    "light:B06": 80,
+    "light:B07": 80,
+    "light:B08": 80,
+    "light:B09": 80,
+    "light:B10": 80,
+    "light:B11": 80,
+    "light:B12": 80,
+    "light:B13": 80,
+    "light:B14": 80,
+    "light:B15": 80,
+    "light:B16": 80,
+    "light:B17": 80,
+    "light:B18": 80,
+    "light:B19": 80,
+    "light:B20": 80,
+    "light:B21": 71,
+    "light:B23": 71,
+    "light:B22": 71,
+    "light:B24": 71,
+    "light:B25": 71,
+    "light:B26": 71,
+    "light:B27": 71,
+    "light:B28": 71,
+    "light:P01": 75,
+    "light:P02": 75,
+    "light:P03": 75,
+    "light:P04": 75,
+    "light:P05": 75,
+    "light:P06": 75,
+    "light:P07": 75,
+    "light:P08": 75,
+    "light:P12": 75,
+    "light:P13": 75,
+    "light:P14": 75,
+    "light:P15": 75,
+    "light:P26": 75,
+    "light:P28": 75,
+    "light:P09": 101,
+    "light:P10": 101,
+    "light:P11": 101,
+    "light:P16": 101,
+    "light:P17": 101,
+    "light:P18": 101,
+    "light:P19": 101,
+    "light:P20": 101,
+    "light:P21": 101,
+    "light:P22": 101,
+    "light:P23": 101,
+    "light:P24": 101,
+    "light:P25": 101,
+    "light:P27": 101,
+    "light:F01": 84,
+    "light:F02": 84,
+    "light:F03": 84,
+    "light:F04": 84,
+    "light:F05": 84,
+    "light:F06": 84,
+    "light:F07": 84,
+    "dark:S01": 6,
+    "dark:S02": 6,
+    "dark:B29": 66,
+    "dark:B30": 66,
+    "dark:B31": 66,
+    "dark:B32": 66,
+    "dark:B33": 66,
+    "dark:B34": 66,
+    "dark:B35": 66,
+    "dark:B36": 66,
+    "dark:B37": 66,
+    "dark:B38": 66,
+    "dark:B01": 80,
+    "dark:B02": 80,
+    "dark:B03": 80,
+    "dark:B04": 80,
+    "dark:B05": 80,
+    "dark:B06": 80,
+    "dark:B07": 80,
+    "dark:B08": 80,
+    "dark:B09": 80,
+    "dark:B10": 80,
+    "dark:B11": 80,
+    "dark:B12": 80,
+    "dark:B13": 80,
+    "dark:B14": 80,
+    "dark:B15": 80,
+    "dark:B16": 80,
+    "dark:B17": 80,
+    "dark:B18": 80,
+    "dark:B19": 80,
+    "dark:B20": 80,
+    "dark:B21": 71,
+    "dark:B23": 71,
+    "dark:B22": 71,
+    "dark:B24": 71,
+    "dark:B25": 71,
+    "dark:B26": 71,
+    "dark:B27": 71,
+    "dark:B28": 71,
+    "dark:P01": 75,
+    "dark:P02": 75,
+    "dark:P03": 75,
+    "dark:P04": 75,
+    "dark:P05": 75,
+    "dark:P06": 75,
+    "dark:P07": 75,
+    "dark:P08": 75,
+    "dark:P12": 75,
+    "dark:P13": 75,
+    "dark:P14": 75,
+    "dark:P15": 75,
+    "dark:P26": 75,
+    "dark:P28": 75,
+    "dark:P09": 101,
+    "dark:P10": 101,
+    "dark:P11": 101,
+    "dark:P16": 101,
+    "dark:P17": 101,
+    "dark:P18": 101,
+    "dark:P19": 101,
+    "dark:P20": 101,
+    "dark:P21": 101,
+    "dark:P22": 101,
+    "dark:P23": 101,
+    "dark:P24": 101,
+    "dark:P25": 101,
+    "dark:P27": 101,
+    "dark:F01": 84,
+    "dark:F02": 84,
+    "dark:F03": 84,
+    "dark:F04": 84,
+    "dark:F05": 84,
+    "dark:F06": 84,
+    "dark:F07": 84
+  },
+  "states": [
+    "light:S01:default",
+    "light:S01:hover",
+    "light:S01:focus",
+    "light:B29:default",
+    "light:Entry table state:loading",
+    "light:Entry table state:error",
+    "light:Entry table state:empty",
+    "light:Switch state:disabled",
+    "light:Progress state:indeterminate",
+    "light:Progress state:complete",
+    "light:B29:hover",
+    "light:B29:focus",
+    "light:B01:default",
+    "light:B01:hover",
+    "light:B01:focus",
+    "light:B21:default",
+    "light:B21:hover",
+    "light:B21:focus",
+    "light:P01:default",
+    "light:Settings section state:destructive",
+    "light:Password field state:error",
+    "light:Password field state:disabled",
+    "light:Password strength state:pending",
+    "light:Password strength state:unavailable",
+    "light:Password strength state:weak",
+    "light:Password strength state:accepted",
+    "light:Secret field state:pending",
+    "light:Secret field state:error",
+    "light:Copy action state:pending",
+    "light:Copy action state:success",
+    "light:Copy action state:error",
+    "light:Empty state state:no results",
+    "light:Empty state state:failed",
+    "light:Action feedback state:pending",
+    "light:Action feedback state:success",
+    "light:Action feedback state:error",
+    "light:P01:hover",
+    "light:P01:focus",
+    "light:P09:default",
+    "light:Vault picker state:empty",
+    "light:Vault picker state:loading",
+    "light:Vault picker state:error",
+    "light:Entries state:table",
+    "light:Entries state:loading",
+    "light:Entries state:error",
+    "light:Entries state:empty",
+    "light:Recovery export state:pending",
+    "light:Recovery export state:error",
+    "light:Recovery input state:numbered",
+    "light:Recovery input state:error",
+    "light:Recovery input state:disabled",
+    "light:Generator state:username",
+    "light:Generator state:pending",
+    "light:Sync status state:checking",
+    "light:Sync status state:uploading",
+    "light:Sync status state:complete",
+    "light:Sync status state:pending",
+    "light:Sync status state:review-required",
+    "light:Sync status state:failed",
+    "light:Sync review state:loading",
+    "light:Sync review state:applying",
+    "light:Sync review state:stale",
+    "light:Sync review state:error",
+    "light:Device summary state:other",
+    "light:Device summary state:revoked",
+    "light:Device summary state:unavailable",
+    "light:Transfer input state:selected",
+    "light:Transfer input state:validating",
+    "light:Transfer input state:invalid",
+    "light:Transfer input state:ready",
+    "light:Destructive confirmation state:error",
+    "light:Tag selection state:unavailable",
+    "light:Tag selection state:error",
+    "light:P09:hover",
+    "light:P09:focus",
+    "light:F01:default",
+    "light:F01:hover",
+    "light:F01:focus",
+    "light:B15:open",
+    "light:B15:open-keyboard",
+    "light:B16:open",
+    "light:B16:open-keyboard",
+    "light:B17:open",
+    "light:B17:open-keyboard",
+    "light:B19:open",
+    "light:B19:open-keyboard",
+    "light:B28:open",
+    "light:B28:open-keyboard",
+    "light:B32:open",
+    "light:B32:open-keyboard",
+    "light:B33:open",
+    "light:B33:open-keyboard",
+    "light:B24:options",
+    "light:P27:options",
+    "light:B07:toggled",
+    "light:B31:toggled",
+    "light:B35:toggled",
+    "light:B20:toggled",
+    "light:S01:320px",
+    "light:B29:320px",
+    "light:B01:320px",
+    "light:B21:320px",
+    "light:P01:320px",
+    "light:P09:320px",
+    "light:F01:320px",
+    "dark:S01:default",
+    "dark:S01:hover",
+    "dark:S01:focus",
+    "dark:B29:default",
+    "dark:Entry table state:loading",
+    "dark:Entry table state:error",
+    "dark:Entry table state:empty",
+    "dark:Switch state:disabled",
+    "dark:Progress state:indeterminate",
+    "dark:Progress state:complete",
+    "dark:B29:hover",
+    "dark:B29:focus",
+    "dark:B01:default",
+    "dark:B01:hover",
+    "dark:B01:focus",
+    "dark:B21:default",
+    "dark:B21:hover",
+    "dark:B21:focus",
+    "dark:P01:default",
+    "dark:Settings section state:destructive",
+    "dark:Password field state:error",
+    "dark:Password field state:disabled",
+    "dark:Password strength state:pending",
+    "dark:Password strength state:unavailable",
+    "dark:Password strength state:weak",
+    "dark:Password strength state:accepted",
+    "dark:Secret field state:pending",
+    "dark:Secret field state:error",
+    "dark:Copy action state:pending",
+    "dark:Copy action state:success",
+    "dark:Copy action state:error",
+    "dark:Empty state state:no results",
+    "dark:Empty state state:failed",
+    "dark:Action feedback state:pending",
+    "dark:Action feedback state:success",
+    "dark:Action feedback state:error",
+    "dark:P01:hover",
+    "dark:P01:focus",
+    "dark:P09:default",
+    "dark:Vault picker state:empty",
+    "dark:Vault picker state:loading",
+    "dark:Vault picker state:error",
+    "dark:Entries state:table",
+    "dark:Entries state:loading",
+    "dark:Entries state:error",
+    "dark:Entries state:empty",
+    "dark:Recovery export state:pending",
+    "dark:Recovery export state:error",
+    "dark:Recovery input state:numbered",
+    "dark:Recovery input state:error",
+    "dark:Recovery input state:disabled",
+    "dark:Generator state:username",
+    "dark:Generator state:pending",
+    "dark:Sync status state:checking",
+    "dark:Sync status state:uploading",
+    "dark:Sync status state:complete",
+    "dark:Sync status state:pending",
+    "dark:Sync status state:review-required",
+    "dark:Sync status state:failed",
+    "dark:Sync review state:loading",
+    "dark:Sync review state:applying",
+    "dark:Sync review state:stale",
+    "dark:Sync review state:error",
+    "dark:Device summary state:other",
+    "dark:Device summary state:revoked",
+    "dark:Device summary state:unavailable",
+    "dark:Transfer input state:selected",
+    "dark:Transfer input state:validating",
+    "dark:Transfer input state:invalid",
+    "dark:Transfer input state:ready",
+    "dark:Destructive confirmation state:error",
+    "dark:Tag selection state:unavailable",
+    "dark:Tag selection state:error",
+    "dark:P09:hover",
+    "dark:P09:focus",
+    "dark:F01:default",
+    "dark:F01:hover",
+    "dark:F01:focus",
+    "dark:B15:open",
+    "dark:B15:open-keyboard",
+    "dark:B16:open",
+    "dark:B16:open-keyboard",
+    "dark:B17:open",
+    "dark:B17:open-keyboard",
+    "dark:B19:open",
+    "dark:B19:open-keyboard",
+    "dark:B28:open",
+    "dark:B28:open-keyboard",
+    "dark:B32:open",
+    "dark:B32:open-keyboard",
+    "dark:B33:open",
+    "dark:B33:open-keyboard",
+    "dark:B24:options",
+    "dark:P27:options",
+    "dark:B07:toggled",
+    "dark:B31:toggled",
+    "dark:B35:toggled",
+    "dark:B20:toggled",
+    "dark:S01:320px",
+    "dark:B29:320px",
+    "dark:B01:320px",
+    "dark:B21:320px",
+    "dark:P01:320px",
+    "dark:P09:320px",
+    "dark:F01:320px"
+  ],
+  "failures": [],
+  "errors": [],
+  "byId": {
+    "light:shell/portal": {
+      "measurements": 4846,
+      "minText": 4.883802289498553,
+      "minNonText": 4.308960688739962
+    },
+    "light:S01": {
+      "measurements": 18,
+      "minText": 4.658087122392484,
+      "minNonText": null
+    },
+    "light:S02": {
+      "measurements": 48,
+      "minText": 4.658087122392484,
+      "minNonText": 4.874872236195311
+    },
+    "light:B29": {
+      "measurements": 1436,
+      "minText": 4.658087122392484,
+      "minNonText": 4.166712828872782
+    },
+    "light:B30": {
+      "measurements": 601,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:B31": {
+      "measurements": 354,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:B32": {
+      "measurements": 470,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:B33": {
+      "measurements": 410,
+      "minText": 4.658087122392484,
+      "minNonText": 6.094867916299547
+    },
+    "light:B34": {
+      "measurements": 312,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:B35": {
+      "measurements": 478,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:B36": {
+      "measurements": 506,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:B37": {
+      "measurements": 168,
+      "minText": 4.536150328494586,
+      "minNonText": null
+    },
+    "light:B38": {
+      "measurements": 467,
+      "minText": 4.536150328494586,
+      "minNonText": 4.308960688739962
+    },
+    "light:B01": {
+      "measurements": 259,
+      "minText": 4.572744585240086,
+      "minNonText": 4.308960688739962
+    },
+    "light:B02": {
+      "measurements": 410,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:B03": {
+      "measurements": 125,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:B04": {
+      "measurements": 318,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:B05": {
+      "measurements": 93,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:B06": {
+      "measurements": 245,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:B07": {
+      "measurements": 99,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:B08": {
+      "measurements": 112,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:B09": {
+      "measurements": 210,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:B10": {
+      "measurements": 256,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:B11": {
+      "measurements": 189,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:B12": {
+      "measurements": 64,
+      "minText": 4.658087122392484,
+      "minNonText": null
+    },
+    "light:B13": {
+      "measurements": 64,
+      "minText": 4.658087122392484,
+      "minNonText": null
+    },
+    "light:B14": {
+      "measurements": 262,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:B15": {
+      "measurements": 252,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:B16": {
+      "measurements": 392,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:B17": {
+      "measurements": 383,
+      "minText": 4.572744585240086,
+      "minNonText": 4.308960688739962
+    },
+    "light:B18": {
+      "measurements": 181,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:B19": {
+      "measurements": 227,
+      "minText": 4.658087122392484,
+      "minNonText": 6.094867916299547
+    },
+    "light:B20": {
+      "measurements": 266,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:B21": {
+      "measurements": 107,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:B23": {
+      "measurements": 116,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:B22": {
+      "measurements": 135,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:B24": {
+      "measurements": 160,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:B25": {
+      "measurements": 77,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:B26": {
+      "measurements": 131,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:B27": {
+      "measurements": 198,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:B28": {
+      "measurements": 81,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:P01": {
+      "measurements": 196,
+      "minText": 4.658087122392484,
+      "minNonText": 6.094867916299547
+    },
+    "light:P02": {
+      "measurements": 356,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:P03": {
+      "measurements": 293,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:P04": {
+      "measurements": 271,
+      "minText": 4.658087122392484,
+      "minNonText": 5.09754297905616
+    },
+    "light:P05": {
+      "measurements": 371,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:P06": {
+      "measurements": 253,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:P07": {
+      "measurements": 252,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:P08": {
+      "measurements": 354,
+      "minText": 4.658087122392484,
+      "minNonText": 4.874872236195311
+    },
+    "light:P12": {
+      "measurements": 307,
+      "minText": 4.658087122392484,
+      "minNonText": 6.094867916299547
+    },
+    "light:P13": {
+      "measurements": 312,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:P14": {
+      "measurements": 274,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:P15": {
+      "measurements": 293,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:P26": {
+      "measurements": 240,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:P28": {
+      "measurements": 337,
+      "minText": 4.658087122392484,
+      "minNonText": 6.094867916299547
+    },
+    "light:P09": {
+      "measurements": 628,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:P10": {
+      "measurements": 435,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:P11": {
+      "measurements": 1043,
+      "minText": 4.658087122392484,
+      "minNonText": 4.166712828872782
+    },
+    "light:P16": {
+      "measurements": 363,
+      "minText": 4.658087122392484,
+      "minNonText": 6.094867916299547
+    },
+    "light:P17": {
+      "measurements": 1017,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:P18": {
+      "measurements": 656,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:P19": {
+      "measurements": 803,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:P20": {
+      "measurements": 1591,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:P21": {
+      "measurements": 511,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:P22": {
+      "measurements": 1316,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:P23": {
+      "measurements": 548,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:P24": {
+      "measurements": 958,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:P25": {
+      "measurements": 513,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:P27": {
+      "measurements": 589,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:F01": {
+      "measurements": 84,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:F02": {
+      "measurements": 133,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:F03": {
+      "measurements": 78,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:F04": {
+      "measurements": 75,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:F05": {
+      "measurements": 90,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:F06": {
+      "measurements": 99,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "light:F07": {
+      "measurements": 66,
+      "minText": 4.658087122392484,
+      "minNonText": 4.308960688739962
+    },
+    "dark:shell/portal": {
+      "measurements": 4846,
+      "minText": 6.855240444423893,
+      "minNonText": 5.406993920834614
+    },
+    "dark:S01": {
+      "measurements": 18,
+      "minText": 6.501524494524732,
+      "minNonText": null
+    },
+    "dark:S02": {
+      "measurements": 48,
+      "minText": 5.13158392128027,
+      "minNonText": 5.13158392128027
+    },
+    "dark:B29": {
+      "measurements": 1436,
+      "minText": 6.501524494524732,
+      "minNonText": 5.727668962526751
+    },
+    "dark:B30": {
+      "measurements": 601,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:B31": {
+      "measurements": 354,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:B32": {
+      "measurements": 470,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:B33": {
+      "measurements": 410,
+      "minText": 6.501524494524732,
+      "minNonText": 8.827967636380306
+    },
+    "dark:B34": {
+      "measurements": 312,
+      "minText": 6.501524494524732,
+      "minNonText": 5.959939928978415
+    },
+    "dark:B35": {
+      "measurements": 478,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:B36": {
+      "measurements": 506,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:B37": {
+      "measurements": 168,
+      "minText": 6.010693517422197,
+      "minNonText": null
+    },
+    "dark:B38": {
+      "measurements": 467,
+      "minText": 6.010693517422197,
+      "minNonText": 6.048361533546679
+    },
+    "dark:B01": {
+      "measurements": 259,
+      "minText": 4.763414505340533,
+      "minNonText": 6.048361533546679
+    },
+    "dark:B02": {
+      "measurements": 410,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:B03": {
+      "measurements": 125,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:B04": {
+      "measurements": 318,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:B05": {
+      "measurements": 93,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:B06": {
+      "measurements": 245,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:B07": {
+      "measurements": 99,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:B08": {
+      "measurements": 112,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:B09": {
+      "measurements": 210,
+      "minText": 6.501524494524732,
+      "minNonText": 5.959939928978415
+    },
+    "dark:B10": {
+      "measurements": 256,
+      "minText": 5.995193133895215,
+      "minNonText": 6.048361533546679
+    },
+    "dark:B11": {
+      "measurements": 189,
+      "minText": 5.898761216461794,
+      "minNonText": 6.048361533546679
+    },
+    "dark:B12": {
+      "measurements": 64,
+      "minText": 6.501524494524732,
+      "minNonText": null
+    },
+    "dark:B13": {
+      "measurements": 64,
+      "minText": 6.501524494524732,
+      "minNonText": null
+    },
+    "dark:B14": {
+      "measurements": 262,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:B15": {
+      "measurements": 252,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:B16": {
+      "measurements": 392,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:B17": {
+      "measurements": 383,
+      "minText": 4.763414505340533,
+      "minNonText": 6.048361533546679
+    },
+    "dark:B18": {
+      "measurements": 181,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:B19": {
+      "measurements": 227,
+      "minText": 6.501524494524732,
+      "minNonText": 8.827967636380306
+    },
+    "dark:B20": {
+      "measurements": 266,
+      "minText": 6.010693517422197,
+      "minNonText": 6.048361533546679
+    },
+    "dark:B21": {
+      "measurements": 107,
+      "minText": 5.207025077878875,
+      "minNonText": 5.207025077878875
+    },
+    "dark:B23": {
+      "measurements": 116,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:B22": {
+      "measurements": 135,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:B24": {
+      "measurements": 160,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:B25": {
+      "measurements": 77,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:B26": {
+      "measurements": 131,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:B27": {
+      "measurements": 198,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:B28": {
+      "measurements": 81,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:P01": {
+      "measurements": 196,
+      "minText": 6.501524494524732,
+      "minNonText": 8.827967636380306
+    },
+    "dark:P02": {
+      "measurements": 356,
+      "minText": 5.13158392128027,
+      "minNonText": 6.048361533546679
+    },
+    "dark:P03": {
+      "measurements": 293,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:P04": {
+      "measurements": 271,
+      "minText": 6.501524494524732,
+      "minNonText": 7.668396379640604
+    },
+    "dark:P05": {
+      "measurements": 371,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:P06": {
+      "measurements": 253,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:P07": {
+      "measurements": 252,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:P08": {
+      "measurements": 354,
+      "minText": 5.13158392128027,
+      "minNonText": 5.13158392128027
+    },
+    "dark:P12": {
+      "measurements": 307,
+      "minText": 6.501524494524732,
+      "minNonText": 8.827967636380306
+    },
+    "dark:P13": {
+      "measurements": 312,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:P14": {
+      "measurements": 274,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:P15": {
+      "measurements": 293,
+      "minText": 5.13158392128027,
+      "minNonText": 6.048361533546679
+    },
+    "dark:P26": {
+      "measurements": 240,
+      "minText": 5.435988122873234,
+      "minNonText": 6.048361533546679
+    },
+    "dark:P28": {
+      "measurements": 337,
+      "minText": 5.13158392128027,
+      "minNonText": 8.827967636380306
+    },
+    "dark:P09": {
+      "measurements": 628,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:P10": {
+      "measurements": 435,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:P11": {
+      "measurements": 1043,
+      "minText": 6.501524494524732,
+      "minNonText": 5.727668962526751
+    },
+    "dark:P16": {
+      "measurements": 363,
+      "minText": 5.13158392128027,
+      "minNonText": 8.827967636380306
+    },
+    "dark:P17": {
+      "measurements": 1017,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:P18": {
+      "measurements": 656,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:P19": {
+      "measurements": 803,
+      "minText": 5.13158392128027,
+      "minNonText": 6.048361533546679
+    },
+    "dark:P20": {
+      "measurements": 1591,
+      "minText": 5.13158392128027,
+      "minNonText": 5.959939928978415
+    },
+    "dark:P21": {
+      "measurements": 511,
+      "minText": 5.898761216461794,
+      "minNonText": 6.048361533546679
+    },
+    "dark:P22": {
+      "measurements": 1316,
+      "minText": 5.995193133895215,
+      "minNonText": 6.048361533546679
+    },
+    "dark:P23": {
+      "measurements": 548,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:P24": {
+      "measurements": 958,
+      "minText": 5.13158392128027,
+      "minNonText": 6.048361533546679
+    },
+    "dark:P25": {
+      "measurements": 513,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:P27": {
+      "measurements": 589,
+      "minText": 6.501524494524732,
+      "minNonText": 6.048361533546679
+    },
+    "dark:F01": {
+      "measurements": 84,
+      "minText": 5.13158392128027,
+      "minNonText": 6.048361533546679
+    },
+    "dark:F02": {
+      "measurements": 133,
+      "minText": 5.13158392128027,
+      "minNonText": 6.048361533546679
+    },
+    "dark:F03": {
+      "measurements": 78,
+      "minText": 5.13158392128027,
+      "minNonText": 6.048361533546679
+    },
+    "dark:F04": {
+      "measurements": 75,
+      "minText": 5.13158392128027,
+      "minNonText": 6.048361533546679
+    },
+    "dark:F05": {
+      "measurements": 90,
+      "minText": 5.13158392128027,
+      "minNonText": 6.048361533546679
+    },
+    "dark:F06": {
+      "measurements": 99,
+      "minText": 5.13158392128027,
+      "minNonText": 6.048361533546679
+    },
+    "dark:F07": {
+      "measurements": 66,
+      "minText": 5.13158392128027,
+      "minNonText": 6.048361533546679
+    }
+  }
+}

@@ -1,0 +1,92 @@
+.review-canvas {
+  container-type: inline-size;
+}
+.review-specimen {
+  min-width: 0;
+  align-self: start;
+  border: 1px solid
+    color-mix(in oklab, var(--foreground) 28%, var(--background));
+  border-radius: 0.75rem;
+  background: var(--background);
+}
+.review-specimen-header {
+  padding: 1.25rem;
+  border-bottom: 1px solid
+    color-mix(in oklab, var(--foreground) 22%, var(--background));
+  border-radius: calc(0.75rem - 1px) calc(0.75rem - 1px) 0 0;
+  background: color-mix(in oklab, var(--muted) 75%, var(--background));
+}
+.review-specimen-header [data-gallery-usage] {
+  color: color-mix(in oklab, var(--foreground) 85%, var(--background));
+}
+.review-specimen-id {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: transparent;
+}
+.review-specimen-demo {
+  padding: 1.25rem;
+}
+@container (max-width: 479px) {
+  .review-specimen-header,
+  .review-specimen-demo {
+    padding: 0.875rem;
+  }
+}
+.review-tab {
+  padding: 0.25rem 0 0.9rem;
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 150ms ease;
+}
+.review-tab:hover {
+  color: var(--foreground);
+}
+.review-tab.is-active {
+  color: var(--foreground);
+  border-color: var(--primary);
+  font-weight: 500;
+}
+.review-tab:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 4px;
+}
+.review-skip {
+  position: fixed;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 60;
+  padding: 0.75rem;
+  background: var(--background);
+  color: var(--foreground);
+  transform: translateY(-200%);
+}
+.review-skip:focus {
+  transform: translateY(0);
+}
+@container (min-width: 720px) {
+  .review-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .review-wide {
+    grid-column: 1 / -1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@container (min-width: 480px) {
+  .review-fields {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}

@@ -26,12 +26,13 @@
 
 ## UI-003: Use the approved component stack
 
-- **Requirement:** New UI code MUST use Base UI React, Tailwind CSS, and Phosphor
+- **Requirement:** New UI code MUST use Base UI React, Tailwind CSS, and Hugeicons
   icons. It MUST NOT add Radix UI or `react-icons` usage.
 - **Scope:** Extension UI.
 - **Reason:** One component and icon stack avoids duplicate behavior and bundle
   cost.
-- **Compliant:** Import an icon from `@phosphor-icons/react`.
+- **Compliant:** Render `HugeiconsIcon` from `@hugeicons/react` with an icon from
+  `@hugeicons/core-free-icons`.
 - **Noncompliant:** Add a new Radix primitive or `react-icons` icon.
 - **Enforcement:** Dependency and import review.
 - **Exceptions:** Existing migration remnants may remain until their owning work
@@ -61,3 +62,56 @@
 - **Enforcement:** Standards and dependency review.
 - **Exceptions:** An approved implementation task may introduce the library and
   its standards together.
+
+## UI-006: Keep the component gallery current
+
+- **Requirement:** Every application UI component, feature presentation, widget,
+  form and screen composition MUST be discoverable in the review gallery. New
+  components and changes to existing components MUST update gallery registration,
+  examples and usage guidance in the same change. Examples MUST import the actual
+  implementation rather than a copied demonstration version.
+- **Variants:** Every supported named visual variant, size and layout/orientation
+  MUST be listed and individually selectable through labeled gallery controls.
+  Show the selected values. Keep behavior states such as disabled, pending, empty,
+  invalid and failed separately labeled and reviewable. Side-by-side comparisons
+  may supplement the chooser. Do not invent variants a component does not support;
+  identify single-variant presentations as such.
+- **Scope:** Application UI under `apps/extension/src/ui` and future reusable
+  rendered UI elsewhere in the extension. Private visual parts and compound
+  subcomponents may be explicitly listed under a discoverable family example;
+  they MUST NOT silently disappear from coverage. Nonvisual providers, hooks and
+  utilities do not require standalone visual specimens.
+- **Reason:** The gallery is the ongoing review entrypoint for the application's
+  implemented UI, not a fixed initial catalog or a collection of screenshots.
+- **Enforcement:** Review component/export and supported-variant changes against
+  gallery coverage in each change. Build and inspect the affected examples in
+  both themes and relevant widths; recheck contrast for changed color combinations.
+  A matching catalog registration alone does not prove a working example.
+- **Safety:** Use synthetic data and injected callbacks. The gallery MUST remain
+  outside the shipped extension and MUST NOT connect to real vaults or browser
+  permission workflows.
+- **Exceptions:** None for rendered application UI. Planned, unimplemented
+  components remain visibly pending and do not count as implemented coverage.
+
+## UI-007: No product subtitles or filler copy
+
+- Product headings MUST NOT have subtitles, eyebrow slogans, marketing taglines
+  or decorative footer text. This is an explicit user preference.
+- Use direct task titles. Do not repeat a heading as a button label in the same
+  action block. Explanations must help a concrete decision or prevent a mistake.
+- Keep field labels, validation errors, necessary safety guidance and accurate
+  availability notices. Put longer guidance behind a relevant disclosure instead
+  of filling an adjacent column. Do not repeat the same notice throughout a screen.
+- Gallery usage explanations remain required under UI-006; they are review
+  documentation, not product heading subtitles.
+
+Do not label product UI as synthetic, sample, temporary, demonstration or preview.
+Keep implementation status in developer documentation. Controls must describe
+their actual action and must not imply that an unsaved vault was created.
+
+Field copy states the requirement and purpose. Do not narrate internal checks or
+UI behavior. Add explanations only for security concerns, safe data handling,
+and why a security requirement matters.
+
+Password strength feedback stays hidden while the password is empty, with no
+placeholder or reserved layout space. Show it after typing and hide it on clear.
