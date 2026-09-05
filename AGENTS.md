@@ -52,6 +52,10 @@ Run project commands from repo root unless a task explicitly requires a subdirec
 
 ## Active Gotchas
 
+- **Generated review artifacts:** Keep browser-result JSON and raw research
+  snapshots in ignored `.local/` storage. Commit reusable verification scripts
+  and concise findings, not per-run dumps.
+
 <!-- Add mistakes here as they occur -->
 
 - **No subtitles:** The user forbids product heading subtitles, eyebrow slogans,

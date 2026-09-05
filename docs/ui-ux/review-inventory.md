@@ -192,8 +192,7 @@ The gallery guidance and callback fixture strings remain outside production JS.
 
 ## Contrast verification
 
-The [contrast review](./contrast-review.md) and
-[machine-readable measurements](./verification/contrast-results.json) cover all
+The [contrast review](./contrast-review.md) summarizes measurements across all
 73 entries in both themes, scenario states, control hover/focus and open overlays.
 Accessibility overrides retain the preset design basis while correcting measured
 failures. Future screen compositions still need validation.
@@ -243,11 +242,12 @@ Validation of this follow-up:
   1,052 selections. Real fixture recipes rendered without browser errors. Portal
   recipes were opened for placement/size review. Compound-part navigation selected
   TabsList, and Reset examples restored the initial component.
-- The [variant results](./verification/gallery-variants-results.json) record
-  117,364 settled-color measurements with zero failures. The separate
-  [behavior/hover/focus results](./verification/gallery-contrast-results.json)
-  record 62,462 measurements across 210 theme/state combinations, also with zero
-  failures. This is regression evidence, not complete accessibility certification.
+- The variant run recorded 117,364 settled-color measurements with zero
+  failures. The behavior/hover/focus run recorded 62,462 measurements across
+  210 theme/state combinations, also with zero failures. Generated JSON reports
+  stay in ignored local storage; reproduction commands are in the
+  [contrast review](./contrast-review.md#reproduce). This is regression evidence,
+  not complete accessibility certification.
 - Input Group addon variants exposed negative margins extending beyond the
   control boundary. Removed those margins and reran the full variant matrix.
   The separator fixture now changes its host direction with its orientation.

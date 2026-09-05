@@ -236,9 +236,8 @@ Checked 2026-09-05: the [official component catalog](https://ui.shadcn.com/docs/
 all 64 linked Base UI documentation pages in their Markdown representation, and
 [the Mira registry](https://ui.shadcn.com/r/styles/base-mira/registry.json).
 The [audit](./shadcn-reuse-audit.md) links each component and records our fit decision.
-Its [evidence inventory](./shadcn-catalog-audit.json) records source hashes and
-registry dependency metadata. Recommendations are project judgments; availability
-is not a claim of installed-version compatibility or completed accessibility review.
+Recommendations are project judgments; availability is not a claim of
+installed-version compatibility or completed accessibility review.
 
 The registry-only `form` and `sonner` items and Sidebar source were fetched
 separately. The official blocks were inventoried by group; representative displayed

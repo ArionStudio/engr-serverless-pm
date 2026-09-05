@@ -13,11 +13,9 @@ The variant follow-up separately selected all 263 supported options in both
 themes at both widths, for 1,052 selections and 117,364 measurements. It also
 returned zero contrast failures, browser errors or overflowing examples.
 
-The exact browser version, measurement count, state list, per-entry minimum
-ratios, failures and browser errors are recorded in
-[the behavior results](./verification/gallery-contrast-results.json) and
-[the variant results](./verification/gallery-variants-results.json). The earlier
-73-family audit remains in [its original record](./verification/contrast-results.json).
+The verification scripts record the browser version, measurement count, state
+list, per-entry minimum ratios, failures and browser errors in local JSON reports.
+These generated reports are not committed; use the commands below to reproduce them.
 These are gallery measurements, not a claim that every possible future screen
 composition or arbitrary consumer-supplied color is accessible.
 
@@ -65,16 +63,18 @@ path when it cannot be resolved normally. `CHROME_BINARY` can select the install
 Chrome executable.
 
 ```bash
+mkdir -p .local/ui-ux/reports
 PLAYWRIGHT_MODULE=/absolute/path/to/playwright \
-CONTRAST_REPORT=docs/ui-ux/verification/gallery-contrast-results.json \
+CONTRAST_REPORT=.local/ui-ux/reports/gallery-contrast-results.json \
 node docs/ui-ux/verification/contrast.verify.cjs "http://HOST:PORT/gallery.html"
 ```
 
 Run the variant and layout matrix against the same managed URL:
 
 ```bash
+mkdir -p .local/ui-ux/reports
 PLAYWRIGHT_MODULE=/absolute/path/to/playwright \
-VARIANTS_REPORT=docs/ui-ux/verification/gallery-variants-results.json \
+VARIANTS_REPORT=.local/ui-ux/reports/gallery-variants-results.json \
 node docs/ui-ux/verification/gallery-variants.verify.cjs "http://HOST:PORT/gallery.html"
 ```
 

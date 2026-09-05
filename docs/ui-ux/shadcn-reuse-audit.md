@@ -16,8 +16,8 @@ category and registry membership, not visually approved one by one.
 This is a documented inventory and fit assessment, not a claim that all upstream
 components have been installed, rendered, security-reviewed or tested against our
 Base UI 1.0.0. It covers the official catalog as fetched on this date, not every
-third-party registry. [Machine-readable evidence](./shadcn-catalog-audit.json)
-records all 64 names, source links, documentation hashes and direct dependency metadata.
+third-party registry. The component tables below retain source links and fit
+decisions; raw catalog snapshots are local research artifacts.
 
 ## What changes in our plan
 
