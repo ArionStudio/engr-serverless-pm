@@ -8,7 +8,7 @@ import { defineConfig, globalIgnores } from "eslint/config";
 
 const eslintConfig = defineConfig([
   // Global ignores
-  globalIgnores(["node_modules/*", "dist/**/*"]),
+  globalIgnores(["node_modules/*", "dist/**/*", "dist-gallery/**/*"]),
 
   // Base configs
   {
@@ -18,6 +18,12 @@ const eslintConfig = defineConfig([
       reactHooks.configs.flat["recommended-latest"],
       reactRefresh.configs.vite,
     ],
+  },
+
+  {
+    files: ["scripts/*.cjs"],
+    languageOptions: { globals: globals.node },
+    rules: { "@typescript-eslint/no-require-imports": "off" },
   },
 
   // Base ignores

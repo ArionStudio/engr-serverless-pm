@@ -88,3 +88,9 @@ temp/
 
 *venv/*
 
+# Generated UI verification reports belong in .local/ui-ux/reports/
+docs/ui-ux/verification/*-results.json
+docs/ui-ux/shadcn-catalog-audit.json
+
+# Local agent tooling and server profiles
+/.codex/

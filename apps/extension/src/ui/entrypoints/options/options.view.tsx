@@ -1,22 +1,211 @@
-import { ThemeToggle, useTheme } from "@/ui/features/theme";
+import { useEffect, useRef, useState } from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { SecurityCheckIcon } from "@hugeicons/core-free-icons";
+import { ThemeToggle } from "@/ui/features/theme";
+import {
+  SetupWelcome,
+  SetupPassword,
+  SetupDevice,
+  SetupConnection,
+  type SetupStep,
+  type AssessPassword,
+  type PasswordCreationDraft,
+} from "@/ui/features/vault-setup";
+import { Button } from "@/ui/components/primitives/button";
+import { cn } from "@/ui/lib/cn.util";
+import { Spinner } from "@/ui/components/primitives/spinner";
+import { StepNavigation } from "@/ui/components/layout/sections.view";
+import type { VaultAvailability } from "../first-launch.type";
 
-export function OptionsView() {
-  const { preference, setTheme } = useTheme();
+export function OptionsView({
+  preference,
+  onThemeChange,
+  availability,
+  onRetry,
+  assessPassword,
+  initialStep = "welcome",
+}: {
+  preference: "light" | "dark" | "system";
+  onThemeChange: (preference: "light" | "dark" | "system") => void;
+  availability: VaultAvailability;
+  onRetry: () => void;
+  assessPassword: AssessPassword;
+  initialStep?: SetupStep;
+}) {
+  const [step, setStep] = useState<SetupStep>(initialStep);
+  const [settings, setSettings] = useState(false);
+  const [draft, setDraft] = useState<PasswordCreationDraft>({
+    password: "",
+    confirmation: "",
+  });
+  const [name, setName] = useState("This browser");
+  const [duration, setDuration] = useState(600_000);
+  const [cancelled, setCancelled] = useState(false);
+  const content = useRef<HTMLDivElement>(null);
+  const initialFocus = useRef(true);
+  useEffect(() => {
+    if (initialFocus.current) {
+      initialFocus.current = false;
+      return;
+    }
+    content.current?.focus();
+  }, [step, settings, availability]);
+  function reset() {
+    setDraft({ password: "", confirmation: "" });
+    setName("This browser");
+    setDuration(600_000);
+    setStep("welcome");
+  }
+  function showSettings() {
+    reset();
+    setSettings(true);
+    setCancelled(false);
+  }
+  const creating = step === "password" || step === "device";
   return (
-    <div className="min-h-screen p-8">
-      <div className="max-w-md mx-auto space-y-8">
-        <div>
-          <h1 className="text-2xl font-bold">Settings</h1>
-          <p className="text-muted-foreground">Manage your preferences</p>
-        </div>
-
-        <div className="space-y-4">
-          <div>
-            <h2 className="text-sm font-medium mb-3">Theme</h2>
-            <ThemeToggle preference={preference} onThemeChange={setTheme} />
+    <div className="@container bg-background text-foreground">
+      <header className="border-b">
+        <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-3 px-5 py-4">
+          <span className="flex items-center gap-2 text-sm font-semibold">
+            <HugeiconsIcon
+              icon={SecurityCheckIcon}
+              size={20}
+              className="text-primary"
+              aria-hidden="true"
+            />
+            LFSPM
+          </span>
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              onClick={settings ? () => setSettings(false) : showSettings}
+            >
+              {settings ? "Back to setup" : "Appearance"}
+            </Button>
           </div>
         </div>
-      </div>
+      </header>
+      <main
+        className={cn(
+          "mx-auto space-y-8 px-5 py-8 @lg:py-12",
+          !settings && availability === "empty" && step === "welcome"
+            ? "max-w-4xl"
+            : "max-w-xl",
+        )}
+      >
+        <div ref={content} tabIndex={-1} className="outline-none">
+          {settings ? (
+            <section className="space-y-6">
+              <h1 className="text-2xl font-semibold tracking-tight">
+                Appearance
+              </h1>
+              <ThemeToggle
+                preference={preference}
+                onThemeChange={onThemeChange}
+              />
+            </section>
+          ) : availability === "loading" ? (
+            <p role="status" className="flex items-center gap-2 text-sm">
+              <Spinner />
+              Checking this browser…
+            </p>
+          ) : availability === "error" ? (
+            <section className="space-y-6">
+              <h1 className="text-2xl font-semibold tracking-tight">
+                Couldn’t check local vaults
+              </h1>
+              <Button onClick={onRetry}>Try again</Button>
+            </section>
+          ) : availability === "existing" ? (
+            <section className="space-y-6">
+              <h1 className="text-2xl font-semibold tracking-tight">
+                Local vault found
+              </h1>
+              <Button variant="outline" onClick={showSettings}>
+                Change appearance
+              </Button>
+            </section>
+          ) : (
+            <>
+              {creating ? (
+                <div className="mb-8 space-y-4">
+                  <StepNavigation
+                    currentId={step}
+                    onNavigate={(id) => {
+                      if (id === "password") setStep("password");
+                    }}
+                    steps={[
+                      {
+                        id: "password",
+                        label: "Password",
+                        state: step === "device" ? "complete" : "upcoming",
+                        allowed: true,
+                      },
+                      {
+                        id: "device",
+                        label: "Device",
+                        state: "upcoming",
+                        allowed: step === "device",
+                      },
+                      {
+                        id: "recovery",
+                        label: "Recovery",
+                        state: "upcoming",
+                        allowed: false,
+                      },
+                      {
+                        id: "verify",
+                        label: "Verification",
+                        state: "upcoming",
+                        allowed: false,
+                      },
+                    ]}
+                  />
+                </div>
+              ) : null}
+              {cancelled ? (
+                <p role="status" className="mb-6 text-sm">
+                  Setup cancelled.
+                </p>
+              ) : null}
+              {step === "welcome" ? (
+                <SetupWelcome
+                  onCreate={() => {
+                    setCancelled(false);
+                    setStep("password");
+                  }}
+                  onConnect={() => {
+                    setCancelled(false);
+                    setStep("connect");
+                  }}
+                />
+              ) : step === "connect" ? (
+                <SetupConnection onBack={reset} />
+              ) : step === "password" ? (
+                <SetupPassword
+                  value={draft}
+                  onChange={setDraft}
+                  onContinue={() => setStep("device")}
+                  onBack={reset}
+                  assessPassword={assessPassword}
+                />
+              ) : (
+                <SetupDevice
+                  name={name}
+                  onNameChange={setName}
+                  duration={duration}
+                  onDurationChange={setDuration}
+                  onBack={() => setStep("password")}
+                  onFinish={() => {
+                    reset();
+                    setCancelled(true);
+                  }}
+                />
+              )}
+            </>
+          )}
+        </div>
+      </main>
     </div>
   );
 }

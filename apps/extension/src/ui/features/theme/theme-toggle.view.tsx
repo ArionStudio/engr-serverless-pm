@@ -1,17 +1,22 @@
-import { SunIcon, MoonIcon, MonitorIcon } from "@phosphor-icons/react";
+import {
+  Sun03Icon,
+  Moon02Icon,
+  ComputerIcon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { Button } from "@/ui/components/primitives/button";
 import type { ThemePreference } from "./theme.hook";
 
 interface ThemeOption {
   value: ThemePreference;
   label: string;
-  icon: typeof SunIcon;
+  icon: IconSvgElement;
 }
 
 const THEME_OPTIONS: ThemeOption[] = [
-  { value: "light", label: "Light", icon: SunIcon },
-  { value: "dark", label: "Dark", icon: MoonIcon },
-  { value: "system", label: "System", icon: MonitorIcon },
+  { value: "light", label: "Light", icon: Sun03Icon },
+  { value: "dark", label: "Dark", icon: Moon02Icon },
+  { value: "system", label: "System", icon: ComputerIcon },
 ];
 
 interface ThemeToggleProps {
@@ -27,14 +32,19 @@ export function ThemeToggle({
 }: ThemeToggleProps) {
   return (
     <div className={`flex gap-1 ${className ?? ""}`}>
-      {THEME_OPTIONS.map(({ value, label, icon: Icon }) => (
+      {THEME_OPTIONS.map(({ value, label, icon }) => (
         <Button
           key={value}
           variant={preference === value ? "default" : "outline"}
           size="sm"
+          aria-pressed={preference === value}
           onClick={() => onThemeChange(value)}
         >
-          <Icon data-icon="inline-start" />
+          <HugeiconsIcon
+            icon={icon}
+            data-icon="inline-start"
+            aria-hidden="true"
+          />
           {label}
         </Button>
       ))}

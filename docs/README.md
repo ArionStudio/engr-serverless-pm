@@ -27,6 +27,13 @@ Standards are separate from the descriptive documents above. A statement about
 what the code currently does belongs in descriptive documentation. A rule for
 future changes belongs in `docs/standards`.
 
+## Product and UI planning
+
+- [Extension UI and UX plan](./ui-ux/README.md) records accepted product decisions,
+  the vault setup flow, the component inventory, a frontend architecture proposal,
+  verified references and locally attached Mobbin screens. Proposed behavior and
+  missing implementation contracts are marked explicitly.
+
 ## Supporting and historical collections
 
 | Collection          | Status                                         | Use                                                                          |

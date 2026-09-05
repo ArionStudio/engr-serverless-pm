@@ -1,5 +1,6 @@
 # Extension build output
 dist/
+dist-gallery/
 
 # Extension specific
 *.crx
