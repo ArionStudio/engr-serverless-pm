@@ -1,3 +1,8 @@
+import { VaultLockSettings } from "@/ui/features/settings/vault-lock-settings.view";
+import { SetupRecoveryView } from "@/ui/features/vault-setup/setup-recovery.view";
+import { SetupVaultAccess } from "@/ui/features/vault-setup/setup-vault-access.view";
+import { useVaultSetup } from "@/ui/features/vault-setup/use-vault-setup";
+import type { SetupCapabilities } from "@/ui/features/vault-setup/setup.type";
 import { useEffect, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { SecurityCheckIcon } from "@hugeicons/core-free-icons";
@@ -24,6 +29,7 @@ export function OptionsView({
   onRetry,
   assessPassword,
   initialStep = "welcome",
+  setup,
 }: {
   preference: "light" | "dark" | "system";
   onThemeChange: (preference: "light" | "dark" | "system") => void;
@@ -31,7 +37,9 @@ export function OptionsView({
   onRetry: () => void;
   assessPassword: AssessPassword;
   initialStep?: SetupStep;
+  setup: SetupCapabilities;
 }) {
+  const live = useVaultSetup(setup);
   const [step, setStep] = useState<SetupStep>(initialStep);
   const [settings, setSettings] = useState(false);
   const [draft, setDraft] = useState<PasswordCreationDraft>({
@@ -40,7 +48,6 @@ export function OptionsView({
   });
   const [name, setName] = useState("This browser");
   const [duration, setDuration] = useState(600_000);
-  const [cancelled, setCancelled] = useState(false);
   const content = useRef<HTMLDivElement>(null);
   const initialFocus = useRef(true);
   useEffect(() => {
@@ -49,7 +56,16 @@ export function OptionsView({
       return;
     }
     content.current?.focus();
-  }, [step, settings, availability]);
+  }, [
+    step,
+    settings,
+    availability,
+    live.recovery,
+    live.verifying,
+    live.vault?.vaultId,
+    live.vault?.unlocked,
+    live.vault?.complete,
+  ]);
   function reset() {
     setDraft({ password: "", confirmation: "" });
     setName("This browser");
@@ -59,7 +75,6 @@ export function OptionsView({
   function showSettings() {
     reset();
     setSettings(true);
-    setCancelled(false);
   }
   const creating = step === "password" || step === "device";
   return (
@@ -78,9 +93,16 @@ export function OptionsView({
           <div className="flex items-center gap-3">
             <Button
               variant="ghost"
+              disabled={live.pending || !!live.recovery}
               onClick={settings ? () => setSettings(false) : showSettings}
             >
-              {settings ? "Back to setup" : "Appearance"}
+              {settings
+                ? live.vault
+                  ? "Back to vault"
+                  : "Back to setup"
+                : live.vault?.complete
+                  ? "Settings"
+                  : "Appearance"}
             </Button>
           </div>
         </div>
@@ -88,7 +110,10 @@ export function OptionsView({
       <main
         className={cn(
           "mx-auto space-y-8 px-5 py-8 @lg:py-12",
-          !settings && availability === "empty" && step === "welcome"
+          !settings &&
+            !live.vault &&
+            availability === "empty" &&
+            step === "welcome"
             ? "max-w-4xl"
             : "max-w-xl",
         )}
@@ -97,14 +122,61 @@ export function OptionsView({
           {settings ? (
             <section className="space-y-6">
               <h1 className="text-2xl font-semibold tracking-tight">
-                Appearance
+                {live.vault?.complete ? "Settings" : "Appearance"}
               </h1>
+              {live.vault?.complete ? (
+                <VaultLockSettings
+                  key={`${live.vault.vaultId}:${live.vault.duration}`}
+                  duration={live.vault.duration}
+                  pending={live.pending}
+                  error={live.error}
+                  onSave={(duration) => {
+                    void live.saveDuration(duration);
+                  }}
+                />
+              ) : null}
+              {live.vault?.complete ? (
+                <h2 className="text-lg font-semibold">Appearance</h2>
+              ) : null}
               <ThemeToggle
                 preference={preference}
                 onThemeChange={onThemeChange}
               />
             </section>
-          ) : availability === "loading" ? (
+          ) : live.recovery ? (
+            <SetupRecoveryView
+              key={live.recovery.vault.vaultId}
+              recovery={live.recovery}
+              verifying={live.verifying}
+              pending={live.pending}
+              error={live.error}
+              onVerify={(answers) => {
+                void live.verify(answers);
+              }}
+              onSave={live.save}
+              onContinue={live.continue}
+              onReview={live.review}
+              onLock={() => {
+                void live.lock();
+              }}
+            />
+          ) : live.vault ? (
+            <SetupVaultAccess
+              key={`${live.vault.vaultId}:${live.vault.unlocked}`}
+              vault={live.vault}
+              pending={live.pending}
+              error={live.error}
+              onUnlock={(password) => {
+                void live.unlock(password);
+              }}
+              onReplace={() => {
+                void live.replace();
+              }}
+              onLock={() => {
+                void live.lock();
+              }}
+            />
+          ) : availability === "loading" || live.loading ? (
             <p role="status" className="flex items-center gap-2 text-sm">
               <Spinner />
               Checking this browser…
@@ -132,7 +204,8 @@ export function OptionsView({
                   <StepNavigation
                     currentId={step}
                     onNavigate={(id) => {
-                      if (id === "password") setStep("password");
+                      if (id === "password" && !live.pending)
+                        setStep("password");
                     }}
                     steps={[
                       {
@@ -163,32 +236,32 @@ export function OptionsView({
                   />
                 </div>
               ) : null}
-              {cancelled ? (
-                <p role="status" className="mb-6 text-sm">
-                  Setup cancelled.
-                </p>
-              ) : null}
               {step === "welcome" ? (
                 <SetupWelcome
                   onCreate={() => {
-                    setCancelled(false);
                     setStep("password");
                   }}
                   onConnect={() => {
-                    setCancelled(false);
                     setStep("connect");
                   }}
                 />
               ) : step === "connect" ? (
                 <SetupConnection onBack={reset} />
               ) : step === "password" ? (
-                <SetupPassword
-                  value={draft}
-                  onChange={setDraft}
-                  onContinue={() => setStep("device")}
-                  onBack={reset}
-                  assessPassword={assessPassword}
-                />
+                <>
+                  {live.error ? (
+                    <p role="alert" className="mb-5 text-sm text-destructive">
+                      {live.error}
+                    </p>
+                  ) : null}
+                  <SetupPassword
+                    value={draft}
+                    onChange={setDraft}
+                    onContinue={() => setStep("device")}
+                    onBack={reset}
+                    assessPassword={assessPassword}
+                  />
+                </>
               ) : (
                 <SetupDevice
                   name={name}
@@ -196,9 +269,14 @@ export function OptionsView({
                   duration={duration}
                   onDurationChange={setDuration}
                   onBack={() => setStep("password")}
+                  pending={live.pending}
+                  error={live.error}
                   onFinish={() => {
-                    reset();
-                    setCancelled(true);
+                    const password = draft.password;
+                    setDraft({ password: "", confirmation: "" });
+                    void live
+                      .create({ password, deviceName: name, duration })
+                      .then(() => setStep("password"));
                   }}
                 />
               )}

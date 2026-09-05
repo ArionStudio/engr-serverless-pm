@@ -58,6 +58,10 @@ Run project commands from repo root unless a task explicitly requires a subdirec
 
 <!-- Add mistakes here as they occur -->
 
+- **Extension typography:** Chrome injects unlayered extension-page font defaults.
+  Keep the explicit `html body` typography override and verify computed Figtree
+  and 16px body text on the unpacked extension, not only the gallery.
+
 - **No subtitles:** The user forbids product heading subtitles, eyebrow slogans,
   marketing taglines and decorative footer copy. Use direct task titles and
   controls. Keep necessary field guidance, errors and safety information at the

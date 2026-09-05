@@ -1,8 +1,9 @@
 # Frontend architecture for popup and options
 
-Status: first-launch screen assembly and popup-to-options navigation are implemented
-as an explicit preview. Roots inject local-vault reads and password assessment;
-creation, enrollment and recovery lifecycle integration remain subsequent work. Existing
+Status: popup-to-options navigation and new-vault setup are implemented. Roots
+inject vault creation, password assessment, recovery-word verification and export,
+interrupted-setup continuation, lock/unlock and device-local lock settings.
+Existing-vault enrollment and entry/sync screen integration remain subsequent work. Existing
 [core architecture](../standards/core-architecture.md) and
 [React/UI standards](../standards/react-and-ui.md) remain authoritative.
 

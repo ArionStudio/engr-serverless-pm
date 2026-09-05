@@ -87,20 +87,17 @@ Later user clarifications supersede the initial setup-first implementation order
   makes gallery updates part of every component change. The
   [coverage follow-up](./component-specification.md#ongoing-catalog-and-variant-coverage)
   is complete, with source-derived membership, variant choosers and browser
-  verification. First-launch presentation now runs in popup/options as a clearly
-  labeled preview. Live creation and recovery continuation are the next integration
-  work; see the [first-launch implementation](./review-inventory.md#first-launch-screen-implementation).
+  verification. The Options page now runs live new-vault creation, recovery saving,
+  verification, and authenticated recovery replacement after interruptions. See
+  [the implemented setup flow](./vault-setup.md).
 
 ## Unresolved work that affects the experience
 
-| Gap                         | Why it matters                                                                                                   | Proposed next action                                                                                       |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Interrupted recovery backup | Initialization creates the vault before returning words. The original words cannot currently be retrieved again. | Design an authenticated continuation/replacement contract before shipping setup.                           |
-| Local lock preferences      | Core accepts a duration per activation but has no settings workflow or inactivity refresh.                       | Define persistence scope, timer semantics, and changes to an active session.                               |
-| Recovery exports            | Entry-password copy exists; recovery copy/export does not.                                                       | Reuse clipboard coordination through a supported application workflow; generate files locally.             |
-| Complete disaster recovery  | Words alone cannot restore a lost installation.                                                                  | Define backup artifacts and import verification separately; do not label a word sheet a full vault backup. |
-| UI integration              | Composition exists, but entrypoints do not call it.                                                              | Inject narrow use-case capabilities into feature controllers.                                              |
-| Later settings/read screens | Device, tag, and configuration summaries lack dedicated public read workflows.                                   | Add explicit read contracts when those slices are implemented.                                             |
+| Gap                         | Why it matters                                                                 | Proposed next action                                                                                       |
+| --------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| Complete disaster recovery  | Words alone cannot restore a lost installation.                                | Define backup artifacts and import verification separately; do not label a word sheet a full vault backup. |
+| UI integration              | Composition exists, but entrypoints do not call it.                            | Inject narrow use-case capabilities into feature controllers.                                              |
+| Later settings/read screens | Device, tag, and configuration summaries lack dedicated public read workflows. | Add explicit read contracts when those slices are implemented.                                             |
 
 ## Delivery sequence
 
@@ -113,5 +110,5 @@ Later user clarifications supersede the initial setup-first implementation order
    continuation, export and local lock behavior before shipping the setup flow.
 
 The authorized library implementation now includes CLI-generated controls and
-Table 9.2.4. It does not connect live vault workflows. The component gallery can
+Table 9.2.4. New-vault setup now connects to the core use cases. The component gallery can
 proceed independently of unresolved recovery contracts; production setup cannot.

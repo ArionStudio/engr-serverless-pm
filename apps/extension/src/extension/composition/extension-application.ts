@@ -1,5 +1,6 @@
 import {
   CopyEntryPasswordUseCase,
+  CopyRecoveryWordsUseCase,
   ConsumeDeviceEnrollmentUseCase,
   ConsumeDeviceRevocationUseCase,
   CreateDeviceEnrollmentRequestUseCase,
@@ -28,11 +29,13 @@ import {
   ChangeMasterPasswordUseCase,
   DeleteLocalVaultUseCase,
   InitializeVaultUseCase,
+  ReplaceRecoveryWordsUseCase,
   ListLocalVaultsUseCase,
   UnlockVaultUseCase,
 } from "@lfspm/core";
 import {
   RandomSamplerService,
+  SecretClipboardCopyService,
   RandomVaultDisplayNameService,
   VaultSnapshotService,
   VaultSyncGuardService,
@@ -92,6 +95,22 @@ export function composeExtensionApplication(database: VaultManagerDb = db) {
   return {
     clearClipboardTask,
     lockVault,
+    copyRecoveryWords: new CopyRecoveryWordsUseCase(
+      bip39,
+      crypto,
+      vaultLocalRepository,
+      unlockedVaultSession,
+      clipboardOperations,
+      new SecretClipboardCopyService(
+        clipboard,
+        clipboardClear,
+        clipboardSecretHash,
+        ids,
+        clipboardClearTasks,
+        scheduledTasks,
+        clock,
+      ),
+    ),
     copyEntryPassword: new CopyEntryPasswordUseCase(
       clipboard,
       clipboardClear,
@@ -251,6 +270,13 @@ export function composeExtensionApplication(database: VaultManagerDb = db) {
     deleteLocalVault: new DeleteLocalVaultUseCase(
       vaultLocalRepository,
       lifecycleCleanup,
+    ),
+    replaceRecoveryWords: new ReplaceRecoveryWordsUseCase(
+      crypto,
+      bip39,
+      ids,
+      vaultLocalRepository,
+      unlockedVaultSession,
     ),
     initializeVault: new InitializeVaultUseCase(
       crypto,

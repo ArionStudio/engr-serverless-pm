@@ -1,3 +1,4 @@
+import { gallerySetup } from "@/gallery/setup-fixture";
 // @vitest-environment jsdom
 import { createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -25,12 +26,12 @@ describe("first-launch screens", () => {
     expect(connect).toBeChecked();
     expect(create).not.toBeChecked();
     expect(onConnect).not.toHaveBeenCalled();
-    await user.click(screen.getByRole("button", { name: "Continue" }));
+    await user.click(await screen.findByRole("button", { name: "Continue" }));
     expect(onConnect).toHaveBeenCalledTimes(1);
     connect.focus();
     await user.keyboard("{ArrowLeft}");
     expect(create).toBeChecked();
-    await user.click(screen.getByRole("button", { name: "Continue" }));
+    await user.click(await screen.findByRole("button", { name: "Continue" }));
     expect(onCreate).toHaveBeenCalledTimes(1);
     await user.click(
       screen.getByText(
@@ -68,10 +69,11 @@ describe("first-launch screens", () => {
     expect(screen.getByRole("button", { name: "Set up vault" })).toBeEnabled();
   });
 
-  it("validates confirmation, preserves drafts on Back, and clears them when leaving the preview", async () => {
+  it("validates confirmation, preserves drafts on Back, and clears them when leaving setup", async () => {
     const user = userEvent.setup();
     render(
       createElement(OptionsView, {
+        setup: gallerySetup(),
         preference: "light",
         onThemeChange: vi.fn(),
         availability: "empty",
@@ -79,7 +81,7 @@ describe("first-launch screens", () => {
         assessPassword,
       }),
     );
-    await user.click(screen.getByRole("button", { name: "Continue" }));
+    await user.click(await screen.findByRole("button", { name: "Continue" }));
     const password = "orbit lantern velvet canyon river";
     await user.type(
       screen.getByLabelText("New password", { exact: true }),
@@ -90,7 +92,7 @@ describe("first-launch screens", () => {
       screen.getByLabelText("Confirm password", { exact: true }),
       "wrong",
     );
-    await user.click(screen.getByRole("button", { name: "Continue" }));
+    await user.click(await screen.findByRole("button", { name: "Continue" }));
     await waitFor(() =>
       expect(
         screen.getByLabelText("Confirm password", { exact: true }),
@@ -103,7 +105,7 @@ describe("first-launch screens", () => {
       screen.getByLabelText("Confirm password", { exact: true }),
       password,
     );
-    await user.click(screen.getByRole("button", { name: "Continue" }));
+    await user.click(await screen.findByRole("button", { name: "Continue" }));
     expect(
       screen.getByRole("heading", { name: "Device settings" }),
     ).toBeInTheDocument();
@@ -122,7 +124,7 @@ describe("first-launch screens", () => {
       password,
     );
     await user.click(screen.getByRole("button", { name: "Back" }));
-    await user.click(screen.getByRole("button", { name: "Continue" }));
+    await user.click(await screen.findByRole("button", { name: "Continue" }));
     expect(screen.getByLabelText("New password", { exact: true })).toHaveValue(
       "",
     );
@@ -131,9 +133,10 @@ describe("first-launch screens", () => {
     ).toHaveValue("");
   });
 
-  it("does not route an existing vault into first-time creation", () => {
+  it("does not route an existing vault into first-time creation", async () => {
     render(
       createElement(OptionsView, {
+        setup: gallerySetup(),
         preference: "light",
         onThemeChange: vi.fn(),
         availability: "existing",
@@ -142,7 +145,7 @@ describe("first-launch screens", () => {
       }),
     );
     expect(
-      screen.getByRole("heading", { name: "Local vault found" }),
+      await screen.findByRole("heading", { name: "Local vault found" }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("radio", { name: "New vault" }),

@@ -94,6 +94,7 @@ export function RecoveryExportChoices({
           <ItemActions>
             <Button
               variant="outline"
+              aria-label={m.label}
               disabled={m.state === "pending"}
               onClick={() => onRequest(m.id)}
             >

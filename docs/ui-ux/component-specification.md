@@ -20,7 +20,7 @@ The current catalog has **38 generated base controls, 28 presentation families,
 shell presentation.
 The initial 20 controls grew by eight reuse-audit additions and ten further
 review controls. A family can expose related parts without one file per name.
-All entries belong to this library review; live integration follows later.
+All entries belong to this library review. New-vault setup is integrated; the remaining feature workflows follow separately.
 
 Use the exact [preset](./component-library.md#exact-visual-foundation), Base UI,
 Figtree and Hugeicons. The [Mobbin board](./mobbin.md) documents interaction research,
@@ -89,6 +89,10 @@ preserving the preset's visual treatment. Enlarged hit areas must not overlap.
 - Test both themes, keyboard-only use, zoom/reflow, long content and reduced motion.
   Aim for WCAG AA text and non-text contrast; demonstrate results in the gallery
   review rather than declaring conformance from the component package alone.
+- Focus uses one solid 2px violet outline, with a 2px gap and the control's
+  existing corner radius. Grouped inputs and setup choice cards outline their
+  enclosing shape; attached buttons have an inset outline. Avoid stacking a
+  translucent ring on top. Forced-colors mode uses the system Highlight color.
 - Password entry fields use normal password-input masking. Masking is not a memory
   or DOM security boundary. Concealed recovery/secret displays omit the secret
   text from rendered content; revealing is explicit.
@@ -186,7 +190,7 @@ layouts. No separate compact/expanded API is required.
 
 | ID  | Public family / purpose and proposed data contract                                                                                     | Variants / states                                                 | Required gallery evidence                                                                                                              |
 | --- | -------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| P10 | SearchField: query/change, submit/clear, searching state and result summary.                                                           | Empty/filled/searching; responsive width.                 | Clear retains focus, IME composition is not prematurely submitted, query text is not echoed into unsafe markup.                        |
+| P10 | SearchField: query/change, submit/clear, searching state and result summary.                                                           | Empty/filled/searching; responsive width.                         | Clear retains focus, IME composition is not prematurely submitted, query text is not echoed into unsafe markup.                        |
 | P11 | EntryRow, EntryList and EntrySelection: visible entry fields, selected ID and open/select/action callbacks.                            | Browse/single-select; empty/loading/error; compact/expanded rows. | Long login/URL, no nested interactive targets, no passwords in list props; selection example covers future autofill.                   |
 | P12 | DetailField: label, visible value, optional safe link and action slot.                                                                 | Plain/link/missing/multiline.                                     | Long URL and missing value; disallowed link schemes are inert through the approved URL boundary. No arbitrary HTML.                    |
 | P13 | SecretField: concealed state or supplied revealed value, reveal/hide intent and operation status.                                      | Concealed/revealing/revealed/error/disabled.                      | Concealed fixture has no secret DOM text; stale reveal result discarded by driver after reset; no silent reveal on copy.               |
@@ -346,12 +350,10 @@ catalog count and navigation should derive from registered entries as it grows.
 Cover each supported option and meaningful combinations; a complete Cartesian
 product of unrelated props is not required.
 
-The first-launch presentation is implemented as an explicit preview: popup with
-**Set up vault**, then the options-page **Create a new vault / Connect an existing
-vault** choice, password form and device-settings preview. The popup handoff opens the
-real Options page. All states are available in the gallery with synthetic data.
-Live vault/recovery operations remain integration work; neither the preview
-password nor device choices are persisted.
+The first-launch flow now runs live new-vault creation and recovery setup on the
+Options page. S02 exposes the actual creation, recovery, verification, unlock,
+interruption, and completion components with synthetic gallery-only drivers.
+See [the setup implementation](./vault-setup.md) for persistence and session contracts.
 
 ### Original build and integration checklist
 

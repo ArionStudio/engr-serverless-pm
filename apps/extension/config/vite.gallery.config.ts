@@ -9,7 +9,10 @@ export default defineConfig({
   build: {
     outDir: "dist-gallery",
     rollupOptions: {
-      input: resolve(__dirname, "../gallery.html"),
+      input: {
+        gallery: resolve(__dirname, "../gallery.html"),
+        screens: resolve(__dirname, "../screens.html"),
+      },
     },
   },
   resolve: {

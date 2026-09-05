@@ -9,3 +9,5 @@ export { VaultSessionActivationService } from "./session/vault-session-activatio
 export { VaultSnapshotService } from "./snapshot/vault-snapshot.service";
 export { VaultSyncGuardService } from "./sync/vault-sync-guard.service";
 export { RandomVaultDisplayNameService } from "./vault/random-vault-display-name.service";
+
+export { SecretClipboardCopyService } from "./clipboard/secret-clipboard-copy.service";
