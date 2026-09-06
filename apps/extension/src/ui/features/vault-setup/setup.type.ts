@@ -11,6 +11,10 @@ export type SetupVault = {
   complete: boolean;
   unlocked: boolean;
 };
+export type SetupInspection = {
+  vault: SetupVault | null;
+  vaults: readonly { vaultId: string; name: string }[];
+};
 export type SetupRecovery = {
   vault: SetupVault;
   words: readonly string[];
@@ -18,7 +22,7 @@ export type SetupRecovery = {
 };
 export type RecoverySaveMethod = "text" | "print" | "copy";
 export type SetupCapabilities = {
-  inspect: () => Promise<SetupVault | null>;
+  inspect: (selectedVaultId?: string) => Promise<SetupInspection>;
   create: (params: {
     password: string;
     deviceName: string;

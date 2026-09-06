@@ -4,6 +4,7 @@ import {
 } from "@lfspm/core";
 import type {
   SetupCapabilities,
+  SetupInspection,
   SetupRecovery,
   SetupVault,
 } from "@/ui/features/vault-setup/setup.type";
@@ -23,10 +24,10 @@ type Preference = {
   complete: boolean;
   token: string;
 };
+const supportedDuration = (value: number) =>
+  AVAILABLE_VAULT_LOCK_DELAYS_MS.find((option) => option === value);
 function durationValue(value: number) {
-  const duration = AVAILABLE_VAULT_LOCK_DELAYS_MS.find(
-    (option) => option === value,
-  );
+  const duration = supportedDuration(value);
   if (duration === undefined) throw new Error("Invalid lock duration");
   return duration;
 }
@@ -47,7 +48,7 @@ async function preference(vaultId: string): Promise<Preference> {
     typeof value.token === "string"
   ) {
     return {
-      duration: durationValue(value.duration),
+      duration: supportedDuration(value.duration) ?? 600_000,
       deviceName: value.deviceName,
       complete: value.complete,
       token: value.token,
@@ -68,23 +69,36 @@ const writePreference = (vaultId: string, value: Preference) =>
 export function composeVaultSetup(): SetupCapabilities {
   let recovery: SetupRecovery | undefined;
   let token = "";
+  let initializing = false;
   const clear = () => {
     recovery = undefined;
     token = "";
   };
-  async function inspect(): Promise<SetupVault | null> {
+  async function inspect(selectedVaultId?: string): Promise<SetupInspection> {
     const app = await getApplication();
     const { vaults } = await app.listLocalVaults.execute();
-    const vault = vaults[0];
-    if (!vault) return null;
-    const settings = await preference(vault.vaultId);
     const session = await app.getVaultSessionStatus.execute();
+    const selectedId =
+      session.status === "unlocked"
+        ? session.vaultId
+        : (selectedVaultId ??
+          (vaults.length === 1 ? vaults[0].vaultId : undefined));
+    const selected = vaults.find((vault) => vault.vaultId === selectedId);
+    if (session.status === "unlocked" && !selected)
+      throw new Error("Active vault is unavailable");
     return {
-      vaultId: vault.vaultId,
-      name: vault.displayName,
-      ...settings,
-      unlocked:
-        session.status === "unlocked" && session.vaultId === vault.vaultId,
+      vaults: vaults.map(({ vaultId, displayName }) => ({
+        vaultId,
+        name: displayName,
+      })),
+      vault: selected
+        ? {
+            vaultId: selected.vaultId,
+            name: selected.displayName,
+            ...(await preference(selected.vaultId)),
+            unlocked: session.status === "unlocked",
+          }
+        : null,
     };
   }
   function remember(
@@ -109,7 +123,7 @@ export function composeVaultSetup(): SetupCapabilities {
   async function requireRecovery() {
     const current = recovery;
     if (!current) throw new Error("Recovery session ended");
-    const vault = await inspect();
+    const { vault } = await inspect(current.vault.vaultId);
     const settings = await preference(current.vault.vaultId);
     if (
       recovery !== current ||
@@ -127,40 +141,46 @@ export function composeVaultSetup(): SetupCapabilities {
     clear,
     create: async (params) =>
       await navigator.locks.request("lfspm:first-vault-setup", async () => {
-        if (await inspect()) throw new Error("A local vault already exists");
+        if ((await inspect()).vaults.length)
+          throw new Error("A local vault already exists");
         const duration = durationValue(params.duration);
         const deviceName = params.deviceName.trim();
         if (!deviceName || deviceName.length > 80)
           throw new Error("Enter a device name");
         const app = await getApplication();
-        const result = await app.initializeVault.execute({
-          masterPassword: params.password as RawMasterPassword,
-          deviceName,
-          lockAfterMs: duration,
-        });
-        const session = await app.getVaultSessionStatus.execute();
-        if (session.status !== "unlocked")
-          throw new Error("Vault locked during setup");
-        const receipt = crypto.randomUUID();
-        token = receipt;
-        await writePreference(session.vaultId, {
-          duration,
-          deviceName,
-          complete: false,
-          token: receipt,
-        });
-        return remember(
-          {
-            vaultId: session.vaultId,
-            name: result.vaultDisplayName,
+        initializing = true;
+        try {
+          const result = await app.initializeVault.execute({
+            masterPassword: params.password as RawMasterPassword,
             deviceName,
+            lockAfterMs: duration,
+          });
+          const session = await app.getVaultSessionStatus.execute();
+          if (session.status !== "unlocked")
+            throw new Error("Vault locked during setup");
+          const receipt = crypto.randomUUID();
+          token = receipt;
+          await writePreference(session.vaultId, {
             duration,
+            deviceName,
             complete: false,
-            unlocked: true,
-          },
-          result.recoveryMnemonicKey.words,
-          receipt,
-        );
+            token: receipt,
+          });
+          return remember(
+            {
+              vaultId: session.vaultId,
+              name: result.vaultDisplayName,
+              deviceName,
+              duration,
+              complete: false,
+              unlocked: true,
+            },
+            result.recoveryMnemonicKey.words,
+            receipt,
+          );
+        } finally {
+          initializing = false;
+        }
       }),
     unlock: async (vaultId, password) => {
       const settings = await preference(vaultId);
@@ -171,7 +191,7 @@ export function composeVaultSetup(): SetupCapabilities {
         masterPassword: password as RawMasterPassword,
         lockAfterMs: durationValue(settings.duration),
       });
-      const vault = await inspect();
+      const { vault } = await inspect(vaultId);
       if (!vault || vault.vaultId !== vaultId || !vault.unlocked)
         throw new Error("Could not unlock vault");
       return vault;
@@ -179,9 +199,11 @@ export function composeVaultSetup(): SetupCapabilities {
     replace: async (vaultId) =>
       await navigator.locks.request("lfspm:first-vault-setup", async () => {
         clear();
-        const vault = await inspect();
+        const { vault } = await inspect(vaultId);
         if (!vault?.unlocked || vault.vaultId !== vaultId)
           throw new Error("Unlock this vault first");
+        if (vault.complete)
+          throw new Error("Recovery setup is already complete");
         const receipt = crypto.randomUUID();
         const settings = await preference(vaultId);
         token = receipt;
@@ -220,69 +242,74 @@ export function composeVaultSetup(): SetupCapabilities {
         clear();
         return true;
       }),
-    save: async (method) => {
-      const current = await requireRecovery();
-      if (method === "copy") {
-        await (
-          await getApplication()
-        ).copyRecoveryWords.execute({
-          vaultId: current.vault.vaultId,
-          mnemonic: { format: "BIP39", words: current.words },
-        });
-        return;
-      }
-      const record = [
-        "LFSPM recovery record",
-        current.vault.name,
-        current.vault.deviceName,
-        "",
-        ...current.words.map((word, index) => `${index + 1}. ${word}`),
-        "",
-        "Keep this unencrypted record private and outside your vault.",
-        "These words require the matching recovery data in this browser. Words alone cannot restore deleted browser data or a lost device.",
-        "Never send recovery words to support or enter them on a website.",
-      ].join("\n");
-      if (method === "text") {
-        const url = URL.createObjectURL(
-          new Blob([record], { type: "text/plain;charset=utf-8" }),
-        );
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = "lfspm-recovery.txt";
-        link.click();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-      } else {
-        const frame = document.createElement("iframe");
-        frame.title = "Print recovery record";
-        frame.style.display = "none";
-        document.body.append(frame);
-        try {
-          const target = frame.contentDocument;
-          const view = frame.contentWindow;
-          if (!target || !view) throw new Error("Printing unavailable");
-          const pre = target.createElement("pre");
-          pre.style.cssText =
-            "white-space:pre-wrap;font:14px/1.6 sans-serif;color:#000;background:#fff";
-          pre.textContent = record;
-          target.body.append(pre);
-          view.focus();
-          view.print();
-        } finally {
-          frame.remove();
+    save: async (method) =>
+      navigator.locks.request("lfspm:first-vault-setup", async () => {
+        const current = await requireRecovery();
+        if (method === "copy") {
+          await (
+            await getApplication()
+          ).copyRecoveryWords.execute({
+            vaultId: current.vault.vaultId,
+            mnemonic: { format: "BIP39", words: current.words },
+          });
+          return;
         }
-      }
-    },
+        const record = [
+          "LFSPM recovery record",
+          current.vault.name,
+          current.vault.deviceName,
+          "",
+          ...current.words.map((word, index) => `${index + 1}. ${word}`),
+          "",
+          "Keep this unencrypted record private and outside your vault.",
+          "These words require the matching recovery data in this browser. Words alone cannot restore deleted browser data or a lost device.",
+          "Never send recovery words to support or enter them on a website.",
+        ].join("\n");
+        if (method === "text") {
+          const url = URL.createObjectURL(
+            new Blob([record], { type: "text/plain;charset=utf-8" }),
+          );
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = "lfspm-recovery.txt";
+          link.click();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        } else {
+          const frame = document.createElement("iframe");
+          frame.title = "Print recovery record";
+          frame.style.display = "none";
+          document.body.append(frame);
+          try {
+            const target = frame.contentDocument;
+            const view = frame.contentWindow;
+            if (!target || !view) throw new Error("Printing unavailable");
+            const pre = target.createElement("pre");
+            pre.style.cssText =
+              "white-space:pre-wrap;font:14px/1.6 sans-serif;color:#000;background:#fff";
+            pre.textContent = record;
+            target.body.append(pre);
+            view.focus();
+            view.print();
+          } finally {
+            frame.remove();
+          }
+        }
+      }),
     lock: async () => {
       clear();
       await (await getApplication()).lockVault.execute();
     },
-    saveDuration: async (vaultId, duration) => {
-      const settings = await preference(vaultId);
-      await writePreference(vaultId, {
-        ...settings,
-        duration: durationValue(duration),
-      });
-    },
+    saveDuration: async (vaultId, duration) =>
+      navigator.locks.request("lfspm:first-vault-setup", async () => {
+        const { vault } = await inspect(vaultId);
+        if (vault?.vaultId !== vaultId)
+          throw new Error("Selected vault is unavailable");
+        const settings = await preference(vaultId);
+        await writePreference(vaultId, {
+          ...settings,
+          duration: durationValue(duration),
+        });
+      }),
     subscribe: (listener) => {
       let disposed = false;
       let checking = false;
@@ -314,11 +341,17 @@ export function composeVaultSetup(): SetupCapabilities {
         ) {
           clear();
           listener();
+        } else if (area === "session" && change?.newValue && !change.oldValue) {
+          // Own initialization must retain its pending result and phrase. Other
+          // documents need to discover the newly activated session immediately.
+          if (!initializing && !recovery) listener();
         } else if (
           area === "local" &&
           Object.entries(changes).some(
             ([key, value]) =>
-              key.startsWith("vault-setup:") &&
+              (recovery
+                ? key === preferenceKey(recovery.vault.vaultId)
+                : key.startsWith("vault-setup:")) &&
               recordString(value.newValue, "token") !== token,
           )
         ) {
@@ -329,7 +362,8 @@ export function composeVaultSetup(): SetupCapabilities {
         }
       };
       const onFocus = () => {
-        void check();
+        if (!initializing && !recovery) listener();
+        else void check();
       };
       const onHide = () => {
         clear();

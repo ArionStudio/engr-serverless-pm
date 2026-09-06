@@ -307,8 +307,8 @@ and actual system-theme selection are testable. Use long strings and many items
 to expose overflow. Overlay examples near each edge reveal clipping/focus issues.
 
 For P17 include a synthetic print layout review with page breaks and all 24 positions.
-Clearly identify it as demonstration data that cannot recover a vault. PDF download
-success and browser clipboard operation remain adapter/integration checks later.
+Clearly identify it as demonstration data that cannot recover a vault. The live setup supports TXT, browser print/Save as PDF, and copy; extension
+validation is recorded in the setup flow. A dedicated PDF renderer is not implemented.
 
 Do not use third-party screenshots as fixtures or copy their branding. Components
 use Mira tokens and Hugeicons. The gallery is excluded from the production build
@@ -321,11 +321,11 @@ the repository toolchain; new tools still require dependency approval.
 
 The gallery must grow with the application under
 [UI-006](../standards/react-and-ui.md#ui-006-keep-the-component-gallery-current).
-The gallery now has 75 families covering 273 exported components and compound
+The gallery now has 75 families covering 282 exported components and compound
 parts, including the two current screen views. ThemeProvider is documented as a
 nonvisual runtime provider. The generated API inventory exposes 72 variant axes.
 
-Coverage follow-up, before first-launch screen assembly:
+Completed gallery coverage follow-up:
 
 - [x] Audit rendered component exports against gallery membership. Give every
       component a discoverable entry or explicit named membership in a compound
@@ -371,15 +371,16 @@ See [the setup implementation](./vault-setup.md) for persistence and session con
       integration work, as scheduled in the [favicon plan](./favicon-review.md#planned-work-and-implementation-triggers).
 - [ ] F. Review the entire library's visual consistency and accessibility evidence.
       The gate applies to all catalog IDs, not only the setup subset.
-- [ ] G. Assemble application screens from reviewed components, starting with setup.
-- [ ] H. Connect composed application workflows after their contracts and lifecycle
-      behavior are ready; validate in the Chrome extension runtime.
+- [x] G. Assemble and integrate new-vault setup, recovery, verification and local lock settings.
+- [ ] Assemble the remaining existing-vault enrollment and entry/sync screens.
+- [x] H. Connect new-vault setup to composed workflows and validate in Chrome.
+- [ ] Connect remaining enrollment, entry and sync workflows as their contracts are ready.
       At entries/settings integration, implement the extension-level icon
       preference workflow and browser capability, then complete the favicon
       runtime acceptance checks before enabling browser icons in a release.
 
-G and H are subsequent work, included here only to make the boundary unambiguous.
-Do not move them before library completion because setup is the first user flow.
+New-vault setup is complete at the current scope; remaining workflow integration
+does not change the requirement to keep the component gallery current.
 
 ## Definition of library ready
 
@@ -393,6 +394,5 @@ Do not move them before library completion because setup is the first user flow.
   fixture resets; avoid tests that only mirror static markup or styling classes.
 - Gallery code and fixtures are absent from the production artifact. Shared
   components have no forbidden adapter/secret persistence dependencies.
-- Unavailable recovery/export/preferences/read contracts are recorded as integration
-  work. Their presence does not block the gallery, and gallery completion does not
-  falsely declare those workflows implemented or secure.
+- Remaining disaster-recovery, enrollment and read contracts are recorded as
+  follow-up work. Gallery completion does not declare those workflows implemented.

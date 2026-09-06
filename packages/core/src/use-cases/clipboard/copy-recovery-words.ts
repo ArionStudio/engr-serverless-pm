@@ -6,6 +6,7 @@ import type { ClipboardOperationCoordinatorPort } from "../../ports/clipboard/cl
 import type { SecretClipboardCopyService } from "../../services/clipboard/secret-clipboard-copy.service";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import { bestEffortWipeArrayBuffers } from "../../lib/secure-wipe.utils";
+import { areDeviceAccessRecordsConsistent } from "../../domain/device-trust/device-access-records";
 import { InvalidRecoveryMnemonicError } from "../../errors/recovery.errors";
 
 export class CopyRecoveryWordsUseCase {
@@ -44,10 +45,14 @@ export class CopyRecoveryWordsUseCase {
         async ({ unlockedVault }) => {
           const secrets: ArrayBuffer[] = [];
           try {
-            const backup =
-              await this.repository.getDeviceAccessRecoveryBackup(vaultId);
+            const {
+              deviceAccessMaterial: material,
+              deviceAccessRecoveryBackup: backup,
+            } = await this.repository.getDeviceAccessRecords(vaultId);
             if (
+              !material ||
               !backup ||
+              !areDeviceAccessRecordsConsistent(material, backup) ||
               backup.vaultId !== vaultId ||
               backup.deviceId !== unlockedVault.deviceId ||
               backup.algorithmSuiteId !== this.crypto.algorithmSuite.id ||
@@ -82,6 +87,10 @@ export class CopyRecoveryWordsUseCase {
               !(await this.crypto.verifyDeviceSignKeyPair(
                 backup.devicePublicSignKey,
                 payload.devicePrivateSignKey,
+              )) ||
+              !(await this.crypto.verifyDeviceVaultKeyPair(
+                backup.devicePublicVaultKey,
+                payload.devicePrivateVaultKey,
               ))
             )
               throw new InvalidRecoveryMnemonicError();

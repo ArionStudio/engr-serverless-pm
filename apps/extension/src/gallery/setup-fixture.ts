@@ -17,10 +17,31 @@ export const setupRecovery: SetupRecovery = {
   words: demoWords,
   positions: [3, 11, 19],
 };
-export function gallerySetup(): SetupCapabilities {
-  let vault: SetupVault | null = null;
+export function gallerySetup(
+  mode: "empty" | "multiple" | "existing" | "loading" | "error" = "empty",
+): SetupCapabilities {
+  const multiple = mode === "multiple";
+  const choices = multiple
+    ? [
+        { ...setupVault, unlocked: false },
+        {
+          ...setupVault,
+          vaultId: "work-vault",
+          name: "Work vault",
+          unlocked: false,
+        },
+      ]
+    : [];
+  let vault: SetupVault | null =
+    mode === "existing" ? { ...setupVault, unlocked: false } : null;
   return {
-    inspect: async () => vault,
+    inspect: async (selectedId) => {
+      if (mode === "loading") return new Promise(() => {});
+      if (mode === "error") throw new Error("Inspection unavailable");
+      if (multiple && !vault?.unlocked)
+        vault = choices.find((choice) => choice.vaultId === selectedId) ?? null;
+      return { vault, vaults: multiple ? choices : vault ? [vault] : [] };
+    },
     create: async (params) => {
       vault = {
         ...setupVault,

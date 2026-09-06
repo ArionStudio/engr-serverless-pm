@@ -34,6 +34,7 @@ export type OptionsScenario =
   | "password-unavailable"
   | "device"
   | "connect"
+  | "multiple-vaults"
   | "existing"
   | "loading"
   | "error";
@@ -41,16 +42,22 @@ export function OptionsExample({
   state,
   preference,
   onThemeChange,
-  onRetry,
 }: {
   state: OptionsScenario;
   preference: "light" | "dark" | "system";
   onThemeChange: (preference: "light" | "dark" | "system") => void;
-  onRetry: () => void;
 }) {
   const [savedDuration, setSavedDuration] = useState(600_000);
   const failed = useRef(false);
-  const [setup] = useState(gallerySetup);
+  const [setup] = useState(() =>
+    gallerySetup(
+      state === "multiple-vaults"
+        ? "multiple"
+        : state === "existing" || state === "loading" || state === "error"
+          ? state
+          : "empty",
+    ),
+  );
   const [verification, setVerification] = useState(
     state.startsWith("verification"),
   );
@@ -169,11 +176,6 @@ export function OptionsExample({
       setup={setup}
       preference={preference}
       onThemeChange={onThemeChange}
-      availability={
-        state === "existing" || state === "loading" || state === "error"
-          ? state
-          : "empty"
-      }
       initialStep={
         state === "password-pending" || state === "password-unavailable"
           ? "password"
@@ -184,7 +186,6 @@ export function OptionsExample({
             ? state
             : "welcome"
       }
-      onRetry={onRetry}
       assessPassword={assessPassword}
     />
   );
@@ -255,6 +256,7 @@ export function ScreenExamples() {
               "lock-settings-pending",
               "lock-settings-error",
               "existing",
+              "multiple-vaults",
               "loading",
               "error",
             ] as const
@@ -265,7 +267,6 @@ export function ScreenExamples() {
               state={state}
               preference={preference}
               onThemeChange={setPreference}
-              onRetry={() => setAction("Retry requested")}
             />
           )}
         </Scenario>

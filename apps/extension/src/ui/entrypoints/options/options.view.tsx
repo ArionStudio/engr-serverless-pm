@@ -1,3 +1,4 @@
+import { VaultPicker } from "@/ui/features/vault-access";
 import { VaultLockSettings } from "@/ui/features/settings/vault-lock-settings.view";
 import { SetupRecoveryView } from "@/ui/features/vault-setup/setup-recovery.view";
 import { SetupVaultAccess } from "@/ui/features/vault-setup/setup-vault-access.view";
@@ -20,21 +21,16 @@ import { Button } from "@/ui/components/primitives/button";
 import { cn } from "@/ui/lib/cn.util";
 import { Spinner } from "@/ui/components/primitives/spinner";
 import { StepNavigation } from "@/ui/components/layout/sections.view";
-import type { VaultAvailability } from "../first-launch.type";
 
 export function OptionsView({
   preference,
   onThemeChange,
-  availability,
-  onRetry,
   assessPassword,
   initialStep = "welcome",
   setup,
 }: {
   preference: "light" | "dark" | "system";
   onThemeChange: (preference: "light" | "dark" | "system") => void;
-  availability: VaultAvailability;
-  onRetry: () => void;
   assessPassword: AssessPassword;
   initialStep?: SetupStep;
   setup: SetupCapabilities;
@@ -59,7 +55,6 @@ export function OptionsView({
   }, [
     step,
     settings,
-    availability,
     live.recovery,
     live.verifying,
     live.vault?.vaultId,
@@ -112,13 +107,35 @@ export function OptionsView({
           "mx-auto space-y-8 px-5 py-8 @lg:py-12",
           !settings &&
             !live.vault &&
-            availability === "empty" &&
+            live.vaults.length === 0 &&
             step === "welcome"
             ? "max-w-4xl"
             : "max-w-xl",
         )}
       >
+        {!settings &&
+        !live.recovery &&
+        !live.vault?.unlocked &&
+        live.vaults.length > 0 ? (
+          <VaultPicker
+            vaults={live.vaults.map(({ vaultId, name }) => ({
+              id: vaultId,
+              name,
+              deviceLabel: "This browser",
+            }))}
+            value={live.vault?.vaultId ?? null}
+            loading={live.pending}
+            onChange={(vaultId) => {
+              void live.selectVault(vaultId);
+            }}
+          />
+        ) : null}
         <div ref={content} tabIndex={-1} className="outline-none">
+          {!live.vault && live.error ? (
+            <p role="alert" className="mb-5 text-sm text-destructive">
+              {live.error}
+            </p>
+          ) : null}
           {settings ? (
             <section className="space-y-6">
               <h1 className="text-2xl font-semibold tracking-tight">
@@ -176,22 +193,28 @@ export function OptionsView({
                 void live.lock();
               }}
             />
-          ) : availability === "loading" || live.loading ? (
+          ) : live.loading ? (
             <p role="status" className="flex items-center gap-2 text-sm">
               <Spinner />
               Checking this browser…
             </p>
-          ) : availability === "error" ? (
+          ) : live.inspectionFailed ? (
             <section className="space-y-6">
               <h1 className="text-2xl font-semibold tracking-tight">
                 Couldn’t check local vaults
               </h1>
-              <Button onClick={onRetry}>Try again</Button>
+              <Button
+                onClick={() => {
+                  void live.retry();
+                }}
+              >
+                Try again
+              </Button>
             </section>
-          ) : availability === "existing" ? (
+          ) : live.vaults.length > 0 ? (
             <section className="space-y-6">
               <h1 className="text-2xl font-semibold tracking-tight">
-                Local vault found
+                Choose a vault
               </h1>
               <Button variant="outline" onClick={showSettings}>
                 Change appearance
@@ -249,11 +272,6 @@ export function OptionsView({
                 <SetupConnection onBack={reset} />
               ) : step === "password" ? (
                 <>
-                  {live.error ? (
-                    <p role="alert" className="mb-5 text-sm text-destructive">
-                      {live.error}
-                    </p>
-                  ) : null}
                   <SetupPassword
                     value={draft}
                     onChange={setDraft}

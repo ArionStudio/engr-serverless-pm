@@ -44,22 +44,22 @@ library's dependencies; they do not defer non-setup components until after scree
 
 ## Decision register
 
-| ID  | Decision                                                                                   | Evidence and status                                                                                                            |
-| --- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| D01 | Setup lives entirely on the existing options page.                                         | User confirmed, 2026-09-04 23:25 UTC.                                                                                          |
-| D02 | With no local vault, popup shows **Set up vault**, which opens options.                    | User confirmed, 2026-09-04 23:50 UTC.                                                                                          |
-| D03 | Options offers creation and connection to an existing vault.                               | Working baseline inferred from the supported journeys; user rejected asking this as an unnecessary question, 23:57 UTC.        |
-| D04 | Options supports the full application; popup provides quick actions.                       | User confirmed, 23:57 UTC, conditional on appropriate security. The browser-context rationale is in the architecture document. |
-| D05 | Use preset `b2CjQp4R0` exactly, including Hugeicons.                                       | User confirmed, 23:26 UTC. CLI migration applied; code and UI-003 now use Hugeicons.                                           |
-| D06 | Follow system theme with a saved override; suggest an editable device name.                | User confirmed, 23:57 UTC. Use a neutral fallback if environment detection is unavailable.                                     |
-| D07 | Require master-password confirmation and reveal controls.                                  | User confirmed, 23:57 UTC. No claim that confirmation proves memorization.                                                     |
-| D08 | Verify three random recovery-word positions using the saved copy.                          | User confirmed, 23:59 UTC. Distinct positions and stable retries are proposed details.                                         |
-| D09 | Offer optional S3 setup after local vault setup.                                           | User confirmed, 23:57 UTC.                                                                                                     |
-| D10 | Review components in a development-only gallery.                                           | User confirmed, 23:57 UTC. Include themes and interaction states.                                                              |
-| D11 | Provide copy and multiple recovery export formats with clear safety guidance.              | User requested, 2026-09-05 00:07 UTC. PDF, TXT and print are the proposed set; implementation safety remains to be validated.  |
-| D12 | Default lock duration is 10 minutes, editable during setup and later, local to the device. | User confirmed, 00:07 UTC. Inactivity semantics and preference persistence are not yet approved or implemented.                |
-| D13 | Research step layout and the post-setup destination.                                       | User requested, 00:07 UTC. The guided sequence and empty-vault landing are recommendations, not measured usability results.    |
-| D14 | Define a frontend architecture using feature-based slices or a suitable equivalent.        | User requested during documentation work. The architecture document is the proposed adaptation.                                |
+| ID  | Decision                                                                                   | Evidence and status                                                                                                                                          |
+| --- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| D01 | Setup lives entirely on the existing options page.                                         | User confirmed, 2026-09-04 23:25 UTC.                                                                                                                        |
+| D02 | With no local vault, popup shows **Set up vault**, which opens options.                    | User confirmed, 2026-09-04 23:50 UTC.                                                                                                                        |
+| D03 | Options offers creation and connection to an existing vault.                               | Working baseline inferred from the supported journeys; user rejected asking this as an unnecessary question, 23:57 UTC.                                      |
+| D04 | Options supports the full application; popup provides quick actions.                       | User confirmed, 23:57 UTC, conditional on appropriate security. The browser-context rationale is in the architecture document.                               |
+| D05 | Use preset `b2CjQp4R0` exactly, including Hugeicons.                                       | User confirmed, 23:26 UTC. CLI migration applied; code and UI-003 now use Hugeicons.                                                                         |
+| D06 | Follow system theme with a saved override; suggest an editable device name.                | User confirmed, 23:57 UTC. Use a neutral fallback if environment detection is unavailable.                                                                   |
+| D07 | Require master-password confirmation and reveal controls.                                  | User confirmed, 23:57 UTC. No claim that confirmation proves memorization.                                                                                   |
+| D08 | Verify three random recovery-word positions using the saved copy.                          | User confirmed, 23:59 UTC. Distinct positions and stable retries are proposed details.                                                                       |
+| D09 | Offer optional S3 setup after local vault setup.                                           | User confirmed, 23:57 UTC.                                                                                                                                   |
+| D10 | Review components in a development-only gallery.                                           | User confirmed, 23:57 UTC. Include themes and interaction states.                                                                                            |
+| D11 | Provide copy and multiple recovery export formats with clear safety guidance.              | User requested, 2026-09-05 00:07 UTC. TXT, print (including browser Save as PDF), and copy are implemented; saving is confirmed by the three-word challenge. |
+| D12 | Default lock duration is 10 minutes, editable during setup and later, local to the device. | User confirmed, 00:07 UTC. Persisted per vault in this browser; the duration applies from the next unlock, not from inactivity.                              |
+| D13 | Research step layout and the post-setup destination.                                       | User requested, 00:07 UTC. The guided sequence and empty-vault landing are recommendations, not measured usability results.                                  |
+| D14 | Define a frontend architecture using feature-based slices or a suitable equivalent.        | User requested during documentation work. The architecture document is the proposed adaptation.                                                              |
 
 Later user clarifications supersede the initial setup-first implementation order:
 
@@ -96,19 +96,18 @@ Later user clarifications supersede the initial setup-first implementation order
 | Gap                         | Why it matters                                                                 | Proposed next action                                                                                       |
 | --------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
 | Complete disaster recovery  | Words alone cannot restore a lost installation.                                | Define backup artifacts and import verification separately; do not label a word sheet a full vault backup. |
-| UI integration              | Composition exists, but entrypoints do not call it.                            | Inject narrow use-case capabilities into feature controllers.                                              |
+| Remaining UI integration    | Existing-vault enrollment and entry/sync screens are not connected yet.        | Inject narrow use-case capabilities as those feature screens are built.                                    |
 | Later settings/read screens | Device, tag, and configuration summaries lack dedicated public read workflows. | Add explicit read contracts when those slices are implemented.                                             |
 
 ## Delivery sequence
 
-1. Complete the full [component specification](./component-specification.md).
-2. Apply the exact preset, align aliases/icon conventions, and create the gallery.
-3. Build all base controls, product-component families and reusable forms in the
-   specification. Review their states in the gallery using synthetic data.
-4. Assemble screens from the reviewed library, starting with vault setup.
-5. Connect composed use cases after their contracts are ready. Resolve recovery
-   continuation, export and local lock behavior before shipping the setup flow.
+The preset, component library, gallery, and new-vault Options flow are implemented.
+Setup includes recovery saving and verification, interrupted-setup continuation,
+lock/unlock, and persistent device-local lock preferences. Runtime checks are
+recorded in [the setup flow](./vault-setup.md).
 
-The authorized library implementation now includes CLI-generated controls and
-Table 9.2.4. New-vault setup now connects to the core use cases. The component gallery can
-proceed independently of unresolved recovery contracts; production setup cannot.
+1. Complete the remaining library-wide visual and accessibility acceptance checks.
+2. Build existing-vault enrollment and entry screens from the reviewed components.
+3. Resolve the documented sync/read contract gaps before connecting those workflows.
+4. Implement site icons at the entries/settings integration milestone in the
+   [favicon plan](./favicon-review.md#planned-work-and-implementation-triggers).

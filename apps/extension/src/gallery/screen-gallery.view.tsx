@@ -73,6 +73,7 @@ const screens: readonly {
     name: "Unlock vault",
     states: [
       { id: "locked", label: "Default" },
+      { id: "multiple-vaults", label: "Multiple local vaults" },
       { id: "unlock-pending", label: "Unlocking" },
       { id: "unlock-error", label: "Error" },
     ],
@@ -302,7 +303,6 @@ export function ScreenGallery() {
                   state={state}
                   preference={theme}
                   onThemeChange={setTheme}
-                  onRetry={() => setNotice("Retry requested")}
                 />
               )}
             </div>

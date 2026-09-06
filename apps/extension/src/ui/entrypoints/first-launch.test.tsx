@@ -76,8 +76,6 @@ describe("first-launch screens", () => {
         setup: gallerySetup(),
         preference: "light",
         onThemeChange: vi.fn(),
-        availability: "empty",
-        onRetry: vi.fn(),
         assessPassword,
       }),
     );
@@ -136,16 +134,14 @@ describe("first-launch screens", () => {
   it("does not route an existing vault into first-time creation", async () => {
     render(
       createElement(OptionsView, {
-        setup: gallerySetup(),
+        setup: gallerySetup("existing"),
         preference: "light",
         onThemeChange: vi.fn(),
-        availability: "existing",
-        onRetry: vi.fn(),
         assessPassword,
       }),
     );
     expect(
-      await screen.findByRole("heading", { name: "Local vault found" }),
+      await screen.findByRole("heading", { name: "Unlock vault" }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("radio", { name: "New vault" }),
