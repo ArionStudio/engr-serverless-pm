@@ -59,7 +59,8 @@ export function SetupWelcome({
         {setupOptions.map((option) => (
           <Card
             key={option.value}
-            className="gap-0 border p-0 ring-0 has-[[data-checked]]:border-primary has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-4 has-[:focus-visible]:outline-ring"
+            data-focus-group
+            className="gap-0 border p-0 ring-0 has-[[data-checked]]:border-primary"
           >
             <label
               htmlFor={`${id}-${option.value}`}

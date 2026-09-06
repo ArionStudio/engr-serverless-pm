@@ -129,9 +129,10 @@ separate extension contexts coordinate through storage and Web Locks.
 
 `apps/extension/src/core-composition-api.typecheck.ts` remains a compile-only
 public API fixture. The production factory has integration tests using actual
-crypto and storage adapters. The popup currently renders a placeholder and the
-options page exposes theme settings. Calling the factory and exposing its use
-cases in those UIs remains application work outside the core package.
+crypto and storage adapters. The popup opens Options for setup. Options injects
+the live creation, recovery saving/verification, recovery replacement, session
+lock/unlock and local lock-preference capabilities. Existing-vault enrollment and
+entry/sync screen integration remain application work outside the core package.
 
 ## Related documentation
 

@@ -12,6 +12,8 @@ import { PasswordEntryNotFoundError } from "../../errors/vault-entry.errors";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import type { ClipboardClearService } from "../../services/clipboard/clipboard-clear.service";
 
+import { SecretClipboardCopyService } from "../../services/clipboard/secret-clipboard-copy.service";
+
 export type CopyEntryPasswordCommandParams = {
   vaultId: string;
   entryId: string;
@@ -23,14 +25,8 @@ export type CopyEntryPasswordResult = {
 };
 
 export class CopyEntryPasswordUseCase {
-  private readonly clipboard: ClipboardPort;
-  private readonly clipboardClear: ClipboardClearService;
+  private readonly secretCopy: SecretClipboardCopyService;
   private readonly clipboardOperations: ClipboardOperationCoordinatorPort;
-  private readonly clipboardSecretHash: ClipboardSecretHashPort;
-  private readonly ids: IdPort;
-  private readonly clipboardClearTasks: ClipboardClearTaskRepositoryPort;
-  private readonly scheduledTasks: ScheduledTaskPort;
-  private readonly clock: ClockPort;
   private readonly unlockedVaultSession: UnlockedVaultSessionService;
 
   constructor(
@@ -44,14 +40,16 @@ export class CopyEntryPasswordUseCase {
     clock: ClockPort,
     unlockedVaultSession: UnlockedVaultSessionService,
   ) {
-    this.clipboard = clipboard;
-    this.clipboardClear = clipboardClear;
     this.clipboardOperations = clipboardOperations;
-    this.clipboardSecretHash = clipboardSecretHash;
-    this.ids = ids;
-    this.clipboardClearTasks = clipboardClearTasks;
-    this.scheduledTasks = scheduledTasks;
-    this.clock = clock;
+    this.secretCopy = new SecretClipboardCopyService(
+      clipboard,
+      clipboardClear,
+      clipboardSecretHash,
+      ids,
+      clipboardClearTasks,
+      scheduledTasks,
+      clock,
+    );
     this.unlockedVaultSession = unlockedVaultSession;
   }
 
@@ -82,53 +80,7 @@ export class CopyEntryPasswordUseCase {
             );
           }
 
-          const clearScheduledAt = this.clock.now() + params.clearAfterMs;
-          const previousClipboardClearTask =
-            await this.clipboardClearTasks.get();
-
-          if (previousClipboardClearTask !== null) {
-            await this.clipboardClear.clearTask({
-              task: previousClipboardClearTask,
-              requireExpired: false,
-            });
-            await this.scheduledTasks.cancelTask({
-              name: "clearClipboard",
-              actionId: previousClipboardClearTask.actionId,
-            });
-          }
-
-          const actionId = await this.ids.generateId();
-          const copiedValueHash =
-            await this.clipboardSecretHash.hashSecretValue(entry.password);
-
-          await this.clipboardClearTasks.save({
-            actionId,
-            copiedValueHash,
-            expiresAt: clearScheduledAt,
-          });
-
-          try {
-            await this.scheduledTasks.scheduleTask({
-              task: {
-                name: "clearClipboard",
-                actionId,
-              },
-              runAt: clearScheduledAt,
-            });
-          } catch (error) {
-            try {
-              await this.clipboardClearTasks.remove();
-            } catch {
-              // Preserve the schedule failure as the root cause.
-            }
-
-            throw error;
-          }
-
-          // The OS write may commit before the adapter observes a response
-          // failure. Retain ownership so the alarm can clear a committed value
-          // or discard metadata after a hash mismatch.
-          await this.clipboard.writeText(entry.password);
+          await this.secretCopy.copy(entry.password, params.clearAfterMs);
 
           return {
             copied: true,

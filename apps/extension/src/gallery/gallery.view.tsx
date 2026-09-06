@@ -1,3 +1,4 @@
+import { ReviewPageNavigation } from "./review-page-navigation.view";
 import { ScreenExamples } from "./screen-examples.view";
 import { GallerySelection } from "./selection";
 import { componentApi } from "./component-api.generated";
@@ -56,7 +57,7 @@ function systemIsDark() {
   return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 const navigation = [
-  { id: "screens", name: "Current screens", icon: File01Icon },
+  { id: "screens", name: "Screen components", icon: File01Icon },
   { id: "expanded", name: "Tables & controls", icon: GridViewIcon },
   { id: "base", name: "Basic controls", icon: Layers01Icon },
   {
@@ -193,11 +194,7 @@ export function Gallery() {
           <header className="sticky top-0 z-30 flex min-h-16 flex-wrap items-center justify-between gap-3 border-b bg-background px-4 py-3 sm:px-8">
             <div className="flex items-center gap-3">
               <SidebarTrigger />
-              <span className="text-sm text-muted-foreground">Library</span>
-              <span className="text-muted-foreground/50" aria-hidden="true">
-                /
-              </span>
-              <span className="text-sm font-medium">Component review</span>
+              <ReviewPageNavigation current="components" />
             </div>
             <div className="flex flex-wrap items-center gap-4">
               <label className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -256,9 +253,9 @@ export function Gallery() {
                 </h1>
                 <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
                   {catalog.length} families covering {componentApi.length}{" "}
-                  components and compound parts. Review the full library before
-                  we assemble the setup flow. Each example identifies its owning
-                  layer.
+                  components and compound parts. Each example identifies its
+                  owning layer. Open Screens to review each application screen
+                  directly.
                 </p>
               </div>
               <Button
@@ -364,6 +361,9 @@ export function Gallery() {
                             {variant}
                           </Button>
                         ))}
+                        <Button variant="secondary" aria-pressed="true">
+                          Selected
+                        </Button>
                         <Button disabled>Disabled</Button>
                       </div>
                     </Specimen>

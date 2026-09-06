@@ -179,3 +179,16 @@ header, prominent catalog badge and separate padded demo area. Keep this framing
 consistent when adding examples; it marks the review boundary, not a product
 component's own styling. The frame must not clip overlays or let demo content
 extend into neighboring examples.
+
+## Screen presentations
+
+The managed gallery build serves two review pages:
+
+- `gallery.html`: the component catalog, usage explanations, and variant controls.
+- `screens.html`: application screens with a visible navigation list and state
+  buttons. It includes setup, recovery, unlocking, completion, and settings.
+
+Use the Components / Screens links in either page header to switch. Screen URLs
+support direct links such as `screens.html#password` or `screens.html#settings`.
+The screen list remains visible on narrow layouts. Both pages use gallery-only
+fixtures and stay excluded from the production extension build.

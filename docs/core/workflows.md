@@ -2,7 +2,7 @@
 
 Status: current implementation
 
-The root `@lfspm/core` entry point exports 33 use-case classes. Each class has
+The root `@lfspm/core` entry point exports 35 use-case classes. Each class has
 one `execute` method and represents an application workflow. Runtime code
 constructs the classes with shared services and port implementations.
 
@@ -16,6 +16,7 @@ constructs the classes with shared services and port implementations.
 | `LockVaultUseCase`            | Removes the owned session and scheduled lock state and coordinates clipboard cleanup                                                                   |
 | `DeleteLocalVaultUseCase`     | Runs lifecycle cleanup and removes the selected vault's local persisted records                                                                        |
 | `ChangeMasterPasswordUseCase` | Verifies the active device and current password, then atomically rewraps local device access under the new password while preserving recovery access   |
+| `ReplaceRecoveryWordsUseCase` | Replaces the current local recovery wrapper under the active session, preserving password access and atomically advancing the access-record generation |
 
 ## Vault entries
 
@@ -38,11 +39,12 @@ constructs the classes with shared services and port implementations.
 
 ## Session and clipboard
 
-| Use case                       | Behavior                                                                                                                  |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| `GetVaultSessionStatusUseCase` | Reports `locked` or the ID of the active unlocked vault without decrypting the session payload                            |
-| `CopyEntryPasswordUseCase`     | Copies a password, records ownership of the copied value, and schedules an owned clear action                             |
-| `ClearClipboardTaskUseCase`    | Clears only the clipboard value still owned by the expected action and reports why a stale or changed value was preserved |
+| Use case                       | Behavior                                                                                                                                   |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GetVaultSessionStatusUseCase` | Reports `locked` or the ID of the active unlocked vault without decrypting the session payload                                             |
+| `CopyEntryPasswordUseCase`     | Copies a password, records ownership of the copied value, and schedules an owned clear action                                              |
+| `CopyRecoveryWordsUseCase`     | Validates words against current paired recovery data and recovered device keys, then uses shared clipboard ownership and scheduled cleanup |
+| `ClearClipboardTaskUseCase`    | Clears only the clipboard value still owned by the expected action and reports why a stale or changed value was preserved                  |
 
 ## Sync
 
@@ -76,9 +78,11 @@ storage rollback.
 ## Diagrams
 
 The [V1 use-case diagrams](../v1/use-case/README.md) provide activity diagrams
-for 27 of the 33 workflows, plus sequence and state-machine views. The six use
+for 27 of the 35 workflows, plus sequence and state-machine views. The eight use
 cases without a dedicated activity diagram are:
 
+- `ReplaceRecoveryWordsUseCase`
+- `CopyRecoveryWordsUseCase`
 - `CompleteProviderCredentialRevocationUseCase`
 - `CreateDeviceEnrollmentRequestUseCase`
 - `PrepareDeviceEnrollmentConsumptionUseCase`

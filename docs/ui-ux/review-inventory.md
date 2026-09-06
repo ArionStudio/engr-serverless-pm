@@ -1,6 +1,6 @@
 # Review inventory and ownership
 
-Updated 2026-09-05. All **75 catalog IDs** have rendered gallery examples: 38 base controls, 28 presentation families, seven forms and two current screen views. IDs describe review scope, not file count. Status for every row is **implemented for review**. Visual approval, full accessibility acceptance and connected extension workflows are still pending.
+Updated 2026-09-06. All **75 catalog IDs** have rendered gallery examples: 38 base controls, 28 presentation families, seven forms and two current screen views. IDs describe review scope, not file count. Status for every row is **implemented for review**. Full visual/accessibility acceptance remains pending. New-vault setup, recovery saving/verification, interrupted-setup continuation and local lock settings are connected in the production extension; enrollment and entry/sync screens remain follow-up work.
 
 Use the gallery collection navigation or **Find a component or widget**. Theme, canvas width and **Reset examples** apply to every collection. State selectors expose synthetic outcomes; buttons call local drivers. The gallery uses no connected vault, network operation, clipboard write, real download, print job or trust verification.
 
@@ -207,10 +207,10 @@ lists its members; the finder includes each named member. The one explicitly
 nonvisual runtime module, ThemeProvider, is documented under P08 and reviewed
 through controlled ThemeToggle state.
 
-| Added family | Actual implementation | Review boundary |
-| --- | --- | --- |
-| S01 | `ui/entrypoints/popup/popup.view.tsx` | First-launch handoff, loading/existing/error states |
-| S02 | `ui/entrypoints/options/options.view.tsx` | Setup choices, password/device preview, connection explanation, appearance |
+| Added family | Actual implementation                     | Review boundary                                                            |
+| ------------ | ----------------------------------------- | -------------------------------------------------------------------------- |
+| S01          | `ui/entrypoints/popup/popup.view.tsx`     | First-launch handoff, loading/existing/error states                        |
+| S02          | `ui/entrypoints/options/options.view.tsx` | Setup choices, password/device preview, connection explanation, appearance |
 
 Supported visual prop values come from TypeScript rather than a second handwritten
 option list. Each chooser binds to an actual implementation in the fixture recipe.
@@ -276,7 +276,19 @@ node docs/ui-ux/verification/unpacked.verify.cjs
 References: [Vite module preload configuration](https://vite.dev/config/build-options.html#build-modulepreload)
 and [Chrome's unpacked extension loader](https://chromedevtools.github.io/devtools-protocol/tot/Extensions/#method-loadUnpacked).
 
-## First-launch screen implementation
+## Current live setup
+
+Options uses one authoritative vault/session inspection for selection, loading,
+errors and retries. It follows the active vault; multiple locked vaults require a
+choice. The gallery includes that state alongside the real setup components and
+uses isolated drivers. Current behavior and runtime evidence are recorded in
+[First-vault setup](./vault-setup.md).
+
+## Historical first-launch screen implementation
+
+The following implementation entries preserve evidence from before live setup was
+connected. Their preview/cancellation boundaries describe that earlier revision;
+they are superseded by the current setup flow linked above.
 
 The extension now renders the same first-launch views reviewed in S01/S02.
 **Set up vault** opens Chrome’s real options page. Options offers create/connect
@@ -454,6 +466,5 @@ repeats that explanation in a footer.
 ## Lock duration contract
 
 Setup and gallery controls share labels derived from the core
-`AVAILABLE_VAULT_LOCK_DELAYS_MS` list. Drafts use milliseconds and default to
-600000. All five supported durations appear in P07, UnlockForm,
+`AVAILABLE_VAULT_LOCK_DELAYS_MS` list. Drafts use milliseconds and default to 600000. All five supported durations appear in P07, UnlockForm,
 DeviceSettingsForm and the setup device screen.

@@ -95,6 +95,77 @@ describe("production extension composition", () => {
     expect(browser.fetch).not.toHaveBeenCalled();
   });
 
+  it("replaces recovery words without losing password access, and copies only current words", async () => {
+    const browser = installBrowser();
+    const app = composeExtensionApplication(database);
+    const initial = await app.initializeVault.execute({
+      masterPassword,
+      deviceName: "Recovery test",
+      lockAfterMs: 60_000,
+    });
+    const status = await app.getVaultSessionStatus.execute();
+    if (status.status !== "unlocked")
+      throw new Error("Expected unlocked vault");
+    const { vaultId } = status;
+    const replaced = await app.replaceRecoveryWords.execute({ vaultId });
+    expect(replaced.recoveryMnemonicKey.words).toHaveLength(24);
+    expect(replaced.recoveryMnemonicKey.words).not.toEqual(
+      initial.recoveryMnemonicKey.words,
+    );
+    await expect(
+      app.copyRecoveryWords.execute({
+        vaultId,
+        mnemonic: initial.recoveryMnemonicKey,
+      }),
+    ).rejects.toThrow();
+    expect(browser.clipboard()).toBe("unrelated clipboard");
+    await app.copyRecoveryWords.execute({
+      vaultId,
+      mnemonic: replaced.recoveryMnemonicKey,
+    });
+    expect(browser.clipboard()).toBe(
+      replaced.recoveryMnemonicKey.words.join(" "),
+    );
+    await app.lockVault.execute();
+    expect(browser.clipboard()).toBe("");
+    await expect(
+      app.replaceRecoveryWords.execute({ vaultId }),
+    ).rejects.toThrow();
+    await expect(
+      app.copyRecoveryWords.execute({
+        vaultId,
+        mnemonic: replaced.recoveryMnemonicKey,
+      }),
+    ).rejects.toThrow();
+    await app.unlockVault.execute({
+      vaultId,
+      masterPassword,
+      lockAfterMs: 60_000,
+    });
+    expect(await app.getVaultSessionStatus.execute()).toEqual({
+      status: "unlocked",
+      vaultId,
+    });
+    expect((await app.listLocalVaults.execute()).vaults).toHaveLength(1);
+    await app.lockVault.execute();
+    const replacementPassword =
+      "Orbit!Cedar-91-Quiet-Valley" as RawMasterPassword;
+    await app.recoverDeviceAccess.execute({
+      vaultId,
+      recoveryMnemonicKey: replaced.recoveryMnemonicKey,
+      newMasterPassword: replacementPassword,
+    });
+    await app.unlockVault.execute({
+      vaultId,
+      masterPassword: replacementPassword,
+      lockAfterMs: 60_000,
+    });
+    expect(await app.getVaultSessionStatus.execute()).toEqual({
+      status: "unlocked",
+      vaultId,
+    });
+  });
+
   it("persists a vault and coordinates session replacement, clipboard cleanup, and background locking", async () => {
     const browser = installBrowser();
     const app = composeExtensionApplication(database);

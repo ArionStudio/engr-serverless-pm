@@ -2,7 +2,7 @@ import type { ExtensionApplication } from "./extension-application";
 
 // One lazy application graph per extension context, never constructed in render.
 let application: Promise<ExtensionApplication> | undefined;
-function getApplication() {
+export function getApplication() {
   application ??= import("./extension-application")
     .then(({ composeExtensionApplication }) => composeExtensionApplication())
     .catch((error: unknown) => {

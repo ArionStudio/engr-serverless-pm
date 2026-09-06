@@ -12,6 +12,8 @@ export function SetupDevice({
   onDurationChange,
   onBack,
   onFinish,
+  pending = false,
+  error,
 }: {
   name: string;
   onNameChange: (name: string) => void;
@@ -19,29 +21,46 @@ export function SetupDevice({
   onDurationChange: (duration: number) => void;
   onBack: () => void;
   onFinish: () => void;
+  pending?: boolean;
+  error?: string;
 }) {
   return (
-    <div className="space-y-6">
+    <form
+      className="space-y-6"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!pending && name.trim()) onFinish();
+      }}
+    >
       <h1 className="text-2xl font-semibold tracking-tight">Device settings</h1>
-      <TextField
-        label="Device name"
-        placeholder="Home laptop"
-        value={name}
-        maxLength={80}
-        onChange={(event) => onNameChange(event.target.value)}
-      />
-      <LockDurationField
-        value={duration}
-        onChange={onDurationChange}
-        options={vaultLockOptions}
-        description="Time since unlocking, including while you are using the vault."
-      />
-      <div className="flex flex-wrap gap-3">
-        <Button variant="outline" onClick={onBack}>
-          Back to password
-        </Button>
-        <Button onClick={onFinish}>Cancel setup</Button>
-      </div>
-    </div>
+      {error ? (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+      <fieldset disabled={pending} className="space-y-6">
+        <TextField
+          label="Device name"
+          placeholder="Home laptop"
+          value={name}
+          maxLength={80}
+          onChange={(event) => onNameChange(event.target.value)}
+        />
+        <LockDurationField
+          value={duration}
+          onChange={onDurationChange}
+          options={vaultLockOptions}
+          description="Time since unlocking, including while you save recovery words or use the vault."
+        />
+        <div className="flex flex-wrap gap-3">
+          <Button type="button" variant="outline" onClick={onBack}>
+            Back to password
+          </Button>
+          <Button type="submit" disabled={pending || !name.trim()}>
+            {pending ? "Creating vault…" : "Create vault"}
+          </Button>
+        </div>
+      </fieldset>
+    </form>
   );
 }

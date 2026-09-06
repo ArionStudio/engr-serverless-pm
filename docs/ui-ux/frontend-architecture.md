@@ -1,8 +1,9 @@
 # Frontend architecture for popup and options
 
-Status: first-launch screen assembly and popup-to-options navigation are implemented
-as an explicit preview. Roots inject local-vault reads and password assessment;
-creation, enrollment and recovery lifecycle integration remain subsequent work. Existing
+Status: popup-to-options navigation and new-vault setup are implemented. Roots
+inject vault creation, password assessment, recovery-word verification and export,
+interrupted-setup continuation, lock/unlock and device-local lock settings.
+Existing-vault enrollment and entry/sync screen integration remain subsequent work. Existing
 [core architecture](../standards/core-architecture.md) and
 [React/UI standards](../standards/react-and-ui.md) remain authoritative.
 
@@ -188,17 +189,19 @@ easy to reach. Do not promise unload confirmation or reliable async work on clos
 
 ## Implementation and validation sequence
 
-1. Complete the [component-library specification](./component-specification.md)
-   and build all catalog controls, product components and form presentations in
-   the gallery. Feature-owned presentations export an API the gallery can consume.
-2. After library review, introduce screen assembly and shell integration. Reuse
-   current aliases, `cn`, ThemeProvider and composition; avoid unrelated moves.
-3. Resolve the security-relevant gaps in the [setup flow](./vault-setup.md#implementation-gaps)
-   before live workflow integration, then inject only each feature's needed capabilities.
-4. Verify the same entry feature can render in both shells without importing
-   adapters or duplicating core behavior.
-5. Validate lock from another context, stale async completion, popup closure,
-   already-open options, double submission and setup interruption.
+The library, gallery and new-vault shell integration are implemented. Setup injects
+its composed capabilities for creation, recovery saving/verification, continuation,
+lock/unlock and local lock settings. It follows the active vault; multiple locked
+vaults require an explicit selection, retained across lock/unlock in this page.
+
+1. Keep every component and variant reviewable as enrollment and entry screens grow.
+2. Resolve the remaining [setup contracts](./vault-setup.md#implementation-gaps)
+   for enrollment and complete disaster recovery at their implementation milestones.
+3. Integrate entry and sync features through narrow capabilities, reusing current
+   aliases, `cn`, ThemeProvider and composition.
+4. Verify shared features in both shells without adapter imports or duplicated core behavior.
+5. Retain regression checks for cross-context locking, stale async completion,
+   popup closure, already-open options, double submission and setup interruption.
 
 Test presentation transitions with synthetic data, integration with real composed
 use cases where practical, and the extension runtime in Chrome for cross-context
