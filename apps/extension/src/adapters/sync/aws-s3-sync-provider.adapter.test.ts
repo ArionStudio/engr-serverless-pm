@@ -1273,6 +1273,32 @@ describe("AwsS3SyncProviderAdapter", () => {
     expect(client.deleteObject).not.toHaveBeenCalled();
   });
 
+  it.each(["NoSuchBucket", "UnknownProviderFailure"])(
+    "does not treat a %s 404 as an accessible bucket or an absent vault",
+    async (code) => {
+      const client = createClient();
+      const failure = awsError(code, 404);
+      vi.mocked(client.getObject).mockRejectedValue(failure);
+      const provider = createTestProvider(client);
+
+      await expect(
+        provider.checkVaultAccess(syncAccess, descriptor.vaultId),
+      ).rejects.toBe(failure);
+      await expect(
+        provider.getLatestVaultSnapshotDescriptor(syncAccess, descriptor.vaultId),
+      ).rejects.toBe(failure);
+      await expect(
+        provider.prepareVaultSnapshotRemoval(
+          syncAccess,
+          descriptor.vaultId,
+          expectedRemoteSnapshotIdentity,
+        ),
+      ).rejects.toBe(failure);
+      expect(client.putObject).not.toHaveBeenCalled();
+      expect(client.deleteObject).not.toHaveBeenCalled();
+    },
+  );
+
   it("maps only definitive credential rejection and propagates ambiguous authorization failures", async () => {
     const client = createClient();
     const accessibleBody = responseBody("{").Body;

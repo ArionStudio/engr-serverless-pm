@@ -1,10 +1,54 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { gallerySync } from "@/gallery/sync-fixture";
 import { SyncPage } from "./sync-page.view";
 
 afterEach(cleanup);
+
+it("keeps the tested location fixed until the access check finishes", async () => {
+  const capabilities = gallerySync();
+  let finish = () => {};
+  capabilities.test = vi.fn(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  render(
+    <SyncPage
+      vaultId="gallery-vault"
+      capabilities={capabilities}
+      onBack={() => {}}
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: "I already have storage" }),
+  );
+  fireEvent.change(screen.getByLabelText("Bucket"), {
+    target: { value: "tested-bucket" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Test access" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "S3 setup instructions" }),
+  );
+  expect(screen.queryByRole("region", { name: "S3 storage setup" })).toBeNull();
+  expect(capabilities.test).toHaveBeenCalledWith(
+    "gallery-vault",
+    expect.objectContaining({ bucket: "tested-bucket" }),
+  );
+  await act(async () => finish());
+  fireEvent.click(
+    screen.getByRole("button", { name: "S3 setup instructions" }),
+  );
+  expect(screen.getByRole("region", { name: "S3 storage setup" })).toBeTruthy();
+});
 
 it("carries manual setup values into the connection form without contacting S3", async () => {
   const capabilities = gallerySync();

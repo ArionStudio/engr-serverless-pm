@@ -88,7 +88,11 @@ export function SyncPage({
           ) : (
             <div className="max-w-xl space-y-6">
               {!sync.repairing ? (
-                <Button variant="outline" onClick={() => setShowGuide(true)}>
+                <Button
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => setShowGuide(true)}
+                >
                   S3 setup instructions
                 </Button>
               ) : null}

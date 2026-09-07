@@ -273,6 +273,7 @@ export function ScreenExamples() {
           options={
             [
               "sync-setup",
+              "sync-access-pending",
               "sync-configured",
               "sync-pending",
               "sync-error",

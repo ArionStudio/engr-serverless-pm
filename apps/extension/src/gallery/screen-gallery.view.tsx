@@ -26,6 +26,7 @@ const screens: readonly {
     name: "Sync",
     states: [
       { id: "sync-setup", label: "Set up" },
+      { id: "sync-access-pending", label: "Pending access check" },
       { id: "sync-configured", label: "Configured" },
       { id: "sync-pending", label: "Pending upload" },
       { id: "sync-error", label: "Connection error" },

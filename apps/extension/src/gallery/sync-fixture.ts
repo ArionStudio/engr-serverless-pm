@@ -63,6 +63,7 @@ export const syncReview: PrepareSyncReviewResult = {
 };
 export type SyncScenario =
   | "sync-setup"
+  | "sync-access-pending"
   | "sync-configured"
   | "sync-pending"
   | "sync-error"
@@ -72,13 +73,17 @@ export function gallerySync(
   scenario: SyncScenario = "sync-setup",
 ): SyncCapabilities {
   let target: SyncLocation | null =
-    scenario === "sync-setup" ? null : { ...syncLocation };
+    scenario === "sync-setup" || scenario === "sync-access-pending"
+      ? null
+      : { ...syncLocation };
   return {
     origin: "chrome-extension://abcdefghijklmnopabcdefghijklmnop",
     copySetupText: async () => {},
     inspect: async () =>
       scenario === "sync-loading" ? new Promise(() => {}) : target,
-    test: async () => {},
+    test: async () => {
+      if (scenario === "sync-access-pending") await new Promise(() => {});
+    },
     configure: async (_vaultId, input) => {
       target = {
         bucket: input.bucket,
