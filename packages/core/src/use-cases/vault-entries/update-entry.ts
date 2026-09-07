@@ -1,3 +1,7 @@
+import {
+  captureExpectedEntryVersion,
+  requireExpectedEntryVersion,
+} from "../../domain/entry/entry-version.policy";
 import { passwordEntryInputSchema } from "../../domain/entry/password-entry.schema";
 import { sanitizeEntryUrl } from "../../domain/entry/sanitized-entry-url.utils";
 import { updatePasswordEntryInVault } from "../../domain/vault/vault-entry.mutations";
@@ -16,6 +20,7 @@ import type { SyncUploadStatus } from "../../domain/sync/sync-upload-status.type
 export type UpdateEntryCommandParams = {
   vaultId: string;
   entryId: string;
+  expectedEntryVersionVector: Readonly<VersionVector>;
   allowWeakPassword?: boolean;
   entry: {
     password: string;
@@ -48,19 +53,28 @@ export class UpdateEntryUseCase {
   }
 
   async execute(params: UpdateEntryCommandParams): Promise<UpdateEntryResult> {
+    const { vaultId, entryId } = params;
+    const expectedEntryVersion = captureExpectedEntryVersion(
+      params.expectedEntryVersionVector,
+    );
     const { sessionId, sourceSnapshotVersionVector, unlockedVault } =
       await this.unlockedVaultSession.requireUnlockedVaultContext(
-        params.vaultId,
+        vaultId,
         "update entry",
       );
 
     const entryIndex = unlockedVault.vault.entries.findIndex(
-      (entry) => entry.id === params.entryId,
+      (entry) => entry.id === entryId,
     );
 
     if (entryIndex === -1) {
-      throw new PasswordEntryNotFoundError(params.vaultId, params.entryId);
+      throw new PasswordEntryNotFoundError(vaultId, entryId);
     }
+
+    requireExpectedEntryVersion(
+      unlockedVault.vault.entries[entryIndex].versionVector,
+      expectedEntryVersion,
+    );
 
     let sanitizedUrl: string;
 
@@ -89,7 +103,7 @@ export class UpdateEntryUseCase {
     }
 
     const syncState = await this.vaultSyncGuard.prepareLocalMutation(
-      params.vaultId,
+      vaultId,
       unlockedVault,
       sourceSnapshotVersionVector,
     );
@@ -98,7 +112,7 @@ export class UpdateEntryUseCase {
       ...unlockedVault,
       vault: updatePasswordEntryInVault(
         unlockedVault.vault,
-        params.entryId,
+        entryId,
         entryPayloadResult.data,
         unlockedVault.deviceId,
       ),
@@ -106,7 +120,7 @@ export class UpdateEntryUseCase {
     const { persistedSnapshot, preparedRestore } =
       await this.unlockedVaultSession.persistForActiveSession(
         sessionId,
-        params.vaultId,
+        vaultId,
         async () => {
           const preparedRestore =
             syncState.syncAccess === undefined
@@ -117,7 +131,7 @@ export class UpdateEntryUseCase {
                 );
           const persistedSnapshot =
             await this.vaultSnapshot.persistUnlockedVault(
-              params.vaultId,
+              vaultId,
               updatedUnlockedVault,
               sourceSnapshotVersionVector,
               syncState.remoteSnapshotIdentity === undefined
@@ -142,7 +156,7 @@ export class UpdateEntryUseCase {
       }
 
       syncUpload = await this.vaultSyncGuard.uploadPersistedLocalMutation(
-        params.vaultId,
+        vaultId,
         syncState,
         persistedSnapshot.snapshot,
         persistedSnapshot.trustedSnapshotContext.snapshotDigest,
@@ -173,7 +187,7 @@ export class UpdateEntryUseCase {
     }
 
     return {
-      entryId: params.entryId,
+      entryId,
       snapshotVersionVector: persistedSnapshot.snapshotVersionVector,
       revisionTimestamp: persistedSnapshot.revisionTimestamp,
       syncUpload,

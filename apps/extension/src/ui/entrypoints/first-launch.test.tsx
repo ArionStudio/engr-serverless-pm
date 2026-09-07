@@ -1,3 +1,4 @@
+import { gallerySync } from "@/gallery/sync-fixture";
 import { gallerySetup } from "@/gallery/setup-fixture";
 // @vitest-environment jsdom
 import { createElement } from "react";
@@ -73,6 +74,7 @@ describe("first-launch screens", () => {
     const user = userEvent.setup();
     render(
       createElement(OptionsView, {
+        sync: gallerySync(),
         setup: gallerySetup(),
         preference: "light",
         onThemeChange: vi.fn(),
@@ -134,6 +136,7 @@ describe("first-launch screens", () => {
   it("does not route an existing vault into first-time creation", async () => {
     render(
       createElement(OptionsView, {
+        sync: gallerySync(),
         setup: gallerySetup("existing"),
         preference: "light",
         onThemeChange: vi.fn(),

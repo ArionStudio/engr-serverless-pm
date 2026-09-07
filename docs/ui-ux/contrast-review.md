@@ -13,11 +13,10 @@ The variant follow-up separately selected all 263 supported options in both
 themes at both widths, for 1,052 selections and 117,364 measurements. It also
 returned zero contrast failures, browser errors or overflowing examples.
 
-The verification scripts record the browser version, measurement count, state
-list, per-entry minimum ratios, failures and browser errors in local JSON reports.
-These generated reports are not committed; use the commands below to reproduce them.
-These are gallery measurements, not a claim that every possible future screen
-composition or arbitrary consumer-supplied color is accessible.
+These historical measurements guided the token corrections below. The custom
+contrast and exhaustive variant audit scripts were removed at the user's request
+on 2026-09-06. Visual review belongs in the gallery; automated tests cover product
+behavior. Historical measurements do not guarantee future screen accessibility.
 
 ## Requirements
 
@@ -34,17 +33,17 @@ card border is different from the boundary needed to locate a text field.
 
 ## Corrections
 
-| Problem measured before the fix | Change |
-| --- | --- |
-| Input boundaries around 1.22:1 in light mode and 1.67:1 in dark mode | Separate the opaque `input` boundary token from the existing translucent `input-surface` fill |
-| Light-mode destructive labels at 3.97:1 | Darker error color; also adjusted dark-mode error color after its hover state failed |
-| Dark-mode links at 2.16:1 and progress/range indicators around 1.69:1 | Lighter violet with a dark primary foreground in dark mode |
-| Tag-input placeholders inherited a half-opacity foreground | Use the explicit muted text token |
-| Tag removal faded the entire control, including its focus outline | Use muted icon color with full element opacity |
-| Inactive table sort arrows below 3:1 | Use muted foreground instead of reducing opacity |
-| Focus depended on translucent halos | A shared solid 2px keyboard outline, with a system color under forced colors |
-| Selected controls relied on subtle background differences | Visible inset marks on tabs, toggles, current pagination and selected navigation |
-| Menu readability could depend on the content underneath | Opaque popover background for dropdown and combobox panels |
+| Problem measured before the fix                                       | Change                                                                                                                              |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Input boundaries around 1.22:1 in light mode and 1.67:1 in dark mode  | Separate the opaque `input` boundary token from the existing translucent `input-surface` fill                                       |
+| Light-mode destructive labels at 3.97:1                               | Darker error color; also adjusted dark-mode error color after its hover state failed                                                |
+| Dark-mode links at 2.16:1 and progress/range indicators around 1.69:1 | Lighter violet with a dark primary foreground in dark mode                                                                          |
+| Tag-input placeholders inherited a half-opacity foreground            | Use the explicit muted text token                                                                                                   |
+| Tag removal faded the entire control, including its focus outline     | Use muted icon color with full element opacity                                                                                      |
+| Inactive table sort arrows below 3:1                                  | Use muted foreground instead of reducing opacity                                                                                    |
+| Focus depended on translucent halos                                   | A solid keyboard focus color with a system color under forced colors; subsequently reduced to 1px without outlining page containers |
+| Selected controls relied on subtle background differences             | Visible inset marks on tabs, toggles, current pagination and selected navigation                                                    |
+| Menu readability could depend on the content underneath               | Opaque popover background for dropdown and combobox panels                                                                          |
 
 Resizable handles now use the control-boundary color. Native controls receive the
 appropriate `color-scheme`; sidebar primary/focus colors share the checked tokens.
@@ -54,49 +53,13 @@ intentional accessibility overrides to preset `b2CjQp4R0`, requested after the
 initial exact-preset decision. Preserve and recheck them after shadcn CLI updates.
 The preset alone is not evidence of contrast compliance.
 
-## Reproduce
+## Review changes
 
-Start or restart the production gallery through `serverctl`, then pass the URL
-it returns. The script uses an already installed Playwright module; it does not
-install a package or start a server. Set `PLAYWRIGHT_MODULE` to an installed module
-path when it cannot be resolved normally. `CHROME_BINARY` can select the installed
-Chrome executable.
+Use the component gallery to inspect affected controls in both themes and at
+relevant widths. Check keyboard access, readable field guidance, visible errors,
+and focus. Use browser accessibility tools when a changed color needs checking;
+do not maintain bespoke color calculations or pixel assertions as regression tests.
 
-```bash
-mkdir -p .local/ui-ux/reports
-PLAYWRIGHT_MODULE=/absolute/path/to/playwright \
-CONTRAST_REPORT=.local/ui-ux/reports/gallery-contrast-results.json \
-node docs/ui-ux/verification/contrast.verify.cjs "http://HOST:PORT/gallery.html"
-```
-
-Run the variant and layout matrix against the same managed URL:
-
-```bash
-mkdir -p .local/ui-ux/reports
-PLAYWRIGHT_MODULE=/absolute/path/to/playwright \
-VARIANTS_REPORT=.local/ui-ux/reports/gallery-variants-results.json \
-node docs/ui-ux/verification/gallery-variants.verify.cjs "http://HOST:PORT/gallery.html"
-```
-
-Both scripts use `contrast-measure.cjs` for the color calculations. Each declared
-option is checked independently with the other axes reset between checks; this
-is not a Cartesian product of unrelated props. Opening/closing transitions must
-settle before measurement.
-
-The behavior runner fails on a below-threshold measurement, browser error or missing
-catalog/theme coverage. It measures settled computed colors, converts them to
-browser sRGB, and composites backgrounds and opacity before calculating WCAG
-relative luminance. It checks the foreground/background colors, not antialiased
-text-edge pixels. Browser image conversion has 8-bit precision, so avoid choosing
-new colors that sit exactly on a threshold.
-
-The run is scoped to synthetic gallery content. Native OS select popups,
-forced-color rendering, arbitrary raster images, gradients, future charts, and
-all possible combinations of component props require separate checks. Disabled
-controls are excluded; decorative separators, shadows and skeletons are not
-required to reach 3:1. Icon checks use the current single-color Hugeicons drawing
-style. Focus contrast does not by itself prove that focus is never obscured.
-
-The gallery was also visually inspected in both themes. Production extension
-build, gallery build, extension lint and all eleven gallery interaction
-tests passed. This is contrast verification, not a full WCAG certification.
+The gallery inventory still checks that actual components and their named
+variants are registered. Interaction tests cover behavior such as choosing
+variants, accessible labels, secret concealment and safe cancellation.

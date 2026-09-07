@@ -33,6 +33,7 @@ describe("ReadEntryUseCase", () => {
     });
 
     expect(result).toEqual({
+      entryVersionVector: singlePasswordEntry.versionVector,
       entry: {
         id: singlePasswordEntry.id,
         login: singlePasswordEntry.login,
@@ -41,6 +42,12 @@ describe("ReadEntryUseCase", () => {
       },
     });
     expect(result.entry).not.toHaveProperty("password");
+    result.entryVersionVector[ctx.values.deviceId] = 99;
+    const again = await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      entryId: singlePasswordEntry.id,
+    });
+    expect(again.entryVersionVector).toEqual(singlePasswordEntry.versionVector);
   });
 
   it("fails when the target vault is not unlocked", async () => {

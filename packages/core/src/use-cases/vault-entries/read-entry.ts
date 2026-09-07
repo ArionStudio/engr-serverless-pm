@@ -1,5 +1,6 @@
 import { toVisiblePasswordEntryFields } from "../../domain/entry/password-entry.mapper";
 import type { VisiblePasswordEntryFields } from "../../domain/entry/password-entry.type";
+import type { VersionVector } from "../../domain/versioning/version-vector.type";
 import { PasswordEntryNotFoundError } from "../../errors/vault-entry.errors";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 
@@ -10,6 +11,7 @@ export type ReadEntryCommandParams = {
 
 export type ReadEntryResult = {
   entry: VisiblePasswordEntryFields;
+  entryVersionVector: VersionVector;
 };
 
 export class ReadEntryUseCase {
@@ -36,6 +38,7 @@ export class ReadEntryUseCase {
 
     return {
       entry: toVisiblePasswordEntryFields(entry),
+      entryVersionVector: { ...entry.versionVector },
     };
   }
 }

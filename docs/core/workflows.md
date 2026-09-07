@@ -2,7 +2,7 @@
 
 Status: current implementation
 
-The root `@lfspm/core` entry point exports 35 use-case classes. Each class has
+The root `@lfspm/core` entry point exports 38 use-case classes. Each class has
 one `execute` method and represents an application workflow. Runtime code
 constructs the classes with shared services and port implementations.
 
@@ -23,11 +23,21 @@ constructs the classes with shared services and port implementations.
 | Use case                  | Behavior                                                                                                                               |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `AddEntryUseCase`         | Validates and sanitizes a new entry, enforces password policy unless explicitly overridden, persists a new snapshot, and attempts sync |
-| `UpdateEntryUseCase`      | Replaces an existing entry through the same policy, snapshot, and sync path                                                            |
-| `RemoveEntryUseCase`      | Replaces an entry with a versioned tombstone and persists the mutation                                                                 |
-| `ReadEntryUseCase`        | Returns visible fields for one entry without its password                                                                              |
+| `UpdateEntryUseCase`      | Requires the entry version originally read, then replaces it through the policy, snapshot, and sync path                               |
+| `RemoveEntryUseCase`      | Requires the entry version originally read, then replaces it with a versioned tombstone                                                |
+| `ReadEntryUseCase`        | Returns visible fields without the password and a detached entry version vector                                                        |
 | `SearchEntriesUseCase`    | Validates a search query and returns matching visible fields without passwords                                                         |
 | `GetEntryPasswordUseCase` | Returns the password for one entry from the active unlocked vault                                                                      |
+
+ReadEntry returns `entryVersionVector` alongside `entry`. Editors and delete
+confirmations must retain it and pass it as `expectedEntryVersionVector` to the
+mutation. The core captures that vector before asynchronous work and rejects
+malformed input with `InvalidExpectedEntryVersionError`. A mismatch with the
+current entry raises `PasswordEntryChangedError` before provider or persistence
+work. The caller must reload and let the user review newer values; it must not
+silently retry with a refreshed vector. Snapshot CAS still protects changes
+occurring after the entry comparison. Changes to other entries do not invalidate
+the retained entry version.
 
 ## Password tools
 
@@ -50,10 +60,13 @@ constructs the classes with shared services and port implementations.
 
 | Use case                                      | Behavior                                                                                                                                                                            |
 | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GetSyncConfigurationUseCase`                 | Returns a detached, non-secret sync target for an unlocked vault without exposing credentials or contacting S3                                                                      |
+| `TestSyncAccessUseCase`                       | Validates draft provider settings and probes read access without saving settings or writing remote data                                                                             |
 | `SetupSyncUseCase`                            | Validates provider access, stores device-local encrypted credentials, adds the provider-neutral target to the vault, and uploads the resulting snapshot                             |
+| `UpdateSyncCredentialsUseCase`                | Probes replacement read access for the same target and atomically replaces device-local credentials while retaining pending upload and revocation state                             |
 | `SyncUploadUseCase`                           | Reconciles any tracked upload and conditionally uploads the current signed snapshot                                                                                                 |
 | `PrepareSyncReviewUseCase`                    | Downloads and verifies the remote candidate, compares version vectors, and returns safe or actionable differences without mutating the vault                                        |
-| `ApplySyncResolutionUseCase`                  | Verifies the reviewed local and remote identities, applies explicit item resolutions, persists the merged snapshot, and uploads it conditionally                                    |
+| `ApplySyncResolutionUseCase`                  | Verifies reviewed identities and choices; adopts the exact remote snapshot for all-remote choices, or persists and conditionally uploads a local/mixed resolution                   |
 | `DisableSyncUseCase`                          | Removes expected remote and local sync state; when other devices exist, it also revokes them, removes their profiles, rotates the vault key, and rebuilds the surviving device slot |
 | `CompleteProviderCredentialRevocationUseCase` | Checks old provider access when credentials remain, leaves state pending unless deletion is proven, and reports revocation plus upload status for retry or reconciliation           |
 
@@ -78,11 +91,14 @@ storage rollback.
 ## Diagrams
 
 The [V1 use-case diagrams](../v1/use-case/README.md) provide activity diagrams
-for 27 of the 35 workflows, plus sequence and state-machine views. The eight use
+for 27 of the 38 workflows, plus sequence and state-machine views. The eleven use
 cases without a dedicated activity diagram are:
 
 - `ReplaceRecoveryWordsUseCase`
 - `CopyRecoveryWordsUseCase`
+- `GetSyncConfigurationUseCase`
+- `TestSyncAccessUseCase`
+- `UpdateSyncCredentialsUseCase`
 - `CompleteProviderCredentialRevocationUseCase`
 - `CreateDeviceEnrollmentRequestUseCase`
 - `PrepareDeviceEnrollmentConsumptionUseCase`

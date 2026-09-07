@@ -311,11 +311,33 @@ export class ApplySyncResolutionUseCase {
       throw new SyncResolutionIncompleteError(params.vaultId);
     }
 
-    if (
-      entryReviews.length === 0 &&
-      tagReviews.length === 0 &&
-      deviceProfileReviews.length === 0
-    ) {
+    let resolvedVault: Vault;
+
+    try {
+      resolvedVault = applyVaultSyncResolution(
+        unlockedVault.vault,
+        remoteVault,
+        { entryReviews, tagReviews, deviceProfileReviews },
+        resolution,
+        unlockedVault.deviceId,
+      );
+    } catch (error) {
+      if (error instanceof InvalidVaultSyncResolutionError) {
+        throw new InvalidSyncResolutionError(params.vaultId, error);
+      }
+
+      throw error;
+    }
+
+    // Validate every choice through the existing domain policy before adopting
+    // remote bytes. Accepting the remote state is not a new content mutation.
+    const acceptsRemoteState = [
+      ...resolution.entryResolutions,
+      ...resolution.tagResolutions,
+      ...resolution.deviceProfileResolutions,
+    ].every((choice) => choice.action === "use_remote");
+
+    if (acceptsRemoteState) {
       const persistedSnapshot =
         await this.unlockedVaultSession.persistForActiveSession(
           sessionId,
@@ -359,24 +381,6 @@ export class ApplySyncResolutionUseCase {
         revisionTimestamp: persistedSnapshot.revisionTimestamp,
         syncUpload: "complete",
       };
-    }
-
-    let resolvedVault: Vault;
-
-    try {
-      resolvedVault = applyVaultSyncResolution(
-        unlockedVault.vault,
-        remoteVault,
-        { entryReviews, tagReviews, deviceProfileReviews },
-        resolution,
-        unlockedVault.deviceId,
-      );
-    } catch (error) {
-      if (error instanceof InvalidVaultSyncResolutionError) {
-        throw new InvalidSyncResolutionError(params.vaultId, error);
-      }
-
-      throw error;
     }
 
     if (providerCredentialRevocationCompleted) {

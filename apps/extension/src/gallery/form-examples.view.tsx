@@ -30,6 +30,7 @@ import {
   DeviceSettingsForm,
   type DeviceSettingsDraft,
 } from "@/ui/features/devices";
+import { Scenario } from "./specimen.view";
 import { Specimen } from "./specimen.view";
 import { demoVaults, demoTags } from "./fixtures";
 function FormExample<T>({
@@ -244,10 +245,18 @@ export function FormExamples() {
       >
         {(props) => (
           <>
-            <CredentialForm
-              {...props}
-              onTest={() => setTestMessage("Access test requested.")}
-            />
+            <Scenario
+              label="Credential form mode"
+              options={["setup", "repair"] as const}
+            >
+              {(mode) => (
+                <CredentialForm
+                  mode={mode}
+                  {...props}
+                  onTest={() => setTestMessage("Access test requested.")}
+                />
+              )}
+            </Scenario>
             <p role="status" className="mt-3 text-xs">
               {testMessage}
             </p>

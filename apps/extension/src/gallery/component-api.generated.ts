@@ -2,6 +2,13 @@
 // prettier-ignore
 export const componentApi = [
   {
+    "name": "AccessKeyInstructions",
+    "source": "features/sync/s3-setup-guide.view.tsx",
+    "family": "S04",
+    "exported": false,
+    "axes": {}
+  },
+  {
     "name": "Accordion",
     "source": "components/primitives/accordion.tsx",
     "family": "B14",
@@ -626,6 +633,13 @@ export const componentApi = [
     "axes": {}
   },
   {
+    "name": "ConnectionInstructions",
+    "source": "features/sync/s3-setup-guide.view.tsx",
+    "family": "S04",
+    "exported": false,
+    "axes": {}
+  },
+  {
     "name": "CopyAction",
     "source": "components/feedback/action-feedback.view.tsx",
     "family": "P14",
@@ -637,7 +651,12 @@ export const componentApi = [
     "source": "features/sync/credential-form.view.tsx",
     "family": "F05",
     "exported": true,
-    "axes": {}
+    "axes": {
+      "mode": [
+        "repair",
+        "setup"
+      ]
+    }
   },
   {
     "name": "DestructiveConfirmation",
@@ -1629,6 +1648,13 @@ export const componentApi = [
     "axes": {}
   },
   {
+    "name": "S3SetupGuide",
+    "source": "features/sync/s3-setup-guide.view.tsx",
+    "family": "S04",
+    "exported": true,
+    "axes": {}
+  },
+  {
     "name": "SafetyHelp",
     "source": "components/layout/sections.view.tsx",
     "family": "P04",
@@ -1683,6 +1709,13 @@ export const componentApi = [
     "axes": {}
   },
   {
+    "name": "SetupCopy",
+    "source": "features/sync/s3-setup-guide.view.tsx",
+    "family": "S04",
+    "exported": false,
+    "axes": {}
+  },
+  {
     "name": "SetupDevice",
     "source": "features/vault-setup/setup-device.view.tsx",
     "family": "S02",
@@ -1697,6 +1730,13 @@ export const componentApi = [
     "axes": {}
   },
   {
+    "name": "SetupLink",
+    "source": "features/sync/s3-setup-guide.view.tsx",
+    "family": "S04",
+    "exported": false,
+    "axes": {}
+  },
+  {
     "name": "SetupPassword",
     "source": "features/vault-setup/setup-password.view.tsx",
     "family": "S02",
@@ -1708,6 +1748,13 @@ export const componentApi = [
     "source": "features/vault-setup/setup-recovery.view.tsx",
     "family": "S02",
     "exported": true,
+    "axes": {}
+  },
+  {
+    "name": "SetupStep",
+    "source": "features/sync/s3-setup-guide.view.tsx",
+    "family": "S04",
+    "exported": false,
     "axes": {}
   },
   {
@@ -2060,6 +2107,13 @@ export const componentApi = [
         "sm"
       ]
     }
+  },
+  {
+    "name": "SyncPage",
+    "source": "features/sync/sync-page.view.tsx",
+    "family": "S03",
+    "exported": true,
+    "axes": {}
   },
   {
     "name": "SyncReview",

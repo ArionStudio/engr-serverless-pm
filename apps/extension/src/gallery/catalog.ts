@@ -2,6 +2,8 @@
 export const catalog = [
   { id: "S01", name: "PopupView" },
   { id: "S02", name: "OptionsView" },
+  { id: "S03", name: "SyncPage" },
+  { id: "S04", name: "S3SetupGuide" },
   {
     id: "B01",
     name: "Button",

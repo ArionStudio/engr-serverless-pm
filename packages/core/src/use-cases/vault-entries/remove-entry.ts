@@ -1,3 +1,7 @@
+import {
+  captureExpectedEntryVersion,
+  requireExpectedEntryVersion,
+} from "../../domain/entry/entry-version.policy";
 import { removePasswordEntryFromVault } from "../../domain/vault/vault-entry.mutations";
 import { PasswordEntryNotFoundError } from "../../errors/vault-entry.errors";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
@@ -10,6 +14,7 @@ import type { SyncUploadStatus } from "../../domain/sync/sync-upload-status.type
 export type RemoveEntryCommandParams = {
   vaultId: string;
   entryId: string;
+  expectedEntryVersionVector: Readonly<VersionVector>;
 };
 
 export type RemoveEntryResult = {
@@ -38,22 +43,28 @@ export class RemoveEntryUseCase {
   }
 
   async execute(params: RemoveEntryCommandParams): Promise<RemoveEntryResult> {
+    const { vaultId, entryId } = params;
+    const expectedEntryVersion = captureExpectedEntryVersion(
+      params.expectedEntryVersionVector,
+    );
     const { sessionId, sourceSnapshotVersionVector, unlockedVault } =
       await this.unlockedVaultSession.requireUnlockedVaultContext(
-        params.vaultId,
+        vaultId,
         "remove entry",
       );
 
-    const entryExists = unlockedVault.vault.entries.some(
-      (entry) => entry.id === params.entryId,
+    const entry = unlockedVault.vault.entries.find(
+      (entry) => entry.id === entryId,
     );
 
-    if (!entryExists) {
-      throw new PasswordEntryNotFoundError(params.vaultId, params.entryId);
+    if (entry === undefined) {
+      throw new PasswordEntryNotFoundError(vaultId, entryId);
     }
 
+    requireExpectedEntryVersion(entry.versionVector, expectedEntryVersion);
+
     const syncState = await this.vaultSyncGuard.prepareLocalMutation(
-      params.vaultId,
+      vaultId,
       unlockedVault,
       sourceSnapshotVersionVector,
     );
@@ -62,7 +73,7 @@ export class RemoveEntryUseCase {
       ...unlockedVault,
       vault: removePasswordEntryFromVault(
         unlockedVault.vault,
-        params.entryId,
+        entryId,
         unlockedVault.deviceId,
         this.clock.now(),
       ),
@@ -70,7 +81,7 @@ export class RemoveEntryUseCase {
     const { persistedSnapshot, preparedRestore } =
       await this.unlockedVaultSession.persistForActiveSession(
         sessionId,
-        params.vaultId,
+        vaultId,
         async () => {
           const preparedRestore =
             syncState.syncAccess === undefined
@@ -81,7 +92,7 @@ export class RemoveEntryUseCase {
                 );
           const persistedSnapshot =
             await this.vaultSnapshot.persistUnlockedVault(
-              params.vaultId,
+              vaultId,
               updatedUnlockedVault,
               sourceSnapshotVersionVector,
               syncState.remoteSnapshotIdentity === undefined
@@ -106,7 +117,7 @@ export class RemoveEntryUseCase {
       }
 
       syncUpload = await this.vaultSyncGuard.uploadPersistedLocalMutation(
-        params.vaultId,
+        vaultId,
         syncState,
         persistedSnapshot.snapshot,
         persistedSnapshot.trustedSnapshotContext.snapshotDigest,
@@ -137,7 +148,7 @@ export class RemoveEntryUseCase {
     }
 
     return {
-      entryId: params.entryId,
+      entryId,
       snapshotVersionVector: persistedSnapshot.snapshotVersionVector,
       revisionTimestamp: persistedSnapshot.revisionTimestamp,
       syncUpload,

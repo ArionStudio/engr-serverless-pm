@@ -981,6 +981,8 @@ export function FeatureExamples() {
           label="Sync status"
           options={[
             "unconfigured",
+            "not-checked",
+            "access-confirmed",
             "checking",
             "uploading",
             "complete",
@@ -994,6 +996,10 @@ export function FeatureExamples() {
               state={state}
               detail={
                 {
+                  "not-checked":
+                    "Sync is configured. Check for remote changes.",
+                  "access-confirmed":
+                    "Read access confirmed. Upload permissions have not been tested.",
                   unconfigured: "Connect your own S3 storage when ready.",
                   checking: "Checking remote state.",
                   uploading: "Uploading encrypted changes.",

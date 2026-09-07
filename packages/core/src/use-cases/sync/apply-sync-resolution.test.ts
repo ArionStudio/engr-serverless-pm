@@ -10,6 +10,7 @@ import {
   toVaultSnapshotDescriptor,
   toVaultSnapshotIdentity,
 } from "../../domain/snapshot";
+import type { PasswordEntry } from "../../domain/entry/password-entry.type";
 import type { EntryReviewResolution } from "../../domain/sync/entry-resolution.type";
 import {
   InvalidSyncResolutionError,
@@ -17,6 +18,7 @@ import {
   RemoteVaultSnapshotChangedError,
   RemoteVaultSnapshotIntegrityError,
   SyncAlreadyResolvedError,
+  SyncResolutionIncompleteError,
   SyncConflictDetectedError,
   SyncTrustChangeRequiresDeviceTrustFlowError,
 } from "../../errors/sync.errors";
@@ -26,9 +28,12 @@ import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.ser
 import { VaultSyncGuardService } from "../../services/sync";
 import { ApplySyncResolutionUseCase } from "./apply-sync-resolution";
 
-function createContext() {
+function createContext(localEntries: PasswordEntry[] = []) {
   const ctx = createUnlockVaultTestContext();
-  const unlockedVault = createUnlockedVaultWithEntries(ctx.values, []);
+  const unlockedVault = createUnlockedVaultWithEntries(
+    ctx.values,
+    localEntries,
+  );
   const remoteSnapshot = {
     ...ctx.vaultSnapshot,
     metadata: {
@@ -75,12 +80,24 @@ function createContext() {
   vi.mocked(ctx.ports.syncProvider.downloadVaultSnapshot).mockResolvedValue(
     remoteSnapshot,
   );
-  vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
+  const remoteVault = {
     ...unlockedVault.vault,
     versionVector: { [ctx.values.deviceId]: 2 },
-    entries: [singlePasswordEntry],
+    entries:
+      localEntries.length === 0
+        ? [singlePasswordEntry]
+        : [
+            {
+              ...singlePasswordEntry,
+              login: "remote@example.test",
+              versionVector: { [ctx.values.deviceId]: 2 },
+            },
+          ],
     syncTarget: ctx.values.syncTarget,
-  });
+  };
+  vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue(
+    remoteVault,
+  );
   const snapshotService = new VaultSnapshotService(
     ctx.ports.crypto,
     ctx.ports.clock,
@@ -105,41 +122,21 @@ function createContext() {
     localDescriptor,
     localIdentity,
     remoteSnapshot,
+    remoteVault,
     remoteDescriptor,
     remoteIdentity,
     useCase,
   };
 }
 
+const localEntry = {
+  ...singlePasswordEntry,
+  versionVector: singlePasswordEntry.versionVector,
+};
+
 describe("ApplySyncResolutionUseCase", () => {
-  it("uploads the exact signed resolution persisted by the local save", async () => {
+  it("adopts an entirely remote resolution without creating or uploading another revision", async () => {
     const ctx = createContext();
-    const getPersistedSnapshot = captureVaultSnapshotFromNextSave(ctx.ports);
-
-    await ctx.useCase.execute({
-      vaultId: ctx.values.vaultId,
-      reviewedSnapshotIdentities: {
-        local: ctx.localIdentity,
-        remote: ctx.remoteIdentity,
-      },
-      resolution: {
-        entryResolutions: [
-          { entryId: singlePasswordEntry.id, action: "use_remote" },
-        ],
-        tagResolutions: [],
-        deviceProfileResolutions: [],
-      },
-    });
-
-    const uploadedSnapshot = vi.mocked(
-      ctx.ports.syncProvider.uploadVaultSnapshot,
-    ).mock.calls[0]?.[1];
-    expect(uploadedSnapshot).toBe(getPersistedSnapshot());
-  });
-
-  it("applies ordinary content resolution with local credentials", async () => {
-    const ctx = createContext();
-
     const result = await ctx.useCase.execute({
       vaultId: ctx.values.vaultId,
       reviewedSnapshotIdentities: {
@@ -155,11 +152,69 @@ describe("ApplySyncResolutionUseCase", () => {
       },
     });
 
+    expect(ctx.saved.vaultSnapshot).toEqual(ctx.remoteSnapshot);
+    expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries).toEqual(
+      [singlePasswordEntry],
+    );
+    expect(result.snapshotVersionVector).toEqual(
+      ctx.remoteDescriptor.snapshotVersionVector,
+    );
+    expect(result.revisionTimestamp).toBe(
+      ctx.remoteDescriptor.revisionTimestamp,
+    );
+    expect(ctx.ports.crypto.encryptVaultSnapshotContent).not.toHaveBeenCalled();
+    expect(ctx.ports.crypto.signVaultSnapshot).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("uploads the exact signed resolution persisted by the local save", async () => {
+    const ctx = createContext([localEntry]);
+    const getPersistedSnapshot = captureVaultSnapshotFromNextSave(ctx.ports);
+
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      reviewedSnapshotIdentities: {
+        local: ctx.localIdentity,
+        remote: ctx.remoteIdentity,
+      },
+      resolution: {
+        entryResolutions: [
+          { entryId: singlePasswordEntry.id, action: "use_local" },
+        ],
+        tagResolutions: [],
+        deviceProfileResolutions: [],
+      },
+    });
+
+    const uploadedSnapshot = vi.mocked(
+      ctx.ports.syncProvider.uploadVaultSnapshot,
+    ).mock.calls[0]?.[1];
+    expect(uploadedSnapshot).toBe(getPersistedSnapshot());
+  });
+
+  it("applies ordinary content resolution with local credentials", async () => {
+    const ctx = createContext([localEntry]);
+
+    const result = await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      reviewedSnapshotIdentities: {
+        local: ctx.localIdentity,
+        remote: ctx.remoteIdentity,
+      },
+      resolution: {
+        entryResolutions: [
+          { entryId: singlePasswordEntry.id, action: "use_local" },
+        ],
+        tagResolutions: [],
+        deviceProfileResolutions: [],
+      },
+    });
+
     expect(
       ctx.ports.saved.unlockedVaultSession?.unlockedVault.vault.entries,
     ).toContainEqual({
       ...singlePasswordEntry,
-      versionVector: { [ctx.values.deviceId]: 2 },
+      versionVector: { [ctx.values.deviceId]: 3 },
     });
     const encryptedVault = vi
       .mocked(ctx.ports.crypto.encryptVaultSnapshotContent)
@@ -167,7 +222,7 @@ describe("ApplySyncResolutionUseCase", () => {
     expect(encryptedVault?.providerCredentialRevocationPending).toBeUndefined();
     expect(encryptedVault?.entries).toContainEqual({
       ...singlePasswordEntry,
-      versionVector: { [ctx.values.deviceId]: 2 },
+      versionVector: { [ctx.values.deviceId]: 3 },
     });
     const uploadedSnapshot = vi
       .mocked(ctx.ports.syncProvider.uploadVaultSnapshot)
@@ -520,13 +575,13 @@ describe("ApplySyncResolutionUseCase", () => {
     });
 
     await expect(ctx.useCase.execute(command)).resolves.toMatchObject({
-      revisionTimestamp: ctx.values.timestamp,
+      revisionTimestamp: ctx.remoteDescriptor.revisionTimestamp,
     });
     expect(
       ctx.ports.saved.unlockedVaultSession?.unlockedVault.vault.entries,
     ).toContainEqual({
       ...singlePasswordEntry,
-      versionVector: { [ctx.values.deviceId]: 2 },
+      versionVector: singlePasswordEntry.versionVector,
     });
   });
 
@@ -747,16 +802,9 @@ describe("ApplySyncResolutionUseCase", () => {
       ctx.ports.saved.unlockedVaultSession?.unlockedVault.vault.entries,
     ).toContainEqual({
       ...singlePasswordEntry,
-      versionVector: { [ctx.values.deviceId]: 2 },
+      versionVector: singlePasswordEntry.versionVector,
     });
-    expect(ctx.ports.syncProvider.uploadVaultSnapshot).toHaveBeenCalledWith(
-      ctx.values.syncAccess,
-      expect.anything(),
-      {
-        descriptor: ctx.remoteDescriptor,
-        snapshotDigest: ctx.values.vaultSnapshotDigest,
-      },
-    );
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });
 
   it("rejects invalid profile trust state before persistence", async () => {
@@ -805,7 +853,7 @@ describe("ApplySyncResolutionUseCase", () => {
   });
 
   it("keeps the resolved snapshot and reports pending when upload outcome is unknown", async () => {
-    const ctx = createContext();
+    const ctx = createContext([localEntry]);
     vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockResolvedValueOnce(
       {
         status: "outcome_unknown",
@@ -820,7 +868,7 @@ describe("ApplySyncResolutionUseCase", () => {
       },
       resolution: {
         entryResolutions: [
-          { entryId: singlePasswordEntry.id, action: "use_remote" },
+          { entryId: singlePasswordEntry.id, action: "use_local" },
         ],
         tagResolutions: [],
         deviceProfileResolutions: [],
@@ -833,7 +881,7 @@ describe("ApplySyncResolutionUseCase", () => {
       ctx.ports.saved.unlockedVaultSession?.unlockedVault.vault.entries,
     ).toContainEqual({
       ...singlePasswordEntry,
-      versionVector: { [ctx.values.deviceId]: 2 },
+      versionVector: { [ctx.values.deviceId]: 3 },
     });
     expect(
       ctx.ports.sessionServices.unlockedVaultSession
@@ -842,7 +890,7 @@ describe("ApplySyncResolutionUseCase", () => {
   });
 
   it("restores the reviewed local snapshot when upload is definitely not committed", async () => {
-    const ctx = createContext();
+    const ctx = createContext([localEntry]);
     vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockResolvedValueOnce(
       {
         status: "definitely_not_committed",
@@ -859,7 +907,7 @@ describe("ApplySyncResolutionUseCase", () => {
         },
         resolution: {
           entryResolutions: [
-            { entryId: singlePasswordEntry.id, action: "use_remote" },
+            { entryId: singlePasswordEntry.id, action: "use_local" },
           ],
           tagResolutions: [],
           deviceProfileResolutions: [],
@@ -871,5 +919,190 @@ describe("ApplySyncResolutionUseCase", () => {
     expect(
       ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
     ).not.toHaveBeenCalled();
+  });
+  it("adopts remote entry and tag tombstones plus a device profile without stamping them", async () => {
+    const ctx = createContext([localEntry]);
+    const remoteVault = {
+      ...ctx.remoteVault,
+      entries: [],
+      deletedEntries: [
+        {
+          id: singlePasswordEntry.id,
+          deletedAt: ctx.values.timestamp,
+          versionVector: { [ctx.values.deviceId]: 2 },
+        },
+      ],
+      tags: [],
+      deletedTags: [
+        {
+          id: 17,
+          deletedAt: ctx.values.timestamp,
+          versionVector: { [ctx.values.deviceId]: 2 },
+        },
+      ],
+      deviceProfiles: [
+        {
+          id: ctx.values.deviceId,
+          name: "Updated device",
+          createdAt: ctx.values.timestamp,
+          versionVector: { [ctx.values.deviceId]: 2 },
+        },
+      ],
+    };
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue(
+      remoteVault,
+    );
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      reviewedSnapshotIdentities: {
+        local: ctx.localIdentity,
+        remote: ctx.remoteIdentity,
+      },
+      resolution: {
+        entryResolutions: [
+          { entryId: singlePasswordEntry.id, action: "use_remote" },
+        ],
+        tagResolutions: [{ tagId: 17, action: "use_remote" }],
+        deviceProfileResolutions: [
+          { deviceId: ctx.values.deviceId, action: "use_remote" },
+        ],
+      },
+    });
+    expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault).toEqual(
+      remoteVault,
+    );
+    expect(ctx.saved.vaultSnapshot).toEqual(ctx.remoteSnapshot);
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("persists and uploads a mixed local entry and remote tag resolution", async () => {
+    const ctx = createContext([localEntry]);
+    const tag = {
+      id: 17,
+      name: "Shared",
+      versionVector: { [ctx.values.deviceId]: 2 },
+    };
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
+      ...ctx.remoteVault,
+      tags: [tag],
+    });
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      reviewedSnapshotIdentities: {
+        local: ctx.localIdentity,
+        remote: ctx.remoteIdentity,
+      },
+      resolution: {
+        entryResolutions: [
+          { entryId: singlePasswordEntry.id, action: "use_local" },
+        ],
+        tagResolutions: [{ tagId: 17, action: "use_remote" }],
+        deviceProfileResolutions: [],
+      },
+    });
+    expect(
+      ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries,
+    ).toContainEqual({
+      ...localEntry,
+      versionVector: { [ctx.values.deviceId]: 3 },
+    });
+    expect(
+      ctx.saved.unlockedVaultSession?.unlockedVault.vault.tags,
+    ).toContainEqual({ ...tag, versionVector: { [ctx.values.deviceId]: 3 } });
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).toHaveBeenCalledOnce();
+  });
+
+  it.each(["duplicate", "extra", "missing", "unsupported"] as const)(
+    "rejects %s choices before remote adoption",
+    async (invalid) => {
+      const ctx = createContext();
+      const otherEntry = { ...singlePasswordEntry, id: "second-remote" };
+      vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue(
+        { ...ctx.remoteVault, entries: [singlePasswordEntry, otherEntry] },
+      );
+      const resolutions: EntryReviewResolution[] = [
+        { entryId: singlePasswordEntry.id, action: "use_remote" },
+        {
+          entryId:
+            invalid === "duplicate"
+              ? singlePasswordEntry.id
+              : invalid === "extra"
+                ? "unknown-entry"
+                : otherEntry.id,
+          action:
+            invalid === "unsupported"
+              ? ("unknown" as EntryReviewResolution["action"])
+              : "use_remote",
+        },
+      ];
+      if (invalid === "missing") resolutions.pop();
+      await expect(
+        ctx.useCase.execute({
+          vaultId: ctx.values.vaultId,
+          reviewedSnapshotIdentities: {
+            local: ctx.localIdentity,
+            remote: ctx.remoteIdentity,
+          },
+          resolution: {
+            entryResolutions: resolutions,
+            tagResolutions: [],
+            deviceProfileResolutions: [],
+          },
+        }),
+      ).rejects.toBeInstanceOf(
+        invalid === "missing"
+          ? SyncResolutionIncompleteError
+          : InvalidSyncResolutionError,
+      );
+      expect(
+        ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+      ).not.toHaveBeenCalled();
+      expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+    },
+  );
+
+  it("clears a discarded pending upload atomically with remote adoption", async () => {
+    const ctx = createContext();
+    vi.mocked(
+      ctx.ports.crypto.decryptDeviceSyncCredentialState,
+    ).mockResolvedValue({
+      currentCredentials: ctx.values.syncCredentials,
+      pendingSnapshotUpload: {
+        candidateSnapshotIdentity: ctx.localIdentity,
+        expectedRemoteSnapshotIdentity: null,
+      },
+    });
+    await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      reviewedSnapshotIdentities: {
+        local: ctx.localIdentity,
+        remote: ctx.remoteIdentity,
+      },
+      resolution: {
+        entryResolutions: [
+          { entryId: singlePasswordEntry.id, action: "use_remote" },
+        ],
+        tagResolutions: [],
+        deviceProfileResolutions: [],
+      },
+    });
+    expect(
+      ctx.ports.crypto.encryptDeviceSyncCredentialState,
+    ).toHaveBeenCalledWith(
+      { currentCredentials: ctx.values.syncCredentials },
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        snapshot: ctx.remoteSnapshot,
+        expectedSyncCredentialState:
+          ctx.values.encryptedDeviceSyncCredentialState,
+        syncCredentialState: expect.anything(),
+      }),
+    );
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });
 });

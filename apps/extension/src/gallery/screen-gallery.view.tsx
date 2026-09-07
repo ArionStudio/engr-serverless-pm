@@ -14,6 +14,26 @@ const screens: readonly {
   states: readonly { id: OptionsScenario; label: string }[];
 }[] = [
   {
+    id: "s3-setup",
+    name: "Set up S3",
+    states: [
+      { id: "s3-guide", label: "Instructions" },
+      { id: "s3-copy-error", label: "Copy error" },
+    ],
+  },
+  {
+    id: "sync",
+    name: "Sync",
+    states: [
+      { id: "sync-setup", label: "Set up" },
+      { id: "sync-configured", label: "Configured" },
+      { id: "sync-pending", label: "Pending upload" },
+      { id: "sync-error", label: "Connection error" },
+      { id: "sync-review", label: "Remote changes" },
+      { id: "sync-loading", label: "Loading" },
+    ],
+  },
+  {
     id: "popup",
     name: "Popup",
     states: [
@@ -207,6 +227,7 @@ export function ScreenGallery() {
           id="screen-presentation"
           className="min-w-0 p-4 sm:p-6"
           tabIndex={-1}
+          data-focus-target
         >
           <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
             <h1 className="text-2xl font-semibold">{screen.name}</h1>
@@ -281,7 +302,9 @@ export function ScreenGallery() {
                   screen.id,
                 ) && !["creation-pending", "creation-error"].includes(state)
                   ? ""
-                  : "mx-auto max-w-xl px-5 py-8 @lg:py-12"
+                  : ["s3-setup", "sync"].includes(screen.id)
+                    ? "mx-auto max-w-4xl px-5 py-8 @lg:py-12"
+                    : "mx-auto max-w-xl px-5 py-8 @lg:py-12"
               }
             >
               {screen.id === "popup" ? (

@@ -172,6 +172,44 @@ fresh remote observation as a new expectation. Until reconciliation completes,
 fresh vault mutations and sync removal are blocked; only an already-persisted
 removal transition may resume its recorded compare-and-set cleanup.
 
+## Accepting a remote review
+
+ApplySyncResolution repeats the reviewed local/remote identity, trust, key-slot,
+configuration and item-choice checks before persistence. If every choice is
+`use_remote`, the local repository adopts the exact authenticated remote
+snapshot and its vectors. Acceptance does not create another content revision,
+re-sign the snapshot or upload it. Entries, tags, profiles and tombstones keep
+the remote versions. Pending upload cleanup is atomic with this explicit remote
+adoption. Local or mixed choices still author a new resolution and use the
+existing conditional upload, definite non-commit rollback and uncertain-outcome
+contracts. Repeated checks between devices that accepted the same snapshot
+therefore return equal state without another review.
+
+## Routine device credential repair
+
+`UpdateSyncCredentialsUseCase` replaces credentials on an already configured,
+unlocked device. It normalizes the supplied provider configuration and requires
+the existing provider and target namespace. It then performs the provider's
+read-only access probe. Authentication rejection, network failure and malformed
+provider outcomes do not replace local state. Successful probing establishes
+read access; it does not prove write permission or claim that a snapshot was
+uploaded. This workflow does not create or revoke credentials in AWS.
+
+The existing encrypted credential record must be present and decryptable.
+Missing or corrupt records are errors because routine replacement cannot infer
+lost pending-upload or revocation evidence. The replacement preserves that
+evidence, rejects reusing a credential awaiting revocation, and atomically
+compares the old credential artifact, authenticated snapshot and checkpoint.
+It changes only the encrypted credential artifact: no snapshot revision, trust
+transition or remote write. Network work runs outside the session lease; key use
+and persistence revalidate the originating session under that lease.
+
+After repair, the caller can retry the existing sync/reconciliation workflow.
+A pending upload remains pending until its remote outcome is verified. Provider
+credential cleanup after device revocation continues to use its dedicated
+workflow. Disabling sync is a separate destructive operation, not credential
+repair or a pause switch.
+
 ## Enrollment
 
 The registered device never exports its provider credentials. When an enrolled

@@ -1,3 +1,9 @@
+import { ReadEntryUseCase } from "./read-entry";
+import {
+  InvalidExpectedEntryVersionError,
+  PasswordEntryChangedError,
+} from "../../errors/vault-entry.errors";
+import type { VersionVector } from "../../domain/versioning/version-vector.type";
 import { describe, expect, it, vi } from "vitest";
 import { objectGraphContainsString } from "../../__tests__/fixtures/error-inspection";
 import { createCoreTestPorts } from "../../__tests__/fixtures/ports";
@@ -55,6 +61,7 @@ describe("UpdateEntryUseCase", () => {
 
     const result = await ctx.useCase.execute({
       vaultId: ctx.values.vaultId,
+      expectedEntryVersionVector: firstPasswordEntry.versionVector,
       entryId: firstPasswordEntry.id,
       entry: {
         password: maximumStrengthPassword,
@@ -131,6 +138,7 @@ describe("UpdateEntryUseCase", () => {
     try {
       await ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
+        expectedEntryVersionVector: firstPasswordEntry.versionVector,
         entryId: firstPasswordEntry.id,
         entry: {
           password: submittedPassword,
@@ -160,6 +168,7 @@ describe("UpdateEntryUseCase", () => {
 
     await ctx.useCase.execute({
       vaultId: ctx.values.vaultId,
+      expectedEntryVersionVector: firstPasswordEntry.versionVector,
       entryId: firstPasswordEntry.id,
       allowWeakPassword: true,
       entry: {
@@ -202,6 +211,7 @@ describe("UpdateEntryUseCase", () => {
 
     await ctx.useCase.execute({
       vaultId: ctx.values.vaultId,
+      expectedEntryVersionVector: firstPasswordEntry.versionVector,
       entryId: firstPasswordEntry.id,
       entry: {
         password: maximumStrengthPassword,
@@ -264,6 +274,7 @@ describe("UpdateEntryUseCase", () => {
 
     const result = await ctx.useCase.execute({
       vaultId: ctx.values.vaultId,
+      expectedEntryVersionVector: firstPasswordEntry.versionVector,
       entryId: firstPasswordEntry.id,
       entry: {
         password: maximumStrengthPassword,
@@ -297,6 +308,7 @@ describe("UpdateEntryUseCase", () => {
       await expect(
         ctx.useCase.execute({
           vaultId: ctx.values.vaultId,
+          expectedEntryVersionVector: firstPasswordEntry.versionVector,
           entryId: firstPasswordEntry.id,
           allowWeakPassword,
           entry: {
@@ -324,6 +336,7 @@ describe("UpdateEntryUseCase", () => {
     try {
       await ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
+        expectedEntryVersionVector: firstPasswordEntry.versionVector,
         entryId: firstPasswordEntry.id,
         allowWeakPassword: true,
         entry: {
@@ -359,6 +372,7 @@ describe("UpdateEntryUseCase", () => {
     await expect(
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
+        expectedEntryVersionVector: firstPasswordEntry.versionVector,
         entryId: firstPasswordEntry.id,
         entry: {
           password: "correcthorsebatterystaple",
@@ -376,6 +390,7 @@ describe("UpdateEntryUseCase", () => {
     await expect(
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
+        expectedEntryVersionVector: firstPasswordEntry.versionVector,
         entryId: "missing-entry",
         entry: {
           password: "correcthorsebatterystaple",
@@ -401,6 +416,7 @@ describe("UpdateEntryUseCase", () => {
     await expect(
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
+        expectedEntryVersionVector: firstPasswordEntry.versionVector,
         entryId: firstPasswordEntry.id,
         entry: {
           password: maximumStrengthPassword,
@@ -428,6 +444,7 @@ describe("UpdateEntryUseCase", () => {
     await expect(
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
+        expectedEntryVersionVector: firstPasswordEntry.versionVector,
         entryId: firstPasswordEntry.id,
         entry: {
           password: maximumStrengthPassword,
@@ -450,6 +467,7 @@ describe("UpdateEntryUseCase", () => {
     await expect(
       ctx.useCase.execute({
         vaultId: ctx.values.vaultId,
+        expectedEntryVersionVector: firstPasswordEntry.versionVector,
         entryId: firstPasswordEntry.id,
         entry: {
           password: maximumStrengthPassword,
@@ -459,5 +477,137 @@ describe("UpdateEntryUseCase", () => {
         },
       }),
     ).rejects.toThrow("session save failed");
+  });
+  it.each(["password", "metadata"])(
+    "rejects a stale command after a newer %s change without effects",
+    async (change) => {
+      const ctx = createContext();
+      const read = new ReadEntryUseCase(
+        ctx.ports.sessionServices.unlockedVaultSession,
+      );
+      const original = await read.execute({
+        vaultId: ctx.values.vaultId,
+        entryId: firstPasswordEntry.id,
+      });
+      const newer = {
+        ...firstPasswordEntry,
+        ...(change === "password"
+          ? { password: "newer-password" }
+          : { login: "newer@example.test" }),
+        versionVector: { [ctx.values.deviceId]: 2 },
+      };
+      saveUnlockedVaultWithEntries(ctx.ports, ctx.values, [
+        newer,
+        secondPasswordEntry,
+      ]);
+      await expect(
+        ctx.useCase.execute({
+          vaultId: ctx.values.vaultId,
+          entryId: firstPasswordEntry.id,
+          expectedEntryVersionVector: original.entryVersionVector,
+          entry: {
+            password: maximumStrengthPassword,
+            login: "new@example.test",
+            tags: [],
+            url: "https://example.test",
+          },
+        }),
+      ).rejects.toBeInstanceOf(PasswordEntryChangedError);
+      expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
+      expect(
+        ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+      ).not.toHaveBeenCalled();
+      expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+      expect(
+        ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries,
+      ).toEqual([newer, secondPasswordEntry]);
+    },
+  );
+
+  it.each(
+    [
+      undefined,
+      null,
+      [],
+      { A: -1 },
+      { A: 1.5 },
+      { A: Number.MAX_SAFE_INTEGER + 1 },
+      { A: NaN },
+      { "": 1 },
+    ].map((invalid) => ({ invalid })),
+  )(
+    "rejects malformed expected version %j before session or provider work",
+    async ({ invalid }) => {
+      const ctx = createContext();
+      vi.spyOn(
+        ctx.ports.sessionServices.unlockedVaultSession,
+        "requireUnlockedVaultContext",
+      );
+      await expect(
+        ctx.useCase.execute({
+          vaultId: ctx.values.vaultId,
+          entryId: firstPasswordEntry.id,
+          expectedEntryVersionVector: invalid as unknown as VersionVector,
+          entry: {
+            password: maximumStrengthPassword,
+            login: "new@example.test",
+            tags: [],
+            url: "https://example.test",
+          },
+        }),
+      ).rejects.toBeInstanceOf(InvalidExpectedEntryVersionError);
+      expect(
+        ctx.ports.sessionServices.unlockedVaultSession
+          .requireUnlockedVaultContext,
+      ).not.toHaveBeenCalled();
+      expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
+    },
+  );
+
+  it("captures the target and expected version before the caller can mutate them", async () => {
+    const ctx = createContext();
+    const expected = { ...firstPasswordEntry.versionVector };
+    const command = {
+      vaultId: ctx.values.vaultId,
+      entryId: firstPasswordEntry.id,
+      expectedEntryVersionVector: expected,
+      entry: {
+        password: maximumStrengthPassword,
+        login: "new@example.test",
+        tags: [],
+        url: "https://example.test",
+      },
+    };
+    const pending = ctx.useCase.execute(command);
+    command.entryId = secondPasswordEntry.id;
+    expected[ctx.values.deviceId] = 99;
+    await expect(pending).resolves.toMatchObject({
+      entryId: firstPasswordEntry.id,
+    });
+  });
+
+  it("allows the original entry version after an unrelated entry changes", async () => {
+    const ctx = createContext();
+    saveUnlockedVaultWithEntries(ctx.ports, ctx.values, [
+      firstPasswordEntry,
+      {
+        ...secondPasswordEntry,
+        login: "unrelated@example.test",
+        versionVector: { [ctx.values.deviceId]: 2 },
+      },
+    ]);
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        entryId: firstPasswordEntry.id,
+        expectedEntryVersionVector: firstPasswordEntry.versionVector,
+        entry: {
+          password: maximumStrengthPassword,
+          login: "new@example.test",
+          tags: [],
+          url: "https://example.test",
+        },
+      }),
+    ).resolves.toMatchObject({ entryId: firstPasswordEntry.id });
   });
 });

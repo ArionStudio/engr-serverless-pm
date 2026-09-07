@@ -12,6 +12,8 @@ import {
   AlertDescription,
 } from "@/ui/components/primitives/alert";
 export type SyncDisplayState =
+  | "not-checked"
+  | "access-confirmed"
   | "unconfigured"
   | "checking"
   | "uploading"

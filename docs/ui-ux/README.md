@@ -13,6 +13,11 @@ The complete gallery is now implemented for review. Start with the
 [website icon plan and safety review](./favicon-review.md). Screens and live
 workflows still follow library review.
 
+Before the next vault-screen implementation, use the
+[recovered workspace checklist](../plans/vault-workspace-checklist.md). It
+distinguishes accepted requirements, current contract gaps and proposed screen
+scope after the sync foundations work.
+
 ## Read in this order
 
 1. [Component-library build specification](./component-specification.md): full
@@ -69,9 +74,12 @@ Later user clarifications supersede the initial setup-first implementation order
   all planned library components before screen assembly and live workflow integration.
   The user explicitly corrected the earlier ordering and authorized this specification.
 
+- **Sync delivery order:** Configure and enable sync from Options before implementing the entry workspace. The [sync configuration plan](../plans/sync-configuration-ui.md) records the scope and validation.
+- **Focus appearance:** Programmatically focused page containers have no outline. Interactive controls use a thin 1px keyboard focus border with a 1px gap, without a thick animated halo. Shared fields and selectable cards own their inner control indicator.
 - **Contrast requirement:** Component contrast must meet WCAG AA thresholds in
   both themes. The [contrast review](./contrast-review.md) records the measured
-  accessibility overrides to the base preset and the repeatable gallery audit.
+  accessibility overrides to the base preset. Review appearance in the gallery;
+  custom contrast audit scripts are no longer maintained.
 - **Website icons:** Add `SiteIcon` to the entries-library work; defer browser
   permissions and the device-local preference workflow until entries/settings
   integration. Real-extension verification gates shipping. The user accepted

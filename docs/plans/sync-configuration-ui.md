@@ -1,0 +1,118 @@
+# Sync configuration UI
+
+Status: implemented; final validation recorded below, 2026-09-06.
+
+The user corrected the delivery order: enable and test real sync before building
+the entry workspace. The workspace checklist remains later work.
+
+## Scope and review
+
+Expose Sync on the options page after vault setup and unlock. Reuse CredentialForm
+and sync review/status presentation with the exact preset, corrected contrast and
+focus, no subtitles, and gallery coverage. Show the bucket, region, object prefix,
+access key ID and secret access key. Include required S3/CORS setup information,
+the actual extension origin, and the existing provisioning documentation.
+
+Add narrow core read/test workflows for non-secret configuration and read-only
+access testing. Compose them with the existing setup, credential replacement,
+upload, review and resolution workflows. Keep AWS input mapping at the extension
+boundary. Secrets remain local form drafts and encrypted device credentials.
+
+Acceptance:
+
+- Read access testing makes no remote write or local configuration change.
+- Enable sync explicitly uploads the encrypted vault and distinguishes complete
+  from uncertain upload. Existing remote data must not be overwritten by setup.
+- Reopening shows persisted configuration without revealing saved credentials.
+- Check/retry, remote review and same-target credential replacement call actual
+  workflows and report their results without raw provider errors.
+- Lock/session changes, navigation and late responses clear drafts and private
+  reviews. No UI timer owns vault locking or clipboard behavior.
+- Existing CORS-based deployment remains supported; no broad host permission is
+  added merely to bypass bucket configuration. Verify extension-origin requests
+  with the actual AWS SDK against a controlled test endpoint/response harness.
+- Update gallery and screens navigation with all new states/variants. Run focused
+  tests, full affected package gates, production/gallery builds, visual review and
+  unpacked-Chrome checks. Live AWS writes require the user's configured account;
+  controlled validation must not be described as a live S3 test.
+
+Reviewed against UI-001/006/007, API-001/003/004, CORE-ARCH dependency direction,
+SESSION ownership, SYNC conditional writes, and TEST-005/007. No entry/icon work,
+new dependency, schema version or automatic destructive sync-disable action belongs
+in this pass.
+
+References checked September 6, 2026: [Chrome cross-origin requests](https://developer.chrome.com/docs/extensions/develop/concepts/network-requests)
+and [S3 CORS](https://docs.aws.amazon.com/AmazonS3/latest/userguide/cors.html).
+The existing [S3 provisioning guide](../aws/s3/README.md) remains the deployment
+source; bucket policy and CORS are both required by that deployment.
+
+## Implementation and verification
+
+Options exposes Sync for a completed, unlocked vault. The shared form supports
+setup and same-target access-key repair. Configuration reads return only the
+location; access tests are read-only. The screen connects upload, review and
+explicit resolution choices to the composed core workflows. Session changes and
+navigation clear secrets and ignore late responses. Returning from the AWS
+console preserves an unfinished draft while the session remains valid.
+
+The user's additional focus request is included: page-navigation targets have no
+outline; controls use a 1px keyboard border with a 1px offset. Outline geometry
+is excluded from control transitions. The gallery uses the same rules.
+
+Validation on Chrome 152 with a disposable profile and intercepted S3 responses
+used the real AWS SDK and signed requests. Access testing made zero writes;
+enabling sync made one conditional encrypted upload. Verified equality, repair
+and retry added no upload. Reload preserved the target; locking from another tab
+removed the credential form. No unexpected console, page or CDP Log errors.
+This is controlled browser validation, not a live AWS account test.
+
+Validation covers core and extension behavior, type checks, lint, production
+builds, gallery registration and the controlled unpacked-browser sync flow.
+The build retains the existing warning about a chunk exceeding 500 kB.
+
+After the user requested test cleanup, custom contrast/focus/variant audit
+scripts, filename regex tests and duplicate gallery password tests were removed.
+Visual appearance remains a gallery review task. Keep regression coverage for
+secret cleanup, stale operations, sync convergence and provider boundaries.
+`docs/ui-ux/verification/sync-options.verify.cjs` checks the actual extension/SDK
+workflow; `unpacked.verify.cjs` checks Chrome packaging and runtime startup.
+The component inventory maps 289 components/parts and 73 variant axes.
+
+Live acceptance still requires the user's bucket, CORS origin and scoped access
+keys entered in Options. New-device enrollment and device-trust consumption UI
+remain separate work; this pass reports that prerequisite when sync encounters
+such a transition.
+
+## Self-service S3 setup
+
+The next step was corrected by the user: provide setup UI with instructions for
+creating their own S3 storage before asking them to test an existing bucket.
+Unconfigured Sync now opens an in-app guide with two methods: downloading and
+deploying the repository's CloudFormation template, or creating the bucket and
+scoped IAM policy manually. The guide includes private access, SSE-S3, versioning,
+CORS for the actual extension origin, HTTPS enforcement, key creation, costs,
+connection testing and troubleshooting.
+
+The guide is a Sync feature presentation. A pure document generator prepares
+AWS policy JSON from non-secret location inputs, rejecting wildcard and policy
+variable injection. Existing sync use cases still own configuration and network
+operations. No provisioning service, credentials in documentation, extra host
+permission or new dependency is introduced. Manual location values survive the
+handoff to the credential form. Existing-storage users can go directly there.
+
+Gallery family S04 registers the guide and its compound parts; the Screens page
+has a visible **Set up S3** entry, both setup methods and a copy-failure state.
+The provisioning guide records the checked AWS references. Validation adds
+permission-scope regression coverage and a navigation test proving that reading
+the guide does not contact S3. Browser review covers the actual template download,
+manual policy copy and the connection handoff.
+
+Verified September 6, 2026: 525 extension tests passed, followed by all 14 sync
+tests after the final policy-input and labeling fixes. Type checks, lint,
+production build and gallery inventory passed. Unpacked Chrome 152 downloaded
+a byte-identical copy of the canonical template, generated CORS for its actual
+extension ID and retained manual location values into the connection form.
+The controlled sync flow still made one conditional upload across eight signed
+requests, with no unexpected console or runtime errors. Gallery review covered
+desktop and narrow layouts, template/manual methods and copy failure. The build's
+existing large-chunk warning remains.
