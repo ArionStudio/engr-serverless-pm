@@ -1,3 +1,7 @@
+import { galleryPopupSync } from "@/gallery/popup-sync-fixture";
+import { galleryBrowserLogins } from "@/gallery/browser-login-fixture";
+import { ThemeProvider } from "@/ui/features/theme";
+import { within } from "@testing-library/react";
 // @vitest-environment jsdom
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -9,7 +13,48 @@ import { PopupEntries } from "./popup-entries.view";
 import { EntryWorkspace } from "@/ui/features/entries/entry-workspace.view";
 import type { WorkspaceCapabilities } from "@/ui/features/entries/workspace.type";
 import { PopupWorkspace } from "./popup-workspace.view";
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+
+it("retains a rejected unlock password for correction and opens recovery in Options", async () => {
+  const setup = gallerySetup();
+  const vault = { ...setupVault, complete: true, unlocked: false };
+  setup.inspect = async () => ({ vault, vaults: [vault] });
+  setup.unlock = vi.fn(async () => {
+    throw new Error("Rejected");
+  });
+  const open = vi.fn(async () => {});
+  const user = userEvent.setup();
+
+  render(
+    <PopupWorkspace
+      setup={setup}
+      workspace={galleryWorkspace()}
+      onOpenOptions={open}
+    />,
+  );
+
+  const password = await screen.findByLabelText("Vault password");
+  expect(
+    screen.queryByRole("combobox", { name: "Vault" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByText("Personal vault")).toBeVisible();
+  await user.type(password, "wrong password");
+  await user.click(screen.getByRole("button", { name: "Unlock vault" }));
+
+  expect(
+    await screen.findByText(
+      "Could not unlock this vault. Check your password and try again.",
+    ),
+  ).toBeVisible();
+  expect(password).toHaveValue("wrong password");
+
+  await user.click(screen.getByRole("button", { name: "Forgot password?" }));
+  expect(open).toHaveBeenCalledWith("recover-access");
+});
+
 it("searches visible fields and copies through the capability without reading a password into the list", async () => {
   const user = userEvent.setup();
   const setup = gallerySetup();
@@ -38,7 +83,9 @@ it("searches visible fields and copies through the capability without reading a 
   );
   expect(screen.getByText("No matching entries")).toBeVisible();
   await user.click(screen.getByRole("button", { name: "Clear search" }));
-  await user.click(screen.getByRole("button", { name: "adrian@example.test" }));
+  await user.click(
+    screen.getByRole("button", { name: /adrian@example\.test/ }),
+  );
   await user.click(
     await screen.findByRole("button", { name: "Copy password" }),
   );
@@ -92,12 +139,16 @@ it.each(["popup", "options"])(
         <PopupEntries
           vaultId="vault"
           capabilities={capabilities}
+          onDraftConsumed={() => {}}
+          onStateChange={() => {}}
+          onOpenSync={() => {}}
           onLock={() => {}}
         />
       ) : (
         <EntryWorkspace
           vaultId="vault"
           capabilities={capabilities}
+          onDraftConsumed={() => {}}
           onLock={() => {}}
           onSync={() => {}}
         />
@@ -133,12 +184,16 @@ it.each(["popup", "options"])(
         <PopupEntries
           vaultId="vault"
           capabilities={capabilities}
+          onDraftConsumed={() => {}}
+          onStateChange={() => {}}
+          onOpenSync={() => {}}
           onLock={() => {}}
         />
       ) : (
         <EntryWorkspace
           vaultId="vault"
           capabilities={capabilities}
+          onDraftConsumed={() => {}}
           onLock={() => {}}
           onSync={() => {}}
         />
@@ -148,7 +203,7 @@ it.each(["popup", "options"])(
       await screen.findByRole("button", {
         name:
           surface === "popup"
-            ? "adrian@example.test"
+            ? /adrian@example\.test/
             : "Open adrian@example.test",
       }),
     );
@@ -190,7 +245,7 @@ it("returns to unlock after an action revokes access without a storage event", a
     />,
   );
   await user.click(
-    await screen.findByRole("button", { name: "adrian@example.test" }),
+    await screen.findByRole("button", { name: /adrian@example\.test/ }),
   );
   await user.click(
     await screen.findByRole("button", { name: "Copy password" }),
@@ -210,7 +265,7 @@ it("does not remount a closing workspace when a failed-lock error is cleared", a
     throw new Error("Clipboard coordination unavailable");
   };
   setup.subscribe = (listener) => {
-    const onHide = () => listener();
+    const onHide = () => listener("pagehide");
     window.addEventListener("pagehide", onHide);
     return () => window.removeEventListener("pagehide", onHide);
   };
@@ -241,4 +296,296 @@ it("does not remount a closing workspace when a failed-lock error is cleared", a
     screen.queryByText("Could not lock the vault. Try again."),
   ).not.toBeInTheDocument();
   expect(workspace.read).toHaveBeenCalledTimes(2);
+});
+
+it("keeps entry creation and generators in the popup and reserves Options for configuration", async () => {
+  const setup = gallerySetup();
+  const vault = { ...setupVault, complete: true, unlocked: true };
+  setup.inspect = async () => ({ vault, vaults: [vault] });
+  const open = vi.fn(async () => {});
+  const user = userEvent.setup();
+  render(
+    <PopupWorkspace
+      setup={setup}
+      workspace={galleryWorkspace()}
+      onOpenOptions={open}
+    />,
+  );
+  await user.click(await screen.findByRole("button", { name: "New" }));
+  expect(screen.getByRole("heading", { name: "Add entry" })).toBeVisible();
+  expect(screen.getByRole("textbox", { name: "Website" })).toHaveValue(
+    "https://mail.example.test/sign-in",
+  );
+  expect(open).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("button", { name: "Cancel" }));
+  await user.click(screen.getByRole("button", { name: "Generator" }));
+  expect(screen.getByRole("tab", { name: "Password" })).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "Generate password" }));
+  expect(await screen.findByLabelText("Generated password")).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "Use in new entry" }));
+  expect(screen.getByRole("heading", { name: "Add entry" })).toBeVisible();
+  expect(open).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "Open Options" })).toBeDisabled();
+  await user.click(screen.getByRole("button", { name: "Cancel" }));
+  await user.click(screen.getByRole("button", { name: "Open Options" }));
+  expect(open).toHaveBeenCalledOnce();
+  expect(open).toHaveBeenCalledWith(undefined);
+});
+
+it("discards a cancelled entry draft before switching popup tools", async () => {
+  const setup = gallerySetup();
+  const vault = { ...setupVault, complete: true, unlocked: true };
+  setup.inspect = async () => ({ vault, vaults: [vault] });
+  const user = userEvent.setup();
+  render(
+    <PopupWorkspace
+      setup={setup}
+      workspace={galleryWorkspace()}
+      onOpenOptions={async () => {}}
+    />,
+  );
+
+  await user.click(await screen.findByRole("button", { name: "New" }));
+  await user.type(screen.getByRole("textbox", { name: "Login" }), "cancelled");
+  expect(screen.getByRole("button", { name: "Generator" })).toBeDisabled();
+  await user.click(screen.getByRole("button", { name: "Cancel" }));
+  await user.click(screen.getByRole("button", { name: "Generator" }));
+  await user.click(screen.getByRole("button", { name: "Vault" }));
+
+  expect(screen.queryByDisplayValue("cancelled")).not.toBeInTheDocument();
+  expect(screen.getByText("All entries")).toBeVisible();
+});
+
+it("prevents Options navigation from discarding an entry draft", async () => {
+  const setup = gallerySetup();
+  const vault = { ...setupVault, complete: true, unlocked: true };
+  setup.inspect = async () => ({ vault, vaults: [vault] });
+  let notify: (clearDraft?: boolean) => void = () => {};
+  setup.subscribe = (callback) => {
+    notify = callback;
+    return () => {};
+  };
+  const open = vi.fn(async () => {});
+  const user = userEvent.setup();
+  render(
+    <PopupWorkspace
+      setup={setup}
+      workspace={galleryWorkspace()}
+      onOpenOptions={open}
+    />,
+  );
+
+  await user.click(await screen.findByRole("button", { name: "New" }));
+  const login = screen.getByRole("textbox", { name: "Login" });
+  await user.type(login, "unfinished@example.test");
+  await act(async () => notify(false));
+  expect(screen.getByRole("textbox", { name: "Login" })).toBe(login);
+  expect(login).toHaveValue("unfinished@example.test");
+  expect(screen.getByRole("button", { name: "Open Options" })).toBeDisabled();
+  await user.click(screen.getByRole("button", { name: "Cancel" }));
+  await user.click(screen.getByRole("button", { name: "Open Options" }));
+
+  expect(open).toHaveBeenCalledWith(undefined);
+});
+
+it("keeps captured review and the detection switch in Detected without opening Options", async () => {
+  const user = userEvent.setup();
+  const setup = gallerySetup();
+  const vault = { ...setupVault, complete: true, unlocked: true };
+  setup.inspect = async () => ({ vault, vaults: [vault] });
+  const browser = galleryBrowserLogins("save");
+  browser.setDetection = vi.fn(browser.setDetection);
+  const open = vi.fn(async () => {});
+  render(
+    <PopupWorkspace
+      setup={setup}
+      workspace={galleryWorkspace()}
+      browserLogins={browser}
+      onOpenOptions={open}
+    />,
+  );
+  const nav = await screen.findByRole("navigation", {
+    name: "Popup navigation",
+  });
+  expect(screen.queryByText("Save this login?")).not.toBeInTheDocument();
+  await user.click(within(nav).getByRole("button", { name: "Detected" }));
+  await screen.findByText("Save this login?");
+  await user.click(screen.getByText("Login detection", { exact: true }));
+  await waitFor(() => expect(browser.setDetection).toHaveBeenCalledWith(true));
+  expect(screen.getByRole("switch", { name: "Login detection" })).toBeChecked();
+  await user.click(screen.getByRole("button", { name: "Review new login" }));
+  await screen.findByRole("heading", { name: "Add entry" });
+  expect(screen.getByLabelText("Login", { exact: true })).toHaveValue(
+    "alex@example.com",
+  );
+  expect(within(nav).getByRole("button", { name: "Settings" })).toBeDisabled();
+  await user.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(await screen.findByText("Save this login?")).toBeVisible();
+  expect(open).not.toHaveBeenCalled();
+});
+it("saves popup device settings, keeps failed drafts, and applies appearance locally", async () => {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  );
+  try {
+    const user = userEvent.setup();
+    const setup = gallerySetup();
+    const vault = { ...setupVault, complete: true, unlocked: true };
+    setup.inspect = async () => ({ vault, vaults: [vault] });
+    const saveDevice = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Unavailable"))
+      .mockResolvedValue(undefined);
+    const open = vi.fn(async () => {});
+    render(
+      <ThemeProvider>
+        <PopupWorkspace
+          setup={setup}
+          workspace={galleryWorkspace()}
+          settings={{ saveDevice, inspectAuthorization: async () => {} }}
+          onOpenOptions={open}
+        />
+      </ThemeProvider>,
+    );
+    const nav = await screen.findByRole("navigation", {
+      name: "Popup navigation",
+    });
+    await user.click(within(nav).getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("button", { name: "Dark" }));
+    expect(localStorage.getItem("spm-theme")).toBe("dark");
+    await act(async () =>
+      window.dispatchEvent(
+        new StorageEvent("storage", { key: "spm-theme", newValue: "light" }),
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Light" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    const name = screen.getByLabelText("Device name");
+    await user.clear(name);
+    await user.type(name, "Clarke browser");
+    expect(within(nav).getByRole("button", { name: "Vault" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText("Could not save device settings. Try again.");
+    expect(name).toHaveValue("Clarke browser");
+    let finishInspection: (
+      value: Awaited<ReturnType<typeof setup.inspect>>,
+    ) => void = () => {};
+    const inspection = new Promise<Awaited<ReturnType<typeof setup.inspect>>>(
+      (resolve) => {
+        finishInspection = resolve;
+      },
+    );
+    setup.inspect = () => inspection;
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(within(nav).getByRole("button", { name: "Vault" })).toBeEnabled(),
+    );
+    await screen.findByText(
+      "Saved. The lock duration applies from the next unlock.",
+    );
+    expect(screen.getByLabelText("Device name")).toBe(name);
+    expect(name).toHaveValue("Clarke browser");
+    await act(async () =>
+      finishInspection({
+        vault: { ...vault, deviceName: "Clarke browser" },
+        vaults: [vault],
+      }),
+    );
+    expect(screen.getByLabelText("Device name")).toBe(name);
+    expect(saveDevice).toHaveBeenLastCalledWith(
+      vault.vaultId,
+      "Clarke browser",
+      vault.duration,
+    );
+    expect(open).not.toHaveBeenCalled();
+  } finally {
+    vi.unstubAllGlobals();
+    localStorage.removeItem("spm-theme");
+  }
+});
+
+it("shows one sync panel only on the Vault list while checking once even when opened on Detected", async () => {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  );
+  const setup = gallerySetup();
+  const vault = { ...setupVault, complete: true, unlocked: true };
+  setup.inspect = async () => ({ vault, vaults: [vault] });
+  const sync = galleryPopupSync();
+  sync.review = vi.fn(sync.review);
+  const user = userEvent.setup();
+  render(
+    <ThemeProvider>
+      <PopupWorkspace
+        setup={setup}
+        workspace={galleryWorkspace()}
+        browserLogins={galleryBrowserLogins()}
+        sync={sync}
+        initialRoute="detected"
+        onOpenOptions={async () => {}}
+      />
+    </ThemeProvider>,
+  );
+  await waitFor(() => expect(sync.review).toHaveBeenCalledTimes(1));
+  expect(screen.queryByRole("region", { name: "Vault sync" })).toBeNull();
+  for (const name of ["Vault", "Settings", "Detected", "Generator", "Vault"]) {
+    await user.click(
+      within(
+        screen.getByRole("navigation", { name: "Popup navigation" }),
+      ).getByRole("button", { name }),
+    );
+    expect(
+      screen.queryAllByRole("region", { name: "Vault sync" }),
+    ).toHaveLength(name === "Vault" ? 1 : 0);
+  }
+  expect(
+    screen.getAllByRole("region", { name: "Vault sync", hidden: true }),
+  ).toHaveLength(1);
+  expect(sync.review).toHaveBeenCalledTimes(1);
+});
+
+it("reports a rejected popup reveal without exposing the cause and permits retry", async () => {
+  const user = userEvent.setup();
+  const capabilities = galleryWorkspace();
+  const edit = capabilities.edit;
+  capabilities.edit = vi
+    .fn()
+    .mockRejectedValueOnce(new Error("private repository details"))
+    .mockImplementation(edit);
+  render(
+    <PopupEntries
+      vaultId="vault"
+      capabilities={capabilities}
+      onDraftConsumed={() => {}}
+      onStateChange={() => {}}
+      onOpenSync={() => {}}
+      onLock={() => {}}
+    />,
+  );
+  await user.click(
+    await screen.findByRole("button", { name: /adrian@example\.test/ }),
+  );
+  await user.click(await screen.findByRole("button", { name: "Reveal" }));
+  expect(await screen.findByRole("alert")).not.toHaveTextContent(
+    "private repository details",
+  );
+  expect(screen.getByRole("alert")).toHaveFocus();
+  expect(screen.getByRole("button", { name: "Reload entries" })).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "Reveal" }));
+  expect(
+    await screen.findByText("Gallery-River-8!Pine-Sky", { exact: true }),
+  ).toBeVisible();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });

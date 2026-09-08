@@ -15,14 +15,17 @@ const input = {
 function mount(capabilities = gallerySync()) {
   let listener: Parameters<SyncCapabilities["subscribe"]>[0] = () => {};
   const unsubscribe = vi.fn();
+  const onSessionLost = vi.fn();
   capabilities.subscribe = (callback) => {
     listener = callback;
     return unsubscribe;
   };
   return {
-    ...renderHook(() => useSync("gallery-vault", capabilities)),
+    ...renderHook(() => useSync("gallery-vault", capabilities, onSessionLost)),
     capabilities,
-    notify: (reason: "session" | "focus" | "permissions") => listener(reason),
+    onSessionLost,
+    notify: (reason: "session" | "focus" | "permissions" | "pagehide") =>
+      listener(reason),
     unsubscribe,
   };
 }
@@ -43,15 +46,73 @@ describe("sync UI lifecycle", () => {
     act(() => ctx.result.current.change({ ...input, region: "eu-west-1" }));
     expect(ctx.result.current.feedback).toBeUndefined();
   });
+  it.each(["management", "configuration"] as const)(
+    "clears private state when the post-success %s read finds an expired session",
+    async (read) => {
+      const ctx = mount(gallerySync("sync-configured"));
+      await ready(ctx);
+      act(() => ctx.result.current.beginRepair());
+      act(() => ctx.result.current.change(input));
+      const expired = new UnlockedVaultSessionExpiredError("gallery-vault");
+      if (read === "management") {
+        ctx.capabilities.test = vi.fn(async () => {});
+        ctx.capabilities.inspectManagement = vi
+          .fn()
+          .mockRejectedValueOnce(expired);
+        await act(() => ctx.result.current.test());
+        expect(ctx.capabilities.test).toHaveBeenCalledTimes(1);
+      } else {
+        ctx.capabilities.repair = vi.fn(async () => {});
+        ctx.capabilities.inspect = vi.fn().mockRejectedValueOnce(expired);
+        await act(() => ctx.result.current.save());
+        expect(ctx.capabilities.repair).toHaveBeenCalledTimes(1);
+      }
+      expect(ctx.onSessionLost).toHaveBeenCalledTimes(1);
+      expect(ctx.result.current.draft.secretAccessKey).toBe("");
+      expect(ctx.result.current.draft.accessKeyId).toBe("");
+      expect(ctx.result.current.repairing).toBe(false);
+      expect(ctx.result.current.target).toBeUndefined();
+      expect(ctx.result.current.management).toBeUndefined();
+      expect(ctx.result.current.feedback).toBeUndefined();
+      expect(ctx.result.current.error).toContain("Unlock this vault again");
+    },
+  );
   it("enables sync and clears both keys after a confirmed upload", async () => {
     const ctx = mount();
     await ready(ctx);
     act(() => ctx.result.current.change(input));
     await act(() => ctx.result.current.save());
+    expect(ctx.result.current.error).toBeUndefined();
     expect(ctx.result.current.target).toEqual(syncLocation);
     expect(ctx.result.current.feedback?.state).toBe("complete");
     expect(ctx.result.current.draft.accessKeyId).toBe("");
     expect(ctx.result.current.draft.secretAccessKey).toBe("");
+  });
+  it("keeps credentials for an explicit verified reconnect, then clears them", async () => {
+    const capabilities = gallerySync("sync-existing");
+    capabilities.connectExisting = vi.fn(capabilities.connectExisting);
+    const ctx = mount(capabilities);
+    await ready(ctx);
+    act(() => ctx.result.current.change(input));
+
+    await act(() => ctx.result.current.save());
+
+    expect(ctx.result.current.target).toBeNull();
+    expect(ctx.result.current.existingConnection).toBeDefined();
+    expect(ctx.result.current.feedback?.state).toBe("existing-vault");
+    expect(ctx.result.current.draft.secretAccessKey).toBe("local-secret");
+
+    await act(() => ctx.result.current.connectExisting());
+
+    expect(capabilities.connectExisting).toHaveBeenCalledWith(
+      "gallery-vault",
+      input,
+      expect.objectContaining({ relation: "remote_ahead" }),
+    );
+    expect(ctx.result.current.target).toEqual(syncLocation);
+    expect(ctx.result.current.existingConnection).toBeUndefined();
+    expect(ctx.result.current.draft.secretAccessKey).toBe("");
+    expect(ctx.result.current.feedback?.state).toBe("complete");
   });
   it("keeps uncertain uploads pending and supports an explicit retry", async () => {
     const ctx = mount(gallerySync("sync-pending"));
@@ -83,30 +144,45 @@ describe("sync UI lifecycle", () => {
     const ctx = mount();
     await ready(ctx);
     act(() => ctx.result.current.change(input));
+    const inspect = ctx.capabilities.inspect;
+    ctx.capabilities.inspect = async () => {
+      throw new Error("read unavailable");
+    };
     await act(async () => ctx.notify("focus"));
+    expect(ctx.result.current.error).toBeDefined();
+    expect(ctx.result.current.draft).toEqual(input);
+    ctx.capabilities.inspect = inspect;
+    await act(async () => ctx.notify("focus"));
+    expect(ctx.result.current.error).toBeUndefined();
     expect(ctx.result.current.draft).toEqual(input);
   });
-  it("clears secrets immediately on session change and ignores a late access result", async () => {
-    const ctx = mount();
-    await ready(ctx);
-    let finish = () => {};
-    ctx.capabilities.test = () =>
-      new Promise<void>((resolve) => {
-        finish = resolve;
+  it.each(["session", "pagehide"] as const)(
+    "clears secrets on %s and ignores a late access result",
+    async (reason) => {
+      const ctx = mount();
+      await ready(ctx);
+      let finish = () => {};
+      ctx.capabilities.test = () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+      act(() => ctx.result.current.change(input));
+      let pending: Promise<void>;
+      act(() => {
+        pending = ctx.result.current.test();
       });
-    act(() => ctx.result.current.change(input));
-    let pending: Promise<void>;
-    act(() => {
-      pending = ctx.result.current.test();
-    });
-    await act(async () => ctx.notify("session"));
-    expect(ctx.result.current.draft.secretAccessKey).toBe("");
-    await act(async () => {
-      finish();
-      await pending;
-    });
-    expect(ctx.result.current.feedback).toBeUndefined();
-  });
+      ctx.capabilities.inspect = vi.fn(ctx.capabilities.inspect);
+      await act(async () => ctx.notify(reason));
+      if (reason === "pagehide")
+        expect(ctx.capabilities.inspect).not.toHaveBeenCalled();
+      expect(ctx.result.current.draft.secretAccessKey).toBe("");
+      await act(async () => {
+        finish();
+        await pending;
+      });
+      expect(ctx.result.current.feedback).toBeUndefined();
+    },
+  );
   it("rejects duplicate submissions while the first request is running", async () => {
     const ctx = mount();
     await ready(ctx);
@@ -136,14 +212,15 @@ describe("sync UI lifecycle", () => {
     }));
     await act(() => ctx.result.current.check());
     expect(ctx.result.current.choices).toEqual({});
-    act(() => ctx.result.current.choose("tag:1", "use_remote"));
+    act(() => ctx.result.current.choose("tag:tag-personal", "use_remote"));
     await act(() => ctx.result.current.apply());
     expect(ctx.capabilities.apply).toHaveBeenCalledWith({
       vaultId: "gallery-vault",
       reviewedSnapshotIdentities: syncReview.reviewedSnapshotIdentities,
       resolution: {
         entryResolutions: [],
-        tagResolutions: [{ tagId: 1, action: "use_remote" }],
+        tagResolutions: [{ tagId: "tag-personal", action: "use_remote" }],
+        folderResolutions: [],
         deviceProfileResolutions: [],
       },
     });
@@ -162,7 +239,35 @@ describe("sync UI lifecycle", () => {
       "Unlock this vault again before continuing.",
     );
     expect(ctx.result.current.feedback).toBeUndefined();
+    expect(ctx.result.current.draft.accessKeyId).toBe("");
+    expect(ctx.result.current.draft.secretAccessKey).toBe("");
+    expect(ctx.result.current.repairing).toBe(false);
+    expect(ctx.result.current.target).toBeUndefined();
+    expect(ctx.onSessionLost).toHaveBeenCalledOnce();
   });
+  it.each([true, false])(
+    "rechecks repair authorization after an ordinary failure: lost=%s",
+    async (lost) => {
+      const ctx = mount(gallerySync("sync-configured"));
+      await ready(ctx);
+      ctx.capabilities.repair = async () => {
+        if (lost)
+          ctx.capabilities.inspectManagement = async () => {
+            throw new Error("Session unavailable");
+          };
+        throw new Error("Provider failed with local-secret");
+      };
+      act(() => ctx.result.current.beginRepair());
+      act(() => ctx.result.current.change(input));
+      await act(() => ctx.result.current.save());
+      expect(ctx.result.current.draft.secretAccessKey).toBe(
+        lost ? "" : "local-secret",
+      );
+      expect(ctx.result.current.repairing).toBe(!lost);
+      expect(ctx.onSessionLost).toHaveBeenCalledTimes(lost ? 1 : 0);
+      expect(ctx.result.current.error).not.toContain("local-secret");
+    },
+  );
   it("discards stale review choices after a failed apply without exposing raw errors", async () => {
     const ctx = mount(gallerySync("sync-review"));
     await ready(ctx);
@@ -170,7 +275,7 @@ describe("sync UI lifecycle", () => {
       throw new Error("AWS details with local-secret");
     };
     await act(() => ctx.result.current.check());
-    act(() => ctx.result.current.choose("tag:1", "use_remote"));
+    act(() => ctx.result.current.choose("tag:tag-personal", "use_remote"));
     await act(() => ctx.result.current.apply());
     expect(ctx.result.current.error).not.toContain("local-secret");
     expect(ctx.result.current.review).toBeUndefined();
@@ -183,7 +288,11 @@ describe("sync UI lifecycle", () => {
     let finishInspection = () => {};
     ctx.capabilities.configure = () =>
       new Promise((resolve) => {
-        finishSave = () => resolve({ syncUpload: "complete" });
+        finishSave = () =>
+          resolve({
+            kind: "enabled",
+            result: { syncUpload: "complete" },
+          });
       });
     ctx.capabilities.inspect = vi
       .fn<SyncCapabilities["inspect"]>()
@@ -269,7 +378,7 @@ describe("sync UI lifecycle", () => {
     expect(ctx.result.current.draft.secretAccessKey).toBe("");
   });
   it("does not send incomplete choices to core", () => {
-    expect(comparisons(syncReview)[0].id).toBe("tag:1");
+    expect(comparisons(syncReview)[0].id).toBe("tag:tag-personal");
     expect(() => resolutionFromChoices(syncReview, {})).toThrow(
       "Incomplete review",
     );
@@ -287,7 +396,8 @@ it.each(["complete", "pending", "repair"] as const)(
     act(() => ctx.result.current.change(input));
     ctx.capabilities.configure = vi.fn<SyncCapabilities["configure"]>(
       async () => ({
-        syncUpload: outcome === "pending" ? "pending" : "complete",
+        kind: "enabled",
+        result: { syncUpload: outcome === "pending" ? "pending" : "complete" },
       }),
     );
     ctx.capabilities.repair = vi.fn(async () => {});
@@ -353,4 +463,141 @@ it("clears obsolete inspection errors when a new session loads successfully", as
   await act(async () => ctx.notify("session"));
   expect(ctx.result.current.target).toEqual(syncLocation);
   expect(ctx.result.current.error).toBeUndefined();
+});
+
+describe("sync management", () => {
+  it("removes configuration only after disable completes", async () => {
+    const ctx = mount(gallerySync("sync-configured"));
+    await ready(ctx);
+    let finish = () => {};
+    ctx.capabilities.disable = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    let pending: Promise<void>;
+    act(() => {
+      pending = ctx.result.current.disable();
+    });
+    await waitFor(() =>
+      expect(ctx.capabilities.disable).toHaveBeenCalledWith("gallery-vault"),
+    );
+    expect(ctx.result.current.target).toEqual(syncLocation);
+    const inspectManagement = ctx.capabilities.inspectManagement;
+    ctx.capabilities.inspectManagement = vi
+      .fn(inspectManagement)
+      .mockRejectedValueOnce(new Error("refresh unavailable"));
+    await act(async () => {
+      finish();
+      await pending;
+    });
+    expect(ctx.result.current.error).toContain("action completed");
+    expect(ctx.result.current.target).toBeNull();
+    expect(ctx.result.current.feedback?.state).toBe("unconfigured");
+  });
+  it("preserves the configured target and exposes resumable removal after failure", async () => {
+    const ctx = mount(gallerySync("sync-removal-pending"));
+    await ready(ctx);
+    ctx.capabilities.disable = async () => {
+      throw new Error("private request details");
+    };
+    await act(() => ctx.result.current.disable());
+    expect(ctx.result.current.target).toEqual(syncLocation);
+    expect(ctx.result.current.management?.syncRemovalPending).toBe(true);
+    expect(ctx.result.current.feedback).toBeUndefined();
+    expect(ctx.result.current.error).not.toContain("private request");
+  });
+  it("does not claim old keys were revoked when verification remains pending", async () => {
+    const ctx = mount(gallerySync("sync-revocation-pending"));
+    await ready(ctx);
+    ctx.capabilities.completeCredentialRevocation = async () => ({
+      providerCredentialRevocation: "pending_external_deletion",
+      syncUpload: "complete",
+    });
+    await act(() => ctx.result.current.completeCredentialRevocation());
+    expect(ctx.result.current.feedback?.state).toBe("review-required");
+    expect(
+      ctx.result.current.management?.providerCredentialRevocationPending,
+    ).toBe(true);
+  });
+  it("reports pending publication after old keys are verified", async () => {
+    const ctx = mount(gallerySync("sync-revocation-pending"));
+    await ready(ctx);
+    ctx.capabilities.completeCredentialRevocation = async () => ({
+      providerCredentialRevocation: "complete",
+      syncUpload: "pending",
+    });
+    await act(() => ctx.result.current.completeCredentialRevocation());
+    expect(ctx.result.current.feedback?.state).toBe("pending");
+  });
+  it("requires explicit choices when accepting device additions", async () => {
+    const ctx = mount(gallerySync("sync-configured"));
+    await ready(ctx);
+    ctx.capabilities.acceptEnrollment = vi.fn(async () => ({
+      syncUpload: "complete" as const,
+    }));
+    act(() => ctx.result.current.beginTrust("enrollment"));
+    await act(() => ctx.result.current.prepareTrust());
+    const identities =
+      ctx.result.current.trustReview!.result.reviewedSnapshotIdentities;
+    act(() => ctx.result.current.choose("tag:tag-personal", "use_remote"));
+    await act(() => ctx.result.current.acceptTrust());
+    expect(ctx.capabilities.acceptEnrollment).toHaveBeenCalledWith({
+      vaultId: "gallery-vault",
+      reviewedSnapshotIdentities: identities,
+      resolution: {
+        entryResolutions: [],
+        tagResolutions: [{ tagId: "tag-personal", action: "use_remote" }],
+        folderResolutions: [],
+        deviceProfileResolutions: [],
+      },
+    });
+    expect(ctx.result.current.trustMode).toBeUndefined();
+  });
+  it("passes replacement keys only to revocation consumption and clears them after acceptance", async () => {
+    const ctx = mount(gallerySync("sync-configured"));
+    await ready(ctx);
+    ctx.capabilities.acceptRevocation = vi.fn(async () => ({
+      syncUpload: "pending" as const,
+    }));
+    act(() => ctx.result.current.beginTrust("revocation"));
+    act(() => ctx.result.current.change(input));
+    await act(() => ctx.result.current.prepareTrust());
+    act(() => ctx.result.current.choose("tag:tag-personal", "use_remote"));
+    await act(() => ctx.result.current.acceptTrust());
+    expect(ctx.capabilities.acceptRevocation).toHaveBeenCalledWith(
+      expect.objectContaining({ vaultId: "gallery-vault" }),
+      input,
+    );
+    expect(ctx.result.current.draft.secretAccessKey).toBe("");
+    expect(ctx.result.current.feedback?.state).toBe("pending");
+  });
+  it("clears replacement keys and ignores a delayed trust review when the vault locks", async () => {
+    const ctx = mount(gallerySync("sync-configured"));
+    await ready(ctx);
+    const review = await ctx.capabilities.prepareRevocation(
+      "gallery-vault",
+      input,
+    );
+    let finish = () => {};
+    ctx.capabilities.prepareRevocation = () =>
+      new Promise((resolve) => {
+        finish = () => resolve(review);
+      });
+    act(() => ctx.result.current.beginTrust("revocation"));
+    act(() => ctx.result.current.change(input));
+    let pending: Promise<void>;
+    act(() => {
+      pending = ctx.result.current.prepareTrust();
+    });
+    await act(async () => ctx.notify("session"));
+    await act(async () => {
+      finish();
+      await pending;
+    });
+    expect(ctx.result.current.draft.secretAccessKey).toBe("");
+    expect(ctx.result.current.trustReview).toBeUndefined();
+    expect(ctx.result.current.trustMode).toBeUndefined();
+  });
 });

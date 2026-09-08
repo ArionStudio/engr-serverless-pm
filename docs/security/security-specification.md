@@ -572,7 +572,10 @@ anything.
 
 ### 8.5 Device Enrollment
 
-A new device joins through a two-file, asynchronous exchange:
+A new device joins through a two-file, asynchronous exchange. The authorizing
+vault must have S3 sync configured; the target must supply credentials for that
+same target. Reject missing sync before issuing an approval or persisting the
+target's initialized vault. A single-device vault may remain local-only:
 
 1.  **Pin Root:** The target receives the vault ID and genesis-certificate
     digest from the registered device independently of the response file.
@@ -593,7 +596,7 @@ A new device joins through a two-file, asynchronous exchange:
     verifies all remaining request/response bindings, trust descent, signer,
     and envelope context and opens the envelope with its retained private
     wrapping key.
-5.  **Local Sync Access:** If a sync target exists, the user enters credentials
+5.  **Local Sync Access:** Require a sync target. The user enters credentials
     on the target. They must address the same target and snapshot and are stored
     only in encrypted local state.
 6.  **Persistence:** Access material, recovery backup, snapshot, checkpoint, and

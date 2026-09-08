@@ -16,17 +16,22 @@ import type { VersionVector } from "../../domain/versioning/version-vector.type"
 import type { VaultSyncGuardService } from "../../services/sync";
 import { calculatePasswordStrength } from "../../lib/password-strength/password-strength.utils";
 import type { SyncUploadStatus } from "../../domain/sync/sync-upload-status.type";
+import { requireVaultTagsExist } from "../../domain/vault/vault-tag-reference.policy";
+import { requireVaultFolderExists } from "../../domain/vault/vault-organization-reference.policy";
+import type { FolderId } from "../../domain/organization/folder.type";
 
 export type UpdateEntryCommandParams = {
   vaultId: string;
   entryId: string;
   expectedEntryVersionVector: Readonly<VersionVector>;
   allowWeakPassword?: boolean;
+  withoutPassword?: boolean;
   entry: {
     password: string;
     login: string;
-    tags: number[];
+    tags: string[];
     url: string;
+    folderId?: FolderId;
   };
 };
 
@@ -71,11 +76,9 @@ export class UpdateEntryUseCase {
     if (entryIndex === -1) {
       throw new PasswordEntryNotFoundError(vaultId, entryId);
     }
+    const current = unlockedVault.vault.entries[entryIndex];
 
-    requireExpectedEntryVersion(
-      unlockedVault.vault.entries[entryIndex].versionVector,
-      expectedEntryVersion,
-    );
+    requireExpectedEntryVersion(current.versionVector, expectedEntryVersion);
 
     let sanitizedUrl: string;
 
@@ -90,18 +93,32 @@ export class UpdateEntryUseCase {
       login: params.entry.login,
       tags: params.entry.tags,
       sanitizedUrl,
+      folderId: params.entry.folderId ?? current.folderId,
     });
 
     if (!entryPayloadResult.success) {
       throw new InvalidPasswordEntryError(entryPayloadResult.error);
     }
 
+    if (!entryPayloadResult.data.password && params.withoutPassword !== true) {
+      throw new InvalidPasswordEntryError(
+        "Confirm that this account has no password.",
+      );
+    }
+
     if (
+      entryPayloadResult.data.password !== "" &&
       params.allowWeakPassword !== true &&
       calculatePasswordStrength(entryPayloadResult.data.password).score !== 4
     ) {
       throw new PasswordEntryStrengthRequirementNotMetError();
     }
+
+    requireVaultTagsExist(unlockedVault.vault, entryPayloadResult.data.tags);
+    requireVaultFolderExists(
+      unlockedVault.vault,
+      entryPayloadResult.data.folderId,
+    );
 
     const syncState = await this.vaultSyncGuard.prepareLocalMutation(
       vaultId,

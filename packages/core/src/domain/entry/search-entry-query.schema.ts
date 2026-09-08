@@ -1,8 +1,8 @@
 import { z } from "zod";
+import { tagIdSchema } from "./tag.schema";
+import { folderIdSchema } from "../organization/folder.schema";
 
 const searchEntryTextSchema = z.string().trim().max(512);
-
-const searchEntryTagIdSchema = z.number().int().nonnegative();
 
 export const searchEntryAnyQuerySchema = z
   .object({
@@ -16,7 +16,8 @@ export const searchEntryFieldsQuerySchema = z
     mode: z.literal("fields"),
     login: searchEntryTextSchema.default(""),
     url: searchEntryTextSchema.default(""),
-    tag: z.array(searchEntryTagIdSchema).max(10).default([]),
+    tag: z.array(tagIdSchema).max(10).default([]),
+    folder: z.array(folderIdSchema).max(10).default([]),
   })
   .strict();
 

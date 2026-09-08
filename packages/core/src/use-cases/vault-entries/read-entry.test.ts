@@ -36,9 +36,11 @@ describe("ReadEntryUseCase", () => {
       entryVersionVector: singlePasswordEntry.versionVector,
       entry: {
         id: singlePasswordEntry.id,
+        hasPassword: true,
         login: singlePasswordEntry.login,
         tags: singlePasswordEntry.tags,
         sanitizedUrl: singlePasswordEntry.sanitizedUrl,
+        folderId: "uncategorized",
       },
     });
     expect(result.entry).not.toHaveProperty("password");

@@ -57,7 +57,7 @@ export function SetupDevice({
             Back to password
           </Button>
           <Button type="submit" disabled={pending || !name.trim()}>
-            {pending ? "Creating vault…" : "Create vault"}
+            Continue
           </Button>
         </div>
       </fieldset>

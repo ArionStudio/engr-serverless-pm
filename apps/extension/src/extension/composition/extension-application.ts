@@ -1,33 +1,50 @@
+import { VaultMutationService } from "@lfspm/core/services";
 import {
   CopyEntryPasswordUseCase,
+  CopyRevealedSecretUseCase,
+  RevealSyncCredentialsUseCase,
   CopyRecoveryWordsUseCase,
   ConsumeDeviceEnrollmentUseCase,
   ConsumeDeviceRevocationUseCase,
   CreateDeviceEnrollmentRequestUseCase,
   InitializeDeviceEnrollmentUseCase,
   PerformDeviceEnrollmentUseCase,
+  ReadDeviceEnrollmentApprovalUseCase,
   PrepareDeviceEnrollmentConsumptionUseCase,
   PrepareDeviceRevocationConsumptionUseCase,
   RecoverDeviceAccessUseCase,
   RevokeDeviceUseCase,
+  ReadDeviceManagementUseCase,
   CheckPasswordStrengthUseCase,
   GeneratePasswordUseCase,
   GenerateUsernameUseCase,
   GetVaultSessionStatusUseCase,
   ApplySyncResolutionUseCase,
+  ConnectExistingSyncUseCase,
   CompleteProviderCredentialRevocationUseCase,
   DisableSyncUseCase,
+  PrepareExistingSyncConnectionUseCase,
   PrepareSyncReviewUseCase,
   SetupSyncUseCase,
   SyncUploadUseCase,
   AddEntryUseCase,
+  AddTagUseCase,
+  AddFolderUseCase,
   GetEntryPasswordUseCase,
   ReadEntryUseCase,
   ReadEntryForEditingUseCase,
   ReadVaultWorkspaceUseCase,
+  ReadTagsUseCase,
+  ReadTagGroupsUseCase,
+  ReadFoldersUseCase,
   RemoveEntryUseCase,
+  RemoveTagUseCase,
+  RemoveFolderUseCase,
   SearchEntriesUseCase,
   UpdateEntryUseCase,
+  UpdateTagUseCase,
+  UpdateFolderUseCase,
+  MoveFolderUseCase,
   UpdateSyncCredentialsUseCase,
   GetSyncConfigurationUseCase,
   TestSyncAccessUseCase,
@@ -42,8 +59,10 @@ import {
   RandomSamplerService,
   SecretClipboardCopyService,
   RandomVaultDisplayNameService,
+  DeviceEnrollmentApprovalService,
   VaultSnapshotService,
   VaultSyncGuardService,
+  VaultTrustService,
 } from "@lfspm/core/services";
 import { ScureBip39Adapter } from "../../adapters/crypto/scure-bip39.adapter";
 import { IndexedDbVaultLocalRepositoryAdapter } from "../../adapters/storage";
@@ -56,6 +75,7 @@ import { composeSession } from "./session.composition";
 // Construct once per trusted application context and pass the needed use cases
 // explicitly to callers. Separate contexts coordinate through storage/Web Locks.
 export function composeExtensionApplication(database: VaultManagerDb = db) {
+  const sessionResources = composeSession(database);
   const {
     clock,
     ids,
@@ -71,7 +91,7 @@ export function composeExtensionApplication(database: VaultManagerDb = db) {
     lifecycleCleanup,
     clearClipboardTask,
     lockVault,
-  } = composeSession(database);
+  } = sessionResources;
   const bip39 = new ScureBip39Adapter();
   const vaultLocalRepository = new IndexedDbVaultLocalRepositoryAdapter(
     database,
@@ -97,8 +117,40 @@ export function composeExtensionApplication(database: VaultManagerDb = db) {
     crypto,
     vaultLocalRepository,
   );
+  const vaultMutation = new VaultMutationService(
+    unlockedVaultSession,
+    vaultSyncGuard,
+    vaultSnapshot,
+  );
+  const vaultTrust = new VaultTrustService(crypto);
+  const deviceEnrollmentApproval = new DeviceEnrollmentApprovalService(
+    crypto,
+    vaultLocalRepository,
+    vaultTrust,
+  );
+
+  const secretCopy = new SecretClipboardCopyService(
+    clipboard,
+    clipboardClear,
+    clipboardSecretHash,
+    ids,
+    clipboardClearTasks,
+    scheduledTasks,
+    clock,
+  );
 
   return {
+    revealSyncCredentials: new RevealSyncCredentialsUseCase(
+      crypto,
+      vaultLocalRepository,
+      unlockedVaultSession,
+    ),
+    copyRevealedSecret: new CopyRevealedSecretUseCase(
+      unlockedVaultSession,
+      clipboardOperations,
+      secretCopy,
+    ),
+    readDeviceManagement: new ReadDeviceManagementUseCase(unlockedVaultSession),
     clearClipboardTask,
     lockVault,
     copyRecoveryWords: new CopyRecoveryWordsUseCase(
@@ -107,15 +159,7 @@ export function composeExtensionApplication(database: VaultManagerDb = db) {
       vaultLocalRepository,
       unlockedVaultSession,
       clipboardOperations,
-      new SecretClipboardCopyService(
-        clipboard,
-        clipboardClear,
-        clipboardSecretHash,
-        ids,
-        clipboardClearTasks,
-        scheduledTasks,
-        clock,
-      ),
+      secretCopy,
     ),
     copyEntryPassword: new CopyEntryPasswordUseCase(
       clipboard,
@@ -154,6 +198,9 @@ export function composeExtensionApplication(database: VaultManagerDb = db) {
       vaultSyncGuard,
       vaultSnapshot,
     ),
+    readDeviceEnrollmentApproval: new ReadDeviceEnrollmentApprovalUseCase(
+      deviceEnrollmentApproval,
+    ),
     performDeviceEnrollment: new PerformDeviceEnrollmentUseCase(
       clock,
       crypto,
@@ -167,6 +214,7 @@ export function composeExtensionApplication(database: VaultManagerDb = db) {
       scheduledTasks,
       vaultLockTasks,
       clipboardOperations,
+      deviceEnrollmentApproval,
     ),
     prepareDeviceEnrollmentConsumption:
       new PrepareDeviceEnrollmentConsumptionUseCase(
@@ -211,6 +259,13 @@ export function composeExtensionApplication(database: VaultManagerDb = db) {
       vaultSnapshot,
       vaultSyncGuard,
     ),
+    connectExistingSync: new ConnectExistingSyncUseCase(
+      crypto,
+      syncProvider,
+      unlockedVaultSession,
+      vaultSnapshot,
+      vaultLocalRepository,
+    ),
     completeProviderCredentialRevocation:
       new CompleteProviderCredentialRevocationUseCase(
         crypto,
@@ -233,6 +288,12 @@ export function composeExtensionApplication(database: VaultManagerDb = db) {
       syncProvider,
       vaultSnapshot,
       vaultSyncGuard,
+    ),
+    prepareExistingSyncConnection: new PrepareExistingSyncConnectionUseCase(
+      syncProvider,
+      unlockedVaultSession,
+      vaultSnapshot,
+      vaultLocalRepository,
     ),
     getSyncConfiguration: new GetSyncConfigurationUseCase(unlockedVaultSession),
     testSyncAccess: new TestSyncAccessUseCase(
@@ -265,22 +326,32 @@ export function composeExtensionApplication(database: VaultManagerDb = db) {
       vaultSyncGuard,
       vaultSnapshot,
     ),
+    addTag: new AddTagUseCase(ids, clock, vaultMutation),
+    addFolder: new AddFolderUseCase(ids, clock, vaultMutation),
     getEntryPassword: new GetEntryPasswordUseCase(unlockedVaultSession),
     readEntry: new ReadEntryUseCase(unlockedVaultSession),
     readEntryForEditing: new ReadEntryForEditingUseCase(unlockedVaultSession),
     readVaultWorkspace: new ReadVaultWorkspaceUseCase(unlockedVaultSession),
+    readTags: new ReadTagsUseCase(unlockedVaultSession),
+    readTagGroups: new ReadTagGroupsUseCase(unlockedVaultSession),
+    readFolders: new ReadFoldersUseCase(unlockedVaultSession),
     removeEntry: new RemoveEntryUseCase(
       clock,
       unlockedVaultSession,
       vaultSyncGuard,
       vaultSnapshot,
     ),
+    removeTag: new RemoveTagUseCase(clock, vaultMutation),
+    removeFolder: new RemoveFolderUseCase(clock, vaultMutation),
     searchEntries: new SearchEntriesUseCase(unlockedVaultSession),
     updateEntry: new UpdateEntryUseCase(
       unlockedVaultSession,
       vaultSyncGuard,
       vaultSnapshot,
     ),
+    updateTag: new UpdateTagUseCase(vaultMutation),
+    updateFolder: new UpdateFolderUseCase(vaultMutation),
+    moveFolder: new MoveFolderUseCase(vaultMutation),
     changeMasterPassword: new ChangeMasterPasswordUseCase(
       crypto,
       vaultLocalRepository,

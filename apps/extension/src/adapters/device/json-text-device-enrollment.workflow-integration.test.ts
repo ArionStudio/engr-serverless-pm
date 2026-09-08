@@ -3,7 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CreateDeviceEnrollmentRequestUseCase,
   CURRENT_ALGORITHM_SUITE,
+  toVaultSnapshotDescriptor,
   PerformDeviceEnrollmentUseCase,
+  ReadDeviceEnrollmentApprovalUseCase,
   type IdPort,
   type RawMasterPassword,
   type Vault,
@@ -13,6 +15,8 @@ import { createCoreTestPorts } from "../../../../../packages/core/src/__tests__/
 import { createCoreTestValues } from "../../../../../packages/core/src/__tests__/fixtures/values";
 import { ClipboardClearService } from "../../../../../packages/core/src/services/clipboard/clipboard-clear.service";
 import { VaultLifecycleCleanupService } from "../../../../../packages/core/src/services/session/vault-lifecycle-cleanup.service";
+import { DeviceEnrollmentApprovalService } from "../../../../../packages/core/src/services/trust/device-enrollment-approval.service";
+import { VaultTrustService } from "../../../../../packages/core/src/services/trust/vault-trust.service";
 import { createVaultManagerDb } from "../../infrastructure/database/dexie-db";
 import type { VaultManagerDb } from "../../infrastructure/database/dexie-db";
 import { ScureBip39Adapter, WebCryptoAdapter } from "../crypto";
@@ -164,7 +168,7 @@ describe("JSON-text enrollment workflow integration", () => {
         ],
       },
       content: await crypto.encryptVaultSnapshotContent(
-        createSourceVault(sourceDeviceId),
+        { ...createSourceVault(sourceDeviceId), syncTarget: values.syncTarget },
         vaultMasterKey,
       ),
     };
@@ -219,6 +223,11 @@ describe("JSON-text enrollment workflow integration", () => {
       .mockResolvedValueOnce("local-access-generation-id")
       .mockResolvedValueOnce("vault-lock-action-id")
       .mockResolvedValue("session-id");
+    const enrollmentApproval = new DeviceEnrollmentApprovalService(
+      crypto,
+      vaults,
+      new VaultTrustService(crypto),
+    );
     const performEnrollment = new PerformDeviceEnrollmentUseCase(
       ports.clock,
       crypto,
@@ -232,9 +241,35 @@ describe("JSON-text enrollment workflow integration", () => {
       ports.scheduledTasks,
       ports.vaultLockTasks,
       ports.clipboardOperations,
+      enrollmentApproval,
     );
 
+    vi.mocked(
+      ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockResolvedValue(toVaultSnapshotDescriptor(vaultId, snapshot));
+    vi.mocked(ports.syncProvider.downloadVaultSnapshot).mockResolvedValue(
+      snapshot,
+    );
+    const readApproval = new ReadDeviceEnrollmentApprovalUseCase(
+      enrollmentApproval,
+    );
+    await expect(
+      readApproval.execute({
+        enrollmentResponse: response,
+        masterPassword: "wrong password" as RawMasterPassword,
+      }),
+    ).rejects.toThrow();
+    await expect(
+      readApproval.execute({ enrollmentResponse: response, masterPassword }),
+    ).resolves.toEqual({
+      vaultId,
+      requestId: response.requestId,
+      target: values.syncAccess.target,
+    });
+    await expect(vaults.getLocalVaultDescriptor(vaultId)).resolves.toBeNull();
+
     const result = await performEnrollment.execute({
+      syncConfig: values.syncConfigInput,
       enrollmentResponse: response,
       masterPassword,
       deviceName: "Integrated target",
@@ -277,5 +312,8 @@ function createSourceVault(sourceDeviceId: string): Vault {
     deletedDeviceProfiles: [],
     tags: [],
     deletedTags: [],
+    tagGroups: [],
+    folders: [],
+    deletedFolders: [],
   };
 }

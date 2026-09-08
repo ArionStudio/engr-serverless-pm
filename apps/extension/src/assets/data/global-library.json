@@ -1,0 +1,1739 @@
+{
+  "folders": [
+    {
+      "id": "f001",
+      "name": "Work",
+      "icon": "briefcase",
+      "parent": null,
+      "description": "Professional accounts"
+    },
+    {
+      "id": "f002",
+      "name": "Personal",
+      "icon": "home",
+      "parent": null,
+      "description": "Personal life accounts"
+    },
+    {
+      "id": "f003",
+      "name": "Finance",
+      "icon": "banknote",
+      "parent": null,
+      "description": "Banking and financial accounts"
+    },
+    {
+      "id": "f004",
+      "name": "Projects",
+      "icon": "folder-code",
+      "parent": "any",
+      "description": "Project-based grouping"
+    },
+    {
+      "id": "f005",
+      "name": "Infrastructure",
+      "icon": "server",
+      "parent": "any",
+      "description": "Cloud and server resources"
+    },
+    {
+      "id": "f006",
+      "name": "Clients",
+      "icon": "users",
+      "parent": "Work",
+      "description": "Client-specific accounts"
+    },
+    {
+      "id": "f007",
+      "name": "Keys",
+      "icon": "key",
+      "parent": "any",
+      "description": "API keys and secrets"
+    },
+    {
+      "id": "f008",
+      "name": "Household",
+      "icon": "house",
+      "parent": null,
+      "description": "Family and household accounts"
+    },
+    {
+      "id": "f009",
+      "name": "School",
+      "icon": "graduation-cap",
+      "parent": "Household",
+      "description": "Education-related accounts"
+    },
+    {
+      "id": "f010",
+      "name": "Medical",
+      "icon": "heart-pulse",
+      "parent": "Household",
+      "description": "Health and medical accounts"
+    },
+    {
+      "id": "f011",
+      "name": "Entertainment",
+      "icon": "play",
+      "parent": "Personal",
+      "description": "Media and entertainment"
+    },
+    {
+      "id": "f012",
+      "name": "Email",
+      "icon": "mail",
+      "parent": "any",
+      "description": "Email accounts"
+    },
+    {
+      "id": "f013",
+      "name": "Dev",
+      "icon": "code",
+      "parent": "Work",
+      "description": "Development tools"
+    },
+    {
+      "id": "f014",
+      "name": "Banking",
+      "icon": "bank",
+      "parent": "Finance",
+      "description": "Banks and credit unions"
+    },
+    {
+      "id": "f015",
+      "name": "Investments",
+      "icon": "chart",
+      "parent": "Finance",
+      "description": "Brokerage and investment accounts"
+    },
+    {
+      "id": "f016",
+      "name": "Insurance",
+      "icon": "shield",
+      "parent": "Finance",
+      "description": "Insurance providers"
+    },
+    {
+      "id": "f017",
+      "name": "Taxes",
+      "icon": "document",
+      "parent": "Finance",
+      "description": "Tax services and records"
+    },
+    {
+      "id": "f018",
+      "name": "Shopping",
+      "icon": "shopping-bag",
+      "parent": "Personal",
+      "description": "Stores and marketplaces"
+    },
+    {
+      "id": "f019",
+      "name": "Travel",
+      "icon": "airplane",
+      "parent": "Personal",
+      "description": "Travel bookings and loyalty accounts"
+    },
+    {
+      "id": "f020",
+      "name": "Social",
+      "icon": "users",
+      "parent": "Personal",
+      "description": "Social networks"
+    },
+    {
+      "id": "f021",
+      "name": "Cloud",
+      "icon": "cloud",
+      "parent": "Infrastructure",
+      "description": "Cloud provider accounts"
+    },
+    {
+      "id": "f022",
+      "name": "Domains",
+      "icon": "globe",
+      "parent": "Infrastructure",
+      "description": "Domain registrars and DNS"
+    },
+    {
+      "id": "f023",
+      "name": "Hosting",
+      "icon": "server",
+      "parent": "Infrastructure",
+      "description": "Hosting platforms"
+    },
+    {
+      "id": "f024",
+      "name": "Databases",
+      "icon": "database",
+      "parent": "Infrastructure",
+      "description": "Database services"
+    },
+    {
+      "id": "f025",
+      "name": "Source Control",
+      "icon": "code",
+      "parent": "Dev",
+      "description": "Source repositories"
+    },
+    {
+      "id": "f026",
+      "name": "CI and CD",
+      "icon": "workflow",
+      "parent": "Dev",
+      "description": "Build and deployment services"
+    },
+    {
+      "id": "f027",
+      "name": "Package Registries",
+      "icon": "package",
+      "parent": "Dev",
+      "description": "Software package registries"
+    },
+    {
+      "id": "f028",
+      "name": "Monitoring",
+      "icon": "chart",
+      "parent": "Infrastructure",
+      "description": "Monitoring and incident tools"
+    },
+    {
+      "id": "f029",
+      "name": "Communication",
+      "icon": "message",
+      "parent": "Work",
+      "description": "Team communication"
+    },
+    {
+      "id": "f030",
+      "name": "Productivity",
+      "icon": "checklist",
+      "parent": "Work",
+      "description": "Planning and productivity tools"
+    },
+    {
+      "id": "f031",
+      "name": "HR",
+      "icon": "users",
+      "parent": "Work",
+      "description": "Human resources systems"
+    },
+    {
+      "id": "f032",
+      "name": "Payroll",
+      "icon": "banknote",
+      "parent": "Work",
+      "description": "Payroll services"
+    },
+    {
+      "id": "f033",
+      "name": "Legal",
+      "icon": "document",
+      "parent": "any",
+      "description": "Legal services and records"
+    },
+    {
+      "id": "f034",
+      "name": "Government",
+      "icon": "building",
+      "parent": "Personal",
+      "description": "Government services"
+    },
+    {
+      "id": "f035",
+      "name": "Utilities",
+      "icon": "bolt",
+      "parent": "Household",
+      "description": "Home utilities"
+    },
+    {
+      "id": "f036",
+      "name": "Internet",
+      "icon": "globe",
+      "parent": "Household",
+      "description": "Internet service providers"
+    },
+    {
+      "id": "f037",
+      "name": "Mobile",
+      "icon": "phone",
+      "parent": "Household",
+      "description": "Mobile carriers"
+    },
+    {
+      "id": "f038",
+      "name": "Home Security",
+      "icon": "shield",
+      "parent": "Household",
+      "description": "Home security systems"
+    },
+    {
+      "id": "f039",
+      "name": "Vehicles",
+      "icon": "car",
+      "parent": "Personal",
+      "description": "Vehicle services"
+    },
+    {
+      "id": "f040",
+      "name": "Subscriptions",
+      "icon": "repeat",
+      "parent": "Personal",
+      "description": "Recurring subscriptions"
+    },
+    {
+      "id": "f041",
+      "name": "Music",
+      "icon": "music",
+      "parent": "Entertainment",
+      "description": "Music streaming"
+    },
+    {
+      "id": "f042",
+      "name": "Video",
+      "icon": "play",
+      "parent": "Entertainment",
+      "description": "Video streaming"
+    },
+    {
+      "id": "f043",
+      "name": "Gaming",
+      "icon": "game",
+      "parent": "Entertainment",
+      "description": "Games and gaming platforms"
+    },
+    {
+      "id": "f044",
+      "name": "Books",
+      "icon": "book",
+      "parent": "Entertainment",
+      "description": "Books and reading services"
+    },
+    {
+      "id": "f045",
+      "name": "Fitness",
+      "icon": "heart-pulse",
+      "parent": "Personal",
+      "description": "Fitness and wellness"
+    },
+    {
+      "id": "f046",
+      "name": "Pharmacy",
+      "icon": "heart-pulse",
+      "parent": "Medical",
+      "description": "Pharmacy accounts"
+    },
+    {
+      "id": "f047",
+      "name": "Doctors",
+      "icon": "heart-pulse",
+      "parent": "Medical",
+      "description": "Healthcare providers"
+    },
+    {
+      "id": "f048",
+      "name": "Pets",
+      "icon": "heart",
+      "parent": "Household",
+      "description": "Pet care services"
+    },
+    {
+      "id": "f049",
+      "name": "Kids",
+      "icon": "users",
+      "parent": "Household",
+      "description": "Children's accounts"
+    },
+    {
+      "id": "f050",
+      "name": "Parents",
+      "icon": "users",
+      "parent": "Household",
+      "description": "Parent-managed accounts"
+    },
+    {
+      "id": "f051",
+      "name": "Primary School",
+      "icon": "graduation-cap",
+      "parent": "School",
+      "description": "Primary education"
+    },
+    {
+      "id": "f052",
+      "name": "University",
+      "icon": "graduation-cap",
+      "parent": "School",
+      "description": "University systems"
+    },
+    {
+      "id": "f053",
+      "name": "Courses",
+      "icon": "book",
+      "parent": "School",
+      "description": "Online courses"
+    },
+    {
+      "id": "f054",
+      "name": "Freelance",
+      "icon": "briefcase",
+      "parent": "Work",
+      "description": "Freelance services"
+    },
+    {
+      "id": "f055",
+      "name": "Vendors",
+      "icon": "building",
+      "parent": "Work",
+      "description": "Vendor accounts"
+    },
+    {
+      "id": "f056",
+      "name": "Marketing",
+      "icon": "chart",
+      "parent": "Work",
+      "description": "Marketing platforms"
+    },
+    {
+      "id": "f057",
+      "name": "Analytics",
+      "icon": "chart",
+      "parent": "Work",
+      "description": "Analytics services"
+    },
+    {
+      "id": "f058",
+      "name": "Design",
+      "icon": "paint",
+      "parent": "Projects",
+      "description": "Design tools"
+    },
+    {
+      "id": "f059",
+      "name": "Documentation",
+      "icon": "document",
+      "parent": "Projects",
+      "description": "Documentation systems"
+    },
+    {
+      "id": "f060",
+      "name": "Testing",
+      "icon": "checklist",
+      "parent": "Projects",
+      "description": "Testing services"
+    },
+    {
+      "id": "f061",
+      "name": "Production",
+      "icon": "server",
+      "parent": "Infrastructure",
+      "description": "Production systems"
+    },
+    {
+      "id": "f062",
+      "name": "Staging",
+      "icon": "server",
+      "parent": "Infrastructure",
+      "description": "Staging systems"
+    },
+    {
+      "id": "f063",
+      "name": "Development",
+      "icon": "code",
+      "parent": "Infrastructure",
+      "description": "Development systems"
+    },
+    {
+      "id": "f064",
+      "name": "Backups",
+      "icon": "database",
+      "parent": "Infrastructure",
+      "description": "Backup services"
+    },
+    {
+      "id": "f065",
+      "name": "Certificates",
+      "icon": "shield",
+      "parent": "Infrastructure",
+      "description": "Certificates and certificate authorities"
+    },
+    {
+      "id": "f066",
+      "name": "VPN",
+      "icon": "shield",
+      "parent": "Infrastructure",
+      "description": "VPN providers"
+    },
+    {
+      "id": "f067",
+      "name": "Routers",
+      "icon": "server",
+      "parent": "Infrastructure",
+      "description": "Network equipment"
+    },
+    {
+      "id": "f068",
+      "name": "NAS",
+      "icon": "database",
+      "parent": "Infrastructure",
+      "description": "Network storage"
+    },
+    {
+      "id": "f069",
+      "name": "Smart Home",
+      "icon": "house",
+      "parent": "Household",
+      "description": "Connected home services"
+    },
+    {
+      "id": "f070",
+      "name": "Energy",
+      "icon": "bolt",
+      "parent": "Utilities",
+      "description": "Electricity and energy"
+    },
+    {
+      "id": "f071",
+      "name": "Water",
+      "icon": "drop",
+      "parent": "Utilities",
+      "description": "Water utilities"
+    },
+    {
+      "id": "f072",
+      "name": "Waste",
+      "icon": "building",
+      "parent": "Utilities",
+      "description": "Waste services"
+    },
+    {
+      "id": "f073",
+      "name": "Rent",
+      "icon": "home",
+      "parent": "Household",
+      "description": "Rental services"
+    },
+    {
+      "id": "f074",
+      "name": "Mortgage",
+      "icon": "home",
+      "parent": "Finance",
+      "description": "Mortgage providers"
+    },
+    {
+      "id": "f075",
+      "name": "Credit Cards",
+      "icon": "card",
+      "parent": "Finance",
+      "description": "Credit card accounts"
+    },
+    {
+      "id": "f076",
+      "name": "Loans",
+      "icon": "banknote",
+      "parent": "Finance",
+      "description": "Loan providers"
+    },
+    {
+      "id": "f077",
+      "name": "Pensions",
+      "icon": "chart",
+      "parent": "Finance",
+      "description": "Retirement accounts"
+    },
+    {
+      "id": "f078",
+      "name": "Crypto",
+      "icon": "key",
+      "parent": "Finance",
+      "description": "Cryptocurrency services"
+    },
+    {
+      "id": "f079",
+      "name": "Charity",
+      "icon": "heart",
+      "parent": "Personal",
+      "description": "Charitable organizations"
+    },
+    {
+      "id": "f080",
+      "name": "Community",
+      "icon": "users",
+      "parent": "Personal",
+      "description": "Community groups"
+    },
+    {
+      "id": "f081",
+      "name": "Identity",
+      "icon": "user",
+      "parent": "Personal",
+      "description": "Identity providers"
+    },
+    {
+      "id": "f082",
+      "name": "Password Managers",
+      "icon": "key",
+      "parent": "Personal",
+      "description": "Password management accounts"
+    },
+    {
+      "id": "f083",
+      "name": "Messaging",
+      "icon": "message",
+      "parent": "Personal",
+      "description": "Personal messaging"
+    },
+    {
+      "id": "f084",
+      "name": "Photos",
+      "icon": "image",
+      "parent": "Personal",
+      "description": "Photo storage"
+    },
+    {
+      "id": "f085",
+      "name": "Files",
+      "icon": "folder",
+      "parent": "Personal",
+      "description": "File storage"
+    },
+    {
+      "id": "f086",
+      "name": "Calendars",
+      "icon": "calendar",
+      "parent": "Personal",
+      "description": "Calendar services"
+    },
+    {
+      "id": "f087",
+      "name": "News",
+      "icon": "document",
+      "parent": "Personal",
+      "description": "News subscriptions"
+    },
+    {
+      "id": "f088",
+      "name": "Food Delivery",
+      "icon": "shopping-bag",
+      "parent": "Personal",
+      "description": "Food delivery services"
+    },
+    {
+      "id": "f089",
+      "name": "Transport",
+      "icon": "car",
+      "parent": "Travel",
+      "description": "Transport services"
+    },
+    {
+      "id": "f090",
+      "name": "Hotels",
+      "icon": "building",
+      "parent": "Travel",
+      "description": "Hotel accounts"
+    },
+    {
+      "id": "f091",
+      "name": "Airlines",
+      "icon": "airplane",
+      "parent": "Travel",
+      "description": "Airline accounts"
+    },
+    {
+      "id": "f092",
+      "name": "Loyalty",
+      "icon": "star",
+      "parent": "Travel",
+      "description": "Loyalty programs"
+    },
+    {
+      "id": "f093",
+      "name": "Conferences",
+      "icon": "calendar",
+      "parent": "Work",
+      "description": "Conference services"
+    },
+    {
+      "id": "f094",
+      "name": "Recruiting",
+      "icon": "users",
+      "parent": "Work",
+      "description": "Recruiting platforms"
+    },
+    {
+      "id": "f095",
+      "name": "Accounting",
+      "icon": "banknote",
+      "parent": "Work",
+      "description": "Accounting systems"
+    },
+    {
+      "id": "f096",
+      "name": "CRM",
+      "icon": "users",
+      "parent": "Work",
+      "description": "Customer relationship systems"
+    },
+    {
+      "id": "f097",
+      "name": "Support",
+      "icon": "message",
+      "parent": "Work",
+      "description": "Customer support tools"
+    },
+    {
+      "id": "f098",
+      "name": "Status Pages",
+      "icon": "chart",
+      "parent": "Infrastructure",
+      "description": "Service status accounts"
+    },
+    {
+      "id": "f099",
+      "name": "Secrets",
+      "icon": "key",
+      "parent": "Infrastructure",
+      "description": "Secret management systems"
+    },
+    {
+      "id": "f100",
+      "name": "Automation",
+      "icon": "workflow",
+      "parent": "Infrastructure",
+      "description": "Automation services"
+    },
+    {
+      "id": "f101",
+      "name": "AI Tools",
+      "icon": "bolt",
+      "parent": "Dev",
+      "description": "Artificial intelligence services"
+    },
+    {
+      "id": "f102",
+      "name": "Developer Portals",
+      "icon": "code",
+      "parent": "Dev",
+      "description": "Developer account portals"
+    },
+    {
+      "id": "f103",
+      "name": "App Stores",
+      "icon": "package",
+      "parent": "Dev",
+      "description": "Application distribution accounts"
+    },
+    {
+      "id": "f104",
+      "name": "Archives",
+      "icon": "folder",
+      "parent": "any",
+      "description": "Inactive accounts kept for reference"
+    }
+  ],
+  "tagGroups": [
+    {
+      "id": "status",
+      "name": "Status",
+      "icon": "bell",
+      "baseColor": "orange",
+      "description": "Account and credential status"
+    },
+    {
+      "id": "topic",
+      "name": "Topic",
+      "icon": "tag",
+      "baseColor": "blue",
+      "description": "Subject and purpose"
+    },
+    {
+      "id": "environment",
+      "name": "Environment",
+      "icon": "layers",
+      "baseColor": "purple",
+      "description": "Deployment environment"
+    },
+    {
+      "id": "access",
+      "name": "Access",
+      "icon": "shield-keyhole",
+      "baseColor": "green",
+      "description": "Access scope"
+    },
+    {
+      "id": "other",
+      "name": "Other",
+      "icon": "hash",
+      "baseColor": "gray",
+      "description": "Custom context"
+    }
+  ],
+  "tags": [
+    {
+      "id": "t001",
+      "name": "Expiring",
+      "color": "red",
+      "shade": 500,
+      "groupId": "status",
+      "description": "Passwords nearing expiration",
+      "aliases": ["expires", "renew"]
+    },
+    {
+      "id": "t002",
+      "name": "MFA",
+      "color": "orange",
+      "shade": 500,
+      "groupId": "status",
+      "description": "Accounts protected by multi-factor authentication",
+      "aliases": ["2FA", "two factor"]
+    },
+    {
+      "id": "t003",
+      "name": "Shared",
+      "color": "gray",
+      "shade": 500,
+      "groupId": "status",
+      "description": "Credentials shared with others",
+      "aliases": ["team", "family"]
+    },
+    {
+      "id": "t004",
+      "name": "Dev",
+      "color": "blue",
+      "shade": 500,
+      "groupId": "topic",
+      "description": "Development-related accounts",
+      "aliases": ["developer", "API", "code"]
+    },
+    {
+      "id": "t005",
+      "name": "Database",
+      "color": "blue",
+      "shade": 700,
+      "groupId": "topic",
+      "description": "Database credentials",
+      "aliases": ["DB", "SQL"]
+    },
+    {
+      "id": "t006",
+      "name": "Finance",
+      "color": "yellow",
+      "shade": 500,
+      "groupId": "topic",
+      "description": "Financial services",
+      "aliases": ["bank", "money"]
+    },
+    {
+      "id": "t007",
+      "name": "Social",
+      "color": "pink",
+      "shade": 500,
+      "groupId": "topic",
+      "description": "Social media platforms",
+      "aliases": ["social media"]
+    },
+    {
+      "id": "t008",
+      "name": "Staging",
+      "color": "purple",
+      "shade": 400,
+      "groupId": "environment",
+      "description": "Staging and test environments",
+      "aliases": ["stage", "test"]
+    },
+    {
+      "id": "t009",
+      "name": "Prod",
+      "color": "red",
+      "shade": 600,
+      "groupId": "environment",
+      "description": "Production systems",
+      "aliases": ["production", "live"]
+    },
+    {
+      "id": "t010",
+      "name": "Kids",
+      "color": "green",
+      "shade": 400,
+      "groupId": "access",
+      "description": "Child-accessible accounts",
+      "aliases": ["children"]
+    },
+    {
+      "id": "t011",
+      "name": "Parents",
+      "color": "green",
+      "shade": 700,
+      "groupId": "access",
+      "description": "Parent-only accounts",
+      "aliases": ["adults"]
+    },
+    {
+      "id": "t012",
+      "name": "Subscription",
+      "color": "yellow",
+      "shade": 600,
+      "groupId": "topic",
+      "description": "Recurring payments",
+      "aliases": ["recurring"]
+    },
+    {
+      "id": "t013",
+      "name": "Documents",
+      "color": "gray",
+      "shade": 500,
+      "groupId": "topic",
+      "description": "Document storage",
+      "aliases": ["docs", "files"]
+    },
+    {
+      "id": "t014",
+      "name": "Active",
+      "color": "green",
+      "shade": 500,
+      "groupId": "status",
+      "description": "Currently active accounts",
+      "aliases": []
+    },
+    {
+      "id": "t015",
+      "name": "Inactive",
+      "color": "gray",
+      "shade": 500,
+      "groupId": "status",
+      "description": "Inactive accounts",
+      "aliases": ["unused"]
+    },
+    {
+      "id": "t016",
+      "name": "Needs Review",
+      "color": "orange",
+      "shade": 500,
+      "groupId": "status",
+      "description": "Accounts requiring review",
+      "aliases": ["review"]
+    },
+    {
+      "id": "t017",
+      "name": "Compromised",
+      "color": "red",
+      "shade": 700,
+      "groupId": "status",
+      "description": "Credentials that may be compromised",
+      "aliases": ["breached"]
+    },
+    {
+      "id": "t018",
+      "name": "Passwordless",
+      "color": "green",
+      "shade": 500,
+      "groupId": "status",
+      "description": "Accounts using passwordless access",
+      "aliases": ["passkey"]
+    },
+    {
+      "id": "t019",
+      "name": "Recovery Needed",
+      "color": "orange",
+      "shade": 600,
+      "groupId": "status",
+      "description": "Accounts missing recovery setup",
+      "aliases": ["recovery"]
+    },
+    {
+      "id": "t020",
+      "name": "Archived",
+      "color": "gray",
+      "shade": 600,
+      "groupId": "status",
+      "description": "Accounts kept for reference",
+      "aliases": []
+    },
+    {
+      "id": "t021",
+      "name": "Personal",
+      "color": "blue",
+      "shade": 400,
+      "groupId": "topic",
+      "description": "Personal accounts",
+      "aliases": []
+    },
+    {
+      "id": "t022",
+      "name": "Work",
+      "color": "blue",
+      "shade": 600,
+      "groupId": "topic",
+      "description": "Work accounts",
+      "aliases": ["business"]
+    },
+    {
+      "id": "t023",
+      "name": "Email",
+      "color": "blue",
+      "shade": 500,
+      "groupId": "topic",
+      "description": "Email services",
+      "aliases": ["mail"]
+    },
+    {
+      "id": "t024",
+      "name": "Cloud",
+      "color": "blue",
+      "shade": 600,
+      "groupId": "topic",
+      "description": "Cloud services",
+      "aliases": ["AWS", "Azure", "GCP"]
+    },
+    {
+      "id": "t025",
+      "name": "Hosting",
+      "color": "blue",
+      "shade": 700,
+      "groupId": "topic",
+      "description": "Hosting providers",
+      "aliases": ["server"]
+    },
+    {
+      "id": "t026",
+      "name": "Domain",
+      "color": "blue",
+      "shade": 500,
+      "groupId": "topic",
+      "description": "Domain and DNS services",
+      "aliases": ["DNS", "registrar"]
+    },
+    {
+      "id": "t027",
+      "name": "Source Control",
+      "color": "blue",
+      "shade": 600,
+      "groupId": "topic",
+      "description": "Source repositories",
+      "aliases": ["Git"]
+    },
+    {
+      "id": "t028",
+      "name": "CI/CD",
+      "color": "blue",
+      "shade": 700,
+      "groupId": "topic",
+      "description": "Build and deployment tools",
+      "aliases": ["pipeline"]
+    },
+    {
+      "id": "t029",
+      "name": "Monitoring",
+      "color": "blue",
+      "shade": 500,
+      "groupId": "topic",
+      "description": "Monitoring tools",
+      "aliases": ["observability"]
+    },
+    {
+      "id": "t030",
+      "name": "Analytics",
+      "color": "blue",
+      "shade": 400,
+      "groupId": "topic",
+      "description": "Analytics services",
+      "aliases": ["metrics"]
+    },
+    {
+      "id": "t031",
+      "name": "Communication",
+      "color": "blue",
+      "shade": 500,
+      "groupId": "topic",
+      "description": "Communication platforms",
+      "aliases": ["chat"]
+    },
+    {
+      "id": "t032",
+      "name": "Project Management",
+      "color": "blue",
+      "shade": 600,
+      "groupId": "topic",
+      "description": "Project management services",
+      "aliases": ["tasks"]
+    },
+    {
+      "id": "t033",
+      "name": "Design",
+      "color": "pink",
+      "shade": 500,
+      "groupId": "topic",
+      "description": "Design tools",
+      "aliases": []
+    },
+    {
+      "id": "t034",
+      "name": "Marketing",
+      "color": "pink",
+      "shade": 600,
+      "groupId": "topic",
+      "description": "Marketing tools",
+      "aliases": []
+    },
+    {
+      "id": "t035",
+      "name": "Sales",
+      "color": "yellow",
+      "shade": 500,
+      "groupId": "topic",
+      "description": "Sales platforms",
+      "aliases": ["CRM"]
+    },
+    {
+      "id": "t036",
+      "name": "HR",
+      "color": "blue",
+      "shade": 400,
+      "groupId": "topic",
+      "description": "Human resources services",
+      "aliases": []
+    },
+    {
+      "id": "t037",
+      "name": "Legal",
+      "color": "gray",
+      "shade": 600,
+      "groupId": "topic",
+      "description": "Legal services",
+      "aliases": []
+    },
+    {
+      "id": "t038",
+      "name": "Insurance",
+      "color": "blue",
+      "shade": 600,
+      "groupId": "topic",
+      "description": "Insurance services",
+      "aliases": []
+    },
+    {
+      "id": "t039",
+      "name": "Investments",
+      "color": "green",
+      "shade": 600,
+      "groupId": "topic",
+      "description": "Investment services",
+      "aliases": ["brokerage"]
+    },
+    {
+      "id": "t040",
+      "name": "Banking",
+      "color": "green",
+      "shade": 700,
+      "groupId": "topic",
+      "description": "Banking services",
+      "aliases": ["bank"]
+    },
+    {
+      "id": "t041",
+      "name": "Shopping",
+      "color": "yellow",
+      "shade": 500,
+      "groupId": "topic",
+      "description": "Shopping accounts",
+      "aliases": ["store"]
+    },
+    {
+      "id": "t042",
+      "name": "Travel",
+      "color": "blue",
+      "shade": 400,
+      "groupId": "topic",
+      "description": "Travel services",
+      "aliases": ["trip"]
+    },
+    {
+      "id": "t043",
+      "name": "Entertainment",
+      "color": "purple",
+      "shade": 500,
+      "groupId": "topic",
+      "description": "Entertainment services",
+      "aliases": ["media"]
+    },
+    {
+      "id": "t044",
+      "name": "Gaming",
+      "color": "purple",
+      "shade": 600,
+      "groupId": "topic",
+      "description": "Gaming services",
+      "aliases": ["games"]
+    },
+    {
+      "id": "t045",
+      "name": "Music",
+      "color": "pink",
+      "shade": 500,
+      "groupId": "topic",
+      "description": "Music services",
+      "aliases": []
+    },
+    {
+      "id": "t046",
+      "name": "Video",
+      "color": "purple",
+      "shade": 500,
+      "groupId": "topic",
+      "description": "Video services",
+      "aliases": ["streaming"]
+    },
+    {
+      "id": "t047",
+      "name": "Education",
+      "color": "blue",
+      "shade": 500,
+      "groupId": "topic",
+      "description": "Education services",
+      "aliases": ["school"]
+    },
+    {
+      "id": "t048",
+      "name": "Health",
+      "color": "red",
+      "shade": 400,
+      "groupId": "topic",
+      "description": "Health services",
+      "aliases": ["medical"]
+    },
+    {
+      "id": "t049",
+      "name": "Government",
+      "color": "gray",
+      "shade": 700,
+      "groupId": "topic",
+      "description": "Government services",
+      "aliases": []
+    },
+    {
+      "id": "t050",
+      "name": "Utilities",
+      "color": "yellow",
+      "shade": 600,
+      "groupId": "topic",
+      "description": "Home utilities",
+      "aliases": []
+    },
+    {
+      "id": "t051",
+      "name": "Identity",
+      "color": "green",
+      "shade": 600,
+      "groupId": "topic",
+      "description": "Identity services",
+      "aliases": ["SSO"]
+    },
+    {
+      "id": "t052",
+      "name": "Security",
+      "color": "red",
+      "shade": 500,
+      "groupId": "topic",
+      "description": "Security services",
+      "aliases": []
+    },
+    {
+      "id": "t053",
+      "name": "Backup",
+      "color": "blue",
+      "shade": 700,
+      "groupId": "topic",
+      "description": "Backup services",
+      "aliases": []
+    },
+    {
+      "id": "t054",
+      "name": "Storage",
+      "color": "blue",
+      "shade": 600,
+      "groupId": "topic",
+      "description": "Storage services",
+      "aliases": ["files"]
+    },
+    {
+      "id": "t055",
+      "name": "Automation",
+      "color": "purple",
+      "shade": 500,
+      "groupId": "topic",
+      "description": "Automation tools",
+      "aliases": []
+    },
+    {
+      "id": "t056",
+      "name": "AI",
+      "color": "purple",
+      "shade": 600,
+      "groupId": "topic",
+      "description": "Artificial intelligence services",
+      "aliases": ["machine learning"]
+    },
+    {
+      "id": "t057",
+      "name": "Mobile",
+      "color": "blue",
+      "shade": 400,
+      "groupId": "topic",
+      "description": "Mobile services",
+      "aliases": ["phone"]
+    },
+    {
+      "id": "t058",
+      "name": "IoT",
+      "color": "blue",
+      "shade": 600,
+      "groupId": "topic",
+      "description": "Connected device services",
+      "aliases": ["smart home"]
+    },
+    {
+      "id": "t059",
+      "name": "Documentation",
+      "color": "gray",
+      "shade": 500,
+      "groupId": "topic",
+      "description": "Documentation platforms",
+      "aliases": ["docs"]
+    },
+    {
+      "id": "t060",
+      "name": "Support",
+      "color": "blue",
+      "shade": 500,
+      "groupId": "topic",
+      "description": "Support portals",
+      "aliases": ["helpdesk"]
+    },
+    {
+      "id": "t061",
+      "name": "Local",
+      "color": "gray",
+      "shade": 500,
+      "groupId": "environment",
+      "description": "Local development environment",
+      "aliases": ["localhost"]
+    },
+    {
+      "id": "t062",
+      "name": "Development",
+      "color": "blue",
+      "shade": 400,
+      "groupId": "environment",
+      "description": "Development environment",
+      "aliases": ["dev"]
+    },
+    {
+      "id": "t063",
+      "name": "Test",
+      "color": "purple",
+      "shade": 300,
+      "groupId": "environment",
+      "description": "Test environment",
+      "aliases": ["QA"]
+    },
+    {
+      "id": "t064",
+      "name": "QA",
+      "color": "purple",
+      "shade": 400,
+      "groupId": "environment",
+      "description": "Quality assurance environment",
+      "aliases": ["quality"]
+    },
+    {
+      "id": "t065",
+      "name": "Sandbox",
+      "color": "yellow",
+      "shade": 400,
+      "groupId": "environment",
+      "description": "Sandbox environment",
+      "aliases": []
+    },
+    {
+      "id": "t066",
+      "name": "Preview",
+      "color": "purple",
+      "shade": 400,
+      "groupId": "environment",
+      "description": "Preview environment",
+      "aliases": []
+    },
+    {
+      "id": "t067",
+      "name": "Canary",
+      "color": "yellow",
+      "shade": 500,
+      "groupId": "environment",
+      "description": "Canary deployment",
+      "aliases": []
+    },
+    {
+      "id": "t068",
+      "name": "Disaster Recovery",
+      "color": "red",
+      "shade": 500,
+      "groupId": "environment",
+      "description": "Disaster recovery environment",
+      "aliases": ["DR"]
+    },
+    {
+      "id": "t069",
+      "name": "Europe",
+      "color": "blue",
+      "shade": 500,
+      "groupId": "environment",
+      "description": "European region",
+      "aliases": ["EU"]
+    },
+    {
+      "id": "t070",
+      "name": "North America",
+      "color": "blue",
+      "shade": 600,
+      "groupId": "environment",
+      "description": "North American region",
+      "aliases": ["US", "USA"]
+    },
+    {
+      "id": "t071",
+      "name": "Asia Pacific",
+      "color": "blue",
+      "shade": 700,
+      "groupId": "environment",
+      "description": "Asia Pacific region",
+      "aliases": ["APAC"]
+    },
+    {
+      "id": "t072",
+      "name": "Home",
+      "color": "green",
+      "shade": 400,
+      "groupId": "environment",
+      "description": "Home network or device",
+      "aliases": []
+    },
+    {
+      "id": "t073",
+      "name": "Office",
+      "color": "green",
+      "shade": 600,
+      "groupId": "environment",
+      "description": "Office network or device",
+      "aliases": []
+    },
+    {
+      "id": "t074",
+      "name": "Cloud Hosted",
+      "color": "purple",
+      "shade": 500,
+      "groupId": "environment",
+      "description": "Cloud-hosted system",
+      "aliases": ["cloud"]
+    },
+    {
+      "id": "t075",
+      "name": "Self Hosted",
+      "color": "gray",
+      "shade": 700,
+      "groupId": "environment",
+      "description": "Self-hosted system",
+      "aliases": ["on prem"]
+    },
+    {
+      "id": "t076",
+      "name": "Public",
+      "color": "green",
+      "shade": 400,
+      "groupId": "access",
+      "description": "Publicly accessible account",
+      "aliases": []
+    },
+    {
+      "id": "t077",
+      "name": "Private",
+      "color": "green",
+      "shade": 700,
+      "groupId": "access",
+      "description": "Private account",
+      "aliases": []
+    },
+    {
+      "id": "t078",
+      "name": "Admin",
+      "color": "red",
+      "shade": 700,
+      "groupId": "access",
+      "description": "Administrative access",
+      "aliases": ["administrator", "root"]
+    },
+    {
+      "id": "t079",
+      "name": "Owner",
+      "color": "green",
+      "shade": 700,
+      "groupId": "access",
+      "description": "Owner-level access",
+      "aliases": []
+    },
+    {
+      "id": "t080",
+      "name": "Editor",
+      "color": "green",
+      "shade": 600,
+      "groupId": "access",
+      "description": "Edit access",
+      "aliases": ["write"]
+    },
+    {
+      "id": "t081",
+      "name": "Read Only",
+      "color": "green",
+      "shade": 400,
+      "groupId": "access",
+      "description": "Read-only access",
+      "aliases": ["viewer"]
+    },
+    {
+      "id": "t082",
+      "name": "Service Account",
+      "color": "green",
+      "shade": 600,
+      "groupId": "access",
+      "description": "Machine or service identity",
+      "aliases": ["robot"]
+    },
+    {
+      "id": "t083",
+      "name": "API Key",
+      "color": "green",
+      "shade": 500,
+      "groupId": "access",
+      "description": "API credential",
+      "aliases": ["token"]
+    },
+    {
+      "id": "t084",
+      "name": "SSH",
+      "color": "green",
+      "shade": 700,
+      "groupId": "access",
+      "description": "SSH access",
+      "aliases": ["shell"]
+    },
+    {
+      "id": "t085",
+      "name": "VPN",
+      "color": "green",
+      "shade": 600,
+      "groupId": "access",
+      "description": "VPN access",
+      "aliases": []
+    },
+    {
+      "id": "t086",
+      "name": "Team",
+      "color": "green",
+      "shade": 500,
+      "groupId": "access",
+      "description": "Team-accessible account",
+      "aliases": ["group"]
+    },
+    {
+      "id": "t087",
+      "name": "Family",
+      "color": "green",
+      "shade": 500,
+      "groupId": "access",
+      "description": "Family-accessible account",
+      "aliases": ["household"]
+    },
+    {
+      "id": "t088",
+      "name": "Guest",
+      "color": "green",
+      "shade": 300,
+      "groupId": "access",
+      "description": "Guest access",
+      "aliases": []
+    },
+    {
+      "id": "t089",
+      "name": "Billing",
+      "color": "green",
+      "shade": 600,
+      "groupId": "access",
+      "description": "Billing access",
+      "aliases": []
+    },
+    {
+      "id": "t090",
+      "name": "Emergency",
+      "color": "red",
+      "shade": 700,
+      "groupId": "access",
+      "description": "Emergency access",
+      "aliases": ["break glass"]
+    },
+    {
+      "id": "t091",
+      "name": "Favorite",
+      "color": "yellow",
+      "shade": 500,
+      "groupId": "other",
+      "description": "Frequently used account",
+      "aliases": ["starred"]
+    },
+    {
+      "id": "t092",
+      "name": "Temporary",
+      "color": "orange",
+      "shade": 400,
+      "groupId": "other",
+      "description": "Temporary account",
+      "aliases": []
+    },
+    {
+      "id": "t093",
+      "name": "Legacy",
+      "color": "gray",
+      "shade": 700,
+      "groupId": "other",
+      "description": "Legacy system",
+      "aliases": ["old"]
+    },
+    {
+      "id": "t094",
+      "name": "Critical",
+      "color": "red",
+      "shade": 700,
+      "groupId": "other",
+      "description": "Critical account",
+      "aliases": ["important"]
+    },
+    {
+      "id": "t095",
+      "name": "High Priority",
+      "color": "red",
+      "shade": 500,
+      "groupId": "other",
+      "description": "High-priority account",
+      "aliases": []
+    },
+    {
+      "id": "t096",
+      "name": "Low Priority",
+      "color": "gray",
+      "shade": 400,
+      "groupId": "other",
+      "description": "Low-priority account",
+      "aliases": []
+    },
+    {
+      "id": "t097",
+      "name": "Imported",
+      "color": "gray",
+      "shade": 500,
+      "groupId": "other",
+      "description": "Imported account",
+      "aliases": []
+    },
+    {
+      "id": "t098",
+      "name": "Migrated",
+      "color": "gray",
+      "shade": 600,
+      "groupId": "other",
+      "description": "Migrated account",
+      "aliases": []
+    },
+    {
+      "id": "t099",
+      "name": "Trial",
+      "color": "yellow",
+      "shade": 400,
+      "groupId": "other",
+      "description": "Trial account",
+      "aliases": []
+    },
+    {
+      "id": "t100",
+      "name": "Free",
+      "color": "green",
+      "shade": 400,
+      "groupId": "other",
+      "description": "Free plan",
+      "aliases": []
+    },
+    {
+      "id": "t101",
+      "name": "Paid",
+      "color": "yellow",
+      "shade": 600,
+      "groupId": "other",
+      "description": "Paid plan",
+      "aliases": []
+    },
+    {
+      "id": "t102",
+      "name": "Annual",
+      "color": "purple",
+      "shade": 500,
+      "groupId": "other",
+      "description": "Annual renewal",
+      "aliases": ["yearly"]
+    },
+    {
+      "id": "t103",
+      "name": "Monthly",
+      "color": "purple",
+      "shade": 400,
+      "groupId": "other",
+      "description": "Monthly renewal",
+      "aliases": []
+    },
+    {
+      "id": "t104",
+      "name": "Client",
+      "color": "blue",
+      "shade": 500,
+      "groupId": "other",
+      "description": "Client-owned account",
+      "aliases": ["customer"]
+    },
+    {
+      "id": "t105",
+      "name": "Vendor",
+      "color": "blue",
+      "shade": 600,
+      "groupId": "other",
+      "description": "Vendor-owned account",
+      "aliases": ["supplier"]
+    }
+  ],
+  "templates": [
+    {
+      "id": "archetype_standard_v1",
+      "label": "Standard",
+      "complexity": "basic",
+      "folderIds": ["f001", "f002", "f003"],
+      "tagIds": ["t001", "t002", "t003"]
+    },
+    {
+      "id": "archetype_developer_v1",
+      "label": "Developer",
+      "complexity": "intermediate",
+      "folderIds": ["f004", "f005", "f006", "f007"],
+      "tagIds": ["t004", "t005", "t008", "t009"]
+    },
+    {
+      "id": "archetype_family_v1",
+      "label": "Family",
+      "complexity": "basic",
+      "folderIds": ["f008", "f009", "f010", "f011"],
+      "tagIds": ["t010", "t011", "t012", "t013"]
+    }
+  ]
+}

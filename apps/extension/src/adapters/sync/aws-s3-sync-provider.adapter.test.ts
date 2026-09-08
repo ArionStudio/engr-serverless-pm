@@ -18,6 +18,9 @@ import type { AsymmetricKeyValidator } from "../crypto";
 import {
   AwsS3SyncProviderAdapter,
   InvalidSyncProviderResponseError,
+  S3BucketOrRegionRejectedError,
+  S3ReadCredentialsOrSignatureRejectedError,
+  S3ReadPermissionRejectedError,
   type S3SyncClient,
   type S3SyncClientFactory,
 } from "./aws-s3-sync-provider.adapter";
@@ -468,6 +471,33 @@ describe("AwsS3SyncProviderAdapter", () => {
       Key: "vaults/vault.enc",
     });
   });
+
+  it.each([
+    ["read permission", "AccessDenied", 403, S3ReadPermissionRejectedError],
+    [
+      "credentials or signature",
+      "SignatureDoesNotMatch",
+      403,
+      S3ReadCredentialsOrSignatureRejectedError,
+    ],
+    ["bucket or region", "NoSuchBucket", 404, S3BucketOrRegionRejectedError],
+  ])(
+    "replaces a known %s failure without retaining the provider error",
+    async (_label, code, status, ErrorType) => {
+      const client = createClient();
+      const providerError = awsError(code, status);
+      vi.mocked(client.getObject).mockRejectedValueOnce(providerError);
+      const provider = createTestProvider(client);
+
+      const error = await provider
+        .getLatestVaultSnapshotDescriptor(syncAccess, descriptor.vaultId)
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(ErrorType);
+      expect(error).not.toBe(providerError);
+      expect(Object.prototype.hasOwnProperty.call(error, "cause")).toBe(false);
+    },
+  );
 
   it("strictly rejects hostile remote records", async () => {
     const client = createClient();
@@ -1283,23 +1313,32 @@ describe("AwsS3SyncProviderAdapter", () => {
 
       await expect(
         provider.checkVaultAccess(syncAccess, descriptor.vaultId),
-      ).rejects.toBe(failure);
+      ).rejects.toMatchObject({
+        name: code === "NoSuchBucket" ? "S3BucketOrRegionRejectedError" : code,
+      });
       await expect(
-        provider.getLatestVaultSnapshotDescriptor(syncAccess, descriptor.vaultId),
-      ).rejects.toBe(failure);
+        provider.getLatestVaultSnapshotDescriptor(
+          syncAccess,
+          descriptor.vaultId,
+        ),
+      ).rejects.toMatchObject({
+        name: code === "NoSuchBucket" ? "S3BucketOrRegionRejectedError" : code,
+      });
       await expect(
         provider.prepareVaultSnapshotRemoval(
           syncAccess,
           descriptor.vaultId,
           expectedRemoteSnapshotIdentity,
         ),
-      ).rejects.toBe(failure);
+      ).rejects.toMatchObject({
+        name: code === "NoSuchBucket" ? "S3BucketOrRegionRejectedError" : code,
+      });
       expect(client.putObject).not.toHaveBeenCalled();
       expect(client.deleteObject).not.toHaveBeenCalled();
     },
   );
 
-  it("maps only definitive credential rejection and propagates ambiguous authorization failures", async () => {
+  it("maps only definitive credential rejection and safely classifies known read failures", async () => {
     const client = createClient();
     const accessibleBody = responseBody("{").Body;
     const bareUnauthorized = awsError("UnknownProviderFailure", 401);
@@ -1308,6 +1347,7 @@ describe("AwsS3SyncProviderAdapter", () => {
     const signatureMismatch = awsError("SignatureDoesNotMatch", 403);
     const networkError = new Error("network unavailable");
     const rateLimitError = awsError("SlowDown", 429);
+    const missingBucket = awsError("NoSuchBucket", 404);
     vi.mocked(client.getObject)
       .mockResolvedValueOnce({ Body: accessibleBody })
       .mockRejectedValueOnce(awsError("InvalidAccessKeyId", 403))
@@ -1316,6 +1356,7 @@ describe("AwsS3SyncProviderAdapter", () => {
       .mockRejectedValueOnce(bareForbidden)
       .mockRejectedValueOnce(accessDenied)
       .mockRejectedValueOnce(signatureMismatch)
+      .mockRejectedValueOnce(missingBucket)
       .mockRejectedValueOnce(networkError)
       .mockRejectedValueOnce(rateLimitError);
     const provider = createTestProvider(client);
@@ -1338,10 +1379,13 @@ describe("AwsS3SyncProviderAdapter", () => {
     ).rejects.toBe(bareForbidden);
     await expect(
       provider.checkVaultAccess(syncAccess, descriptor.vaultId),
-    ).rejects.toBe(accessDenied);
+    ).rejects.toBeInstanceOf(S3ReadPermissionRejectedError);
     await expect(
       provider.checkVaultAccess(syncAccess, descriptor.vaultId),
-    ).rejects.toBe(signatureMismatch);
+    ).rejects.toBeInstanceOf(S3ReadCredentialsOrSignatureRejectedError);
+    await expect(
+      provider.checkVaultAccess(syncAccess, descriptor.vaultId),
+    ).rejects.toBeInstanceOf(S3BucketOrRegionRejectedError);
     await expect(
       provider.checkVaultAccess(syncAccess, descriptor.vaultId),
     ).rejects.toBe(networkError);

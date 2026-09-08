@@ -28,7 +28,7 @@ database "VaultLockTaskRepositoryPort" as LockRepo
 participant "ScheduledTaskPort" as Tasks
 participant "ClipboardClearService" as Clipboard
 
-Caller -> UC : execute(enrollmentResponse, masterPassword,\ndeviceName, optional syncConfig, lockAfterMs)
+Caller -> UC : execute(enrollmentResponse, masterPassword,\ndeviceName, syncConfig, lockAfterMs)
 UC -> Activation : requireValidLockDelay(lockAfterMs)
 UC -> UC : assertNewMasterPasswordMeetsPolicy(masterPassword)
 UC -> LocalRepo : getPendingDeviceEnrollment(response.requestId)
@@ -44,7 +44,7 @@ UC -> Crypto : verify target identity digests and\nopen target vault-key envelop
 UC -> Crypto : decrypt authorized snapshot content
 UC -> UC : add new device profile
 
-opt encrypted vault contains sync target
+group Require configured S3 target and credentials (otherwise reject)
   UC -> Sync : setup(syncConfig)
   UC -> Sync : getLatestVaultSnapshotDescriptor(syncAccess, vaultId)
   UC -> UC : require target and descriptor match authorized snapshot
@@ -55,7 +55,7 @@ UC -> Crypto : generate recovery/local-protection material\nand wrap local keys
 UC -> System : generate localAccessGenerationId
 UC -> Names : generateVaultDisplayName()
 UC -> Trust : createCheckpoint(registered snapshot)
-UC -> Crypto : digest snapshot and optionally encrypt sync credentials
+UC -> Crypto : digest snapshot and encrypt sync credentials
 
 UC -> Activation : activate(lease, unlockedVault, registered vector,\nlockAfterMs, prepare, rollback)
 Activation -> Coordinator : runExclusive(activation transition)
@@ -71,7 +71,7 @@ alt scheduling or session activation fails
   Activation -> LocalRepo : best effort removePersistedLocalVaultIfArtifactsMatch(\nexact complete initialized artifact set)
   UC --> Caller : throw original activation failure
 else activated with fresh session identity
-  opt sync access exists
+  group Required enrollment upload
     UC -> Guard : uploadTrackedSnapshot(...)
     Guard -> LocalRepo : CAS-save same snapshot + encrypted pending upload intent
     Guard -> Sync : prepareVaultSnapshotUpload(syncAccess, registeredSnapshot,\nauthorizedSnapshotIdentity { descriptor, digest })

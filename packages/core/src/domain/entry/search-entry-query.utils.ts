@@ -1,6 +1,7 @@
 import type { Vault } from "../vault/vault";
 import type { PasswordEntry } from "./password-entry.type";
 import type { SearchEntryQuery } from "./search-entry-query.type";
+import { UNCATEGORIZED_FOLDER_ID } from "../organization/folder.schema";
 
 export function entryMatchesSearchQuery(
   entry: PasswordEntry,
@@ -14,7 +15,8 @@ export function entryMatchesSearchQuery(
   return (
     matchesOptionalText(entry.login, query.login) &&
     matchesOptionalText(entry.sanitizedUrl, query.url) &&
-    matchesAllTags(entry, query.tag)
+    matchesAllTags(entry, query.tag) &&
+    matchesFolder(entry, query.folder)
   );
 }
 
@@ -32,8 +34,13 @@ function entryMatchesAnyQuery(
   return (
     entry.login.toLowerCase().includes(value) ||
     entry.sanitizedUrl.toLowerCase().includes(value) ||
-    entryTagNames(entry, vault).some((tagName) => tagName.includes(value))
+    entryTagNames(entry, vault).some((tagName) => tagName.includes(value)) ||
+    entryFolderName(entry, vault).includes(value)
   );
+}
+
+function matchesFolder(entry: PasswordEntry, folderIds: string[]): boolean {
+  return folderIds.length === 0 || folderIds.includes(entry.folderId);
 }
 
 function matchesOptionalText(value: string, query: string): boolean {
@@ -44,7 +51,7 @@ function matchesOptionalText(value: string, query: string): boolean {
   );
 }
 
-function matchesAllTags(entry: PasswordEntry, queryTagIds: number[]): boolean {
+function matchesAllTags(entry: PasswordEntry, queryTagIds: string[]): boolean {
   if (queryTagIds.length === 0) {
     return true;
   }
@@ -60,6 +67,13 @@ function entryTagNames(entry: PasswordEntry, vault: Vault): string[] {
   return vault.tags
     .filter((tag) => entryTagIds.has(tag.id))
     .map((tag) => tag.name.toLowerCase());
+}
+
+function entryFolderName(entry: PasswordEntry, vault: Vault): string {
+  if (entry.folderId === UNCATEGORIZED_FOLDER_ID) return "uncategorized";
+  return (
+    vault.folders.find((folder) => folder.id === entry.folderId)?.name ?? ""
+  ).toLowerCase();
 }
 
 function normalizeSearchValue(value: string): string {

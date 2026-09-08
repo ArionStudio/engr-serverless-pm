@@ -19,6 +19,20 @@ import {
   buildResolvedVaultTags,
   resolveTagStates,
 } from "./tag-resolution.utils";
+import { requireValidVaultTagReferences } from "../vault/vault-tag-reference.policy";
+import type { FolderReviewItem } from "./folder-review.type";
+import {
+  buildResolvedVaultFolders,
+  resolveFolderStates,
+} from "./folder-resolution.utils";
+import { requireValidVaultOrganization } from "../vault/vault-organization-reference.policy";
+import {
+  InvalidVaultSyncResolutionError,
+  InvalidVaultSyncReviewError,
+} from "../../errors";
+import { areJsonEqual } from "../common";
+import { InvalidVaultTagReferenceError } from "../../errors/vault-tag.errors";
+import { InvalidVaultOrganizationReferenceError } from "../../errors/vault-organization.errors";
 
 export function cloneVaultSyncResolution(
   resolution: VaultSyncResolution,
@@ -26,6 +40,9 @@ export function cloneVaultSyncResolution(
   return {
     entryResolutions: resolution.entryResolutions.map((item) => ({ ...item })),
     tagResolutions: resolution.tagResolutions.map((item) => ({ ...item })),
+    folderResolutions: resolution.folderResolutions.map((item) => ({
+      ...item,
+    })),
     deviceProfileResolutions: resolution.deviceProfileResolutions.map(
       (item) => ({ ...item }),
     ),
@@ -38,6 +55,7 @@ export function applyVaultSyncResolution(
   review: {
     readonly entryReviews: readonly EntryReviewItem[];
     readonly tagReviews: readonly TagReviewItem[];
+    readonly folderReviews: readonly FolderReviewItem[];
     readonly deviceProfileReviews: readonly DeviceProfileReviewItem[];
   },
   resolution: VaultSyncResolution,
@@ -53,6 +71,11 @@ export function applyVaultSyncResolution(
     resolution.tagResolutions,
     deviceId,
   );
+  const resolvedFolderStateById = resolveFolderStates(
+    review.folderReviews,
+    resolution.folderResolutions,
+    deviceId,
+  );
   const resolvedDeviceProfileStateById = resolveDeviceProfileStates(
     review.deviceProfileReviews,
     resolution.deviceProfileResolutions,
@@ -63,7 +86,7 @@ export function applyVaultSyncResolution(
     deviceId,
   );
 
-  return {
+  const resolvedVault: Vault = {
     ...localVault,
     versionVector,
     ...buildResolvedVaultEntries(
@@ -72,10 +95,35 @@ export function applyVaultSyncResolution(
       resolvedEntryStateById,
     ),
     ...buildResolvedVaultTags(localVault, remoteVault, resolvedTagStateById),
+    ...buildResolvedVaultFolders(
+      localVault,
+      remoteVault,
+      resolvedFolderStateById,
+    ),
     ...buildResolvedVaultDeviceProfiles(
       localVault,
       remoteVault,
       resolvedDeviceProfileStateById,
     ),
   };
+  if (!areJsonEqual(localVault.tagGroups, remoteVault.tagGroups)) {
+    throw new InvalidVaultSyncReviewError(
+      "Local and remote tag-group definitions do not match.",
+    );
+  }
+  try {
+    requireValidVaultTagReferences(resolvedVault);
+    requireValidVaultOrganization(resolvedVault);
+  } catch (error) {
+    if (
+      error instanceof InvalidVaultTagReferenceError ||
+      error instanceof InvalidVaultOrganizationReferenceError
+    ) {
+      throw new InvalidVaultSyncResolutionError(
+        "The selected sync resolution contains incompatible vault organization references.",
+      );
+    }
+    throw error;
+  }
+  return resolvedVault;
 }

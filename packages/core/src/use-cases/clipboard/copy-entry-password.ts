@@ -80,6 +80,9 @@ export class CopyEntryPasswordUseCase {
             );
           }
 
+          if (!entry.password)
+            throw new Error("This account has no saved password.");
+
           await this.secretCopy.copy(entry.password, params.clearAfterMs);
 
           return {

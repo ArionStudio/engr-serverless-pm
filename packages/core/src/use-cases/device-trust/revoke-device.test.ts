@@ -246,6 +246,8 @@ describe("RevokeDeviceUseCase", () => {
       login: singlePasswordEntry.login,
       tags: singlePasswordEntry.tags,
       sanitizedUrl: singlePasswordEntry.sanitizedUrl,
+      folderId: "uncategorized",
+      hasPassword: true,
     });
     expect(result.vault.entries[0]).not.toHaveProperty("password");
     expect(result.vault).not.toHaveProperty("syncTarget");

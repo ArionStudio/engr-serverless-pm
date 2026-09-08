@@ -39,12 +39,21 @@ describe("workspace reads", () => {
     };
     const visible = await ctx.workspace.execute(params);
     expect(visible.entries[0]).not.toHaveProperty("password");
-    expect(visible.tags).toEqual([{ id: 1, name: "Work" }]);
+    expect(visible.tags).toEqual([
+      {
+        id: "work-tag",
+        name: "Work",
+        groupId: "topic",
+        color: "blue",
+        shade: 500,
+        createdAt: 1,
+      },
+    ]);
     expect(visible.syncConfigured).toBe(false);
     const first = await ctx.edit.execute(params);
     expect(first.entry).toEqual(singlePasswordEntry);
     first.entry.password = "changed";
-    first.entry.tags.push(99);
+    first.entry.tags.push("other-tag");
     first.entry.versionVector["device-id"] = 99;
     expect((await ctx.edit.execute(params)).entry).toEqual(singlePasswordEntry);
   });

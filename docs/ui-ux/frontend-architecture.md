@@ -1,11 +1,11 @@
 # Frontend architecture for popup and options
 
-Status: popup-to-options navigation and new-vault setup are implemented. Roots
-inject vault creation, password assessment, recovery-word verification and export,
-interrupted-setup continuation, lock/unlock and device-local lock settings.
-Options also connects entry and sync screens; the popup provides entry quick
-access through the same feature capabilities. Existing-vault enrollment remains
-subsequent work. Existing
+Status: the options application now connects setup, entries, organization,
+password tools, devices, sync and vault settings to composed capabilities. The
+popup provides quick entry editing, password tools and device settings, and hands
+longer setup/recovery workflows to Options. Browser-login capture and Fill remain
+presentation-only until their runtime capabilities are supplied. See the
+[full application coverage map](../plans/full-application-ui.md). The
 [core architecture](../standards/core-architecture.md) and
 [React/UI standards](../standards/react-and-ui.md) remain authoritative.
 
@@ -45,6 +45,9 @@ apps/extension/src/
         setup.test.tsx
       vault-access/
       entries/
+      folders/
+      tags/
+      organization/              # Tags/Folders page composition only
       password-tools/
       sync/
       devices/
@@ -90,11 +93,16 @@ Proposed feature boundaries:
 - Feature controllers receive only needed capabilities. Setup needs initialization
   and password-strength checking, plus session/navigation integration. It should
   not receive arbitrary repository access or a service locator with every operation.
+- The bundled organization library is a separate local IndexedDB reference adapter.
+  Setup and entry editing receive a narrow read capability. Vault folders, tag
+  groups and tags remain encrypted vault data and change only through core use cases.
+- `organization/` composes the Tags and Folders management tabs. Folder and tag
+  controls stay in their owning slices; entry editing consumes their public controls.
 - Shared controls render props and emit events. They do not access vault state,
   construct adapters, invoke cryptography or schedule security timers.
-- Core owns strength policy, lifecycle transitions, persistence, trust, sync and
-  clipboard ownership. Presentation transitions such as showing the next form
-  belong to the feature. New recovery lifecycle policy needs a core contract.
+- Core owns strength policy, lifecycle transitions, recovery, persistence, trust,
+  sync and clipboard ownership. Presentation transitions such as showing the next
+  form belong to the feature.
 - Public core command/result types can be imported through supported package
   exports. UI-specific error copy maps known errors without exposing raw secrets.
 
@@ -123,25 +131,26 @@ an adaptation of these rules, not a claim of canonical FSD conformance.
 
 ## Runtime ownership across browser contexts
 
-Website icons follow the accepted [staged favicon plan](./favicon-review.md#planned-work-and-implementation-triggers).
-The entries slice owns `SiteIcon`; shared Avatar remains presentation-only.
-Browser-specific lookup and permission access belong under `extension/browser/`.
-An extension-level `SetSiteIconPreferenceUseCase` coordinates permission and
-device-local preference changes, injected into settings through composition.
-Entries receives only the icon-display capability it needs. No core favicon port
-or per-row use case is planned. Build the presentation with the library; connect
-the capability when integrating entries/settings, and verify it in the real
-extension before shipping.
+Website icons follow the accepted
+[staged favicon plan](./favicon-review.md#planned-work-and-implementation-triggers).
+The entries slice owns the implemented `SiteIcon` presentation; shared Avatar
+remains presentation-only. Production entry views currently render local initials.
+The gallery can supply a bundled same-origin image to review loaded, loading and
+failure states. Browser-specific lookup and permission access will belong under
+`extension/browser/`. A future extension-level preference capability will
+coordinate permission and device-local preference changes through composition.
+No core favicon port or per-row use case is planned. Connect and verify that
+capability in the real extension before shipping browser-provided icons.
 
 Popup, options and the service worker are separate JavaScript contexts. A module
 singleton or React provider in one does not become a shared object in another.
 The existing factory says to construct once per trusted application context;
 its adapters already coordinate through storage and Web Locks.
 
-Initial recommendation: use that supported composition at the extension roots
-and pass narrow capabilities to the UI. Construct outside React render so Strict
-Mode cannot recreate the application graph. Do not add a generic message bus or
-a second backend layer merely to make slices possible.
+The extension roots use the supported composition and pass narrow capabilities
+to the UI. They construct capability objects outside React render state changes so
+Strict Mode does not recreate the application graph. Do not add a generic message
+bus or a second backend layer merely to make slices possible.
 
 If an operation needs a service-worker message boundary, define a narrow typed
 contract and validate the sender and payload. Do not expose a generic
@@ -162,8 +171,8 @@ avoid sending setup data to external services.
 | Authoritative locked/unlocked state                                    | Core session mechanisms, not a React boolean.                                                                                                                     |
 | Entry list/detail display                                              | Password-free read results scoped to vault/session; invalidate after relevant changes and locking.                                                                |
 | Theme override                                                         | Existing UI preference mechanism, with no crypto meaning.                                                                                                         |
-| Lock duration preference                                               | New device-local application capability; security-relevant, not an ad hoc localStorage hook.                                                                      |
-| Recovery-backup completion/resume                                      | New explicit application contract; no plaintext persistence workaround.                                                                                           |
+| Lock duration preference                                               | Device-local application capability; security-relevant, not an ad hoc localStorage hook.                                                                          |
+| Recovery-backup completion/resume                                      | Explicit application contract; no plaintext persistence workaround.                                                                                               |
 
 React Context can share view state within one mounted application. It cannot
 synchronize popup and options. Define non-secret invalidation signals and re-read
@@ -179,9 +188,10 @@ the repository, not adopted. A broad global vault store is not a prerequisite.
 Use a single route vocabulary with non-secret identifiers. Options can own full
 navigation; popup exposes only quick routes and explicit handoff actions. No
 password, phrase, transfer secret or serialized draft belongs in route state that
-is written to the URL. Opening options uses `chrome.runtime.openOptionsPage()`;
-any route handoff needs an allowlisted, non-secret intent and must handle an
-already-open options page. Chrome documents the open-options API in
+is written to the URL. Opening the default page uses
+`chrome.runtime.openOptionsPage()`. Quick routes use allowlisted, non-secret
+hashes, focus an existing Options tab when present and update its current
+destination without persisting a form draft. Chrome documents the open-options API in
 [R06](./references.md#r06-chrome-extension-boundaries).
 
 Both pages use the same EntryForm and field components where useful. Use separate
@@ -191,16 +201,17 @@ easy to reach. Do not promise unload confirmation or reliable async work on clos
 
 ## Implementation and validation sequence
 
-The library, gallery and new-vault shell integration are implemented. Setup injects
-its composed capabilities for creation, recovery saving/verification, continuation,
-lock/unlock and local lock settings. It follows the active vault; multiple locked
-vaults require an explicit selection, retained across lock/unlock in this page.
+The library, gallery and application shell integration are implemented. Setup
+injects its composed capabilities for creation, existing-vault enrollment,
+recovery saving/verification, continuation, lock/unlock and local lock settings.
+It follows the active vault; multiple locked vaults require an explicit selection,
+retained across lock/unlock in this page.
 
 1. Keep every component and variant reviewable as enrollment and entry screens grow.
 2. Resolve the remaining [setup contracts](./vault-setup.md#implementation-gaps)
-   for enrollment and complete disaster recovery at their implementation milestones.
-3. Keep entry and sync features connected through their narrow capabilities,
-   reusing current aliases, `cn`, ThemeProvider and composition.
+   for complete disaster recovery at its implementation milestone. Enrollment now uses a local protected request, trusted-device fingerprint comparison, approval import and recovery verification.
+3. Keep entry and sync features connected through narrow capabilities, reusing current
+   aliases, `cn`, ThemeProvider and composition.
 4. Verify shared features in both shells without adapter imports or duplicated core behavior.
 5. Retain regression checks for cross-context locking, stale async completion,
    popup closure, already-open options, double submission and setup interruption.

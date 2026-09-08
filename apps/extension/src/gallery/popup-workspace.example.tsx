@@ -1,3 +1,6 @@
+import { galleryPopupSync, type PopupSyncScenario } from "./popup-sync-fixture";
+import { galleryVaultSettings } from "./settings-fixture";
+import { galleryBrowserLogins } from "./browser-login-fixture";
 import { useState } from "react";
 import { PopupWorkspace } from "@/ui/entrypoints/popup/popup-workspace.view";
 import { gallerySetup, setupVault } from "./setup-fixture";
@@ -5,15 +8,34 @@ import { galleryWorkspace } from "./workspace-fixture";
 export function PopupWorkspaceExample({
   state = "ready",
 }: {
-  state?: "ready" | "empty" | "locked" | "multiple" | "incomplete" | "error";
+  state?:
+    | "ready"
+    | "empty"
+    | "locked"
+    | "multiple"
+    | "incomplete"
+    | "error"
+    | "reveal-error"
+    | PopupSyncScenario;
 }) {
+  const [sync] = useState(() =>
+    galleryPopupSync(
+      state.startsWith("sync-") ? (state as PopupSyncScenario) : "sync-current",
+    ),
+  );
+  const [browserLogins] = useState(() =>
+    galleryBrowserLogins(state === "empty" ? "save" : "matching"),
+  );
+  const [settings] = useState(() => galleryVaultSettings());
   const [workspace] = useState(() =>
     galleryWorkspace(
       state === "empty"
         ? "workspace-empty"
         : state === "error"
           ? "workspace-error"
-          : "workspace",
+          : state === "reveal-error"
+            ? "workspace-reveal-error"
+            : "workspace",
     ),
   );
   const [setup] = useState(() => {
@@ -39,7 +61,10 @@ export function PopupWorkspaceExample({
     <>
       <PopupWorkspace
         setup={setup}
+        sync={sync}
         workspace={workspace}
+        settings={settings}
+        browserLogins={browserLogins}
         onOpenOptions={async () => setNotice("Options opening requested")}
       />
       {notice ? <p role="status">{notice}</p> : null}

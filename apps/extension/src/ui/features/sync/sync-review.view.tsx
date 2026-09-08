@@ -27,6 +27,8 @@ export type SyncDisplayState =
   | "uploading"
   | "complete"
   | "pending"
+  | "existing-vault"
+  | "target-occupied"
   | "review-required"
   | "failed";
 export function SyncStatus({
@@ -44,6 +46,8 @@ export function SyncStatus({
   const working = state === "checking" || state === "uploading";
   const warning =
     state === "pending" ||
+    state === "existing-vault" ||
+    state === "target-occupied" ||
     state === "review-required" ||
     state === "permission-required";
   const title = {
@@ -55,12 +59,16 @@ export function SyncStatus({
     uploading: "Uploading encrypted changes",
     complete: "Vault is up to date",
     pending: "Upload pending",
+    "existing-vault": "Existing vault found",
+    "target-occupied": "Object path is already in use",
     "review-required": "Changes need your review",
     failed: "Sync could not finish",
   }[state];
   return (
     <div
-      role="status"
+      role={
+        state === "failed" || state === "target-occupied" ? "alert" : "status"
+      }
       className={cn(
         "flex min-w-0 items-start gap-4 rounded-lg border p-5",
         state === "failed"
@@ -117,11 +125,15 @@ export function ComparisonRow({ item }: { item: Comparison }) {
       <dl className="grid gap-3 @lg:grid-cols-2">
         <div className="rounded-md bg-muted/30 p-3">
           <dt className="text-xs font-semibold">Local</dt>
-          <dd className="mt-2 break-all text-sm">{item.local}</dd>
+          <dd className="mt-2 whitespace-pre-line wrap-anywhere text-sm leading-6">
+            {item.local}
+          </dd>
         </div>
         <div className="rounded-md bg-muted/30 p-3">
           <dt className="text-xs font-semibold">Remote</dt>
-          <dd className="mt-2 break-all text-sm">{item.remote}</dd>
+          <dd className="mt-2 whitespace-pre-line wrap-anywhere text-sm leading-6">
+            {item.remote}
+          </dd>
         </div>
       </dl>
       {item.passwordChanged ? (

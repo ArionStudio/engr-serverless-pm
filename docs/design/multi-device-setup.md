@@ -16,6 +16,12 @@ Signing keys are never used for ECDH or encryption.
 
 ## Two-file enrollment exchange
 
+Enrollment requires S3 sync. Configure and synchronize the vault on the
+registered device before authorizing another device. The target supplies its
+own credentials for that same S3 location. Enrollment without sync is not
+supported; the response snapshot is an authenticated bootstrap artifact, not an
+offline vault-copy feature. Single-device vaults may still operate without S3.
+
 Enrollment has three user movements:
 
 1. Copy the vault ID and genesis-certificate digest shown by the registered
@@ -56,7 +62,7 @@ The registered device:
 4. adds the target identity to the signed trust chain;
 5. creates a current-generation vault-key envelope for the target public
    wrapping key;
-6. signs, persists, and—when sync is enabled—uploads the resulting snapshot.
+6. signs, persists, and uploads the resulting snapshot to the configured S3 target.
 
 The response contains the request ID, trust anchor, and encrypted signed
 snapshot. It contains no target private key and no sync credential.
@@ -80,8 +86,13 @@ envelope. It opens its envelope with the retained ECDH private key and then
 decrypts the vault. A trust anchor supplied only by the response is never
 trusted on its own.
 
-If the vault has a sync target, the user must enter S3 credentials on this
-device. The provider adapter verifies that the credentials address the same
+The target can verify and decrypt the approval before enrollment to read its
+sync target. This read-only operation uses the same verification service as final
+enrollment, wipes the decrypted keys when finished, and performs no provider or
+persistence writes. The UI displays that target and asks only for this browser's
+S3 access keys. Final enrollment repeats verification and checks the target again.
+The authorized vault must have a sync target, and the user must enter S3
+credentials on the target device. The provider adapter verifies that the credentials address the same
 target and current remote snapshot. Credentials are encrypted using the
 device-local protection key and are never copied from the registered device.
 

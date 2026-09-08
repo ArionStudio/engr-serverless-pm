@@ -9,7 +9,7 @@ define coding rules.
   layers, runtime ports, and extension composition status.
 - [Domain model](./domain-model.md) describes vault data, snapshots, device
   trust, sessions, sync state, and scheduled tasks.
-- [Workflows](./workflows.md) accounts for all 33 exported use cases and links
+- [Workflows](./workflows.md) accounts for all exported use cases and links
   the available diagrams.
 - [Security model](./security-model.md) explains where secrets live and how core
   applies its trust, rollback, session, and sync rules.
@@ -23,7 +23,10 @@ follow, see the [code standards](../standards/README.md).
 ## Current scope
 
 Core contains the implemented domain and application workflows. The extension
-contains concrete browser and AWS adapters, background alarm handling, and a
-production composition root for core workflows. Feature capabilities expose vault
-setup, entries and sync in Options, with entry quick access in the popup.
-Existing-vault enrollment remains deferred in the UI.
+constructs them with production browser and AWS adapters in
+[`composeExtensionApplication`](../../apps/extension/src/extension/composition/extension-application.ts).
+Options and popup receive narrow capabilities for their workflows. The
+background root composes scheduled-task cleanup.
+See the [application coverage map](../plans/full-application-ui.md) for UI
+integration and its limits. Website-login display contracts and gallery examples
+are present; browser capture and Fill runtime integration are separate work.

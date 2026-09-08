@@ -1,4 +1,5 @@
 export * from "./password-entry.mapper";
+export * from "./password-entry.const";
 export * from "./password-entry.schema";
 export * from "./password-entry.type";
 export * from "./sanitized-entry-url.utils";
@@ -6,4 +7,5 @@ export * from "./search-entry-query.schema";
 export * from "./search-entry-query.type";
 export * from "./search-entry-query.utils";
 export * from "./tag.schema";
+export * from "./tag.const";
 export * from "./tag.type";

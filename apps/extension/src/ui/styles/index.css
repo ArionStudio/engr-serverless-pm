@@ -7,6 +7,8 @@
 
 :root {
   color-scheme: light;
+  --extension-popup-width: 30rem;
+  --extension-popup-height: 37.5rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0.008 326);
   --card: oklch(1 0 0);
@@ -31,6 +33,14 @@
   --warning: oklch(0.97 0.04 85);
   --warning-foreground: oklch(0.34 0.065 65);
   --warning-border: oklch(0.68 0.12 75);
+  --tag-gray: oklch(0.58 0.02 285);
+  --tag-red: oklch(0.62 0.2 27);
+  --tag-orange: oklch(0.7 0.17 55);
+  --tag-yellow: oklch(0.78 0.16 90);
+  --tag-green: oklch(0.62 0.16 150);
+  --tag-blue: oklch(0.61 0.17 255);
+  --tag-purple: oklch(0.62 0.2 295);
+  --tag-pink: oklch(0.67 0.18 345);
   --ring: var(--primary);
   --chart-1: oklch(0.845 0.143 164.978);
   --chart-2: oklch(0.696 0.17 162.48);
@@ -223,4 +233,45 @@
    consistent with the gallery when loaded under chrome-extension://. */
 html body {
   @apply font-sans text-base;
+}
+
+.tag-marker {
+  background: var(--tag-tone);
+  border-color: color-mix(in oklch, var(--tag-tone), var(--foreground) 28%);
+}
+.tag-marker[data-tag-color="gray"] {
+  --tag-tone: var(--tag-gray);
+}
+.tag-marker[data-tag-color="red"] {
+  --tag-tone: var(--tag-red);
+}
+.tag-marker[data-tag-color="orange"] {
+  --tag-tone: var(--tag-orange);
+}
+.tag-marker[data-tag-color="yellow"] {
+  --tag-tone: var(--tag-yellow);
+}
+.tag-marker[data-tag-color="green"] {
+  --tag-tone: var(--tag-green);
+}
+.tag-marker[data-tag-color="blue"] {
+  --tag-tone: var(--tag-blue);
+}
+.tag-marker[data-tag-color="purple"] {
+  --tag-tone: var(--tag-purple);
+}
+.tag-marker[data-tag-color="pink"] {
+  --tag-tone: var(--tag-pink);
+}
+.tag-marker[data-tag-shade="300"] {
+  filter: brightness(1.2);
+}
+.tag-marker[data-tag-shade="400"] {
+  filter: brightness(1.08);
+}
+.tag-marker[data-tag-shade="600"] {
+  filter: brightness(0.9);
+}
+.tag-marker[data-tag-shade="700"] {
+  filter: brightness(0.78);
 }

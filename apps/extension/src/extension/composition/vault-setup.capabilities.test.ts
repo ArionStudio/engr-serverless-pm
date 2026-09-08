@@ -6,7 +6,10 @@ import { createChromeStorageArea } from "../../__tests__/fixtures/chrome-storage
 import { composeVaultSetup } from "./vault-setup.capabilities";
 import type { SetupRecovery } from "@/ui/features/vault-setup/setup.type";
 
-const fake = vi.hoisted(() => ({ get: vi.fn() }));
+const fake = vi.hoisted(() => ({ get: vi.fn(), enroll: vi.fn() }));
+vi.mock("./device-management.capabilities", () => ({
+  completeDeviceEnrollment: fake.enroll,
+}));
 vi.mock("./first-launch.capabilities", () => ({ getApplication: fake.get }));
 const words = Array.from({ length: 24 }, (_, i) => `word${i}`);
 let vaults: { vaultId: string; displayName: string }[];
@@ -19,6 +22,7 @@ let copy: ReturnType<typeof vi.fn>;
 let recover: ReturnType<typeof vi.fn>;
 let unlock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
+  fake.enroll.mockReset();
   vaults = [];
   unlocked = false;
   activeVaultId = "vault";
@@ -99,6 +103,41 @@ const answers = (recovery: SetupRecovery) =>
     ]),
   );
 describe("vault setup orchestration", () => {
+  it("requires explicit replacement of saved words and a new verification receipt", async () => {
+    const capabilities = composeVaultSetup();
+    const initial = await capabilities.create(createParams);
+    await capabilities.verify(answers(initial));
+    await expect(capabilities.replace("vault")).rejects.toThrow(
+      "already complete",
+    );
+    const replacement = await capabilities.replace(
+      "vault",
+      "recovery-replacement",
+    );
+    expect(replacement.purpose).toBe("recovery-replacement");
+    expect(replacement.positions).toHaveLength(3);
+    expect((await capabilities.inspect()).vault?.complete).toBe(false);
+    expect(await capabilities.verify({})).toBe(false);
+    expect(await capabilities.verify(answers(replacement))).toBe(true);
+    expect((await capabilities.inspect()).vault?.complete).toBe(true);
+  });
+
+  it("restores completed setup when replacement fails before changing recovery records", async () => {
+    const capabilities = composeVaultSetup();
+    const initial = await capabilities.create(createParams);
+    await capabilities.verify(answers(initial));
+    const original = storage.getRecords()["vault-setup:vault"];
+    replace.mockRejectedValueOnce(new Error("Recovery records unavailable"));
+    await expect(
+      capabilities.replace("vault", "recovery-replacement"),
+    ).rejects.toThrow("Recovery records unavailable");
+    expect(storage.getRecords()["vault-setup:vault"]).toEqual(original);
+    expect((await capabilities.inspect()).vault).toMatchObject({
+      complete: true,
+      unlocked: true,
+    });
+  });
+
   it("uses the active vault and retains explicit locked selection without falling back when it disappears", async () => {
     vaults = [
       { vaultId: "first", displayName: "First" },
@@ -305,6 +344,33 @@ describe("vault setup orchestration", () => {
     await expect(setup.saveDuration("vault", 120_000)).rejects.toThrow(
       "Invalid lock duration",
     );
+  });
+
+  it("keeps ordinary preference saves soft but invalidates changed recovery receipts", async () => {
+    const setup = composeVaultSetup();
+    const initial = await setup.create(createParams);
+    await setup.verify(answers(initial));
+    const receipt = storage.getRecords()["vault-setup:vault"];
+    const changed = vi.fn();
+    const unsubscribe = setup.subscribe(changed);
+    const listener = vi.mocked(chrome.storage.onChanged.addListener).mock
+      .calls[0][0];
+    listener(
+      { "vault-setup:vault": { oldValue: receipt, newValue: receipt } },
+      "local",
+    );
+    expect(changed).toHaveBeenLastCalledWith(false);
+    listener(
+      {
+        "vault-setup:vault": {
+          oldValue: receipt,
+          newValue: { token: "replacement-receipt", complete: false },
+        },
+      },
+      "local",
+    );
+    expect(changed).toHaveBeenLastCalledWith(true);
+    unsubscribe();
   });
 
   it("ignores another vault's preference changes while holding recovery words", async () => {
@@ -625,5 +691,98 @@ describe("password recovery orchestration", () => {
     await resumed.unlock("vault", "new private password");
     const replacement = await resumed.replace("vault");
     expect(await resumed.verify(answers(replacement))).toBe(true);
+  });
+});
+
+describe("enrollment recovery receipts", () => {
+  const params = {
+    approval: "fixture-approval",
+    password: "fixture-password",
+    deviceName: "Laptop",
+    duration: 600_000,
+  };
+  it.each([false, true])(
+    "preserves enrollment recovery when later inspection is unavailable: %s",
+    async (inspectionFails) => {
+      await storage.storageArea.set({
+        "vault-setup:vault": {
+          duration: 600_000,
+          deviceName: "Old browser",
+          complete: true,
+          token: "old-receipt",
+        },
+      });
+      fake.enroll.mockImplementationOnce(
+        async (
+          _params: unknown,
+          beforeActivation: (vaultId: string) => Promise<void>,
+        ) => {
+          await beforeActivation("vault");
+          expect(storage.getRecords()["vault-setup:vault"]).toMatchObject({
+            complete: false,
+            deviceName: "Laptop",
+          });
+          vaults = [{ vaultId: "vault", displayName: "Enrolled vault" }];
+          unlocked = true;
+          if (inspectionFails)
+            fake.get.mockRejectedValueOnce(new Error("Refresh unavailable"));
+          return {
+            vaultId: "vault",
+            name: "Enrolled vault",
+            words,
+            syncUpload: "pending",
+          };
+        },
+      );
+      const setup = composeVaultSetup();
+      const result = await setup.enroll(params);
+      expect(result.syncUpload).toBe("pending");
+      expect(result.vault.complete).toBe(false);
+      expect(result.words).toEqual(words);
+      if (inspectionFails)
+        await expect(setup.inspect()).rejects.toThrow("Refresh unavailable");
+      expect(await setup.verify(answers(result))).toBe(true);
+      expect((await setup.inspect()).vault?.complete).toBe(true);
+    },
+  );
+  it("does not activate when an unfinished receipt cannot be persisted", async () => {
+    const activate = vi.fn();
+    fake.enroll.mockImplementationOnce(
+      async (
+        _params: unknown,
+        beforeActivation: (vaultId: string) => Promise<void>,
+      ) => {
+        await beforeActivation("vault");
+        activate();
+      },
+    );
+    vi.spyOn(storage.storageArea, "set").mockRejectedValueOnce(
+      new Error("Storage unavailable"),
+    );
+    await expect(composeVaultSetup().enroll(params)).rejects.toThrow(
+      "Storage unavailable",
+    );
+    expect(activate).not.toHaveBeenCalled();
+  });
+  it("resumes incomplete recovery after activation was saved but completion was interrupted", async () => {
+    fake.enroll.mockImplementationOnce(
+      async (
+        _params: unknown,
+        beforeActivation: (vaultId: string) => Promise<void>,
+      ) => {
+        await beforeActivation("vault");
+        vaults = [{ vaultId: "vault", displayName: "Enrolled vault" }];
+        unlocked = true;
+        throw new Error("Interrupted after activation");
+      },
+    );
+    const setup = composeVaultSetup();
+    await expect(setup.enroll(params)).rejects.toThrow();
+    expect((await setup.inspect()).vault).toMatchObject({
+      unlocked: true,
+      complete: false,
+    });
+    const replacement = await setup.replace("vault");
+    expect(await setup.verify(answers(replacement))).toBe(true);
   });
 });

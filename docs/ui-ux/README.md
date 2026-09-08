@@ -1,23 +1,24 @@
 # Extension UI and UX plan
 
-Status: accepted product decisions with implemented setup, entry workspace and
-Sync screens. Existing-vault enrollment remains pending in this batch.
-Updated on 2026-09-08. Individual plans distinguish implemented workflows from
-proposed layouts and missing core capabilities. Coding rules remain in
+Status: accepted product decisions and implemented application workflows, with
+remaining work called out below. Options connects setup, recovery, entries,
+organization, password tools, devices, sync and settings. Popup provides entry
+actions, password tools, settings and sync review. Website-login presentations
+are reviewable in the gallery; browser capture and Fill are not activated.
+Coding rules remain in
 [the standards](../standards/README.md).
 
-The complete gallery is now implemented for review. Start with the
+The component and screen galleries expose the production implementations for review. Start with the
 [component review inventory and ownership map](./review-inventory.md) and the
 [TanStack verification report](./tanstack-verification.md). See also the
 [component contrast review](./contrast-review.md) and
-[website icon plan and safety review](./favicon-review.md). Options connects vault
-creation, recovery saving and verification, plus S3 setup, access testing,
-configuration, credential repair, upload retry and explicit sync review. The
-entry workspace supports browse, search, add, edit and delete, with quick access
-to existing entries in the popup.
+[website icon plan and safety review](./favicon-review.md). The
+[full application coverage map](../plans/full-application-ui.md) describes
+connected workflows and their validation limits.
 
 The [workspace checklist](../plans/vault-workspace-checklist.md) records the
-implemented entry workflows and separates the remaining feature work.
+entry-workspace delivery. Its original scope was extended by the later full
+application work.
 
 ## Read in this order
 
@@ -81,11 +82,11 @@ Later user clarifications supersede the initial setup-first implementation order
   both themes. The [contrast review](./contrast-review.md) records the measured
   accessibility overrides to the base preset. Review appearance in the gallery;
   custom contrast audit scripts are no longer maintained.
-- **Website icons:** Add `SiteIcon` to the entries-library work; defer browser
-  permissions and the device-local preference workflow until entries/settings
-  integration. Real-extension verification gates shipping. The user accepted
-  this staging; the [favicon plan](./favicon-review.md#planned-work-and-implementation-triggers)
-  records the pending deliverables. No new core vault service is planned.
+- **Website icons:** Entry views currently use local initials. `SiteIcon` also has
+  loaded, loading and failure presentations in the gallery using a bundled image.
+  Browser lookup, permission and preference integration remain future work in the
+  [favicon plan](./favicon-review.md#planned-work-and-implementation-triggers).
+  No core vault service is planned.
 - **No subtitles:** Product headings have no subtitles, eyebrow slogans or footer
   taglines. Keep task labels, field errors and necessary safety information; put
   longer help behind a relevant disclosure. This user preference is recorded in
@@ -102,23 +103,25 @@ Later user clarifications supersede the initial setup-first implementation order
 
 ## Unresolved work that affects the experience
 
-| Gap                         | Why it matters                                                          | Proposed next action                                                                                       |
-| --------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Complete disaster recovery  | Words alone cannot restore a lost installation.                         | Define backup artifacts and import verification separately; do not label a word sheet a full vault backup. |
-| Remaining UI integration    | Existing-vault enrollment is not connected yet.                         | Inject narrow use-case capabilities as those feature screens are built.                                    |
-| Later settings/read screens | Device and organization summaries need dedicated public read workflows. | Add explicit read contracts when those slices are implemented.                                             |
+| Gap                        | Why it matters                                  | Proposed next action                                                                                       |
+| -------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Complete disaster recovery | Words alone cannot restore a lost installation. | Define backup artifacts and import verification separately; do not label a word sheet a full vault backup. |
+
+Enrollment, entry/sync screens and device, organization and configuration reads
+are implemented through composed capabilities and explicit read contracts. They
+are no longer outstanding integration gaps.
 
 ## Delivery sequence
 
-The preset, component library, gallery, and new-vault Options flow are implemented.
+The preset, component library, gallery and application integration are implemented.
 Setup includes recovery saving and verification, interrupted-setup continuation,
-lock/unlock, and persistent device-local lock preferences. Runtime checks are
-recorded in [the setup flow](./vault-setup.md). Options also connects the entry
-workspace and sync, while the popup provides entry quick access.
+lock/unlock, enrollment and persistent device-local lock preferences. Runtime
+checks are recorded in [the setup flow](./vault-setup.md) and
+[application validation](../plans/full-application-ui.md#validation-result).
 
 1. Complete the remaining library-wide visual and accessibility acceptance checks.
-2. Build existing-vault enrollment from the reviewed components.
-3. Add the remaining device and organization read contracts before connecting
-   those settings screens.
-4. Implement site icons at the entries/settings integration milestone in the
-   [favicon plan](./favicon-review.md#planned-work-and-implementation-triggers).
+2. Keep the gallery current as connected application workflows change.
+3. Define complete disaster-recovery artifacts and verified import as a separate feature.
+4. Implement and validate browser icon lookup, permission and privacy behavior at
+   the milestone recorded in the
+   [favicon review](./favicon-review.md#planned-work-and-implementation-triggers).

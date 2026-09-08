@@ -44,7 +44,7 @@ milliseconds: 1, 5, 10, 30, or 60 minutes, with a 10-minute default.
 The duration is stored per local vault in this browser. It is a fixed delay from
 unlock, including active use. After setup, Settings can change this setting;
 changes take effect on the next unlock. Setup does not suspend the lock alarm.
-Device-profile editing remains part of the device-settings integration.
+Settings now edits the device-local display name and lock duration. This does not rename the shared trusted-device profile.
 
 ## Recovery saving and verification
 
@@ -176,3 +176,38 @@ contains the actual form, including missing local data and password assessment
 states. The unpacked-browser regression in `verification/sync-options.verify.cjs`
 checks wrong words, replacement-word verification, preserved entries and working
 S3 credentials, and rejection of the old password after recovery.
+
+## Existing-vault enrollment and security settings
+
+The Existing vault card opens the connected enrollment flow. On a trusted device,
+Devices shows the vault ID and genesis fingerprint. The new browser uses that
+identity to create a password-protected local request. Transfer the request file
+or text, compare the complete request fingerprint on both devices, then approve.
+Import the approval on the requesting browser using its original request password.
+An already-created request can resume by importing its approval after reopening
+Options. Choose Verify approval to check its signature, trust anchor and match
+with the password-protected request. Only then show the bucket, region and prefix
+from its decrypted vault as read-only values. Ask for this browser's access keys.
+Changing the approval or password clears verification and the key draft. Connect
+vault requests browser storage permission from that click and verifies the approval
+again before enrollment. Reading the approval neither creates a vault nor contacts S3.
+
+Successful enrollment opens the existing save-and-verify recovery flow. An
+incomplete receipt is staged before activation, so an interruption cannot treat
+the new recovery words as already verified. A pending upload remains visible.
+Settings also provides local password changes, recovery-word replacement and
+explicitly confirmed local vault removal. See the
+[coverage and verification plan](../plans/full-application-ui.md).
+
+## Enrollment requires sync
+
+Devices shows “Set up sync” for a vault without S3 configuration instead of
+Add/Approve device controls. The connection form always requires S3 credentials
+for the existing vault's bucket, region and prefix; there is no sync opt-out.
+The core rejects local-only authorization and local-only approval snapshots.
+
+Returning to the Options window performs an in-place status check. Keep the
+current enrollment step, imported approval and unsaved credentials in memory
+through that check. Do not replace the form with a loading screen. Real session
+invalidation still clears secret drafts; no credentials are persisted for focus
+refreshes.

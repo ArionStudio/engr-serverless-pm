@@ -57,7 +57,12 @@ export function GeneratorControls({
               checked={value[key]}
               disabled={pending}
               onCheckedChange={(checked) =>
-                onChange({ ...value, [key]: checked })
+                onChange({
+                  ...value,
+                  [key]: checked,
+                  ...(!checked && key === "numbers" ? { minNumbers: 0 } : {}),
+                  ...(!checked && key === "special" ? { minSpecial: 0 } : {}),
+                })
               }
             />
             {
@@ -76,6 +81,7 @@ export function GeneratorControls({
         type="number"
         min={0}
         max={value.length}
+        disabled={!value.numbers}
         label="Minimum numbers"
         value={value.minNumbers}
         onChange={(e) =>
@@ -86,6 +92,7 @@ export function GeneratorControls({
         type="number"
         min={0}
         max={value.length}
+        disabled={!value.special}
         label="Minimum special characters"
         value={value.minSpecial}
         onChange={(e) =>

@@ -22,8 +22,9 @@ export const singlePasswordEntry: PasswordEntry = {
   id: "single-entry",
   password: "secret-password",
   login: "user@example.com",
-  tags: [1],
+  tags: ["work-tag"],
   sanitizedUrl: "https://example.com/login",
+  folderId: "uncategorized",
   versionVector: {
     "device-id": 1,
   },
@@ -33,8 +34,9 @@ export const firstPasswordEntry: PasswordEntry = {
   id: "entry-1",
   password: "first-password",
   login: "first@example.com",
-  tags: [1],
+  tags: ["work-tag"],
   sanitizedUrl: "https://example.com/login",
+  folderId: "uncategorized",
   versionVector: {
     "device-id": 1,
   },
@@ -44,24 +46,33 @@ export const secondPasswordEntry: PasswordEntry = {
   id: "entry-2",
   password: "second-password",
   login: "second@example.com",
-  tags: [2],
+  tags: ["personal-tag"],
   sanitizedUrl: "https://service.example.com/account",
+  folderId: "uncategorized",
   versionVector: {
     "device-id": 1,
   },
 };
 
 export const workTag: Tag = {
-  id: 1,
+  id: "work-tag",
   name: "Work",
+  groupId: "topic",
+  color: "blue",
+  shade: 500,
+  createdAt: 1,
   versionVector: {
     "device-id": 1,
   },
 };
 
 export const personalTag: Tag = {
-  id: 2,
+  id: "personal-tag",
   name: "Personal",
+  groupId: "other",
+  color: "purple",
+  shade: 500,
+  createdAt: 1,
   versionVector: {
     "device-id": 1,
   },

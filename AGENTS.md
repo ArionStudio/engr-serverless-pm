@@ -78,6 +78,7 @@ Run project commands from repo root unless a task explicitly requires a subdirec
 - **Vault lock durations:** Use the core `AVAILABLE_VAULT_LOCK_DELAYS_MS` values in milliseconds for UI drafts and gallery examples. Reuse `ui/lib/vault-lock-options.ts` for labels; do not duplicate choices in minutes or seconds.
 - **Test scope:** Test application behavior, data safety and real integration boundaries. Do not add bespoke contrast/pixel audits, CSS-class assertions or filename/naming regex tests. Review appearance in the gallery; retain the required component/variant inventory check.
 - **Focus targets:** Mark programmatically focused page containers with `data-focus-target` so the shared control focus rule does not draw a border around the entire screen. Keep keyboard focus visible on controls, including menu items with negative tab indices.
+- **Options refresh:** Name/duration preference writes with an unchanged recovery receipt token are soft refreshes. Preserve the selected page and unsaved form on soft refresh; session or recovery-token changes must still invalidate secret drafts.
 - **Recovery paste formats:** Accept the numbered 1–24 list produced by our own PDF/text recovery export as well as plain words. Validate the numbers and preserve order; never blindly strip arbitrary text or reorder words. Keep actual recovery words out of fixtures and logs.
 - **Empty password strength:** Hide the entire strength block while the password is empty. Do not add placeholder copy or reserve an empty gap. Show feedback after typing; hide it again when cleared.
 
@@ -114,6 +115,7 @@ Run project commands from repo root unless a task explicitly requires a subdirec
   internal modules, and do not use policy validation to assert a broader raw
   input brand or export internal policy helpers through domain barrels.
 - **Device enrollment expiry**: Do not model enrollment expiry in core device-trust state; without a trusted time authority, local `expiresAt` checks are not security boundaries.
+- **Version counter ownership:** `Vault.versionVector` and snapshot metadata's `snapshotVersionVector` advance independently. Trust-only snapshot writes can advance the latter without content changes. Do not require equality between them in enrollment or S3 connection checks.
 - **Initialization result**: `InitializeVaultUseCase` returns recovery words and
   the display name. Read the new vault ID through `GetVaultSessionStatusUseCase`
   after activation; do not assume initialization returns `vaultId`.
@@ -159,3 +161,5 @@ When agent makes a mistake:
 ## Continuous Improvements
 
 If the agent discovers recurring repo-specific issues, useful workflows, or conventions that would speed up future work, it may append concise notes/rules to this file.
+
+- **Enrollment completion:** A committed upload does not prove the enrolling session is still active. Before returning recovery words, restore the original session through the existing session service and verify its identity. Preserve committed local enrollment if this late authorization check fails.

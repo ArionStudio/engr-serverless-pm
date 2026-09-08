@@ -1,5 +1,5 @@
 import { CheckPasswordStrengthUseCase } from "@lfspm/core";
-import type { EntryTools } from "@/ui/features/entries/entry-editor.view";
+import type { EntryTools } from "@/ui/features/password-tools/password-tools.type";
 const strength = new CheckPasswordStrengthUseCase();
 export const entryToolsFixture: EntryTools = {
   assess: (password) => strength.execute({ password }),
@@ -8,7 +8,8 @@ export const entryToolsFixture: EntryTools = {
 };
 export const exampleEntry = {
   id: "entry-review",
+  hasPassword: true,
   login: "adrian@example.test",
   sanitizedUrl: "https://mail.example.test/login",
-  tags: [1],
+  tags: ["tag-personal"],
 };

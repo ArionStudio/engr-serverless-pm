@@ -1,3 +1,5 @@
+import { composePopupSync } from "../composition/popup-sync.capabilities";
+import { composeVaultSettings } from "../composition/vault-settings.capabilities";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { ThemeProvider } from "@/ui/features/theme";
@@ -8,12 +10,16 @@ import { composeVaultSetup } from "../composition/vault-setup.capabilities";
 import { openOptionsPage } from "../composition/first-launch.capabilities";
 
 export function Popup() {
+  const [sync] = React.useState(composePopupSync);
+  const [settings] = React.useState(composeVaultSettings);
   const [workspace] = React.useState(composeWorkspace);
   const [setup] = React.useState(composeVaultSetup);
   return (
     <PopupWorkspace
       setup={setup}
       workspace={workspace}
+      settings={settings}
+      sync={sync}
       onOpenOptions={openOptionsPage}
     />
   );
@@ -21,7 +27,8 @@ export function Popup() {
 
 const rootElement = document.getElementById("popup");
 if (rootElement) {
-  ReactDOM.createRoot(rootElement).render(
+  const root = ReactDOM.createRoot(rootElement);
+  root.render(
     <React.StrictMode>
       <ThemeProvider>
         <Popup />

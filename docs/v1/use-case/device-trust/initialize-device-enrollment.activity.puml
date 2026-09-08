@@ -23,6 +23,11 @@ if (signature invalid?) then (yes)
   stop
 endif
 :Require unlocked vault context for "authorize device enrollment";
+:Require configured S3 sync before authorization;
+if (sync target missing?) then (yes)
+  :Throw SyncNotConfiguredError;
+  stop
+endif
 :Prepare local mutation through VaultSyncGuardService;
 :Require request genesis digest to match the pinned trust anchor;
 if (requested device is already currently trusted?) then (yes)
@@ -48,10 +53,10 @@ endif
 :Enter active-session persistence boundary;
 :Prepare exact restore state for the current snapshot and checkpoint;
 :Persist signed snapshot with added trust certificate and device slot;
-if (sync is configured?) then (yes)
+partition "Required S3 sync" {
   :Bind candidate to prepared remote exact identity
 and exact encrypted credential state;
-endif
+}
 :Upload persisted local mutation through VaultSyncGuardService;
 if (upload is definitely not committed?) then (yes)
   :Restore the exact prior local snapshot,
@@ -62,18 +67,16 @@ endif
 if (upload outcome is unknown or committed intent cleanup is incomplete?) then (yes)
   :Retain new snapshot and pending upload intent;
   :Set syncUpload pending;
-else (committed and cleared, or local-only)
+else (committed and cleared)
   :Set syncUpload complete;
 endif
-if (sync is configured?) then (yes)
+partition "Session finalization" {
   :Conditionally commit only if the originating session remains active;
   note right
   Leave an expired or replaced session untouched and return the durable result.
   A failure committing the still-current session invalidates it and propagates.
   end note
-else (local-only)
-  :Strictly commit the session to the enrollment snapshot vector;
-endif
+}
 :Return signed enrollmentResponse and syncUpload status;
 stop
 @enduml

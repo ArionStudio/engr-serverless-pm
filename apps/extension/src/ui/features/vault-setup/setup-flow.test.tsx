@@ -1,5 +1,9 @@
+import { galleryDevices } from "@/gallery/device-fixture";
+import { galleryVaultSettings } from "@/gallery/settings-fixture";
 import { galleryWorkspace } from "@/gallery/workspace-fixture";
 import { gallerySync } from "@/gallery/sync-fixture";
+import { galleryTagManagement } from "@/gallery/tag-management-fixture";
+import { galleryFolderManagement } from "@/gallery/folder-management-fixture";
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -7,6 +11,7 @@ import {
   cleanup,
   fireEvent,
   render,
+  renderHook,
   screen,
   waitFor,
 } from "@testing-library/react";
@@ -19,6 +24,7 @@ import {
   setupVault,
 } from "@/gallery/setup-fixture";
 import type { SetupCapabilities } from "./setup.type";
+import { useVaultSetup } from "./use-vault-setup";
 afterEach(cleanup);
 function mount(
   setup: SetupCapabilities,
@@ -26,7 +32,13 @@ function mount(
 ) {
   return render(
     <OptionsView
+      devices={galleryDevices()}
+      vaultSettings={galleryVaultSettings("ready", (_name, duration) => {
+        void setup.saveDuration("gallery-vault", duration);
+      })}
       workspace={galleryWorkspace()}
+      tagManagement={galleryTagManagement()}
+      folderManagement={galleryFolderManagement()}
       sync={gallerySync()}
       setup={setup}
       preference="dark"
@@ -36,7 +48,58 @@ function mount(
     />,
   );
 }
+async function createFromDevice(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole("button", { name: "Continue" }));
+  expect(
+    await screen.findByRole("heading", { name: "Organize your vault" }),
+  ).toBeVisible();
+  await user.click(
+    screen.getByRole("button", { name: "Continue to recovery" }),
+  );
+}
 describe("live setup UI", () => {
+  it("keeps a pending setup submission serialized across page suspension", async () => {
+    const setup = gallerySetup();
+    let invalidate: Parameters<SetupCapabilities["subscribe"]>[0] = () => {};
+    let finish: (value: typeof setupRecovery) => void = () => {};
+    setup.subscribe = (listener) => {
+      invalidate = listener;
+      return () => {};
+    };
+    const create = vi.fn(
+      () =>
+        new Promise<typeof setupRecovery>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    setup.create = create;
+    const { result } = renderHook(() => useVaultSetup(setup));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const input = {
+      password: "synthetic strong password",
+      deviceName: "Browser",
+      duration: 600_000,
+    };
+    await act(async () => {
+      void result.current.create(input);
+    });
+    await act(async () => invalidate("pagehide"));
+    expect(result.current.loading).toBe(true);
+    await act(async () => invalidate());
+    await act(async () => {
+      void result.current.create(input);
+    });
+    expect(create).toHaveBeenCalledTimes(1);
+    await act(async () => finish(setupRecovery));
+    expect(result.current.recovery).toBeUndefined();
+    expect(result.current.pending).toBe(false);
+    await act(async () => {
+      void result.current.create(input);
+    });
+    expect(create).toHaveBeenCalledTimes(2);
+    await act(async () => finish(setupRecovery));
+    expect(result.current.recovery).toEqual(setupRecovery);
+  });
   it("returns to setup when inspection discovers the last vault was deleted", async () => {
     const setup = gallerySetup("existing");
     let invalidate = () => {};
@@ -143,9 +206,7 @@ describe("live setup UI", () => {
         finish = resolve;
       });
     mount(setup, "device");
-    await user.click(
-      await screen.findByRole("button", { name: "Create vault" }),
-    );
+    await createFromDevice(user);
     await user.click(
       await screen.findByRole("button", { name: "I saved all 24 words" }),
     );
@@ -203,13 +264,29 @@ describe("live setup UI", () => {
       expect(screen.getByRole("button", { name: "Continue" })).toBeEnabled(),
     );
     await user.click(screen.getByRole("button", { name: "Continue" }));
+    await user.click(await screen.findByRole("button", { name: "Continue" }));
+    await screen.findByRole("heading", { name: "Organize your vault" });
+    await user.click(screen.getByRole("button", { name: /2\. Device/ }));
+    expect(
+      screen.getByRole("heading", { name: "Device settings" }),
+    ).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Continue" }));
     await user.dblClick(
-      await screen.findByRole("button", { name: "Create vault" }),
+      screen.getByRole("button", { name: "Continue to recovery" }),
     );
     expect(
       await screen.findByRole("heading", { name: "Save recovery words" }),
     ).toBeVisible();
+    expect(
+      screen.getByRole("button", {
+        name: /3\. OrganizationComplete/,
+      }),
+    ).toBeVisible();
     expect(create).toHaveBeenCalledTimes(1);
+    expect(create.mock.calls[0][0].organization).toMatchObject({
+      folders: [{ name: "Work" }, { name: "Personal" }, { name: "Finance" }],
+      tags: [{ name: "Expiring" }, { name: "MFA" }, { name: "Shared" }],
+    });
     expect(
       screen.queryByText("demo-01", { exact: true }),
     ).not.toBeInTheDocument();
@@ -239,21 +316,25 @@ describe("live setup UI", () => {
       screen.queryByLabelText("Lock duration on this device"),
     ).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(
+      screen.getByRole("button", { name: "Edit device settings" }),
+    );
     await user.selectOptions(
       screen.getByLabelText("Lock duration on this device"),
       "1800000",
     );
-    await user.click(screen.getByRole("button", { name: "Save lock setting" }));
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Save lock setting" }),
-      ).toBeDisabled(),
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText(
+      "Device settings saved. The lock duration applies from the next unlock.",
     );
-    await user.click(screen.getByRole("button", { name: "Back to vault" }));
+    await user.click(screen.getByRole("button", { name: "Entries" }));
     expect(
       screen.queryByLabelText("Lock duration on this device"),
     ).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(
+      screen.getByRole("button", { name: "Edit device settings" }),
+    );
     expect(screen.getByLabelText("Lock duration on this device")).toHaveValue(
       "1800000",
     );
@@ -269,9 +350,7 @@ describe("live setup UI", () => {
     };
     setup.create = async () => setupRecovery;
     mount(setup, "device");
-    await user.click(
-      await screen.findByRole("button", { name: "Create vault" }),
-    );
+    await createFromDevice(user);
     await user.click(
       await screen.findByRole("button", { name: "Reveal recovery words" }),
     );
@@ -301,9 +380,7 @@ describe("live setup UI", () => {
         finish = resolve;
       });
     mount(setup, "device");
-    await user.click(
-      await screen.findByRole("button", { name: "Create vault" }),
-    );
+    await createFromDevice(user);
     await act(async () => {
       invalidate();
       finish(setupRecovery);
@@ -381,6 +458,36 @@ describe("forgotten vault password", () => {
     expect(
       await screen.findByRole("heading", { name: "Entries" }),
     ).toBeVisible();
+  });
+  it("clears a recovery draft when a passive inspection cannot verify local vault state", async () => {
+    const setup = gallerySetup("existing");
+    let notify: (clearDraft?: boolean) => void = () => {};
+    setup.subscribe = (listener) => {
+      notify = listener;
+      return () => {};
+    };
+    mount(setup);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Forgot password?" }),
+    );
+    fireEvent.change(
+      screen.getByLabelText("Recovery phrase", { exact: true }),
+      {
+        target: { value: "private recovery draft" },
+      },
+    );
+    setup.inspect = async () => {
+      throw new Error("Local data unavailable");
+    };
+    await act(async () => notify(false));
+    expect(
+      await screen.findByRole("heading", {
+        name: "Couldn’t check local vaults",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.queryByDisplayValue("private recovery draft"),
+    ).not.toBeInTheDocument();
   });
   it("requires all words and matching passwords before calling recovery", async () => {
     const user = userEvent.setup();

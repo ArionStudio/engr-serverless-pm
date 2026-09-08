@@ -33,7 +33,7 @@ export function CredentialForm({
 }: FormPresentation<CredentialDraft> & {
   onTest: () => void;
   testing?: boolean;
-  mode?: "setup" | "repair";
+  mode?: "setup" | "repair" | "connect-existing";
   onEditLocation?: () => void;
   feedback?: ReactNode;
 }) {
@@ -79,7 +79,9 @@ export function CredentialForm({
                 ? "Saving…"
                 : mode === "repair"
                   ? "Save access keys"
-                  : "Enable sync"}
+                  : mode === "connect-existing"
+                    ? "Use newer vault from S3"
+                    : "Enable sync"}
             </Button>
           </div>
         }
@@ -152,7 +154,6 @@ export function CredentialForm({
               error={error("secretAccessKey")}
             />
             <p className="max-w-[65ch] text-base leading-7 text-muted-foreground">
-              Allow this browser to connect to your S3 storage when prompted.
               Use the dedicated sync user's keys. They are encrypted on this
               device and are not shared through the vault.
             </p>

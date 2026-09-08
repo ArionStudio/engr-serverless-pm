@@ -14,9 +14,9 @@ export function resolveTagStates(
   tagReviews: readonly TagReviewItem[],
   tagResolutions: readonly TagReviewResolution[],
   deviceId: string,
-): Map<number, ReviewableTag> {
+): Map<string, ReviewableTag> {
   const resolutionById = createTagResolutionMap(tagResolutions);
-  const resolvedStateById = new Map<number, ReviewableTag>();
+  const resolvedStateById = new Map<string, ReviewableTag>();
 
   for (const tagResolution of tagResolutions) {
     if (
@@ -54,7 +54,7 @@ export function resolveTagStates(
 export function buildResolvedVaultTags(
   localVault: Vault,
   remoteVault: Vault,
-  resolvedStateById: ReadonlyMap<number, ReviewableTag>,
+  resolvedStateById: ReadonlyMap<string, ReviewableTag>,
 ): {
   readonly tags: Tag[];
   readonly deletedTags: DeletedTag[];
@@ -83,8 +83,8 @@ export function buildResolvedVaultTags(
 
 function createTagResolutionMap(
   tagResolutions: readonly TagReviewResolution[],
-): Map<number, TagReviewResolution> {
-  const resolutionById = new Map<number, TagReviewResolution>();
+): Map<string, TagReviewResolution> {
+  const resolutionById = new Map<string, TagReviewResolution>();
 
   for (const tagResolution of tagResolutions) {
     assertSupportedAction(tagResolution.action);
@@ -166,7 +166,7 @@ function getTagVersionVector(state: ReviewableTag): VersionVector | null {
   return state.deletedTag.versionVector;
 }
 
-function collectTagIds(localVault: Vault, remoteVault: Vault): Set<number> {
+function collectTagIds(localVault: Vault, remoteVault: Vault): Set<string> {
   return new Set([
     ...localVault.tags.map((tag) => tag.id),
     ...remoteVault.tags.map((tag) => tag.id),
@@ -175,7 +175,7 @@ function collectTagIds(localVault: Vault, remoteVault: Vault): Set<number> {
   ]);
 }
 
-function getTagState(vault: Vault, tagId: number): ReviewableTag {
+function getTagState(vault: Vault, tagId: string): ReviewableTag {
   const tag = vault.tags.find((vaultTag) => vaultTag.id === tagId);
   const deletedTag = vault.deletedTags.find(
     (vaultDeletedTag) => vaultDeletedTag.id === tagId,

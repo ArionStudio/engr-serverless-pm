@@ -10,6 +10,7 @@ import { toVaultSnapshotDescriptor } from "../../domain/snapshot";
 import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
 import { DeviceEnrollmentIntegrityError } from "../../errors/device-enrollment.errors";
 import {
+  SyncNotConfiguredError,
   LocalVaultSnapshotAheadError,
   ProviderCredentialRevocationPendingError,
 } from "../../errors/sync.errors";
@@ -17,14 +18,32 @@ import { VaultSnapshotService } from "../../services/snapshot/vault-snapshot.ser
 import { VaultSyncGuardService } from "../../services/sync";
 import { InitializeDeviceEnrollmentUseCase } from "./initialize-device-enrollment";
 
-function createContext() {
+function createContext(synced = true) {
   const ctx = createUnlockVaultTestContext();
   ctx.saved.unlockedVaultSession = {
     sessionId: ctx.values.sessionId,
-    unlockedVault: createUnlockedVaultWithEntries(ctx.values, []),
+    unlockedVault: {
+      ...createUnlockedVaultWithEntries(ctx.values, []),
+      vault: {
+        ...createUnlockedVaultWithEntries(ctx.values, []).vault,
+        ...(synced ? { syncTarget: ctx.values.syncTarget } : {}),
+      },
+    },
     sourceSnapshotVersionVector:
       ctx.vaultSnapshot.metadata.snapshotVersionVector,
   };
+  if (synced) {
+    ctx.saved.deviceSyncCredentialState =
+      ctx.values.encryptedDeviceSyncCredentialState;
+    vi.mocked(
+      ctx.ports.syncProvider.getLatestVaultSnapshotDescriptor,
+    ).mockImplementation(async () =>
+      toVaultSnapshotDescriptor(
+        ctx.values.vaultId,
+        ctx.ports.saved.vaultSnapshot ?? ctx.vaultSnapshot,
+      ),
+    );
+  }
   const snapshotService = new VaultSnapshotService(
     ctx.ports.crypto,
     ctx.ports.clock,
@@ -48,6 +67,23 @@ function createContext() {
 }
 
 describe("InitializeDeviceEnrollmentUseCase", () => {
+  it("requires sync before authorizing a device or saving an approval", async () => {
+    const ctx = createContext(false);
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        request: ctx.values.enrollmentRequest,
+      }),
+    ).rejects.toBeInstanceOf(SyncNotConfiguredError);
+    expect(
+      ctx.ports.crypto.createDeviceVaultKeyEnvelope,
+    ).not.toHaveBeenCalled();
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
   it("uploads the exact signed snapshot persisted by the local save", async () => {
     const ctx = createContext();
     const session = ctx.saved.unlockedVaultSession;

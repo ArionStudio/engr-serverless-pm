@@ -103,10 +103,20 @@ The storage summary sits above the key fields. The access result uses the same
 SyncStatus panel in the extension and gallery; a confirmed read does not claim
 that upload permission was checked or sync enabled.
 
+If **Enable sync** finds a newer authenticated copy of this vault at the selected
+location, it does not overwrite S3. The screen shows **Existing vault found** and
+offers **Use newer vault from S3**. That separate action verifies the same remote
+copy again, replaces the older local copy and stores these access keys encrypted
+on this device. If the remote object belongs to another vault, changes during
+confirmation, changes device trust or cannot be verified, reconnect stays
+blocked. Use the same bucket and prefix that this vault used previously.
+
 The template download uses `providers/aws/s3.template.yaml` from the same build.
 The guide explains its parameters, IAM acknowledgement, stack outputs, lifecycle
-retention and separate access-key creation. Browser storage access is requested
-when you test or enable sync.
+retention and separate access-key creation. Browser storage access is checked
+alongside the bucket location, before access-key entry. The location step cannot
+advance until this browser has granted access. Existing-storage setup follows
+the same order: location, browser access, then access keys.
 
 For manual setup, enter the new bucket name, region and vault prefix. The guide
 generates copyable HTTPS-only bucket policy and IAM permission documents
@@ -188,8 +198,11 @@ aws cloudformation deploy \
 
 ## Browser storage access
 
-Choose **Test access** or **Enable sync** and allow the browser's storage-access
-request. Each installation grants its own permission. Firefox UUIDs and Chromium
+Enter the bucket and region, choose **Allow storage access**, and approve the
+browser's request before continuing to access keys. Already-granted access is
+shown explicitly. Changing the location rechecks access; revoking it blocks
+progress until it is restored. Test and Enable retain a permission check for
+changes made after this step. Each installation grants its own permission. Firefox UUIDs and Chromium
 extension IDs do not need to be added to the bucket's CORS settings.
 
 The extension requests the exact HTTPS hostname resolved by the AWS SDK. For a

@@ -1,42 +1,58 @@
 import { useEffect, useRef, useState } from "react";
-import type {
-  GeneratePasswordCommandParams,
-  GenerateUsernameCommandParams,
-} from "@lfspm/core";
 import { EntryForm, type EntryDraft } from "./entry-form.view";
-import type { TagOption } from "./entries.view";
+import type { TagOption } from "./tag-selection.view";
+import type {
+  AddFolderCommandParams,
+  GlobalTagDefinition,
+  GlobalFolderDefinition,
+  ReadFoldersResult,
+} from "@lfspm/core";
+import { PASSWORD_ENTRY_TAG_LIMIT } from "@lfspm/core";
+import {
+  tagGroupPresentations,
+  type TagGroupPresentation,
+} from "@/ui/features/tags";
 import { PasswordStrengthFeedback } from "@/ui/components/forms/fields.view";
 import { Button } from "@/ui/components/primitives/button";
 import {
   GeneratorControls,
   UsernameControls,
-  type PasswordSettings,
 } from "@/ui/features/password-tools/generator.view";
 
-export type EntryTools = {
-  assess: (password: string) => Promise<{ score: 0 | 1 | 2 | 3 | 4 }>;
-  generate: (
-    settings: GeneratePasswordCommandParams,
-  ) => Promise<{ password: string }>;
-  username: (
-    settings: GenerateUsernameCommandParams,
-  ) => Promise<{ username: string }>;
-};
-const defaultSettings: PasswordSettings = {
-  length: 24,
-  uppercase: true,
-  lowercase: true,
-  numbers: true,
-  special: true,
-  minNumbers: 1,
-  minSpecial: 1,
-  avoidAmbiguousCharacters: false,
-};
+import type { EntryTools } from "@/ui/features/password-tools/password-tools.type";
+import { defaultPasswordSettings } from "@/ui/features/password-tools/generator-settings";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/ui/components/primitives/dialog";
+import {
+  FolderEditor,
+  folderDepth,
+  type FolderChoice,
+  type FolderDraft,
+} from "@/ui/features/folders";
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from "@/ui/components/primitives/native-select";
 
 export function EntryEditor({
   initial,
   mode,
   tags,
+  tagGroups = tagGroupPresentations,
+  tagSuggestions,
+  folderSuggestions,
+  onCreateTag,
+  folders = [],
+  uncategorized = {
+    id: "uncategorized",
+    name: "Uncategorized",
+    entryCount: 0,
+  },
+  onCreateFolder,
   tools,
   pending = false,
   error,
@@ -46,6 +62,17 @@ export function EntryEditor({
   initial: EntryDraft;
   mode: "add" | "edit";
   tags: readonly TagOption[];
+  tagGroups?: readonly TagGroupPresentation[];
+  tagSuggestions?: readonly GlobalTagDefinition[];
+  folderSuggestions?: readonly GlobalFolderDefinition[];
+  onCreateTag?: Parameters<
+    typeof import("./tag-selection.view").TagSelection
+  >[0]["onCreate"];
+  folders?: readonly FolderChoice[];
+  uncategorized?: ReadFoldersResult["uncategorized"];
+  onCreateFolder?: (
+    folder: AddFolderCommandParams["folder"],
+  ) => Promise<{ readonly id: string }>;
   tools: EntryTools;
   pending?: boolean;
   error?: string;
@@ -53,7 +80,7 @@ export function EntryEditor({
   onCancel: () => void;
 }) {
   const [draft, setDraft] = useState(initial);
-  const [settings, setSettings] = useState(defaultSettings);
+  const [settings, setSettings] = useState(defaultPasswordSettings);
   const [username, setUsername] = useState({
     capitalize: false,
     includeNumber: true,
@@ -61,6 +88,10 @@ export function EntryEditor({
   const [generating, setGenerating] = useState(false);
   const [toolError, setToolError] = useState<string>();
   const [attempt, setAttempt] = useState(0);
+  const [folderCreation, setFolderCreation] = useState(false);
+  const [folderParentId, setFolderParentId] = useState<string | null>(null);
+  const [folderPending, setFolderPending] = useState(false);
+  const [folderError, setFolderError] = useState<string>();
   const [assessment, setAssessment] = useState<
     { score: 0 | 1 | 2 | 3 | 4 } | "error"
   >();
@@ -109,6 +140,7 @@ export function EntryEditor({
           setDraft((previous) => ({
             ...previous,
             password: result.password,
+            withoutPassword: false,
             allowWeakPassword: false,
           }));
         }
@@ -126,11 +158,38 @@ export function EntryEditor({
       if (owner === generation.current) setGenerating(false);
     }
   }
-  const passwordError = !draft.password
-    ? "Enter a password."
-    : score !== 4 && !draft.allowWeakPassword
-      ? "Use a strong password or explicitly allow this existing weak password."
+  async function createFolder(folder: FolderDraft) {
+    if (!onCreateFolder || folderPending) return;
+    setFolderPending(true);
+    setFolderError(undefined);
+    try {
+      const result = await onCreateFolder({
+        ...folder,
+        parentId: folderParentId,
+      });
+      setDraft((current) => ({ ...current, folderId: result.id }));
+      setFolderCreation(false);
+      setFolderParentId(null);
+    } catch {
+      setFolderError(
+        "Could not create this folder. Use a different name or try again.",
+      );
+    } finally {
+      setFolderPending(false);
+    }
+  }
+  const passwordless = draft.withoutPassword === true && draft.password === "";
+  const tagError =
+    draft.tagIds.length > PASSWORD_ENTRY_TAG_LIMIT
+      ? `Choose up to ${PASSWORD_ENTRY_TAG_LIMIT} tags.`
       : undefined;
+  const passwordError = passwordless
+    ? undefined
+    : !draft.password
+      ? "Enter a password."
+      : score !== 4 && !draft.allowWeakPassword
+        ? "Use a strong password or explicitly allow this existing weak password."
+        : undefined;
   return (
     <section
       className="max-w-xl space-y-6"
@@ -149,13 +208,30 @@ export function EntryEditor({
         onChange={change}
         mode={mode}
         tags={tags}
+        tagGroups={tagGroups}
+        tagSuggestions={tagSuggestions}
+        onCreateTag={onCreateTag}
+        folders={folders}
+        uncategorized={uncategorized}
+        onCreateFolder={
+          onCreateFolder
+            ? () => {
+                setFolderError(undefined);
+                setFolderCreation(true);
+              }
+            : undefined
+        }
         state={pending || generating ? "pending" : "idle"}
+        canSubmit={
+          passwordless || (assessment !== undefined && assessment !== "error")
+        }
         errors={
           submitted
             ? {
                 login: !draft.login.trim() ? "Enter a login." : undefined,
                 url: !draft.url ? "Enter a website." : undefined,
                 password: passwordError,
+                tagIds: tagError,
               }
             : undefined
         }
@@ -169,8 +245,8 @@ export function EntryEditor({
             draft.login.trim() &&
             draft.url &&
             !passwordError &&
-            assessment &&
-            assessment !== "error"
+            !tagError &&
+            (passwordless || (assessment && assessment !== "error"))
           )
             onSave(draft);
         }}
@@ -230,6 +306,57 @@ export function EntryEditor({
           </details>
         }
       />
+      <Dialog
+        open={folderCreation}
+        onOpenChange={(open) => {
+          if (!open && !folderPending) setFolderCreation(false);
+        }}
+      >
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Create folder</DialogTitle>
+          </DialogHeader>
+          <label className="space-y-2 text-sm font-medium">
+            <span className="block">Location</span>
+            <NativeSelect
+              className="w-full"
+              value={folderParentId ?? ""}
+              disabled={folderPending}
+              onChange={(event) =>
+                setFolderParentId(event.target.value || null)
+              }
+            >
+              <NativeSelectOption value="">Vault root</NativeSelectOption>
+              {folders.map((folder) => (
+                <NativeSelectOption key={folder.id} value={folder.id}>
+                  {folder.name}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          </label>
+          <FolderEditor
+            suggestions={folderSuggestions}
+            onSuggestionSelected={(suggestion) => {
+              if (suggestion.parent === null) setFolderParentId(null);
+              else {
+                const parent = folders.find(
+                  ({ name }) => name === suggestion.parent,
+                );
+                if (parent) setFolderParentId(parent.id);
+              }
+            }}
+            deepNesting={folderDepth(folderParentId, folders) + 1 > 2}
+            parentName={
+              folders.find(({ id }) => id === folderParentId)?.name ??
+              "Vault root"
+            }
+            pending={folderPending}
+            error={folderError}
+            onSubmit={(folder) => void createFolder(folder)}
+            onCancel={() => setFolderCreation(false)}
+          />
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

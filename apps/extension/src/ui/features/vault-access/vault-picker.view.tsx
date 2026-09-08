@@ -20,6 +20,7 @@ export function VaultPicker({
   value,
   onChange,
   loading = false,
+  disabled = false,
   error,
   onCreate,
 }: {
@@ -27,6 +28,7 @@ export function VaultPicker({
   value: string | null;
   onChange: (value: string | null) => void;
   loading?: boolean;
+  disabled?: boolean;
   error?: string;
   onCreate?: () => void;
 }) {
@@ -42,12 +44,14 @@ export function VaultPicker({
       ) : (
         <Combobox
           items={vaults}
+          disabled={disabled}
           value={vaults.find((v) => v.id === value) ?? null}
           onValueChange={(v) => onChange(v?.id ?? null)}
           itemToStringLabel={(v) => `${v.name} · ${v.deviceLabel}`}
         >
           <ComboboxInput
             id={id}
+            disabled={disabled}
             placeholder="Find a vault…"
             aria-invalid={!!error}
             aria-describedby={error ? `${id}-error` : undefined}

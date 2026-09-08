@@ -17,6 +17,9 @@ const vault: Vault = {
   deletedDeviceProfiles: [],
   tags: standardVaultTags,
   deletedTags: [],
+  tagGroups: [],
+  folders: [],
+  deletedFolders: [],
 };
 
 describe("entryMatchesSearchQuery", () => {
@@ -51,7 +54,8 @@ describe("entryMatchesSearchQuery", () => {
         mode: "fields",
         login: "second",
         url: "service",
-        tag: [2],
+        tag: ["personal-tag"],
+        folder: [],
       }),
     ).toBe(true);
   });
@@ -62,8 +66,43 @@ describe("entryMatchesSearchQuery", () => {
         mode: "fields",
         login: "",
         url: "",
-        tag: [2, 1],
+        tag: ["personal-tag", "work-tag"],
+        folder: [],
       }),
     ).toBe(false);
+  });
+
+  it("finds an entry by its folder name and filters by folder identity", () => {
+    const organizedEntry = { ...firstPasswordEntry, folderId: "work" };
+    const organizedVault: Vault = {
+      ...vault,
+      entries: [organizedEntry],
+      folders: [
+        {
+          id: "work",
+          name: "Client Work",
+          icon: "briefcase",
+          parentId: null,
+          createdAt: 1,
+          versionVector: { "device-id": 1 },
+        },
+      ],
+    };
+
+    expect(
+      entryMatchesSearchQuery(organizedEntry, organizedVault, {
+        mode: "any",
+        value: "client work",
+      }),
+    ).toBe(true);
+    expect(
+      entryMatchesSearchQuery(organizedEntry, organizedVault, {
+        mode: "fields",
+        login: "",
+        url: "",
+        tag: [],
+        folder: ["work"],
+      }),
+    ).toBe(true);
   });
 });

@@ -1,3 +1,25 @@
+import { SetupOrganizationExample } from "./setup-organization.example";
+import { PopupSettingsExample } from "./popup-settings.example";
+import { BrowserLoginExample } from "./browser-login.example";
+import { galleryDevices } from "./device-fixture";
+import { galleryFolderManagement } from "./folder-management-fixture";
+import {
+  galleryTagManagement,
+  type TagManagementScenario,
+} from "./tag-management-fixture";
+import { s3PermissionOrigin } from "../adapters/sync/browser-s3-access.adapter";
+import {
+  galleryVaultSettings,
+  type SettingsScenario,
+} from "./settings-fixture";
+import { SettingsExample } from "./settings-example.view";
+import {
+  SyncTrustExample,
+  type SyncTrustScenario,
+} from "./sync-management-example.view";
+import { PasswordToolsPage } from "@/ui/features/password-tools/password-tools-page.view";
+import { DeviceManagementView } from "@/ui/features/devices/device-management.view";
+import { OrganizationManagementView } from "@/ui/features/organization";
 import { PopupWorkspaceExample } from "./popup-workspace.example";
 import { WorkspaceExample } from "./workspace.example";
 import { galleryWorkspace, type WorkspaceScenario } from "./workspace-fixture";
@@ -21,6 +43,20 @@ import { PopupView } from "@/ui/entrypoints/popup/popup.view";
 import { Specimen, Scenario } from "./specimen.view";
 const strength = new CheckPasswordStrengthUseCase();
 export type OptionsScenario =
+  | `settings-${SettingsScenario}`
+  | SyncTrustScenario
+  | "application"
+  | "tools"
+  | "tools-error"
+  | "tools-pending"
+  | "devices-sync-required"
+  | "devices"
+  | "devices-error"
+  | "devices-permission-denied"
+  | "devices-revocation-error"
+  | "devices-refresh-error"
+  | "devices-authorization-lost"
+  | TagManagementScenario
   | "popup-ready"
   | "popup-empty"
   | "popup-locked"
@@ -32,6 +68,10 @@ export type OptionsScenario =
   | "s3-copy-error"
   | "s3-invalid-bucket"
   | "s3-invalid-prefix"
+  | "s3-access-required"
+  | "s3-access-error"
+  | "s3-access-pending"
+  | "s3-access-invalid"
   | SyncScenario
   | "appearance"
   | "lock-settings"
@@ -42,6 +82,7 @@ export type OptionsScenario =
   | "recover-access-error"
   | "recovered-words"
   | "recovered-verification"
+  | "recovery-upload-pending"
   | "recovery"
   | "verification"
   | "verification-error"
@@ -60,6 +101,9 @@ export type OptionsScenario =
   | "password-pending"
   | "password-unavailable"
   | "device"
+  | "organization"
+  | "organization-pending"
+  | "organization-error"
   | "connect"
   | "multiple-vaults"
   | "existing"
@@ -74,27 +118,76 @@ export function OptionsExample({
   preference: "light" | "dark" | "system";
   onThemeChange: (preference: "light" | "dark" | "system") => void;
 }) {
+  const [devices] = useState(() => {
+    const capabilities = galleryDevices(
+      state === "devices-error",
+      state === "devices-refresh-error",
+      state !== "devices-sync-required",
+      state === "devices-revocation-error",
+      state === "devices-authorization-lost",
+    );
+    if (state === "devices-permission-denied")
+      capabilities.requestAccess = async () => {
+        const error = new Error("Storage access denied");
+        error.name = "StorageHostPermissionRequiredError";
+        throw error;
+      };
+    return capabilities;
+  });
+  const [vaultSettings] = useState(galleryVaultSettings);
+  const [tagManagement] = useState(() =>
+    galleryTagManagement(
+      state.startsWith("tags") ? (state as TagManagementScenario) : "tags",
+    ),
+  );
+  const [folderManagement] = useState(() =>
+    galleryFolderManagement(state === "tags-read-retry"),
+  );
   const [workspace] = useState(() => galleryWorkspace());
   const [sync] = useState(() =>
     gallerySync(
       state.startsWith("sync-") ? (state as SyncScenario) : "sync-setup",
     ),
   );
+  const [guideAccess] = useState(() => {
+    const access = gallerySync(
+      state.startsWith("s3-access-") ? "sync-permission" : "sync-setup",
+    );
+    const hasAccess = access.hasAccess;
+    access.hasAccess = (target) => {
+      s3PermissionOrigin(target);
+      return hasAccess(target);
+    };
+    if (state === "s3-access-error")
+      access.requestAccess = async () => {
+        throw new Error("Browser permission was not granted.");
+      };
+    if (state === "s3-access-pending")
+      access.requestAccess = () => new Promise(() => {});
+    return access;
+  });
   const [connection, setConnection] = useState({
     ...emptyCredentials,
     bucket: state === "s3-invalid-bucket" ? "" : "personal-vault",
     region: "eu-central-1",
-    prefix: state === "s3-invalid-prefix" ? "" : "vault/",
+    prefix:
+      state === "s3-invalid-prefix"
+        ? ""
+        : state === "s3-access-invalid"
+          ? "../"
+          : "vault/",
   });
   const [savedDuration, setSavedDuration] = useState(600_000);
   const failed = useRef(false);
   const [setup] = useState(() =>
     gallerySetup(
-      state === "multiple-vaults"
-        ? "multiple"
-        : state === "existing" || state === "loading" || state === "error"
-          ? state
-          : "empty",
+      state === "application"
+        ? "ready"
+        : state === "multiple-vaults"
+          ? "multiple"
+          : state === "existing" || state === "loading" || state === "error"
+            ? state
+            : "empty",
     ),
   );
   const [verification, setVerification] = useState(
@@ -113,6 +206,50 @@ export function OptionsExample({
     },
     [state],
   );
+  if (state.startsWith("settings-"))
+    return <SettingsExample state={state.slice(9) as SettingsScenario} />;
+  if (state.startsWith("trust-"))
+    return <SyncTrustExample scenario={state as SyncTrustScenario} />;
+  if (
+    state === "devices-sync-required" ||
+    state === "devices" ||
+    state === "devices-error" ||
+    state === "devices-permission-denied" ||
+    state === "devices-revocation-error" ||
+    state === "devices-refresh-error" ||
+    state === "devices-authorization-lost"
+  )
+    return (
+      <DeviceManagementView
+        vaultId="gallery-vault"
+        capabilities={devices}
+        onOpenSync={() => {
+          window.location.hash = "sync";
+        }}
+      />
+    );
+  if (state.startsWith("tags"))
+    return (
+      <OrganizationManagementView
+        vaultId="gallery-vault"
+        tagCapabilities={tagManagement}
+        folderCapabilities={folderManagement}
+      />
+    );
+  if (state.startsWith("tools"))
+    return (
+      <PasswordToolsPage
+        tools={{
+          ...workspace.tools,
+          generate: async (params) => {
+            if (state === "tools-pending") return new Promise(() => {});
+            if (state === "tools-error") throw new Error("Unavailable");
+            return workspace.tools.generate(params);
+          },
+        }}
+        onUse={() => setNotice("New entry requested")}
+      />
+    );
   if (state.startsWith("recover-access"))
     return (
       <RecoverVaultAccess
@@ -155,6 +292,7 @@ export function OptionsExample({
   if (state.startsWith("s3-"))
     return (
       <S3SetupGuide
+        access={guideAccess}
         location={{
           bucket: connection.bucket,
           region: connection.region,
@@ -249,6 +387,7 @@ export function OptionsExample({
   if (
     [
       "recovery",
+      "recovery-upload-pending",
       "recovered-words",
       "recovered-verification",
       "verification",
@@ -260,9 +399,11 @@ export function OptionsExample({
     return (
       <SetupRecoveryView
         recovery={
-          state.startsWith("recovered-")
-            ? { ...setupRecovery, purpose: "password-recovery" }
-            : setupRecovery
+          state === "recovery-upload-pending"
+            ? { ...setupRecovery, syncUpload: "pending" }
+            : state.startsWith("recovered-")
+              ? { ...setupRecovery, purpose: "password-recovery" }
+              : setupRecovery
         }
         verifying={verification}
         pending={state === "verification-pending"}
@@ -313,9 +454,17 @@ export function OptionsExample({
         onLock={() => setNotice("Lock requested")}
       />
     );
+  if (state === "organization-pending" || state === "organization-error")
+    return (
+      <SetupOrganizationExample pending={state === "organization-pending"} />
+    );
   return (
     <OptionsView
+      devices={devices}
+      vaultSettings={vaultSettings}
       workspace={workspace}
+      tagManagement={tagManagement}
+      folderManagement={folderManagement}
       setup={setup}
       sync={sync}
       preference={preference}
@@ -326,6 +475,7 @@ export function OptionsExample({
           : state === "welcome" ||
               state === "password" ||
               state === "device" ||
+              state === "organization" ||
               state === "connect"
             ? state
             : "welcome"
@@ -341,6 +491,36 @@ export function ScreenExamples() {
   const [action, setAction] = useState("");
   return (
     <div className="space-y-8">
+      <Specimen
+        id="S05"
+        name="OrganizationManagementView"
+        owner="features/organization"
+        wide
+      >
+        <Scenario
+          label="Tag management"
+          options={
+            [
+              "tags",
+              "tags-empty",
+              "tags-loading",
+              "tags-error",
+              "tags-live-groups",
+              "tags-mutation-error",
+              "tags-read-retry",
+              "tags-authorization-lost",
+            ] as const
+          }
+        >
+          {(state) => (
+            <OptionsExample
+              state={state}
+              preference={preference}
+              onThemeChange={setPreference}
+            />
+          )}
+        </Scenario>
+      </Specimen>
       <Specimen id="S04" name="S3SetupGuide" owner="features/sync" wide>
         <Scenario
           label="S3 setup guide"
@@ -350,6 +530,10 @@ export function ScreenExamples() {
               "s3-copy-error",
               "s3-invalid-bucket",
               "s3-invalid-prefix",
+              "s3-access-required",
+              "s3-access-error",
+              "s3-access-pending",
+              "s3-access-invalid",
             ] as const
           }
         >
@@ -370,15 +554,22 @@ export function ScreenExamples() {
               "sync-setup",
               "sync-access-pending",
               "sync-saved-refresh-error",
+              "sync-existing",
               "sync-configured",
+              "sync-copy-session-lost",
               "sync-permission",
               "sync-pending",
               "sync-error",
               "sync-session-expired",
               "sync-review",
+              "sync-organization-review",
               "sync-revision",
               "sync-repair-error",
               "sync-loading",
+              "sync-removal-pending",
+              "sync-refresh-error",
+              "sync-revocation-pending",
+              "sync-revocation-denied",
             ] as const
           }
         >
@@ -393,6 +584,53 @@ export function ScreenExamples() {
       </Specimen>
       <Specimen id="S01" name="PopupView" owner="entrypoints/popup">
         <Scenario
+          label="Website login page"
+          options={["matches", "detected"] as const}
+        >
+          {(mode) => (
+            <Scenario
+              key={mode}
+              label="Website login actions"
+              options={
+                [
+                  "matching",
+                  "save",
+                  "update",
+                  "email-link-save",
+                  "identifier",
+                  "registration",
+                  "password-change",
+                  "no-form",
+                  "unavailable",
+                  "error",
+                ] as const
+              }
+            >
+              {(scenario) => (
+                <BrowserLoginExample
+                  key={scenario}
+                  scenario={scenario}
+                  mode={mode}
+                />
+              )}
+            </Scenario>
+          )}
+        </Scenario>
+        <Scenario
+          label="Popup settings"
+          options={
+            [
+              "ready",
+              "save-pending",
+              "save-error",
+              "authorization-lost",
+            ] as const
+          }
+        >
+          {(state) => <PopupSettingsExample key={state} state={state} />}
+        </Scenario>
+
+        <Scenario
           label="Vault quick access"
           options={
             [
@@ -402,6 +640,19 @@ export function ScreenExamples() {
               "multiple",
               "incomplete",
               "error",
+              "reveal-error",
+              "sync-current",
+              "sync-changed-during-check",
+              "sync-review",
+              "sync-off",
+              "sync-permission",
+              "sync-error",
+              "sync-upload",
+              "sync-pending",
+              "sync-checking",
+              "sync-upload-refresh-error",
+              "sync-apply-refresh-error",
+              "sync-pending-refresh-error",
             ] as const
           }
         >
@@ -438,14 +689,38 @@ export function ScreenExamples() {
         wide
       >
         <Scenario
-          label="First-launch options"
+          label="Application screen"
           options={
             [
+              "application",
+              "tools",
+              "tools-pending",
+              "tools-error",
+              "devices",
+              "devices-error",
+              "devices-permission-denied",
+              "devices-revocation-error",
+              "devices-refresh-error",
+              "devices-authorization-lost",
+              "settings-ready",
+              "settings-save-pending",
+              "settings-save-error",
+              "settings-deletion-error",
+              "settings-authorization-lost",
+              "trust-enrollment",
+              "trust-revocation",
+              "trust-review-enrollment",
+              "trust-review-revocation",
+              "trust-applying",
+              "trust-error",
               "welcome",
               "password",
               "password-pending",
               "password-unavailable",
               "device",
+              "organization",
+              "organization-pending",
+              "organization-error",
               "connect",
               "recover-access",
               "recover-access-pending",
@@ -453,6 +728,7 @@ export function ScreenExamples() {
               "recovered-words",
               "recovered-verification",
               "recovery",
+              "recovery-upload-pending",
               "verification",
               "verification-error",
               "verification-pending",
@@ -467,6 +743,8 @@ export function ScreenExamples() {
               "workspace-empty",
               "workspace-loading",
               "workspace-error",
+              "workspace-reveal-error",
+              "workspace-inline-refresh-error",
               "workspace-stale",
               "workspace-uploaded",
               "workspace-pending-upload",

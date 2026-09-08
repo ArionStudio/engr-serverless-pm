@@ -42,6 +42,7 @@ import type {
   VaultMasterKey,
 } from "../../domain/snapshot";
 import type { Vault } from "../../domain/vault/vault";
+import { createDefaultTagGroups } from "../../domain/organization/tag-group.defaults";
 import type { Base64URLString } from "../../lib/base64Url.type";
 
 export const bytes = <T extends ArrayBuffer>() =>
@@ -333,6 +334,9 @@ export function createCoreTestValues() {
       deletedDeviceProfiles: [],
       tags: [],
       deletedTags: [],
+      tagGroups: createDefaultTagGroups(),
+      folders: [],
+      deletedFolders: [],
     } satisfies Vault,
     snapshotSignature: {
       signature: b64("snapshot-signature"),

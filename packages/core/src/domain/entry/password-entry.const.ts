@@ -1,0 +1,1 @@
+export const PASSWORD_ENTRY_TAG_LIMIT = 10;

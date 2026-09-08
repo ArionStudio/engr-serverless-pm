@@ -8,8 +8,10 @@ export function toVisiblePasswordEntryFields(
 ): VisiblePasswordEntryFields {
   return {
     id: entry.id,
+    hasPassword: entry.password.length > 0,
     login: entry.login,
     tags: [...entry.tags],
     sanitizedUrl: entry.sanitizedUrl,
+    folderId: entry.folderId,
   };
 }

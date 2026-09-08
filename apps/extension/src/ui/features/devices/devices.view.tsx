@@ -27,7 +27,14 @@ export function DeviceSummary({
   return (
     <article className="space-y-3 rounded-lg border p-4">
       <Badge variant="outline">
-        {state === "current" ? "This device" : state}
+        {
+          {
+            current: "This device",
+            other: "Connected",
+            revoked: "Revoked",
+            unavailable: "Unavailable",
+          }[state]
+        }
       </Badge>
       <h3 className="break-all font-semibold">{name}</h3>
       <p className="break-all text-xs text-muted-foreground">{identifier}</p>

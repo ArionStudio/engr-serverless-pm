@@ -10,7 +10,7 @@ skinparam activity {
 }
 
 start
-:Input:\nenrollmentResponse, masterPassword, deviceName,\noptional syncConfig, lockAfterMs;
+:Input:\nenrollmentResponse, masterPassword, deviceName,\nsyncConfig, lockAfterMs;
 :Validate lockAfterMs before pending-enrollment reads or crypto work;
 if (invalid delay?) then (yes)
   :Throw InvalidVaultLockDelayError;
@@ -39,16 +39,20 @@ endif
 :Open the target envelope and decrypt the authorized vault;
 :Add the new device profile;
 
-if (authorized vault has a sync target?) then (yes)
+if (authorized vault has no sync target?) then (yes)
+  :Reject enrollment without sync;
+  stop
+endif
+partition "Required S3 access" {
   :Require and normalize syncConfig;
   :Require its target to match the encrypted vault target;
   :Require latest remote descriptor to equal the authorized snapshot;
-endif
+}
 
 :Build, encrypt, sign, and verify the registered snapshot;
 :Generate recovery/local-protection material;
 :Build device access material and recovery backup\nwith one localAccessGenerationId;
-:Build local descriptor, trust checkpoint, digest,\nand optional encrypted sync credentials;
+:Build local descriptor, trust checkpoint, digest,\nand encrypted sync credentials;
 
 :Enter shared cross-context clipboard/lifecycle coordinator;
 if (coordination cannot start?) then (yes)
@@ -69,7 +73,7 @@ and encrypted sync artifact or absence all still match;
 endif
 :Activate a fresh session identity and transfer session-key custody;
 
-if (sync access exists?) then (yes)
+partition "Upload enrollment" {
   :Persist pending upload intent binding registered
 candidate to the authorized descriptor-and-digest identity;
   :Upload registered snapshot against the authorized identity;
@@ -110,7 +114,7 @@ snapshot digest, checkpoint, and staged encrypted-intent CAS;
       :Retain reconciliation state and mark syncUpload pending;
     endif
   endif
-endif
+}
 
 :Best effort remove the pending enrollment request;
 :Always wipe ephemeral derivation/recovery buffers;

@@ -12,31 +12,42 @@ export class StorageHostPermissionRequiredError extends Error {
   }
 }
 
+export class InvalidStorageLocationError extends Error {
+  override readonly name = "InvalidStorageLocationError";
+  constructor() {
+    super("Check the S3 bucket, region and object prefix.");
+  }
+}
+
 // Resolve with the same SDK defaults used for requests, including path-style
 // addressing for dotted bucket names. No credentials or network calls involved.
 const endpointProvider = new S3Client({ region: "us-east-1" }).config
   .endpointProvider;
 export function s3PermissionOrigin(value: unknown): string {
-  const target = decodeTargetConfig(value);
-  const { url } = endpointProvider({
-    Region: target.region,
-    Bucket: target.bucket,
-    ForcePathStyle: false,
-    UseFIPS: false,
-    UseDualStack: false,
-    Accelerate: false,
-    UseGlobalEndpoint: false,
-  });
-  if (
-    url.protocol !== "https:" ||
-    !(
-      url.hostname.endsWith(".amazonaws.com") ||
-      url.hostname.endsWith(".amazonaws.com.cn")
-    )
-  ) {
-    throw new Error("Unsupported S3 endpoint.");
+  try {
+    const target = decodeTargetConfig(value);
+    const { url } = endpointProvider({
+      Region: target.region,
+      Bucket: target.bucket,
+      ForcePathStyle: false,
+      UseFIPS: false,
+      UseDualStack: false,
+      Accelerate: false,
+      UseGlobalEndpoint: false,
+    });
+    if (
+      url.protocol !== "https:" ||
+      !(
+        url.hostname.endsWith(".amazonaws.com") ||
+        url.hostname.endsWith(".amazonaws.com.cn")
+      )
+    ) {
+      throw new Error("Unsupported S3 endpoint.");
+    }
+    return `${url.origin}/*`;
+  } catch {
+    throw new InvalidStorageLocationError();
   }
-  return `${url.origin}/*`;
 }
 
 type PermissionApi = Pick<typeof chrome.permissions, "request" | "contains">;

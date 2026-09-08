@@ -1,6 +1,9 @@
+import { subscribeWorkspaceChanges } from "./workspace-changes";
+import { readActivePageUrl } from "../browser/active-page-url";
 import { clipboardClearDelayMsSchema } from "@lfspm/core";
 import type { WorkspaceCapabilities } from "@/ui/features/entries/workspace.type";
 import { getApplication } from "./first-launch.capabilities";
+import { IndexedDbGlobalLibraryRepository } from "@/adapters/organization";
 
 const channelName = "lfspm-workspace-changed";
 function changed() {
@@ -8,13 +11,10 @@ function changed() {
   channel.postMessage("changed");
   channel.close();
 }
-function sessionId(value: unknown) {
-  return typeof value === "object" && value !== null && "sessionId" in value
-    ? value.sessionId
-    : undefined;
-}
 export function composeWorkspace(): WorkspaceCapabilities {
+  const organizationLibrary = new IndexedDbGlobalLibraryRepository();
   return {
+    readActivePageUrl,
     read: async (vaultId) =>
       (await getApplication()).readVaultWorkspace.execute({ vaultId }),
     details: async (vaultId, entryId) =>
@@ -39,6 +39,17 @@ export function composeWorkspace(): WorkspaceCapabilities {
       changed();
       return result;
     },
+    createTag: async (params) => {
+      const result = await (await getApplication()).addTag.execute(params);
+      changed();
+      return result;
+    },
+    createFolder: async (params) => {
+      const result = await (await getApplication()).addFolder.execute(params);
+      changed();
+      return result;
+    },
+    readOrganizationLibrary: () => organizationLibrary.read(),
     copy: async (vaultId, entryId) => {
       await (
         await getApplication()
@@ -56,29 +67,6 @@ export function composeWorkspace(): WorkspaceCapabilities {
       username: async (params) =>
         (await getApplication()).generateUsername.execute(params),
     },
-    subscribe: (listener) => {
-      const channel = new BroadcastChannel(channelName);
-      channel.onmessage = () => listener("data");
-      const onStorage = (
-        changes: Record<string, chrome.storage.StorageChange>,
-        area: string,
-      ) => {
-        const change = changes.unlockedVaultSessionMaterial;
-        if (area === "session" && change)
-          listener(
-            sessionId(change.oldValue) !== sessionId(change.newValue)
-              ? "session"
-              : "data",
-          );
-      };
-      const onFocus = () => listener("focus");
-      chrome.storage.onChanged.addListener(onStorage);
-      window.addEventListener("focus", onFocus);
-      return () => {
-        channel.close();
-        chrome.storage.onChanged.removeListener(onStorage);
-        window.removeEventListener("focus", onFocus);
-      };
-    },
+    subscribe: subscribeWorkspaceChanges,
   };
 }

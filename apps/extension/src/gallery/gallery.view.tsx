@@ -45,6 +45,7 @@ import { ReviewExamples } from "./review-examples.view";
 import { catalog, collectionFor } from "./catalog";
 import { ExpandedExamples } from "./expanded-examples.view";
 import { SharedExamples, FeatureExamples } from "./product-examples.view";
+import { OrganizationFeatureExamples } from "./organization-examples.view";
 import { FormExamples } from "./form-examples.view";
 import "./review.css";
 
@@ -219,8 +220,8 @@ export function Gallery() {
                   <NativeSelectOption value="fluid">
                     Fit window
                   </NativeSelectOption>
-                  <NativeSelectOption value="400">
-                    Popup · 400px
+                  <NativeSelectOption value="480">
+                    Popup · 480px
                   </NativeSelectOption>
                   <NativeSelectOption value="768">
                     Options · 768px
@@ -373,7 +374,10 @@ export function Gallery() {
                 ) : tab === "shared" ? (
                   <SharedExamples />
                 ) : tab === "features" ? (
-                  <FeatureExamples />
+                  <div className="space-y-8">
+                    <OrganizationFeatureExamples />
+                    <FeatureExamples />
+                  </div>
                 ) : (
                   <FormExamples />
                 )}

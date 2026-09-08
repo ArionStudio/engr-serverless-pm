@@ -83,6 +83,9 @@ examples are:
 - `VaultSyncGuardService`, which checks remote state and tracks uploads and
   provider credentials;
 - `VaultTrustService`, which creates and verifies trust chains and checkpoints;
+- `DeviceEnrollmentApprovalService`, shared by approval inspection and completion;
+- `VaultMutationService`, which coordinates folder and tag workflows through the
+  existing session, snapshot, and sync services, including rollback;
 - `VaultLifecycleCleanupService`, which coordinates lock and local-delete
   cleanup;
 - `ClipboardClearService`, which clears only clipboard values still owned by the
@@ -94,9 +97,9 @@ examples are:
 
 The package exposes shared constructors needed for public use-case composition
 and runtime coordination through `@lfspm/core/services`. Current extension
-composition imports session, snapshot, sync, lifecycle, clipboard, randomness,
-and vault display-name services from that path. Internal trust services are not
-part of the entry point. The old development document that called all services
+composition imports session, snapshot, sync, trust, enrollment approval,
+mutation, lifecycle, clipboard, randomness, and vault display-name services
+from that path. The old development document that called all services
 private predates this package contract.
 
 ## Ports and adapters

@@ -1,4 +1,6 @@
+import type { EnrollmentSetupInput } from "../devices/device-management.type";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { InitializeVaultOrganizationInput } from "@lfspm/core";
 import type {
   RecoverySaveMethod,
   SetupCapabilities,
@@ -30,38 +32,53 @@ export function useVaultSetup(capabilities: SetupCapabilities) {
   const [error, setError] = useState<string>();
   const epoch = useRef(0);
   const busy = useRef(false);
-  const refresh = useCallback(async () => {
-    const request = ++epoch.current;
+  const clearPresentation = useCallback(() => {
     setLoading(true);
     setInspectionFailed(false);
     setError(undefined);
     setRecovery(undefined);
     setVerifying(false);
-    try {
-      const next = await capabilities.inspect(selectedId.current);
-      if (request === epoch.current) applyInspection(next);
-    } catch {
-      if (request === epoch.current) {
-        setVault(null);
-        setVaults([]);
-        setInspectionFailed(true);
+  }, []);
+  const refresh = useCallback(
+    async (clearDraft = true) => {
+      if (!clearDraft && busy.current) return;
+      const request = ++epoch.current;
+      if (clearDraft) clearPresentation();
+      try {
+        const next = await capabilities.inspect(selectedId.current);
+        if (request === epoch.current) applyInspection(next);
+      } catch {
+        if (request === epoch.current) {
+          capabilities.clear();
+          setDraftRevision((value) => value + 1);
+          setRecovery(undefined);
+          setVerifying(false);
+          setVault(null);
+          setVaults([]);
+          setInspectionFailed(true);
+        }
+      } finally {
+        if (request === epoch.current) setLoading(false);
       }
-    } finally {
-      if (request === epoch.current) setLoading(false);
-    }
-  }, [capabilities, applyInspection]);
+    },
+    [capabilities, applyInspection, clearPresentation],
+  );
   useEffect(() => {
     void refresh();
     const unsubscribe = capabilities.subscribe((clearDraft = true) => {
-      if (!clearDraft && busy.current) return;
       if (clearDraft) setDraftRevision((value) => value + 1);
-      void refresh();
+      if (clearDraft === "pagehide") {
+        ++epoch.current;
+        clearPresentation();
+        return;
+      }
+      void refresh(clearDraft);
     });
     return () => {
       epoch.current += 1;
       unsubscribe();
     };
-  }, [capabilities, refresh]);
+  }, [capabilities, refresh, clearPresentation]);
   async function run(
     action: (request: number) => Promise<void>,
     failure: string | ((cause: unknown) => string),
@@ -127,10 +144,15 @@ export function useVaultSetup(capabilities: SetupCapabilities) {
         capabilities.clear();
         await inspect();
       }, "Could not open this vault. Try again."),
+    enroll: (params: EnrollmentSetupInput) =>
+      run(async () => {
+        await accept(() => capabilities.enroll(params));
+      }, "Could not complete enrollment. Check the approval and storage access. If the vault was saved, unlock it to finish recovery setup."),
     create: (params: {
       password: string;
       deviceName: string;
       duration: number;
+      organization?: InitializeVaultOrganizationInput;
     }) =>
       run(async () => {
         await accept(() => capabilities.create(params));
@@ -190,6 +212,13 @@ export function useVaultSetup(capabilities: SetupCapabilities) {
       run(async () => {
         if (vault) await accept(() => capabilities.replace(vault.vaultId));
       }, "Could not generate replacement words. Try again after checking that the vault is unlocked."),
+    replaceRecoveryWords: () =>
+      run(async () => {
+        if (vault)
+          await accept(() =>
+            capabilities.replace(vault.vaultId, "recovery-replacement"),
+          );
+      }, "Could not replace recovery words. Unlock the vault and try again."),
     verify: (answers: Readonly<Record<number, string>>) =>
       run(async (request) => {
         const valid = await capabilities.verify(answers);

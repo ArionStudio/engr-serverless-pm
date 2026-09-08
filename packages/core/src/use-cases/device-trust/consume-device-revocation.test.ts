@@ -270,6 +270,7 @@ function createCommand(ctx: {
     },
     resolution: {
       entryResolutions: [],
+      folderResolutions: [],
       tagResolutions: [],
       deviceProfileResolutions: [],
     },
@@ -283,8 +284,12 @@ describe("PrepareDeviceRevocationConsumptionUseCase", () => {
       ...ctx.remoteVault,
       tags: [
         {
-          id: 1,
+          id: "remote-tag",
           name: "Later change",
+          groupId: "other" as const,
+          color: "purple" as const,
+          shade: 500 as const,
+          createdAt: ctx.values.timestamp,
           versionVector: { [ctx.values.deviceId]: 3 },
         },
       ],
@@ -317,9 +322,10 @@ describe("PrepareDeviceRevocationConsumptionUseCase", () => {
       vaultKeyGeneration: 2,
       review: {
         entryReviews: [],
+        folderReviews: [],
         tagReviews: [
           {
-            tagId: 1,
+            tagId: "remote-tag",
             preselectedAction: "use_remote",
           },
         ],
@@ -801,8 +807,12 @@ describe("ConsumeDeviceRevocationUseCase", () => {
       ...ctx.remoteVault,
       tags: [
         {
-          id: 1,
+          id: "remote-tag",
           name: "Remote tag",
+          groupId: "other" as const,
+          color: "purple" as const,
+          shade: 500 as const,
+          createdAt: ctx.values.timestamp,
           versionVector: { [ctx.values.deviceId]: 3 },
         },
       ],
@@ -816,7 +826,8 @@ describe("ConsumeDeviceRevocationUseCase", () => {
       ...createCommand(ctx),
       resolution: {
         entryResolutions: [],
-        tagResolutions: [{ tagId: 1, action: "use_remote" }],
+        folderResolutions: [],
+        tagResolutions: [{ tagId: "remote-tag", action: "use_remote" }],
         deviceProfileResolutions: [],
       },
     });
@@ -1287,8 +1298,12 @@ describe("ConsumeDeviceRevocationUseCase", () => {
       ...ctx.remoteVault,
       tags: [
         {
-          id: 1,
+          id: "remote-tag",
           name: "Later change",
+          groupId: "other" as const,
+          color: "purple" as const,
+          shade: 500 as const,
+          createdAt: ctx.values.timestamp,
           versionVector: { [ctx.values.deviceId]: 3 },
         },
       ],
@@ -1297,7 +1312,10 @@ describe("ConsumeDeviceRevocationUseCase", () => {
       ...createCommand(ctx),
       resolution: {
         entryResolutions: [],
-        tagResolutions: [{ tagId: 1, action: "use_remote" as const }],
+        folderResolutions: [],
+        tagResolutions: [
+          { tagId: "remote-tag", action: "use_remote" as const },
+        ],
         deviceProfileResolutions: [],
       },
     };
@@ -1333,8 +1351,12 @@ describe("ConsumeDeviceRevocationUseCase", () => {
       ...ctx.remoteVault,
       tags: [
         {
-          id: 1,
+          id: "remote-tag",
           name: "Later change",
+          groupId: "other" as const,
+          color: "purple" as const,
+          shade: 500 as const,
+          createdAt: ctx.values.timestamp,
           versionVector: { [ctx.values.deviceId]: 3 },
         },
       ],
@@ -1426,8 +1448,12 @@ describe("ConsumeDeviceRevocationUseCase", () => {
       ...ctx.remoteVault,
       tags: [
         {
-          id: 1,
+          id: "remote-tag",
           name: "Later change",
+          groupId: "other" as const,
+          color: "purple" as const,
+          shade: 500 as const,
+          createdAt: ctx.values.timestamp,
           versionVector: { [ctx.values.deviceId]: 3 },
         },
       ],
@@ -1444,7 +1470,8 @@ describe("ConsumeDeviceRevocationUseCase", () => {
         ...createCommand(ctx),
         resolution: {
           entryResolutions: [],
-          tagResolutions: [{ tagId: 1, action: "use_remote" }],
+          folderResolutions: [],
+          tagResolutions: [{ tagId: "remote-tag", action: "use_remote" }],
           deviceProfileResolutions: [],
         },
       }),
@@ -1462,8 +1489,12 @@ describe("ConsumeDeviceRevocationUseCase", () => {
       ...ctx.remoteVault,
       tags: [
         {
-          id: 1,
+          id: "remote-tag",
           name: "Later change",
+          groupId: "other" as const,
+          color: "purple" as const,
+          shade: 500 as const,
+          createdAt: ctx.values.timestamp,
           versionVector: { [ctx.values.deviceId]: 3 },
         },
       ],
@@ -1478,7 +1509,8 @@ describe("ConsumeDeviceRevocationUseCase", () => {
       ...createCommand(ctx),
       resolution: {
         entryResolutions: [],
-        tagResolutions: [{ tagId: 1, action: "use_remote" }],
+        folderResolutions: [],
+        tagResolutions: [{ tagId: "remote-tag", action: "use_remote" }],
         deviceProfileResolutions: [],
       },
     });
@@ -1505,7 +1537,9 @@ describe("ConsumeDeviceRevocationUseCase", () => {
     );
     expect(
       ctx.ports.saved.unlockedVaultSession?.unlockedVault.vault.tags,
-    ).toEqual([expect.objectContaining({ id: 1, name: "Later change" })]);
+    ).toEqual([
+      expect.objectContaining({ id: "remote-tag", name: "Later change" }),
+    ]);
     expect(
       ctx.ports.sessionServices.unlockedVaultSession
         .commitPersistedSnapshotIfSessionIsActive,
@@ -1518,8 +1552,12 @@ describe("ConsumeDeviceRevocationUseCase", () => {
       ...ctx.remoteVault,
       tags: [
         {
-          id: 1,
+          id: "remote-tag",
           name: "Later change",
+          groupId: "other" as const,
+          color: "purple" as const,
+          shade: 500 as const,
+          createdAt: ctx.values.timestamp,
           versionVector: { [ctx.values.deviceId]: 3 },
         },
       ],
@@ -1543,7 +1581,8 @@ describe("ConsumeDeviceRevocationUseCase", () => {
       ...createCommand(ctx),
       resolution: {
         entryResolutions: [],
-        tagResolutions: [{ tagId: 1, action: "use_remote" }],
+        folderResolutions: [],
+        tagResolutions: [{ tagId: "remote-tag", action: "use_remote" }],
         deviceProfileResolutions: [],
       },
     });

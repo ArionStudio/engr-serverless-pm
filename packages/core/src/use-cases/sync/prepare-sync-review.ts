@@ -28,6 +28,8 @@ import { findChangedEntries } from "../../domain/sync/entry-review.utils";
 import type { VisibleEntryReviewItem } from "../../domain/sync/entry-review.type";
 import { findChangedTags } from "../../domain/sync/tag-review.utils";
 import type { TagReviewItem } from "../../domain/sync/tag-review.type";
+import type { FolderReviewItem } from "../../domain/sync/folder-review.type";
+import { findChangedFolders } from "../../domain/sync/folder-review.utils";
 import {
   findChangedDeviceProfiles,
   requireDeviceProfilesMatchTrust,
@@ -51,6 +53,7 @@ type VaultSyncReview = {
   readonly actionable: {
     readonly entryReviews: readonly VisibleEntryReviewItem[];
     readonly tagReviews: readonly TagReviewItem[];
+    readonly folderReviews: readonly FolderReviewItem[];
     readonly deviceProfileReviews: readonly DeviceProfileReviewItem[];
   };
   readonly readOnly: {
@@ -301,6 +304,7 @@ export class PrepareSyncReviewUseCase {
             remoteVault,
           ).map(toVisibleEntryReviewItem),
           tagReviews: findChangedTags(unlockedVault.vault, remoteVault),
+          folderReviews: findChangedFolders(unlockedVault.vault, remoteVault),
           deviceProfileReviews,
         },
         readOnly: {

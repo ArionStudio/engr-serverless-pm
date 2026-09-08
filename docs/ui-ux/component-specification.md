@@ -1,6 +1,7 @@
 # Component-library build specification
 
-Status: all catalog IDs have implemented gallery presentations as of 2026-09-05.
+Status: all current catalog IDs have implemented gallery presentations as of
+2026-09-08.
 The [review inventory](./review-inventory.md) records actual ownership, import paths,
 consolidations and integration limits. Visual approval and the complete acceptance
 matrix below remain review gates, not implied by a successful build.
@@ -18,11 +19,10 @@ Setup is the first application flow to assemble after the library is ready.
 The generated [catalog](../../apps/extension/src/gallery/catalog.ts) and
 [component API inventory](../../apps/extension/src/gallery/component-api.generated.ts)
 are the source of truth for current membership and variant axes. The catalog
-includes base controls, presentation families, form compositions and four
-current screen views.
+includes base controls, presentation families, form compositions and application screen views.
 The initial 20 controls grew by eight reuse-audit additions and ten further
 review controls. A family can expose related parts without one file per name.
-All entries belong to this library review. New-vault setup, the entry workspace and Sync are integrated; remaining feature workflows follow separately.
+All entries belong to this library review. Setup, recovery, entries, organization, password tools, devices, sync and settings are integrated. Browser capture and Fill runtime integration remain separate work.
 
 Use the exact [preset](./component-library.md#exact-visual-foundation), Base UI,
 Figtree and Hugeicons. The [Mobbin board](./mobbin.md) documents interaction research,
@@ -91,7 +91,7 @@ preserving the preset's visual treatment. Enlarged hit areas must not overlap.
 - Test both themes, keyboard-only use, zoom/reflow, long content and reduced motion.
   Aim for WCAG AA text and non-text contrast; demonstrate results in the gallery
   review rather than declaring conformance from the component package alone.
-- Focus uses one solid 2px violet outline, with a 2px gap and the control's
+- Focus uses one solid 1px violet outline, with a 1px gap and the control's
   existing corner radius. Grouped inputs and setup choice cards outline their
   enclosing shape; attached buttons have an inset outline. Avoid stacking a
   translucent ring on top. Forced-colors mode uses the system Highlight color.
@@ -186,22 +186,22 @@ All widths are fluid unless the row describes an alternate layout.
 
 ### Entries, actions and navigation
 
-Search accepts literal query text, so it has no invalid-query state. Its width
-follows the container; use the gallery canvas chooser to review narrow and wide
-layouts. No separate compact/expanded API is required.
+Search matches plain text across visible login, website, tag and folder fields.
 
-| ID  | Public family / purpose and proposed data contract                                                                                     | Variants / states                                                 | Required gallery evidence                                                                                                                                        |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| P10 | SearchField: query/change, submit/clear, searching state and result summary.                                                           | Empty/filled/searching; responsive width.                         | Clear retains focus, IME composition is not prematurely submitted, query text is not echoed into unsafe markup.                                                  |
-| P11 | EntryRow, EntryList and EntrySelection: visible entry fields, selected ID and open/select/action callbacks.                            | Browse/single-select; empty/loading/error; compact/expanded rows. | Long login/URL, no nested interactive targets, no passwords in list props; selection example covers future autofill.                                             |
-| P12 | DetailField: label, visible value, optional safe link and action slot.                                                                 | Plain/link/missing/multiline.                                     | Long URL and missing value; disallowed link schemes are inert through the approved URL boundary. No arbitrary HTML.                                              |
-| P13 | SecretField: concealed state or supplied revealed value, reveal/hide intent and operation status.                                      | Concealed/revealing/revealed/error/disabled.                      | Concealed fixture has no secret DOM text; stale reveal result discarded by driver after reset; no silent reveal on copy.                                         |
-| P14 | CopyAction: label, requested action callback, pending/success/failure display, optional cleanup explanation.                           | Text/icon button; idle/copying/copied/failed.                     | Repeated request handling and denied copy; event log shows no payload; success never promises clipboard-history erasure.                                         |
-| P15 | EmptyState, including EmptyVault: heading, explanation and optional primary/secondary actions.                                         | No vault/empty vault/no results/unavailable; compact/expanded.    | Clear first-entry action, reset-search alternative and no false success decoration. Context chooses copy, not the component.                                     |
-| P26 | ActionFeedback: explicit status, user-facing message and optional retry callback.                                                      | Idle/pending/success/error; inline or block.                      | Persistent actionable error, announcement once, retry without losing surrounding inputs; raw exceptions never displayed.                                         |
-| P27 | TagSelection: supplied `{id,label}` options, selected IDs/change and availability/error.                                               | None/some selected/loading/unavailable; compact/wrapped.          | Long labels, remove action with a name, selection limits supplied by contract; no invented tag CRUD or numeric-ID entry UI.                                      |
-| P28 | AppNavigation and VaultToolbar: allowed navigation items, current route, vault identity, lock/open-options callbacks and status slots. | Compact popup toolbar / expanded options navigation.              | Current location announced, long labels, unavailable actions explained, keyboard reachability; callbacks contain no secret route data.                           |
-| P29 | GuidancePanel: title, rich body, optional links and captioned attachments.                                                             | info / warning.                                                   | Persistent note semantics; icon and border distinguish severity as well as color. Long text, grouped facts, links and screenshots are reviewable in the gallery. |
+| ID  | Public family / purpose and proposed data contract                                                                                             | Variants / states                                                                                         | Required gallery evidence                                                                                                                                                  |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P10 | SearchField: query/change, submit/clear, searching state and result summary.                                                                   | Empty/filled/searching; responsive width.                                                                 | Clear retains focus, IME composition is not prematurely submitted, query text is not echoed into unsafe markup.                                                            |
+| P11 | EntryRow, EntryList, EntrySelection, EntryTable and SiteIcon: visible entry fields, selected ID and open/select/action callbacks.              | Browse/single-select; empty/loading/error; compact/expanded rows; icon loaded/loading/unavailable/failed. | Long login/URL, no nested interactive targets, no passwords in list props; website Fill and non-initial icon states use supplied gallery capabilities or bundled fixtures. |
+| P12 | DetailField: label, visible value, optional safe link and action slot.                                                                         | Plain/link/missing/multiline.                                                                             | Long URL and missing value; disallowed link schemes are inert through the approved URL boundary. No arbitrary HTML.                                                        |
+| P13 | SecretField: concealed state or supplied revealed value, reveal/hide intent and operation status.                                              | Concealed/revealing/revealed/error/disabled.                                                              | Concealed fixture has no secret DOM text; stale reveal result discarded by driver after reset; no silent reveal on copy.                                                   |
+| P14 | CopyAction: label, requested action callback, pending/success/failure display, optional cleanup explanation.                                   | Text/icon button; idle/copying/copied/failed.                                                             | Repeated request handling and denied copy; event log shows no payload; success never promises clipboard-history erasure.                                                   |
+| P15 | EmptyState, including EmptyVault: heading, explanation and optional primary/secondary actions.                                                 | No vault/empty vault/no results/unavailable; compact/expanded.                                            | Clear first-entry action, reset-search alternative and no false success decoration. Context chooses copy, not the component.                                               |
+| P26 | ActionFeedback: explicit status, user-facing message and optional retry callback.                                                              | Idle/pending/success/error; inline or block.                                                              | Persistent actionable error, announcement once, retry without losing surrounding inputs; raw exceptions never displayed.                                                   |
+| P27 | TagSelection: supplied tag options with IDs, labels and visual metadata, selected IDs/change, availability/error and optional create callback. | None/some selected/loading/unavailable/at limit; compact/wrapped.                                         | Long labels, grouped tag visuals, inline creation, remove action with a name and selection limits supplied by contract; no numeric-ID entry UI.                            |
+| P28 | AppNavigation and VaultToolbar: allowed navigation items, current route, vault identity, lock/open-options callbacks and status slots.         | Compact popup toolbar / expanded options navigation.                                                      | Current location announced, long labels, unavailable actions explained, keyboard reachability; callbacks contain no secret route data.                                     |
+| P29 | GuidancePanel: title, rich body, optional links and captioned attachments.                                                                     | info / warning.                                                                                           | Persistent note semantics; icon and border distinguish severity as well as color. Long text, grouped facts, links and screenshots are reviewable in the gallery.           |
+| P30 | TagMarker, TagPill, TagGroupHeading and TagVisualPicker: tag group, color, shade, name and icon presentation.                                  | Pill sizes and editable visual picker.                                                                    | Color is paired with text/icon meaning; every group, named color and shade is selectable in the gallery.                                                                   |
+| P31 | FolderTree, FolderPicker, FolderEditor, FolderCount and MoveFolderDialog: one-folder assignment and hierarchical management.                   | Read/select/create/edit/move; empty and deep hierarchy.                                                   | Uncategorized remains permanent, move choices prevent cycles, and bundled suggestions do not create folders until submission.                                              |
 
 ### Recovery
 
@@ -220,14 +220,14 @@ does not promise that all 24 words were recorded correctly.
 
 ### Generators, sync and devices
 
-| ID  | Public family / purpose and proposed data contract                                                                                                          | Variants / states                                                                             | Required gallery evidence                                                                                                                                                                                 |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| P20 | GeneratorControls and GeneratedValue: supplied password/username settings, change/generate/use callbacks, optional result and errors.                       | Password/username mode; ungenerated/generating/generated/invalid.                             | Numeric length + slider parity, checkbox flags, impossible-combination error; synthetic result can be accepted or copied; no random generation in the control.                                            |
-| P21 | SyncStatus: explicit display state, supplied detail and available actions.                                                                                  | Unconfigured/checking/uploading/complete/pending/review-required/failed.                      | “Pending” remains distinct from complete, retry shown only when caller permits, no fabricated last-sync timestamp. Core `SyncUploadStatus` alone supplies only complete/pending.                          |
-| P22 | ComparisonRow, ResolutionSelector, ReviewSummary and SyncReview: safe visible local/remote items, allowed choices, selected resolutions and apply callback. | Entry/deleted/missing side; remote-ahead/remote-only; loading/reviewing/applying/stale/error. | Local/remote labels survive narrow layout; password differences use a changed indicator, not values; unknown/broken/concurrent cases cannot be “merged” by UI.                                            |
-| P23 | DeviceSummary: supplied non-secret identity/name, current-device indication, displayed state and allowed action callbacks.                                  | Current/other/revoked/unavailable; row/detail.                                                | Long names and identifiers, consequences of revocation, action pending/error; no private keys or invented expiry-based trust.                                                                             |
-| P24 | TransferInput and TransferOutput: text/file selection callbacks, artifact description, safe metadata, explicit export/copy intent and validation state.     | Request/response presentation; empty/selected/validating/invalid/ready.                       | File selection has keyboard alternative; wrong/large file error; inert text preview; artifact labels do not imply trust before core verification. Sensitive artifact content never appears in event logs. |
-| P25 | DestructiveConfirmation: action name, affected identity, consequence text, supplied acknowledgment requirement if any, confirm/cancel and progress.         | Entry removal/local vault deletion/sync disable/device revocation; idle/pending/error.        | Distinct local/cloud/device consequences, safe initial focus and retry; backing out before confirmation differs from attempting to cancel a committed operation.                                          |
+| ID  | Public family / purpose and proposed data contract                                                                                                          | Variants / states                                                                                       | Required gallery evidence                                                                                                                                                                                 |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P20 | GeneratorControls and GeneratedValue: supplied password/username settings, change/generate/use callbacks, optional result and errors.                       | Password/username mode; ungenerated/generating/generated/invalid.                                       | Numeric length + slider parity, checkbox flags, impossible-combination error; synthetic result can be accepted or copied; no random generation in the control.                                            |
+| P21 | SyncStatus: explicit display state, supplied detail and available actions.                                                                                  | Unconfigured/checking/uploading/complete/pending/existing-vault/target-occupied/review-required/failed. | “Pending” remains distinct from complete. An occupied S3 path names the exact object key and offers prefix editing without replacing the object. Retry is shown only when the caller permits.             |
+| P22 | ComparisonRow, ResolutionSelector, ReviewSummary and SyncReview: safe visible local/remote items, allowed choices, selected resolutions and apply callback. | Entry/deleted/missing side; remote-ahead/remote-only; loading/reviewing/applying/stale/error.           | Local/remote labels survive narrow layout; password differences use a changed indicator, not values; unknown/broken/concurrent cases cannot be “merged” by UI.                                            |
+| P23 | DeviceSummary: supplied non-secret identity/name, current-device indication, displayed state and allowed action callbacks.                                  | Current/other/revoked/unavailable; row/detail.                                                          | Long names and identifiers, consequences of revocation, action pending/error; no private keys or invented expiry-based trust.                                                                             |
+| P24 | TransferInput and TransferOutput: text/file selection callbacks, artifact description, safe metadata, explicit export/copy intent and validation state.     | Request/response presentation; empty/selected/validating/invalid/ready.                                 | File selection has keyboard alternative; wrong/large file error; inert text preview; artifact labels do not imply trust before core verification. Sensitive artifact content never appears in event logs. |
+| P25 | DestructiveConfirmation: action name, affected identity, consequence text, supplied acknowledgment requirement if any, confirm/cancel and progress.         | Entry removal/local vault deletion/sync disable/device revocation; idle/pending/error.                  | Distinct local/cloud/device consequences, safe initial focus and retry; backing out before confirmation differs from attempting to cancel a committed operation.                                          |
 
 P20 password settings follow the current command: length, uppercase, lowercase,
 numbers, special, minNumbers, minSpecial and avoidAmbiguousCharacters. Username
@@ -237,9 +237,19 @@ claiming they pass policy. There is no username word-count or separator feature.
 
 P22 supports only supplied `use_local` / `use_remote` resolutions from the current
 review contract. It does not implement arbitrary concurrent-branch merging. P23
-and P27 can be designed with safe fixture props before read use cases exist.
+and P27 receive production read results through injected capabilities.
 P24 consumes artifacts through callbacks; it does not parse trust records or
 replace the enrollment protocol with a recovery-phrase import.
+
+## Application screen compositions
+
+| ID  | Composition                      | Current boundary                                                                                                                                    |
+| --- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S01 | PopupView and PopupWorkspace     | Vault access, entries, generators, settings and sync status are connected. Website-login detection, capture and Fill use gallery-only capabilities. |
+| S02 | OptionsView and VaultApplication | Setup, recovery, entries, password tools, devices, organization, sync and settings are connected through composed capabilities.                     |
+| S03 | SyncPage and SyncManagement      | Setup, access testing, review, repair, disable and credential-revocation recovery use injected sync capabilities.                                   |
+| S04 | S3SetupGuide                     | Guided AWS setup and browser storage permission states feed the real credential form without contacting AWS from the gallery.                       |
+| S05 | OrganizationManagementView       | Folder and tag management use their actual feature components and injected core-backed capabilities.                                                |
 
 ## Reusable form compositions
 
@@ -253,15 +263,15 @@ Every form demonstrates empty, filled, invalid, submitting, failed and completed
 driver states. Return success/error through injected display props; forms do not
 call use cases. Secret fields clear/reset when their owner changes or ends the operation.
 
-| ID  | Form and fields                                                                           | Components / size                                         | Additional gallery acceptance                                                                                                                                                             |
-| --- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| F01 | UnlockForm: selected vault, master password, lock duration.                               | P05/P07/P09/P26; compact and expanded.                    | Wrong password, missing vault, locked status, busy submission, no automatic retry on rerender.                                                                                            |
-| F02 | EntryForm: login, URL, password and selected tag IDs.                                     | P05/P06/P20/P27/P26; compact and expanded add/edit modes. | Preserve values on failure, distinguish existing concealed password from new input, explicit weak-password override when supplied by owner; no titles/notes/folders.                      |
-| F03 | PasswordCreationForm: new password and confirmation.                                      | P05/P06/P04/P26; expanded.                                | Independent reveal, mismatch, strength pending/unavailable, score-4 acceptance fixture; no persistence on Back.                                                                           |
-| F04 | PasswordChangeForm: current password, new password and confirmation.                      | P05/P06/P04/P26; expanded.                                | Explain current-device scope; wrong-current-password and locked-session failures; success clears all three values.                                                                        |
-| F05 | CredentialForm: bucket, region, prefix, access-key ID and secret-access key.              | B02/B03/P05/P04/P26; expanded.                            | Secret concealment, invalid config and denied provider access; distinguish testing from configuring/uploading. No arbitrary endpoint/session-token fields unsupported by current adapter. |
-| F06 | LocalRecoveryForm: local vault selection, recovery phrase, new password and confirmation. | P09/P18/P05/P06/P04/P26; expanded.                        | Missing local data and invalid phrase; explain words-only limitations; successful synthetic outcome hands off to replacement-word presentation through a callback.                        |
-| F07 | DeviceSettingsForm: suggested editable name and local lock duration.                      | B02/B03/P07/P04/P26; expanded.                            | Neutral name fallback, long name, local-only scope, save failure with values retained. Timing semantics are caller-supplied and remain an integration decision.                           |
+| ID  | Form and fields                                                                           | Components / size                                         | Additional gallery acceptance                                                                                                                                                                       |
+| --- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F01 | UnlockForm: selected vault, master password, lock duration.                               | P05/P07/P09/P26; compact and expanded.                    | Wrong password, missing vault, locked status, busy submission, no automatic retry on rerender.                                                                                                      |
+| F02 | EntryForm: login, URL, optional password, folder and selected tag IDs.                    | P05/P06/P20/P27/P26; compact and expanded add/edit modes. | Preserve values on failure, distinguish existing concealed password from new input, explicit weak-password override when supplied by owner; explicit passwordless confirmation; no titles or notes. |
+| F03 | PasswordCreationForm: new password and confirmation.                                      | P05/P06/P04/P26; expanded.                                | Independent reveal, mismatch, strength pending/unavailable, score-4 acceptance fixture; no persistence on Back.                                                                                     |
+| F04 | PasswordChangeForm: current password, new password and confirmation.                      | P05/P06/P04/P26; expanded.                                | Explain current-device scope; wrong-current-password and locked-session failures; success clears all three values.                                                                                  |
+| F05 | CredentialForm: bucket, region, prefix, access-key ID and secret-access key.              | B02/B03/P05/P04/P26; expanded.                            | Secret concealment, invalid config and denied provider access; distinguish testing from configuring/uploading. No arbitrary endpoint/session-token fields unsupported by current adapter.           |
+| F06 | LocalRecoveryForm: local vault selection, recovery phrase, new password and confirmation. | P09/P18/P05/P06/P04/P26; expanded.                        | Missing local data and invalid phrase; explain words-only limitations; successful synthetic outcome hands off to replacement-word presentation through a callback.                                  |
+| F07 | DeviceSettingsForm: suggested editable name and local lock duration.                      | B02/B03/P07/P04/P26; expanded.                            | Neutral name fallback, long name, local-only scope, save failure with values retained. Timing semantics are caller-supplied and remain an integration decision.                                     |
 
 P02 with F03 or F07 is a valid gallery composition example, not a connected setup
 screen. There is no multi-page router, active vault, real export or cloud operation
@@ -272,17 +282,17 @@ captured version to core for stale-write rejection.
 
 ## Coverage of the earlier inventory
 
-| Inventory area                           | Catalog coverage                                  |
-| ---------------------------------------- | ------------------------------------------------- |
-| First launch and setup                   | P01–P04, P07, P15–P19, P28; F03/F07               |
-| Vault selection/unlock/lock              | P05/P07/P09/P26/P28; F01                          |
-| Entry browsing/details/editing/removal   | P10–P15/P25/P27; F02                              |
-| Password/username generation             | B07/B09/B20; P20                                  |
-| Sync configuration/status/review/disable | P21/P22/P25/P26; F05                              |
-| Device enrollment/revocation             | P01/P04/P23–P26; F03/F07 as applicable            |
-| Local access recovery                    | P16–P19; F06                                      |
-| Theme/security settings                  | P03/P07/P08/P25; F04/F07                          |
-| Future autofill selection                | P11/P26; real browser fill is outside the library |
+| Inventory area                           | Catalog coverage                                                                        |
+| ---------------------------------------- | --------------------------------------------------------------------------------------- |
+| First launch and setup                   | P01–P04, P07, P15–P19, P28; F03/F07                                                     |
+| Vault selection/unlock/lock              | P05/P07/P09/P26/P28; F01                                                                |
+| Entry browsing/details/editing/removal   | P10–P15/P25/P27; F02                                                                    |
+| Password/username generation             | B07/B09/B20; P20                                                                        |
+| Sync configuration/status/review/disable | P21/P22/P25/P26; F05                                                                    |
+| Device enrollment/revocation             | P01/P04/P23–P26; F03/F07 as applicable                                                  |
+| Local access recovery                    | P16–P19; F06                                                                            |
+| Theme/security settings                  | P03/P07/P08/P25; F04/F07                                                                |
+| Website login selection and Fill         | P11/P26; browser Fill belongs to the application capability, with gallery-only fixtures |
 
 This covers the planned UI without expanding core scope. General vault-import,
 disaster-recovery archive, QR transfer, tag CRUD and arbitrary sync merging are
@@ -305,7 +315,7 @@ listed states. Fixtures can use a small controllable async driver; no need for a
 mock server or another state package. An action log records names/counts only.
 Provide reset controls that clear secret fixtures and reveal state together.
 
-Review sizes at 400px popup width and 768px/1280px options widths, plus 320px reflow
+Review sizes at 480px popup width and 768px/1280px options widths, plus 320px reflow
 and 200% zoom. These are test widths, not locked product dimensions. Both themes
 and actual system-theme selection are testable. Use long strings and many items
 to expose overflow. Overlay examples near each edge reveal clipping/focus issues.
@@ -327,7 +337,7 @@ The gallery must grow with the application under
 [UI-006](../standards/react-and-ui.md#ui-006-keep-the-component-gallery-current).
 The generated catalog and component API inventory record current families,
 exported components, compound parts and variant axes. ThemeProvider is documented
-as a nonvisual runtime provider. Four current screen views are registered with
+as a nonvisual runtime provider. Five current screen views are registered with
 the same source-derived coverage checks.
 
 Completed gallery coverage follow-up:
@@ -378,16 +388,16 @@ See [the setup implementation](./vault-setup.md) for persistence and session con
       The gate applies to all catalog IDs, not only the setup subset.
 - [x] G. Assemble and integrate new-vault setup, recovery, verification and local lock settings.
 - [x] Assemble Options entry/sync screens and popup entry quick access.
-- [ ] Assemble existing-vault enrollment.
+- [x] Assemble existing-vault enrollment.
 - [x] H. Connect new-vault setup to composed workflows and validate in Chrome.
 - [x] Connect entry and sync workflows through composed capabilities.
-- [ ] Connect existing-vault enrollment.
-      At entries/settings integration, implement the extension-level icon
-      preference workflow and browser capability, then complete the favicon
-      runtime acceptance checks before enabling browser icons in a release.
+- [x] Connect existing-vault enrollment.
+- [ ] Implement the extension-level icon preference workflow and browser
+      capability, then complete the favicon runtime acceptance checks before
+      enabling browser icons in a release.
 
-New-vault setup, entries and Sync are integrated at the current scope; later workflow integration
-does not change the requirement to keep the component gallery current.
+Application workflows are integrated at the current scope; subsequent runtime
+integration must keep the component gallery current.
 
 ## Definition of library ready
 
@@ -401,5 +411,5 @@ does not change the requirement to keep the component gallery current.
   fixture resets; avoid tests that only mirror static markup or styling classes.
 - Gallery code and fixtures are absent from the production artifact. Shared
   components have no forbidden adapter/secret persistence dependencies.
-- Remaining disaster-recovery, enrollment and read contracts are recorded as
-  follow-up work. Gallery completion does not declare those workflows implemented.
+- Remaining disaster-recovery and browser-runtime limitations are recorded as
+  follow-up work. Gallery completion alone does not certify runtime behavior.

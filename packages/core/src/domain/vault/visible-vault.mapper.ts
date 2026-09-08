@@ -10,7 +10,25 @@ export function toVisibleVaultFields(vault: Vault): VisibleVaultFields {
       name,
       createdAt,
     })),
-    tags: vault.tags.map(({ id, name }) => ({ id, name })),
+    tags: vault.tags.map(({ id, name, groupId, color, shade, createdAt }) => ({
+      id,
+      name,
+      groupId,
+      color,
+      shade,
+      createdAt,
+    })),
+    tagGroups: vault.tagGroups.map((group) => ({ ...group })),
+    folders: vault.folders.map(
+      ({ id, name, icon, description, parentId, createdAt }) => ({
+        id,
+        name,
+        icon,
+        ...(description === undefined ? {} : { description }),
+        parentId,
+        createdAt,
+      }),
+    ),
     syncConfigured: vault.syncTarget !== undefined,
   };
 }

@@ -2,6 +2,7 @@ import type {
   DeviceEnrollmentRequest,
   DeviceEnrollmentResponse,
 } from "../../domain/device-trust";
+import { SyncNotConfiguredError } from "../../errors/sync.errors";
 import { UnsupportedAlgorithmSuiteError } from "../../errors/algorithm-suite.errors";
 import { DeviceEnrollmentIntegrityError } from "../../errors/device-enrollment.errors";
 import type { CryptoPort } from "../../ports/crypto/crypto.port";
@@ -77,6 +78,13 @@ export class InitializeDeviceEnrollmentUseCase {
         params.vaultId,
         "authorize device enrollment",
       );
+    if (unlockedVault.vault.syncTarget === undefined) {
+      throw new SyncNotConfiguredError(
+        params.vaultId,
+        "authorize device enrollment",
+      );
+    }
+
     const syncState = await this.vaultSyncGuard.prepareLocalMutation(
       params.vaultId,
       unlockedVault,

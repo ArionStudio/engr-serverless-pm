@@ -63,6 +63,20 @@ or target without decryption failing.
 Shared snapshots and enrollment responses never contain provider credentials.
 The user enters a credential separately on every device.
 
+An unlocked user may explicitly reveal the current device's stored credentials
+from Sync after re-entering that device's password. Core verifies the password
+against the protected local keys and trusted device identity before decrypting
+the credential record. This read does not activate a new session, extend the
+lock duration, change the vault, or contact S3. Previous credentials retained
+for revocation are never returned.
+
+The UI keeps the revealed values only in memory and conceals them after 30
+seconds, on focus loss, navigation, or session invalidation. Copy uses the
+existing coordinated secret clipboard service, bound to the revealing session,
+with a 30-second clear task and lock cleanup. Clipboard history or external
+clipboard software can retain copies. Reusing credentials on another device
+means revoking those credentials affects both devices.
+
 ## Normal sync
 
 Normal sync requires:
@@ -107,6 +121,17 @@ state are restored to their prior state. A definite upload non-commit restores
 them as well. An indeterminate upload preserves the newly signed local snapshot,
 commits the matching session, and reports sync as pending so normal upload can
 reconcile it.
+
+If the target already contains a snapshot, initial setup never overwrites it.
+The caller may offer a separate reconnect action only when the object is a
+strictly newer snapshot of the same vault and can be authenticated with the
+current local vault state. Preparation verifies the descriptor, trust chain,
+vault-key generation, device key slots, device profiles, current-device access
+and embedded sync target. Confirmation repeats those checks and requires the
+exact local and remote identities that were reviewed. It then atomically stores
+the authenticated remote snapshot and encrypted device-local credentials. This
+path performs no remote write. Equal, local-ahead, concurrent, changed-trust and
+invalid snapshots remain blocked for their dedicated workflows.
 
 ## Upload outcomes
 
@@ -214,6 +239,11 @@ workflow. Disabling sync is a separate destructive operation, not credential
 repair or a pause switch.
 
 ## Enrollment
+
+Enrollment requires a configured S3 target on the authorizing vault and
+credentials for that same target on the new device. A local-only vault must
+configure sync first. The approval file cannot be used to copy a vault to a
+second device without sync.
 
 The registered device never exports its provider credentials. When an enrolled
 vault has a sync target, the target device asks the user for credentials,

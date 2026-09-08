@@ -1,6 +1,10 @@
 import type { FormPresentation } from "@/ui/components/forms/form-state.type";
 import { FormFrame, FormPassword } from "@/ui/components/forms/form-frame.view";
-import { LockDurationField } from "@/ui/components/forms/fields.view";
+import { Button } from "@/ui/components/primitives/button";
+import {
+  LockDurationField,
+  PasswordStrengthFeedback,
+} from "@/ui/components/forms/fields.view";
 import { SafetyHelp } from "@/ui/components/layout/sections.view";
 import { VaultPicker, type VaultOption } from "./vault-picker.view";
 export type UnlockDraft = {
@@ -53,10 +57,21 @@ export function PasswordChangeForm({
   value,
   onChange,
   errors,
+  score,
+  strengthState = "ready",
+  onRetryStrength,
   ...form
-}: FormPresentation<PasswordChangeDraft>) {
+}: FormPresentation<PasswordChangeDraft> & {
+  score?: 0 | 1 | 2 | 3 | 4;
+  strengthState?: "ready" | "pending" | "unavailable";
+  onRetryStrength?: () => void;
+}) {
   return (
-    <FormFrame {...form} label="Change password">
+    <FormFrame
+      {...form}
+      label="Change password"
+      canSubmit={strengthState === "ready"}
+    >
       <SafetyHelp
         title="Password on this device"
         essential="This changes how you unlock this local vault. Other devices keep their own passwords."
@@ -74,6 +89,16 @@ export function PasswordChangeForm({
         onChange={(password) => onChange({ ...value, password })}
         error={errors?.password}
       />
+      {value.password ? (
+        <div>
+          <PasswordStrengthFeedback score={score} state={strengthState} />
+          {strengthState === "unavailable" && onRetryStrength ? (
+            <Button type="button" variant="outline" onClick={onRetryStrength}>
+              Try again
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
       <FormPassword
         label="Confirm new password"
         value={value.confirmation}

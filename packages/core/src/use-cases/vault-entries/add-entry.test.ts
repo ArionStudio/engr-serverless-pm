@@ -6,6 +6,7 @@ import { createCoreTestValues } from "../../__tests__/fixtures/values";
 import {
   createVaultSnapshotServiceMock,
   saveUnlockedVaultWithEntries,
+  standardVaultTags,
 } from "../../__tests__/fixtures/vault-entries";
 import { toVaultSnapshotDescriptor } from "../../domain/snapshot";
 import {
@@ -21,6 +22,7 @@ import {
   InvalidPasswordEntryError,
   PasswordEntryStrengthRequirementNotMetError,
 } from "../../errors/vault-entry.errors";
+import { VaultTagNotFoundError } from "../../errors/vault-tag.errors";
 import { VaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 import {
   LocalVaultSnapshotChangedError,
@@ -45,7 +47,7 @@ function createContext() {
   );
   vi.mocked(ports.ids.generateId).mockReset().mockResolvedValue("entry-id");
 
-  saveUnlockedVaultWithEntries(ports, values, []);
+  saveUnlockedVaultWithEntries(ports, values, [], standardVaultTags);
 
   const useCase = new AddEntryUseCase(
     ports.ids,
@@ -73,7 +75,7 @@ describe("AddEntryUseCase", () => {
       entry: {
         password: maximumStrengthPassword,
         login: "user@example.com",
-        tags: [1, 2],
+        tags: ["work-tag", "personal-tag"],
         url: "https://example.com/login?session=secret#form",
       },
     });
@@ -93,8 +95,9 @@ describe("AddEntryUseCase", () => {
           id: "entry-id",
           password: maximumStrengthPassword,
           login: "user@example.com",
-          tags: [1, 2],
+          tags: ["work-tag", "personal-tag"],
           sanitizedUrl: "https://example.com/login",
+          folderId: "uncategorized",
           versionVector: {
             [ctx.values.deviceId]: 2,
           },
@@ -140,6 +143,25 @@ describe("AddEntryUseCase", () => {
         ctx.ports.sessionServices.unlockedVaultSession.commitPersistedSnapshot,
       ).mock.invocationCallOrder[0],
     );
+  });
+
+  it("rejects an entry that references a tag absent from the vault", async () => {
+    const ctx = createContext();
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        entry: {
+          password: maximumStrengthPassword,
+          login: "user@example.com",
+          tags: ["missing-tag"],
+          url: "https://example.com/login",
+        },
+      }),
+    ).rejects.toBeInstanceOf(VaultTagNotFoundError);
+
+    expect(ctx.ports.ids.generateId).not.toHaveBeenCalled();
+    expect(ctx.vaultSnapshot.persistUnlockedVault).not.toHaveBeenCalled();
   });
 
   it("rejects a password below maximum strength by default without side effects or secret retention", async () => {
@@ -1369,5 +1391,24 @@ describe("AddEntryUseCase", () => {
         },
       }),
     ).rejects.toThrow("session save failed");
+  });
+  it("persists an email-link account only with explicit passwordless intent", async () => {
+    const ctx = createContext();
+    const request = {
+      vaultId: ctx.values.vaultId,
+      entry: {
+        login: "email@example.com",
+        password: "",
+        url: "https://example.com",
+        tags: [],
+      },
+    };
+    await expect(ctx.useCase.execute(request)).rejects.toBeInstanceOf(
+      InvalidPasswordEntryError,
+    );
+    await ctx.useCase.execute({ ...request, withoutPassword: true });
+    expect(
+      ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries[0],
+    ).toMatchObject({ login: "email@example.com", password: "" });
   });
 });

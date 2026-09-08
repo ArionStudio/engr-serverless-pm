@@ -4,6 +4,7 @@ import { captureVaultSnapshotFromNextSave } from "../../__tests__/fixtures/ports
 import {
   createUnlockedVaultWithEntries,
   singlePasswordEntry,
+  standardVaultTags,
 } from "../../__tests__/fixtures/vault-entries";
 import {
   cloneVaultSnapshotIdentity,
@@ -33,6 +34,7 @@ function createContext(localEntries: PasswordEntry[] = []) {
   const unlockedVault = createUnlockedVaultWithEntries(
     ctx.values,
     localEntries,
+    standardVaultTags,
   );
   const remoteSnapshot = {
     ...ctx.vaultSnapshot,
@@ -147,6 +149,7 @@ describe("ApplySyncResolutionUseCase", () => {
         entryResolutions: [
           { entryId: singlePasswordEntry.id, action: "use_remote" },
         ],
+        folderResolutions: [],
         tagResolutions: [],
         deviceProfileResolutions: [],
       },
@@ -185,6 +188,7 @@ describe("ApplySyncResolutionUseCase", () => {
       },
       resolution: {
         entryResolutions: [],
+        folderResolutions: [],
         tagResolutions: [],
         deviceProfileResolutions: [],
       },
@@ -215,6 +219,7 @@ describe("ApplySyncResolutionUseCase", () => {
         entryResolutions: [
           { entryId: singlePasswordEntry.id, action: "use_local" },
         ],
+        folderResolutions: [],
         tagResolutions: [],
         deviceProfileResolutions: [],
       },
@@ -239,6 +244,7 @@ describe("ApplySyncResolutionUseCase", () => {
         entryResolutions: [
           { entryId: singlePasswordEntry.id, action: "use_local" },
         ],
+        folderResolutions: [],
         tagResolutions: [],
         deviceProfileResolutions: [],
       },
@@ -316,6 +322,7 @@ describe("ApplySyncResolutionUseCase", () => {
           entryResolutions: [
             { entryId: singlePasswordEntry.id, action: "use_remote" },
           ],
+          folderResolutions: [],
           tagResolutions: [],
           deviceProfileResolutions: [],
         },
@@ -374,6 +381,7 @@ describe("ApplySyncResolutionUseCase", () => {
           entryResolutions: [
             { entryId: singlePasswordEntry.id, action: "use_remote" },
           ],
+          folderResolutions: [],
           tagResolutions: [],
           deviceProfileResolutions: [],
         },
@@ -403,6 +411,7 @@ describe("ApplySyncResolutionUseCase", () => {
           entryResolutions: [
             { entryId: singlePasswordEntry.id, action: "use_remote" },
           ],
+          folderResolutions: [],
           tagResolutions: [],
           deviceProfileResolutions: [],
         },
@@ -432,6 +441,7 @@ describe("ApplySyncResolutionUseCase", () => {
             entryResolutions: [
               { entryId: singlePasswordEntry.id, action: "use_remote" },
             ],
+            folderResolutions: [],
             tagResolutions: [],
             deviceProfileResolutions: [],
           },
@@ -484,6 +494,7 @@ describe("ApplySyncResolutionUseCase", () => {
           },
           resolution: {
             entryResolutions: [],
+            folderResolutions: [],
             tagResolutions: [],
             deviceProfileResolutions: [],
           },
@@ -528,6 +539,7 @@ describe("ApplySyncResolutionUseCase", () => {
         },
         resolution: {
           entryResolutions: [],
+          folderResolutions: [],
           tagResolutions: [],
           deviceProfileResolutions: [],
         },
@@ -560,6 +572,7 @@ describe("ApplySyncResolutionUseCase", () => {
           entryResolutions: [
             { entryId: singlePasswordEntry.id, action: "use_remote" },
           ],
+          folderResolutions: [],
           tagResolutions: [],
           deviceProfileResolutions: [],
         },
@@ -587,6 +600,7 @@ describe("ApplySyncResolutionUseCase", () => {
       },
       resolution: {
         entryResolutions: [entryResolution],
+        folderResolutions: [],
         tagResolutions: [],
         deviceProfileResolutions: [],
       },
@@ -646,6 +660,7 @@ describe("ApplySyncResolutionUseCase", () => {
           entryResolutions: [
             { entryId: singlePasswordEntry.id, action: "use_remote" },
           ],
+          folderResolutions: [],
           tagResolutions: [],
           deviceProfileResolutions: [],
         },
@@ -678,6 +693,7 @@ describe("ApplySyncResolutionUseCase", () => {
           entryResolutions: [
             { entryId: singlePasswordEntry.id, action: "use_remote" },
           ],
+          folderResolutions: [],
           tagResolutions: [],
           deviceProfileResolutions: [],
         },
@@ -709,6 +725,7 @@ describe("ApplySyncResolutionUseCase", () => {
           entryResolutions: [
             { entryId: singlePasswordEntry.id, action: "use_remote" },
           ],
+          folderResolutions: [],
           tagResolutions: [],
           deviceProfileResolutions: [],
         },
@@ -752,6 +769,7 @@ describe("ApplySyncResolutionUseCase", () => {
           entryResolutions: [
             { entryId: singlePasswordEntry.id, action: "use_remote" },
           ],
+          folderResolutions: [],
           tagResolutions: [],
           deviceProfileResolutions: [],
         },
@@ -798,6 +816,7 @@ describe("ApplySyncResolutionUseCase", () => {
       },
       resolution: {
         entryResolutions: [],
+        folderResolutions: [],
         tagResolutions: [],
         deviceProfileResolutions: [],
       },
@@ -854,6 +873,7 @@ describe("ApplySyncResolutionUseCase", () => {
         entryResolutions: [
           { entryId: singlePasswordEntry.id, action: "use_remote" },
         ],
+        folderResolutions: [],
         tagResolutions: [],
         deviceProfileResolutions: [],
       },
@@ -905,6 +925,7 @@ describe("ApplySyncResolutionUseCase", () => {
           entryResolutions: [
             { entryId: singlePasswordEntry.id, action: "use_remote" },
           ],
+          folderResolutions: [],
           tagResolutions: [],
           deviceProfileResolutions: [],
         },
@@ -935,6 +956,7 @@ describe("ApplySyncResolutionUseCase", () => {
         entryResolutions: [
           { entryId: singlePasswordEntry.id, action: "use_local" },
         ],
+        folderResolutions: [],
         tagResolutions: [],
         deviceProfileResolutions: [],
       },
@@ -974,6 +996,7 @@ describe("ApplySyncResolutionUseCase", () => {
           entryResolutions: [
             { entryId: singlePasswordEntry.id, action: "use_local" },
           ],
+          folderResolutions: [],
           tagResolutions: [],
           deviceProfileResolutions: [],
         },
@@ -997,10 +1020,10 @@ describe("ApplySyncResolutionUseCase", () => {
           versionVector: { [ctx.values.deviceId]: 2 },
         },
       ],
-      tags: [],
+      tags: ctx.remoteVault.tags,
       deletedTags: [
         {
-          id: 17,
+          id: "shared-tag",
           deletedAt: ctx.values.timestamp,
           versionVector: { [ctx.values.deviceId]: 2 },
         },
@@ -1027,7 +1050,8 @@ describe("ApplySyncResolutionUseCase", () => {
         entryResolutions: [
           { entryId: singlePasswordEntry.id, action: "use_remote" },
         ],
-        tagResolutions: [{ tagId: 17, action: "use_remote" }],
+        folderResolutions: [],
+        tagResolutions: [{ tagId: "shared-tag", action: "use_remote" }],
         deviceProfileResolutions: [
           { deviceId: ctx.values.deviceId, action: "use_remote" },
         ],
@@ -1043,13 +1067,17 @@ describe("ApplySyncResolutionUseCase", () => {
   it("persists and uploads a mixed local entry and remote tag resolution", async () => {
     const ctx = createContext([localEntry]);
     const tag = {
-      id: 17,
+      id: "shared-tag",
       name: "Shared",
+      groupId: "other" as const,
+      color: "purple" as const,
+      shade: 500 as const,
+      createdAt: ctx.values.timestamp,
       versionVector: { [ctx.values.deviceId]: 2 },
     };
     vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue({
       ...ctx.remoteVault,
-      tags: [tag],
+      tags: [...ctx.remoteVault.tags, tag],
     });
     await ctx.useCase.execute({
       vaultId: ctx.values.vaultId,
@@ -1061,7 +1089,8 @@ describe("ApplySyncResolutionUseCase", () => {
         entryResolutions: [
           { entryId: singlePasswordEntry.id, action: "use_local" },
         ],
-        tagResolutions: [{ tagId: 17, action: "use_remote" }],
+        folderResolutions: [],
+        tagResolutions: [{ tagId: "shared-tag", action: "use_remote" }],
         deviceProfileResolutions: [],
       },
     });
@@ -1075,6 +1104,57 @@ describe("ApplySyncResolutionUseCase", () => {
       ctx.saved.unlockedVaultSession?.unlockedVault.vault.tags,
     ).toContainEqual({ ...tag, versionVector: { [ctx.values.deviceId]: 3 } });
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).toHaveBeenCalledOnce();
+  });
+
+  it("rejects incompatible entry and tag choices before persistence", async () => {
+    const ctx = createContext([localEntry]);
+    const remoteVault = {
+      ...ctx.remoteVault,
+      entries: [
+        {
+          ...singlePasswordEntry,
+          tags: [],
+          versionVector: { [ctx.values.deviceId]: 2 },
+        },
+      ],
+      tags: standardVaultTags.filter((tag) => tag.id !== "work-tag"),
+      deletedTags: [
+        {
+          id: "work-tag",
+          deletedAt: ctx.values.timestamp,
+          versionVector: { [ctx.values.deviceId]: 2 },
+        },
+      ],
+    };
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue(
+      remoteVault,
+    );
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        reviewedSnapshotIdentities: {
+          local: ctx.localIdentity,
+          remote: ctx.remoteIdentity,
+        },
+        resolution: {
+          entryResolutions: [
+            { entryId: singlePasswordEntry.id, action: "use_local" },
+          ],
+          folderResolutions: [],
+          tagResolutions: [{ tagId: "work-tag", action: "use_remote" }],
+          deviceProfileResolutions: [],
+        },
+      }),
+    ).rejects.toMatchObject({
+      name: "InvalidSyncResolutionError",
+      cause: { name: "InvalidVaultSyncResolutionError" },
+    });
+
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });
 
   it.each(["duplicate", "extra", "missing", "unsupported"] as const)(
@@ -1110,6 +1190,7 @@ describe("ApplySyncResolutionUseCase", () => {
           },
           resolution: {
             entryResolutions: resolutions,
+            folderResolutions: [],
             tagResolutions: [],
             deviceProfileResolutions: [],
           },
@@ -1147,6 +1228,7 @@ describe("ApplySyncResolutionUseCase", () => {
         entryResolutions: [
           { entryId: singlePasswordEntry.id, action: "use_remote" },
         ],
+        folderResolutions: [],
         tagResolutions: [],
         deviceProfileResolutions: [],
       },

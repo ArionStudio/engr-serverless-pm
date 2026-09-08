@@ -1,9 +1,13 @@
+import { vaultAuthorizationWasLost } from "@/ui/lib/vault-authorization";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AddEntryResult,
   ReadEntryResult,
   VersionVector,
   VisibleVaultFields,
+  SyncUploadStatus,
+  AddTagCommandParams,
+  AddFolderCommandParams,
 } from "@lfspm/core";
 import type { WorkspaceCapabilities } from "./workspace.type";
 import type { EntryDraft } from "./entry-form.view";
@@ -25,11 +29,19 @@ type View =
 export function useWorkspace(
   vaultId: string,
   capabilities: WorkspaceCapabilities,
+  initialDraft?: EntryDraft,
   onInvalidate?: () => void,
   onSessionLost?: () => void,
 ) {
+  const [startingDraft] = useState(initialDraft);
+  const needsActiveUrl =
+    !!startingDraft && !startingDraft.url && !!capabilities.readActivePageUrl;
   const [data, setData] = useState<VisibleVaultFields>();
-  const [view, setView] = useState<View>({ kind: "list" });
+  const [view, setView] = useState<View>(() =>
+    startingDraft && !needsActiveUrl
+      ? { kind: "editor", initial: startingDraft, key: 0 }
+      : { kind: "list" },
+  );
   const [loading, setLoading] = useState(true);
   const [operation, setOperation] = useState<"action" | "reveal">();
   const pending = operation !== undefined;
@@ -88,13 +100,19 @@ export function useWorkspace(
       return task();
     }
   }, []);
+  const readActiveUrl = useCallback(async () => {
+    try {
+      return (await capabilities.readActivePageUrl?.()) ?? "";
+    } catch {
+      // Browser-tab access is independent of vault authorization.
+      return "";
+    }
+  }, [capabilities]);
   const refresh = useCallback(async () => {
     const owner = epoch.current;
     const request = ++inspection.current;
     setLoading(true);
-    try {
-      const result = await read(() => capabilities.read(vaultId));
-      if (owner !== epoch.current || request !== inspection.current) return;
+    function applyRead(result: VisibleVaultFields) {
       setData(result);
       setError((current) => (current?.recoverOnRead ? undefined : current));
       setView((current) => {
@@ -106,8 +124,20 @@ export function useWorkspace(
           ? { ...current, record: { ...current.record, entry } }
           : { kind: "list" };
       });
+    }
+    try {
+      const result = await read(() => capabilities.read(vaultId));
+      if (owner !== epoch.current || request !== inspection.current) return;
+      applyRead(result);
     } catch (cause) {
       if (owner !== epoch.current || request !== inspection.current) return;
+      const lost = await vaultAuthorizationWasLost(cause, async () => {
+        const result = await read(() => capabilities.read(vaultId));
+        if (owner === epoch.current && request === inspection.current)
+          applyRead(result);
+      });
+      if (owner !== epoch.current || request !== inspection.current || !lost)
+        return;
       reset(true);
       onSessionLost?.();
       setError({
@@ -119,8 +149,22 @@ export function useWorkspace(
     }
   }, [capabilities, vaultId, reset, read, onSessionLost]);
   useEffect(() => {
-    ++epoch.current;
+    const owner = ++epoch.current;
     void refresh();
+    if (needsActiveUrl && startingDraft) {
+      busy.current = true;
+      setOperation("action");
+      void readActiveUrl().then((url) => {
+        if (owner !== epoch.current) return;
+        setView({
+          kind: "editor",
+          initial: { ...startingDraft, url },
+          key: ++editorKey.current,
+        });
+        busy.current = false;
+        setOperation(undefined);
+      });
+    }
     const unsubscribe = capabilities.subscribe((reason) => {
       hide();
       if (reason === "session") reset();
@@ -152,7 +196,15 @@ export function useWorkspace(
       window.removeEventListener("blur", onBlur);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [capabilities, refresh, reset, hide]);
+  }, [
+    capabilities,
+    refresh,
+    reset,
+    hide,
+    readActiveUrl,
+    needsActiveUrl,
+    startingDraft,
+  ]);
   async function run(
     task: (owner: number) => Promise<void>,
     kind: "action" | "reveal" = "action",
@@ -169,23 +221,10 @@ export function useWorkspace(
       if (owner !== epoch.current) return;
       ++secretReadEpoch.current;
       setPassword(undefined);
-      let sessionLost =
-        cause instanceof Error &&
-        [
-          "VaultMustBeUnlockedError",
-          "UnlockedVaultSessionExpiredError",
-          "UnlockedVaultSessionInvalidError",
-        ].includes(cause.name);
-      if (!sessionLost) {
-        // Dependency errors can revoke access without a storage notification.
-        // Keep a draft only when an authoritative read still permits access.
-        try {
-          await read(() => capabilities.read(vaultId));
-        } catch {
-          sessionLost = true;
-        }
-        if (owner !== epoch.current) return;
-      }
+      const sessionLost = await vaultAuthorizationWasLost(cause, () =>
+        read(() => capabilities.read(vaultId)),
+      );
+      if (owner !== epoch.current) return;
       if (sessionLost) {
         reset();
         onSessionLost?.();
@@ -207,11 +246,11 @@ export function useWorkspace(
       }
     }
   }
-  function lock(action: () => void | Promise<void>) {
+  async function lock(action: () => void | Promise<void>): Promise<void> {
     if (locking.current) return;
     locking.current = true;
     reset();
-    void run(async (owner) => {
+    await run(async (owner) => {
       try {
         await action();
       } finally {
@@ -240,13 +279,21 @@ export function useWorkspace(
       if (owner === epoch.current) setView({ kind, record });
     });
   }
-  function edit(entryId?: string) {
+  function edit(
+    entryId?: string,
+    captured?: {
+      readonly login: string;
+      readonly password: string;
+      readonly url: string;
+    },
+  ) {
     hide();
     const secretOwner = secretReadEpoch.current;
     void run(async (owner) => {
       const result = entryId
         ? await read(() => capabilities.edit(vaultId, entryId))
         : undefined;
+      const activeUrl = !entryId && !captured?.url ? await readActiveUrl() : "";
       if (owner !== epoch.current) return;
       if (secretOwner !== secretReadEpoch.current) return;
       const entry = result?.entry;
@@ -259,11 +306,19 @@ export function useWorkspace(
           ? {
               login: entry.login,
               url: entry.sanitizedUrl,
-              password: entry.password,
+              password: captured?.password || entry.password,
+              withoutPassword: !(captured?.password || entry.password),
               tagIds: [...entry.tags],
+              folderId: entry.folderId,
               allowWeakPassword: false,
             }
-          : { ...emptyEntryDraft, tagIds: [] },
+          : {
+              ...emptyEntryDraft,
+              url: activeUrl,
+              ...captured,
+              withoutPassword: captured?.password === "",
+              tagIds: [],
+            },
       });
     });
   }
@@ -271,15 +326,52 @@ export function useWorkspace(
     if (owner !== epoch.current) return;
     hide();
     setView({ kind: "list" });
-    setUploadPending(result.syncUpload === "pending");
-    setFeedback(
-      result.syncUpload === "pending"
-        ? "Saved on this device. Upload has not been confirmed. Review Sync before making another change."
-        : result.syncConfigured
-          ? "Saved and uploaded."
-          : "Saved on this device.",
-    );
+    reportSave(result);
     await refresh();
+  }
+  function reportSave(
+    receipt: {
+      readonly syncUpload: SyncUploadStatus;
+      readonly syncConfigured: boolean;
+    },
+    item?: "Tag" | "Folder",
+  ) {
+    const saved = item ? `${item} saved` : "Saved";
+    setUploadPending(receipt.syncUpload === "pending");
+    setFeedback(
+      receipt.syncUpload === "pending"
+        ? `${saved} on this device. Upload has not been confirmed. Review Sync before making another change.`
+        : receipt.syncConfigured
+          ? `${saved} and uploaded.`
+          : `${saved} on this device.`,
+    );
+  }
+  async function createOrganizationItem<
+    T extends {
+      readonly syncUpload: SyncUploadStatus;
+      readonly syncConfigured: boolean;
+    },
+  >(item: "Tag" | "Folder", create: () => Promise<T>): Promise<T> {
+    const owner = epoch.current;
+    let result: T;
+    try {
+      result = await create();
+    } catch (cause) {
+      if (owner === epoch.current) {
+        const sessionLost = await vaultAuthorizationWasLost(cause, () =>
+          read(() => capabilities.read(vaultId)),
+        );
+        if (owner === epoch.current && sessionLost) {
+          reset();
+          onSessionLost?.();
+        }
+      }
+      throw cause;
+    }
+    if (owner !== epoch.current) throw new Error("The vault session changed.");
+    reportSave(result, item);
+    await refresh();
+    return result;
   }
   function save(draft: EntryDraft) {
     if (view.kind !== "editor") return;
@@ -288,11 +380,13 @@ export function useWorkspace(
       const params = {
         vaultId,
         allowWeakPassword: draft.allowWeakPassword,
+        ...(draft.withoutPassword === true ? { withoutPassword: true } : {}),
         entry: {
           login: draft.login,
           url: draft.url,
           password: draft.password,
           tags: [...draft.tagIds],
+          folderId: draft.folderId,
         },
       };
       const result =
@@ -331,9 +425,11 @@ export function useWorkspace(
         record: {
           entry: {
             id: entry.id,
+            hasPassword: entry.password.length > 0,
             login: entry.login,
             sanitizedUrl: entry.sanitizedUrl,
             tags: [...entry.tags],
+            folderId: entry.folderId,
           },
           entryVersionVector: { ...entry.versionVector },
         },
@@ -377,5 +473,13 @@ export function useWorkspace(
     reveal,
     hide,
     copy,
+    createTag: (tag: AddTagCommandParams["tag"]) =>
+      createOrganizationItem("Tag", () =>
+        capabilities.createTag({ vaultId, tag }),
+      ),
+    createFolder: (folder: AddFolderCommandParams["folder"]) =>
+      createOrganizationItem("Folder", () =>
+        capabilities.createFolder({ vaultId, folder }),
+      ),
   };
 }

@@ -1,6 +1,10 @@
+import { galleryDevices } from "@/gallery/device-fixture";
+import { galleryVaultSettings } from "@/gallery/settings-fixture";
 import { galleryWorkspace } from "@/gallery/workspace-fixture";
 import { gallerySync } from "@/gallery/sync-fixture";
 import { gallerySetup } from "@/gallery/setup-fixture";
+import { galleryTagManagement } from "@/gallery/tag-management-fixture";
+import { galleryFolderManagement } from "@/gallery/folder-management-fixture";
 // @vitest-environment jsdom
 import { createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -75,7 +79,11 @@ describe("first-launch screens", () => {
     const user = userEvent.setup();
     render(
       createElement(OptionsView, {
+        devices: galleryDevices(),
+        vaultSettings: galleryVaultSettings(),
         workspace: galleryWorkspace(),
+        tagManagement: galleryTagManagement(),
+        folderManagement: galleryFolderManagement(),
         sync: gallerySync(),
         setup: gallerySetup(),
         preference: "light",
@@ -135,10 +143,15 @@ describe("first-launch screens", () => {
     ).toHaveValue("");
   });
 
-  it("does not route an existing vault into first-time creation", async () => {
+  it("keeps vault settings unavailable until an existing vault is unlocked", async () => {
+    const user = userEvent.setup();
     render(
       createElement(OptionsView, {
+        devices: galleryDevices(),
+        vaultSettings: galleryVaultSettings(),
         workspace: galleryWorkspace(),
+        tagManagement: galleryTagManagement(),
+        folderManagement: galleryFolderManagement(),
         sync: gallerySync(),
         setup: gallerySetup("existing"),
         preference: "light",
@@ -151,6 +164,18 @@ describe("first-launch screens", () => {
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("radio", { name: "New vault" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Settings" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: "Vault" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Appearance" }));
+    expect(screen.getByRole("heading", { name: "Appearance" })).toBeVisible();
+    expect(
+      screen.queryByLabelText("Lock duration on this device"),
     ).not.toBeInTheDocument();
   });
 });

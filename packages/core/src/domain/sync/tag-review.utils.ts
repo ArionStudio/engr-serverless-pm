@@ -37,7 +37,7 @@ export function findChangedTags(
   return tagReviews;
 }
 
-function findTag(vault: Vault, tagId: number): ReviewableTag {
+function findTag(vault: Vault, tagId: string): ReviewableTag {
   const tag = vault.tags.find((tag) => tag.id === tagId);
   const deletedTag = vault.deletedTags.find(
     (deletedTag) => deletedTag.id === tagId,
@@ -126,7 +126,7 @@ function getTagRelation(
 export function findAllTagsIds(
   localVault: Vault,
   remoteVault: Vault,
-): Set<number> {
+): Set<string> {
   return new Set([
     ...localVault.tags.map((tag) => tag.id),
     ...remoteVault.tags.map((tag) => tag.id),

@@ -1,3 +1,6 @@
+import { SyncAccessKeys } from "./sync-access-keys.view";
+import { SyncManagement } from "./sync-management.view";
+import { SyncTrustReview } from "./sync-trust-review.view";
 import { S3SetupGuide } from "./s3-setup-guide.view";
 import { Button } from "@/ui/components/primitives/button";
 import { CredentialForm } from "./credential-form.view";
@@ -10,26 +13,49 @@ export function SyncPage({
   vaultId,
   capabilities,
   onBack,
+  onSessionLost,
 }: {
   vaultId: string;
   capabilities: SyncCapabilities;
   onBack: () => void;
+  onSessionLost?: () => void;
 }) {
-  const sync = useSync(vaultId, capabilities);
+  const sync = useSync(vaultId, capabilities, onSessionLost);
   const busy = !!sync.operation;
   const items = sync.review ? comparisons(sync.review) : [];
   const form = sync.target === null || sync.repairing;
+  const managing = !form && !sync.trustMode;
   function connection(onEditLocation?: () => void) {
+    const occupiedTarget =
+      sync.errorKind === "target-occupied" && sync.error && onEditLocation ? (
+        <SyncStatus
+          state="target-occupied"
+          detail={sync.error}
+          action="Change object prefix"
+          onAction={onEditLocation}
+        />
+      ) : undefined;
     return (
       <CredentialForm
         key={sync.generation}
-        mode={sync.repairing ? "repair" : "setup"}
+        mode={
+          sync.repairing
+            ? "repair"
+            : sync.existingConnection
+              ? "connect-existing"
+              : "setup"
+        }
         value={sync.draft}
         onChange={sync.change}
         onEditLocation={onEditLocation}
-        feedback={sync.feedback ? <SyncStatus {...sync.feedback} /> : undefined}
-        message={sync.error}
-        onSubmit={() => void sync.save()}
+        feedback={
+          occupiedTarget ??
+          (sync.feedback ? <SyncStatus {...sync.feedback} /> : undefined)
+        }
+        message={occupiedTarget ? undefined : sync.error}
+        onSubmit={() =>
+          void (sync.existingConnection ? sync.connectExisting() : sync.save())
+        }
         onCancel={() => {
           sync.cancel();
           if (!busy && !sync.repairing) onBack();
@@ -48,7 +74,7 @@ export function SyncPage({
           Back to vault
         </Button>
       </div>
-      {sync.error && !form ? (
+      {sync.error && managing ? (
         <p role="alert" className="text-sm text-destructive">
           {sync.error}
         </p>
@@ -80,20 +106,38 @@ export function SyncPage({
           ))}
         </dl>
       ) : null}
-      {sync.accessMissing && !form ? (
+      {sync.accessMissing && managing ? (
         <SyncStatus
           state="permission-required"
           detail="Allow this browser to connect to your S3 storage. Your local vault remains available."
         />
-      ) : sync.feedback && !form ? (
+      ) : sync.feedback &&
+        !sync.trustMode &&
+        (!form || sync.feedback.state === "unconfigured") ? (
         <SyncStatus {...sync.feedback} />
-      ) : sync.target && !form && !sync.error ? (
+      ) : sync.target && managing && !sync.error ? (
         <SyncStatus
           state="not-checked"
           detail="Sync is configured. Check for remote changes or upload local changes."
         />
       ) : null}
-      {form ? (
+      {sync.trustMode ? (
+        <SyncTrustReview
+          key={sync.generation}
+          kind={sync.trustMode}
+          review={sync.trustReview}
+          value={sync.draft}
+          choices={sync.choices}
+          busy={busy}
+          applying={sync.operation === "trust-apply"}
+          error={sync.error}
+          onChange={sync.change}
+          onChoose={sync.choose}
+          onPrepare={() => void sync.prepareTrust()}
+          onApply={() => void sync.acceptTrust()}
+          onCancel={sync.cancel}
+        />
+      ) : form ? (
         sync.repairing ? (
           <div className="s3-setup-guide mx-auto max-w-3xl">{connection()}</div>
         ) : (
@@ -108,6 +152,7 @@ export function SyncPage({
               sync.change({ ...sync.draft, ...location })
             }
             onCopy={capabilities.copySetupText}
+            access={capabilities}
             busy={busy}
             connection={connection}
           />
@@ -122,22 +167,40 @@ export function SyncPage({
             </Button>
           ) : null}
           <Button
-            disabled={busy || sync.accessMissing}
+            disabled={
+              busy || sync.accessMissing || sync.management?.syncRemovalPending
+            }
             onClick={() => void sync.check()}
           >
             {sync.operation === "review" ? "Checking…" : "Check sync"}
           </Button>
           <Button
             variant="outline"
-            disabled={busy || sync.accessMissing}
+            disabled={
+              busy || sync.accessMissing || sync.management?.syncRemovalPending
+            }
             onClick={() => void sync.upload()}
           >
             {sync.operation === "upload" ? "Uploading…" : "Retry upload"}
           </Button>
-          <Button variant="ghost" disabled={busy} onClick={sync.beginRepair}>
+          <Button
+            variant="ghost"
+            disabled={busy || sync.management?.syncRemovalPending}
+            onClick={sync.beginRepair}
+          >
             Replace access keys
           </Button>
         </div>
+      ) : null}
+      {sync.target &&
+      managing &&
+      !busy &&
+      !sync.management?.syncRemovalPending ? (
+        <SyncAccessKeys
+          key={`${vaultId}:${sync.generation}`}
+          vaultId={vaultId}
+          capabilities={capabilities}
+        />
       ) : null}
       {sync.review?.review ? (
         items.length ? (
@@ -159,13 +222,27 @@ export function SyncPage({
             <p className="text-sm">
               {sync.review.review.readOnly.providerCredentialRevocationCompleted
                 ? "The remote vault records that the previous access keys were revoked."
-                : "The remote vault has a newer verified revision with no entry, tag or device-name changes."}
+                : "The remote vault has a newer verified revision with no entry, tag, folder or device-name changes."}
             </p>
             <Button disabled={busy} onClick={() => void sync.apply()}>
               Accept remote revision
             </Button>
           </div>
         )
+      ) : null}
+      {sync.target && managing && sync.management ? (
+        <SyncManagement
+          state={sync.management}
+          location={`${sync.target.bucket}/${sync.target.prefix}`}
+          busy={busy}
+          accessMissing={sync.accessMissing}
+          disabling={sync.operation === "disable"}
+          error={sync.error}
+          onDisable={() => void sync.disable()}
+          onCompleteRevocation={() => void sync.completeCredentialRevocation()}
+          onReviewEnrollment={() => sync.beginTrust("enrollment")}
+          onReviewRevocation={() => sync.beginTrust("revocation")}
+        />
       ) : null}
     </section>
   );

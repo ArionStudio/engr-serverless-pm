@@ -16,6 +16,9 @@ function createVault(): Vault {
     deletedDeviceProfiles: [],
     tags: [],
     deletedTags: [],
+    tagGroups: [],
+    folders: [],
+    deletedFolders: [],
   };
 }
 
