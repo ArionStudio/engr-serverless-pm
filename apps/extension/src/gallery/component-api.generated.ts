@@ -1618,6 +1618,13 @@ export const componentApi = [
     "axes": {}
   },
   {
+    "name": "RecoverVaultAccess",
+    "source": "features/vault-setup/recover-vault-access.view.tsx",
+    "family": "S02",
+    "exported": true,
+    "axes": {}
+  },
+  {
     "name": "RecoveryExportChoices",
     "source": "features/recovery/recovery.view.tsx",
     "family": "P17",

@@ -114,6 +114,9 @@ export function FormExamples() {
   >("ready");
   const [vault, setVault] = useState<string | null>("personal");
   const [localData, setLocalData] = useState(true);
+  const [recoveryStrength, setRecoveryStrength] = useState<
+    "ready" | "pending" | "unavailable"
+  >("ready");
   const [mode, setMode] = useState("add");
   const [testMessage, setTestMessage] = useState("");
   return (
@@ -294,8 +297,35 @@ export function FormExamples() {
                 <NativeSelectOption value="missing">Missing</NativeSelectOption>
               </NativeSelect>
             </label>
+            <label className="mb-5 flex items-center gap-2 text-xs">
+              Password assessment
+              <NativeSelect
+                aria-label="Recovery password assessment"
+                value={recoveryStrength}
+                onChange={(event) => {
+                  const next = event.target.value;
+                  if (
+                    next === "ready" ||
+                    next === "pending" ||
+                    next === "unavailable"
+                  )
+                    setRecoveryStrength(next);
+                }}
+              >
+                <NativeSelectOption value="ready">Ready</NativeSelectOption>
+                <NativeSelectOption value="pending">
+                  Checking
+                </NativeSelectOption>
+                <NativeSelectOption value="unavailable">
+                  Unavailable
+                </NativeSelectOption>
+              </NativeSelect>
+            </label>
             <LocalRecoveryForm
               {...props}
+              score={4}
+              strengthState={recoveryStrength}
+              onRetryStrength={() => setRecoveryStrength("ready")}
               localDataAvailable={localData}
               vaultSelector={
                 <VaultPicker

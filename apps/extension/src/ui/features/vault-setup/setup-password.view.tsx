@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
   PasswordCreationForm,
   type PasswordCreationDraft,
 } from "./password-creation-form.view";
+import { usePasswordAssessment } from "./use-password-assessment";
 import type { AssessPassword } from "./setup.type";
 
 export function SetupPassword({
@@ -19,45 +20,12 @@ export function SetupPassword({
   assessPassword: AssessPassword;
 }) {
   const host = useRef<HTMLDivElement>(null);
-  const [attempt, setAttempt] = useState(0);
-  const request = useMemo(
-    () => ({ hasPassword: !!value.password, attempt }),
-    [value.password, attempt],
-  );
-  const [assessment, setAssessment] = useState<{
-    request: typeof request;
-    score?: 0 | 1 | 2 | 3 | 4;
-    failed?: boolean;
-  }>();
   const [submitted, setSubmitted] = useState(false);
   const [confirmationTouched, setConfirmationTouched] = useState(false);
-  useEffect(() => {
-    if (!request.hasPassword) return;
-    let active = true;
-    const timer = setTimeout(() => {
-      void (async () => {
-        try {
-          const { score } = await assessPassword(value.password);
-          if (active) setAssessment({ request, score });
-        } catch {
-          if (active) setAssessment({ request, failed: true });
-        }
-      })();
-    }, 150);
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, [value.password, assessPassword, request]);
-  const current = assessment?.request === request;
-  const score = value.password && current ? assessment.score : undefined;
-  const strengthState = !value.password
-    ? "ready"
-    : !current
-      ? "pending"
-      : assessment.failed
-        ? "unavailable"
-        : "ready";
+  const { score, strengthState, invalidate, retry } = usePasswordAssessment(
+    value.password,
+    assessPassword,
+  );
   const passwordError = !value.password
     ? "Enter a password."
     : strengthState === "ready" && score !== 4
@@ -84,7 +52,7 @@ export function SetupPassword({
       <PasswordCreationForm
         value={value}
         onChange={(next) => {
-          if (next.password !== value.password) setAssessment(undefined);
+          if (next.password !== value.password) invalidate();
           onChange(next);
         }}
         onSubmit={submit}
@@ -95,7 +63,7 @@ export function SetupPassword({
             submitted || confirmationTouched ? confirmationError : undefined,
         }}
         onConfirmationBlur={() => setConfirmationTouched(true)}
-        onRetryStrength={() => setAttempt((previous) => previous + 1)}
+        onRetryStrength={retry}
         score={score}
         strengthState={strengthState}
       />

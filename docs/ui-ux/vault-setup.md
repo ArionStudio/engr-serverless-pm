@@ -2,7 +2,7 @@
 
 The Options page now runs password creation, device settings, vault initialization,
 recovery saving, a three-word verification, and the completed-vault view. The popup
-opens Options. Existing-vault enrollment and entry management remain separate work.
+opens Options. Entry management opens after verification. Existing-vault enrollment remains a separate flow.
 
 ## Flow
 
@@ -138,3 +138,41 @@ contents, locking from another Options tab, and automatic locking during recover
 with secret DOM removed. The unpacked extension uses Figtree at a 16px body size.
 Native printer hardware and operating-system clipboard-history deletion were not
 tested. Browser-result dumps remain outside tracked source.
+
+## Forgotten password on this browser
+
+Open Options, select the existing vault and choose **Forgot password?**. Enter the
+24 recovery words saved for this browser, then a strong new password twice. The
+form accepts whitespace-separated words and numbered lists copied from the PDF,
+including pasted line breaks and uppercase input. Numbered lists must contain
+positions 1–24 in order, without gaps or duplicates. A complete valid paste becomes
+a compact phrase; invalid input stays unchanged for correction. The core validates the BIP39 phrase and the matching
+local recovery records before changing access. The extension does not send the
+words or password to S3.
+
+Successful recovery changes this browser's password and generates replacement
+recovery words. Save all 24 new words and verify three random positions before
+returning to Entries. The device identity, vault entries and encrypted S3
+credentials stay intact. Other enrolled devices keep their own passwords.
+The previous words stop matching this browser's current recovery record; retained
+older copies of the record can still work with their original words.
+
+Keep the extension installed and retain its browser data. Words alone cannot
+restore a lost device or deleted recovery records. S3 contains the encrypted vault,
+not a replacement for the matching local recovery data.
+
+The composition records unfinished recovery before calling the existing
+`RecoverDeviceAccessUseCase`. Rejected recovery restores the previous completion
+receipt. If the password change succeeds but the page closes or session activation
+fails, unlock with the new password and choose **Generate replacement words** to
+finish. No plaintext password or mnemonic is written to extension preferences.
+Cancelling, switching vaults, leaving the page or session invalidation clears the
+form. An ordinary window-focus refresh preserves a draft for pasting from a saved
+record. Late results from an invalidated form cannot redisplay recovery words.
+
+Gallery: **Recover access** covers idle, pending and error; **Save recovery words**
+and **Verify recovery words** include an After password recovery variant. F06
+contains the actual form, including missing local data and password assessment
+states. The unpacked-browser regression in `verification/sync-options.verify.cjs`
+checks wrong words, replacement-word verification, preserved entries and working
+S3 credentials, and rejection of the old password after recovery.

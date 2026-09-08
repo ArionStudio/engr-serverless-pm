@@ -94,10 +94,11 @@ export function PopupWorkspace({
           </>
         ) : live.vault ? (
           <SetupVaultAccess
-            key={live.vault.vaultId}
+            key={`${live.vault.vaultId}:${live.draftRevision}`}
             vault={live.vault}
             pending={live.pending}
             error={live.error}
+            onOpenRecovery={() => void open()}
             onUnlock={(password) => {
               void live.unlock(password);
             }}

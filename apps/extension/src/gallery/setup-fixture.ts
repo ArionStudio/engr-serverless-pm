@@ -54,6 +54,10 @@ export function gallerySetup(
       vault = { ...(vault ?? setupVault), unlocked: true };
       return vault;
     },
+    recover: async () => {
+      vault = { ...(vault ?? setupVault), unlocked: true, complete: false };
+      return { ...setupRecovery, vault, purpose: "password-recovery" };
+    },
     replace: async () => ({ ...setupRecovery, vault: vault ?? setupVault }),
     verify: async (answers) => {
       const valid = setupRecovery.positions.every(

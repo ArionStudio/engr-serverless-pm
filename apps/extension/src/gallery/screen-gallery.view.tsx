@@ -99,10 +99,20 @@ const screens: readonly {
     ],
   },
   {
+    id: "recover-access",
+    name: "Recover access",
+    states: [
+      { id: "recover-access", label: "Default" },
+      { id: "recover-access-pending", label: "Setting password" },
+      { id: "recover-access-error", label: "Recovery failed" },
+    ],
+  },
+  {
     id: "recovery",
     name: "Save recovery words",
     states: [
-      { id: "recovery", label: "Default" },
+      { id: "recovery", label: "First setup" },
+      { id: "recovered-words", label: "After password recovery" },
       { id: "export-error", label: "Export error" },
     ],
   },
@@ -110,7 +120,8 @@ const screens: readonly {
     id: "verification",
     name: "Verify recovery words",
     states: [
-      { id: "verification", label: "Default" },
+      { id: "verification", label: "First setup" },
+      { id: "recovered-verification", label: "After password recovery" },
       { id: "verification-pending", label: "Checking" },
       { id: "verification-error", label: "Error" },
     ],

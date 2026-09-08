@@ -60,11 +60,23 @@ export function SetupRecoveryView({
         steps={[
           {
             id: "password",
-            label: "Password",
+            label:
+              recovery.purpose === "password-recovery"
+                ? "Recover access"
+                : "Password",
             state: "complete",
             allowed: false,
           },
-          { id: "device", label: "Device", state: "complete", allowed: false },
+          ...(recovery.purpose === "password-recovery"
+            ? []
+            : [
+                {
+                  id: "device",
+                  label: "Device",
+                  state: "complete" as const,
+                  allowed: false,
+                },
+              ]),
           {
             id: "recovery",
             label: "Recovery",
@@ -80,7 +92,11 @@ export function SetupRecoveryView({
         ]}
       />
       <h1 className="text-2xl font-semibold tracking-tight">
-        {verifying ? "Verify recovery words" : "Save recovery words"}
+        {verifying
+          ? "Verify recovery words"
+          : recovery.purpose === "password-recovery"
+            ? "Save replacement recovery words"
+            : "Save recovery words"}
       </h1>
       {error ? (
         <p role="alert" className="text-sm text-destructive">
@@ -107,6 +123,12 @@ export function SetupRecoveryView({
           <p className="font-medium">
             {recovery.vault.name} · {recovery.vault.deviceName}
           </p>
+          {recovery.purpose === "password-recovery" ? (
+            <SafetyHelp
+              title="Your password has changed"
+              essential="Save these new words. Your previous words no longer match this browser's current recovery data. Older saved recovery-data copies can still work with their original words."
+            />
+          ) : null}
           <SafetyHelp
             title="Keep access to this device"
             essential="These words can recover access if you forget your password. Recovery also needs the matching data saved in this browser. Words alone cannot restore a lost device or deleted browser data."

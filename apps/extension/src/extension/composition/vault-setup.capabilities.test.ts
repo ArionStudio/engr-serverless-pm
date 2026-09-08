@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { useVaultSetup } from "@/ui/features/vault-setup/use-vault-setup";
 import { createChromeStorageArea } from "../../__tests__/fixtures/chrome-storage-area";
 import { composeVaultSetup } from "./vault-setup.capabilities";
 import type { SetupRecovery } from "@/ui/features/vault-setup/setup.type";
@@ -14,6 +16,8 @@ let storage: ReturnType<typeof createChromeStorageArea>;
 let initialize: ReturnType<typeof vi.fn>;
 let replace: ReturnType<typeof vi.fn>;
 let copy: ReturnType<typeof vi.fn>;
+let recover: ReturnType<typeof vi.fn>;
+let unlock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   vaults = [];
   unlocked = false;
@@ -50,6 +54,12 @@ beforeEach(() => {
     recoveryMnemonicKey: { format: "BIP39", words },
   }));
   copy = vi.fn(async () => {});
+  recover = vi.fn(async () => ({
+    recoveryMnemonicKey: { format: "BIP39", words },
+  }));
+  unlock = vi.fn(async () => {
+    unlocked = true;
+  });
   fake.get.mockResolvedValue({
     listLocalVaults: { execute: async () => ({ vaults }) },
     getVaultSessionStatus: {
@@ -60,11 +70,8 @@ beforeEach(() => {
     },
     initializeVault: { execute: initialize },
     replaceRecoveryWords: { execute: replace },
-    unlockVault: {
-      execute: async () => {
-        unlocked = true;
-      },
-    },
+    recoverDeviceAccess: { execute: recover },
+    unlockVault: { execute: unlock },
     lockVault: {
       execute: async () => {
         unlocked = false;
@@ -74,6 +81,7 @@ beforeEach(() => {
   });
 });
 afterEach(() => {
+  cleanup();
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -411,5 +419,211 @@ describe("vault setup orchestration", () => {
     expect(changed).toHaveBeenCalledTimes(1);
     await expect(setup.save("copy")).rejects.toThrow();
     unsubscribe();
+  });
+});
+
+describe("password recovery orchestration", () => {
+  async function existing() {
+    const setup = composeVaultSetup();
+    const first = await setup.create(createParams);
+    await setup.verify(answers(first));
+    await setup.lock();
+    return setup;
+  }
+  it("preserves a queued recovery result when the window regains focus", async () => {
+    const setup = await existing();
+    const { result } = renderHook(() => useVaultSetup(setup));
+    await waitFor(() => expect(result.current.vault?.complete).toBe(true));
+    let release = () => {};
+    let held = false;
+    const blocker = navigator.locks.request(
+      "lfspm:first-vault-setup",
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+          held = true;
+        }),
+    );
+    await waitFor(() => expect(held).toBe(true));
+    let operation: Promise<void> | undefined;
+    act(() => {
+      operation = result.current.recover(words, "new private password");
+    });
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(recover).not.toHaveBeenCalled();
+    await act(async () => {
+      release();
+      await blocker;
+      await operation;
+    });
+    expect(result.current.recovery).toMatchObject({
+      purpose: "password-recovery",
+      words,
+      vault: { unlocked: true, complete: false },
+    });
+  });
+  it.each([
+    ["LocalVaultTrustCheckpointNotFoundError", "recovery data is missing"],
+    ["DeviceAccessRecoveryBackupMismatchError", "could not be verified"],
+    ["InvalidLocalVaultSecurityRecordError", "could not be verified"],
+    ["DeviceAccessMaterialChangedError", "access records changed"],
+    ["UnsupportedAlgorithmSuiteError", "encryption format"],
+    ["UnexpectedStorageError", "recovery words or saved local data"],
+  ])("explains the local recovery failure %s", async (name, guidance) => {
+    const setup = await existing();
+    const { result } = renderHook(() => useVaultSetup(setup));
+    await waitFor(() => expect(result.current.vault?.complete).toBe(true));
+    const error = new Error("Local trust checkpoint is missing");
+    error.name = name;
+    recover.mockRejectedValueOnce(error);
+    await act(async () => {
+      await result.current.recover(words, "new private password");
+    });
+    expect(result.current.error).toContain(guidance);
+    expect(result.current.vault?.complete).toBe(true);
+    expect(unlock).not.toHaveBeenCalled();
+  });
+  it("serializes a competing unlock before recovery can rotate its access records", async () => {
+    const setup = await existing();
+    let release = () => {};
+    unlock.mockImplementationOnce(async () => {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      unlocked = true;
+    });
+    const unlocking = setup.unlock("vault", "old password");
+    await waitFor(() => expect(unlock).toHaveBeenCalledTimes(1));
+    const recovering = composeVaultSetup()
+      .recover("vault", words, "new private password")
+      .catch((cause: unknown) => cause);
+    // Let the other document's operation reach the shared browser lock.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    release();
+    await unlocking;
+    expect(await recovering).toMatchObject({
+      message: "Select a locked vault to recover",
+    });
+    expect(recover).not.toHaveBeenCalled();
+    expect((await setup.inspect()).vault).toMatchObject({
+      complete: true,
+      unlocked: true,
+    });
+  });
+  it("locks immediately and also closes a session activated by pending recovery", async () => {
+    const setup = await existing();
+    const app = await fake.get();
+    const lock = vi.spyOn(app.lockVault, "execute");
+    let release = () => {};
+    let recovering = false;
+    recover.mockImplementationOnce(async () => {
+      recovering = true;
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return { recoveryMnemonicKey: { format: "BIP39", words } };
+    });
+    const recovery = setup.recover("vault", words, "new private password");
+    await waitFor(() => expect(recovering).toBe(true));
+    const locking = composeVaultSetup().lock();
+    await waitFor(() => expect(lock).toHaveBeenCalledTimes(1));
+    expect(unlocked).toBe(false);
+    release();
+    await recovery;
+    await locking;
+    expect(lock).toHaveBeenCalledTimes(2);
+    expect(unlocked).toBe(false);
+    await expect(setup.save("copy")).rejects.toThrow("Recovery session ended");
+    expect(copy).not.toHaveBeenCalled();
+  });
+  it("marks recovery unfinished before the atomic password change and verifies replacement words", async () => {
+    const setup = await existing();
+    const original = storage.getRecords()["vault-setup:vault"];
+    recover.mockImplementationOnce(async () => {
+      expect(storage.getRecords()["vault-setup:vault"]).toMatchObject({
+        complete: false,
+      });
+      return { recoveryMnemonicKey: { format: "BIP39", words } };
+    });
+    const result = await setup.recover("vault", words, "new private password");
+    expect(recover).toHaveBeenCalledWith({
+      vaultId: "vault",
+      recoveryMnemonicKey: { format: "BIP39", words },
+      newMasterPassword: "new private password",
+    });
+    expect(unlock).toHaveBeenCalledWith({
+      vaultId: "vault",
+      masterPassword: "new private password",
+      lockAfterMs: 600_000,
+    });
+    expect(result).toMatchObject({
+      purpose: "password-recovery",
+      vault: { complete: false, unlocked: true, deviceName: "Laptop" },
+    });
+    expect(storage.getRecords()["vault-setup:vault"]).not.toEqual(original);
+    expect(JSON.stringify(storage.getRecords())).not.toMatch(
+      /word0|new private password/,
+    );
+    expect(new Set(result.positions).size).toBe(3);
+    expect(await setup.verify(answers(result))).toBe(true);
+    expect((await setup.inspect()).vault?.complete).toBe(true);
+    expect(initialize).toHaveBeenCalledTimes(1);
+  });
+  it("restores completion after rejected recovery without unlocking or replacing words", async () => {
+    const setup = await existing();
+    const original = storage.getRecords()["vault-setup:vault"];
+    recover.mockRejectedValueOnce(new Error("Invalid recovery words"));
+    await expect(
+      setup.recover("vault", words, "new private password"),
+    ).rejects.toThrow("Invalid recovery words");
+    expect(storage.getRecords()["vault-setup:vault"]).toEqual(original);
+    expect(unlock).not.toHaveBeenCalled();
+    expect(replace).not.toHaveBeenCalled();
+    expect((await setup.inspect()).vault?.unlocked).toBe(false);
+  });
+  it("does not change the password when the unfinished state cannot be persisted", async () => {
+    const setup = await existing();
+    vi.spyOn(storage.storageArea, "set").mockRejectedValueOnce(
+      new Error("Storage unavailable"),
+    );
+    await expect(
+      setup.recover("vault", words, "new private password"),
+    ).rejects.toThrow("Storage unavailable");
+    expect(recover).not.toHaveBeenCalled();
+    expect(unlock).not.toHaveBeenCalled();
+    expect((await setup.inspect()).vault?.complete).toBe(true);
+  });
+  it("does not attach recovered words to a different session that replaced activation", async () => {
+    const setup = await existing();
+    vaults.push({ vaultId: "other", displayName: "Other vault" });
+    unlock.mockImplementationOnce(async () => {
+      unlocked = true;
+      activeVaultId = "other";
+    });
+    await expect(
+      setup.recover("vault", words, "new private password"),
+    ).rejects.toMatchObject({ name: "PasswordRecoveryCompletionError" });
+    expect(storage.getRecords()["vault-setup:vault"]).toMatchObject({
+      complete: false,
+    });
+    await expect(setup.save("copy")).rejects.toThrow("Recovery session ended");
+    expect(copy).not.toHaveBeenCalled();
+  });
+  it("keeps the unfinished state after a changed password cannot activate and permits resuming", async () => {
+    const setup = await existing();
+    unlock.mockRejectedValueOnce(new Error("Activation failed"));
+    await expect(
+      setup.recover("vault", words, "new private password"),
+    ).rejects.toMatchObject({ name: "PasswordRecoveryCompletionError" });
+    expect((await setup.inspect()).vault).toMatchObject({
+      complete: false,
+      unlocked: false,
+    });
+    const resumed = composeVaultSetup();
+    await resumed.unlock("vault", "new private password");
+    const replacement = await resumed.replace("vault");
+    expect(await resumed.verify(answers(replacement))).toBe(true);
   });
 });

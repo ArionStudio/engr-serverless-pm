@@ -11,6 +11,7 @@ import { ThemeToggle } from "@/ui/features/theme";
 import { VaultLockSettings } from "@/ui/features/settings/vault-lock-settings.view";
 import { SetupDevice } from "@/ui/features/vault-setup/setup-device.view";
 import { SetupRecoveryView } from "@/ui/features/vault-setup/setup-recovery.view";
+import { RecoverVaultAccess } from "@/ui/features/vault-setup/recover-vault-access.view";
 import { SetupVaultAccess } from "@/ui/features/vault-setup/setup-vault-access.view";
 import { gallerySetup, setupRecovery, setupVault } from "./setup-fixture";
 import { useCallback, useRef, useState } from "react";
@@ -36,6 +37,11 @@ export type OptionsScenario =
   | "lock-settings"
   | "lock-settings-pending"
   | "lock-settings-error"
+  | "recover-access"
+  | "recover-access-pending"
+  | "recover-access-error"
+  | "recovered-words"
+  | "recovered-verification"
   | "recovery"
   | "verification"
   | "verification-error"
@@ -92,9 +98,13 @@ export function OptionsExample({
     ),
   );
   const [verification, setVerification] = useState(
-    state.startsWith("verification"),
+    state.startsWith("verification") || state === "recovered-verification",
   );
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState(
+    state === "unlock-error"
+      ? "Could not unlock this vault. Check your password."
+      : "",
+  );
   const assessPassword = useCallback(
     async (password: string) => {
       if (state === "password-pending")
@@ -107,6 +117,21 @@ export function OptionsExample({
     },
     [state],
   );
+  if (state.startsWith("recover-access"))
+    return (
+      <RecoverVaultAccess
+        vaultName={setupVault.name}
+        pending={state === "recover-access-pending"}
+        error={
+          state === "recover-access-error"
+            ? "Could not recover this vault. The recovery words or saved local data could not be verified. Check all 24 words and their order against the latest copy saved for this browser. If they match, keep the local vault data and use another enrolled device if available."
+            : notice || undefined
+        }
+        assessPassword={assessPassword}
+        onRecover={() => setNotice("Recovery requested")}
+        onBack={() => setNotice("Back to unlock requested")}
+      />
+    );
   if (state.startsWith("popup-"))
     return (
       <PopupWorkspaceExample
@@ -228,6 +253,8 @@ export function OptionsExample({
   if (
     [
       "recovery",
+      "recovered-words",
+      "recovered-verification",
       "verification",
       "verification-error",
       "verification-pending",
@@ -236,7 +263,11 @@ export function OptionsExample({
   )
     return (
       <SetupRecoveryView
-        recovery={setupRecovery}
+        recovery={
+          state.startsWith("recovered-")
+            ? { ...setupRecovery, purpose: "password-recovery" }
+            : setupRecovery
+        }
         verifying={verification}
         pending={state === "verification-pending"}
         error={
@@ -273,11 +304,10 @@ export function OptionsExample({
           complete: false,
         }}
         pending={state === "unlock-pending" || state === "replacement-pending"}
-        error={
-          state === "unlock-error"
-            ? "Could not unlock this vault. Check your password."
-            : notice || undefined
-        }
+        error={notice || undefined}
+        assessPassword={assessPassword}
+        onRecover={() => setNotice("Recovery requested")}
+        onDismissError={() => setNotice("")}
         onUnlock={() => setNotice("Unlock requested")}
         onReplace={() => setNotice("Replacement requested")}
         onLock={() => setNotice("Lock requested")}
@@ -418,6 +448,11 @@ export function ScreenExamples() {
               "password-unavailable",
               "device",
               "connect",
+              "recover-access",
+              "recover-access-pending",
+              "recover-access-error",
+              "recovered-words",
+              "recovered-verification",
               "recovery",
               "verification",
               "verification-error",

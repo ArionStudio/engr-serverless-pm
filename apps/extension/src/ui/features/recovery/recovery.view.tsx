@@ -1,4 +1,5 @@
 import { useId } from "react";
+import { parseRecoveryPhrase } from "./parse-recovery-phrase";
 import { Button } from "@/ui/components/primitives/button";
 import { Textarea } from "@/ui/components/primitives/textarea";
 import {
@@ -191,6 +192,18 @@ export function RecoveryWordInput({
           id={id}
           rows={4}
           value={value}
+          onPaste={(event) => {
+            const field = event.currentTarget;
+            const next =
+              value.slice(0, field.selectionStart) +
+              event.clipboardData.getData("text/plain") +
+              value.slice(field.selectionEnd);
+            const words = parseRecoveryPhrase(next);
+            if (words) {
+              event.preventDefault();
+              onChange(words.join(" "));
+            }
+          }}
           onChange={(e) => onChange(e.target.value)}
           disabled={disabled}
           spellCheck={false}
@@ -203,7 +216,7 @@ export function RecoveryWordInput({
       <FieldDescription id={`${id}-help`}>
         {positional
           ? "Enter one word in each field. Keep the original order."
-          : "Paste the whole phrase. Keep the original order."}
+          : "Paste all 24 words, with or without numbers. Keep the original order."}
       </FieldDescription>
       {error ? <FieldError id={`${id}-error`}>{error}</FieldError> : null}
     </Field>

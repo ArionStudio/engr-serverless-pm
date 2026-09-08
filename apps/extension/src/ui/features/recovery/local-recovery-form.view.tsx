@@ -1,5 +1,7 @@
 import type { FormPresentation } from "@/ui/components/forms/form-state.type";
 import { FormFrame, FormPassword } from "@/ui/components/forms/form-frame.view";
+import { PasswordStrengthFeedback } from "@/ui/components/forms/fields.view";
+import { Button } from "@/ui/components/primitives/button";
 import type { ReactNode } from "react";
 import { SafetyHelp } from "@/ui/components/layout/sections.view";
 import { RecoveryWordInput } from "./recovery.view";
@@ -15,25 +17,32 @@ export function LocalRecoveryForm({
   errors,
   vaultSelector,
   localDataAvailable,
+  score,
+  strengthState = "ready",
+  onRetryStrength,
   ...form
 }: FormPresentation<LocalRecoveryDraft> & {
   vaultSelector: ReactNode;
   localDataAvailable: boolean;
+  score?: 0 | 1 | 2 | 3 | 4;
+  strengthState?: "ready" | "pending" | "unavailable";
+  onRetryStrength?: () => void;
 }) {
   return (
     <FormFrame
       {...form}
-      canSubmit={localDataAvailable}
+      noValidate
+      canSubmit={localDataAvailable && strengthState === "ready"}
       onSubmit={() => {
         if (localDataAvailable) form.onSubmit();
       }}
-      label="Recover local access"
+      label="Set new password"
     >
       <SafetyHelp
         title="Recovery needs local vault data"
         essential={
           localDataAvailable
-            ? "Your words restore access to the selected local vault. After recovery you will save a replacement recovery record."
+            ? "Use the 24 words saved for this browser. Recovery sets a new password and replaces its recovery words. Save the new words before leaving. Do not uninstall the extension or clear its browser data."
             : "Recovery words alone cannot recreate missing vault data. Restore the required local data before continuing."
         }
       />
@@ -50,6 +59,16 @@ export function LocalRecoveryForm({
           onChange={(password) => onChange({ ...value, password })}
           error={errors?.password}
         />
+        {value.password ? (
+          <PasswordStrengthFeedback score={score} state={strengthState} />
+        ) : null}
+        {value.password &&
+        strengthState === "unavailable" &&
+        onRetryStrength ? (
+          <Button type="button" variant="outline" onClick={onRetryStrength}>
+            Try again
+          </Button>
+        ) : null}
         <FormPassword
           label="Confirm new password"
           value={value.confirmation}

@@ -2,7 +2,14 @@ import { galleryWorkspace } from "@/gallery/workspace-fixture";
 import { gallerySync } from "@/gallery/sync-fixture";
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom/vitest";
 import { OptionsView } from "@/ui/entrypoints/options/options.view";
@@ -192,6 +199,9 @@ describe("live setup UI", () => {
       screen.getByLabelText("Confirm password", { exact: true }),
       "A-long-private-password",
     );
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Continue" })).toBeEnabled(),
+    );
     await user.click(screen.getByRole("button", { name: "Continue" }));
     await user.dblClick(
       await screen.findByRole("button", { name: "Create vault" }),
@@ -302,6 +312,197 @@ describe("live setup UI", () => {
       expect(
         screen.queryByRole("heading", { name: "Save recovery words" }),
       ).not.toBeInTheDocument(),
+    );
+  });
+});
+
+describe("forgotten vault password", () => {
+  const phrase = Array(24).fill("abandon").join(" ");
+  async function enter(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(
+      await screen.findByRole("button", { name: "Forgot password?" }),
+    );
+    await user.type(
+      screen.getByLabelText("Recovery phrase", { exact: true }),
+      phrase.toUpperCase(),
+    );
+    await user.type(
+      screen.getByLabelText("New password", { exact: true }),
+      "A new private password",
+    );
+    await user.type(
+      screen.getByLabelText("Confirm new password", { exact: true }),
+      "A new private password",
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Set new password" }),
+      ).toBeEnabled(),
+    );
+  }
+  it("recovers the selected vault and requires replacement-word verification before entries", async () => {
+    const user = userEvent.setup();
+    const setup = gallerySetup("existing");
+    const recover = vi.spyOn(setup, "recover");
+    const create = vi.spyOn(setup, "create");
+    mount(setup);
+    await enter(user);
+    const input = screen.getByLabelText("Recovery phrase", { exact: true });
+    await user.clear(input);
+    await user.paste(
+      phrase
+        .split(" ")
+        .map((word, index) => `${index + 1}. ${word.toUpperCase()}`)
+        .join("\n"),
+    );
+    expect(input).toHaveValue(phrase);
+    await user.click(screen.getByRole("button", { name: "Set new password" }));
+    expect(
+      await screen.findByRole("heading", {
+        name: "Save replacement recovery words",
+      }),
+    ).toBeVisible();
+    expect(recover).toHaveBeenCalledWith(
+      setupVault.vaultId,
+      phrase.split(" "),
+      "A new private password",
+    );
+    expect(create).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("Recovery phrase")).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "I saved all 24 words" }),
+    );
+    for (const position of setupRecovery.positions)
+      await user.type(
+        screen.getByLabelText(`Word ${position}`),
+        setupRecovery.words[position - 1],
+      );
+    await user.click(screen.getByRole("button", { name: "Check words" }));
+    expect(
+      await screen.findByRole("heading", { name: "Entries" }),
+    ).toBeVisible();
+  });
+  it("requires all words and matching passwords before calling recovery", async () => {
+    const user = userEvent.setup();
+    const setup = gallerySetup("existing");
+    const recover = vi.spyOn(setup, "recover");
+    mount(setup);
+    await user.click(
+      await screen.findByRole("button", { name: "Forgot password?" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Set new password" }));
+    expect(
+      screen.getByText(
+        "Enter all 24 recovery words in order. Numbered lists must run from 1 to 24.",
+      ),
+    ).toBeVisible();
+    fireEvent.change(
+      screen.getByLabelText("Recovery phrase", { exact: true }),
+      { target: { value: phrase } },
+    );
+    fireEvent.change(screen.getByLabelText("New password", { exact: true }), {
+      target: { value: "A new private password" },
+    });
+    fireEvent.change(
+      screen.getByLabelText("Confirm new password", { exact: true }),
+      { target: { value: "a different password" } },
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Set new password" }),
+      ).toBeEnabled(),
+    );
+    await user.click(screen.getByRole("button", { name: "Set new password" }));
+    expect(screen.getByText("The passwords don’t match.")).toBeVisible();
+    expect(recover).not.toHaveBeenCalled();
+  });
+  it("retains rejected words for correction and clears secrets when cancelled", async () => {
+    const user = userEvent.setup();
+    const setup = gallerySetup("existing");
+    setup.recover = vi.fn().mockRejectedValue(new Error("Invalid words"));
+    mount(setup);
+    await enter(user);
+    await user.click(screen.getByRole("button", { name: "Set new password" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Check all 24 words",
+    );
+    expect(
+      screen.getByLabelText("Recovery phrase", { exact: true }),
+    ).toHaveValue(phrase.toUpperCase());
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Forgot password?" }));
+    expect(
+      screen.getByLabelText("Recovery phrase", { exact: true }),
+    ).toHaveValue("");
+    expect(screen.getByLabelText("New password", { exact: true })).toHaveValue(
+      "",
+    );
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+  it("clears the draft on invalidation and ignores a late recovery result", async () => {
+    const user = userEvent.setup();
+    const setup = gallerySetup("existing");
+    let invalidate = () => {};
+    setup.subscribe = (callback) => {
+      invalidate = callback;
+      return () => {};
+    };
+    let finish: (value: typeof setupRecovery) => void = () => {};
+    setup.recover = () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      });
+    mount(setup);
+    await enter(user);
+    await user.click(screen.getByRole("button", { name: "Set new password" }));
+    expect(
+      screen.getByLabelText("Recovery phrase", { exact: true }),
+    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    await act(async () => {
+      invalidate();
+      finish(setupRecovery);
+    });
+    expect(
+      await screen.findByRole("heading", { name: "Unlock vault" }),
+    ).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Forgot password?" }));
+    expect(
+      screen.getByLabelText("Recovery phrase", { exact: true }),
+    ).toHaveValue("");
+    expect(screen.getByLabelText("New password", { exact: true })).toHaveValue(
+      "",
+    );
+  });
+  it("returns to unlock without the old recovery draft after activation fails following a password change", async () => {
+    const user = userEvent.setup();
+    const setup = gallerySetup("existing");
+    setup.recover = async () => {
+      const vault = { ...setupVault, unlocked: false, complete: false };
+      setup.inspect = async () => ({ vault, vaults: [vault] });
+      const error = new Error("Activation failed after credential rotation");
+      error.name = "PasswordRecoveryCompletionError";
+      throw error;
+    };
+    mount(setup);
+    await enter(user);
+    await user.click(screen.getByRole("button", { name: "Set new password" }));
+    expect(
+      await screen.findByRole("heading", { name: "Unlock vault" }),
+    ).toBeVisible();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Your password has changed. Unlock with your new password",
+    );
+    expect(screen.queryByLabelText("Recovery phrase")).not.toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Vault password", { exact: true }),
+    ).toHaveValue("");
+    await user.click(screen.getByRole("button", { name: "Forgot password?" }));
+    expect(
+      screen.getByLabelText("Recovery phrase", { exact: true }),
+    ).toHaveValue("");
+    expect(screen.getByLabelText("New password", { exact: true })).toHaveValue(
+      "",
     );
   });
 });
