@@ -131,16 +131,16 @@ an adaptation of these rules, not a claim of canonical FSD conformance.
 
 ## Runtime ownership across browser contexts
 
-Website icons follow the accepted
-[staged favicon plan](./favicon-review.md#planned-work-and-implementation-triggers).
-The entries slice owns the implemented `SiteIcon` presentation; shared Avatar
-remains presentation-only. Production entry views currently render local initials.
-The gallery can supply a bundled same-origin image to review loaded, loading and
-failure states. Browser-specific lookup and permission access will belong under
-`extension/browser/`. A future extension-level preference capability will
-coordinate permission and device-local preference changes through composition.
-No core favicon port or per-row use case is planned. Connect and verify that
-capability in the real extension before shipping browser-provided icons.
+Website icons follow the [favicon implementation and safety review](./favicon-review.md#current-implementation).
+The entries slice owns `SiteIcon`; shared Avatar remains presentation-only.
+Production entry views use initials by default. The optional Chromium setting
+uses `extension/browser/site-icons.ts` for permission, device-local preference
+and origin-only lookup. Popup and Options compose stable capability instances,
+while `SiteIconsProvider` observes browser storage and permission events. Firefox
+keeps initials. The gallery supplies bundled same-origin fixtures for review.
+No core favicon port, per-row use case or plaintext icon index is introduced.
+Native permission-dialog, aged-cache and Firefox runtime checks remain open in
+the linked verification record.
 
 Popup, options and the service worker are separate JavaScript contexts. A module
 singleton or React provider in one does not become a shared object in another.

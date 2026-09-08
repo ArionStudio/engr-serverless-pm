@@ -46,7 +46,7 @@ anything from this directory.
 
 The gallery is maintained with every UI change under
 [UI-006](../../../../docs/standards/react-and-ui.md#ui-006-keep-the-component-gallery-current).
-The catalog names 273 exported components and compound parts. ThemeProvider is
+The generated catalog lists the current exported components and compound parts. ThemeProvider is
 explicitly marked as nonvisual; its controlled ThemeToggle consumer is reviewed
 without invoking persistence. Family details list source ownership, and the finder
 can select an individual compound part. Current screen views use synthetic state.

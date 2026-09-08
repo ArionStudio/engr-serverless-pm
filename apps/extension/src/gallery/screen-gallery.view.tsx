@@ -1,4 +1,5 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
+import { useTheme } from "@/ui/features/theme";
 import { OptionsExample, type OptionsScenario } from "./screen-examples.view";
 import { PopupView } from "@/ui/entrypoints/popup/popup.view";
 import { Button } from "@/ui/components/primitives/button";
@@ -290,24 +291,10 @@ export function ScreenGallery() {
   const state =
     screen.states.find((item) => item.id === variant)?.id ??
     screen.states[0].id;
-  const [theme, setTheme] = useState<"light" | "dark" | "system">("dark");
+  const { preference: theme, setTheme } = useTheme();
   const [width, setWidth] = useState("fluid");
   const [reset, setReset] = useState(0);
   const [notice, setNotice] = useState("");
-  useEffect(() => {
-    const query = window.matchMedia("(prefers-color-scheme: dark)");
-    const apply = () =>
-      document.documentElement.classList.toggle(
-        "dark",
-        theme === "dark" || (theme === "system" && query.matches),
-      );
-    apply();
-    query.addEventListener("change", apply);
-    return () => {
-      query.removeEventListener("change", apply);
-      document.documentElement.classList.remove("dark");
-    };
-  }, [theme]);
   return (
     <div className="min-h-svh bg-background text-foreground">
       <a

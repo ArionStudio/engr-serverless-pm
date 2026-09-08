@@ -196,16 +196,17 @@ The [contrast review](./contrast-review.md) summarizes measurements across all
 Accessibility overrides retain the preset design basis while correcting measured
 failures. Future screen compositions still need validation.
 
-Website icons are accepted planned work, not an implemented part of the 73-entry
-review evidence above. Extend P11 with `SiteIcon` and bundled gallery fixtures
-during entries-library work, reusing B38. Add the browser capability and device-local
-preference workflow when integrating entries/settings. See the
-[staged favicon plan and acceptance checks](./favicon-review.md#planned-work-and-implementation-triggers).
+The original 73-entry review did not include browser icon integration. Batch 08
+now connects P11 `SiteIcon`, reusing B38, to an optional Chromium permission and
+device-local setting. Initials remain the default and the Firefox presentation.
+Gallery preference states and fresh Chromium verification are recorded in the
+[favicon implementation and acceptance checks](./favicon-review.md#batch-08-verification).
+Native permission dialogs, aged cache and Firefox runtime remain unverified.
 
 ## Living gallery coverage follow-up
 
-The generated `component-api.generated.ts` records 273 exported components and
-compound parts, their source ownership, and 72 visual variant axes. Every family
+The generated `component-api.generated.ts` records exported components and
+compound parts, their source ownership, and supported visual variant axes. Every family
 lists its members; the finder includes each named member. The one explicitly
 nonvisual runtime module, ThemeProvider, is documented under P08 and reviewed
 through controlled ThemeToggle state.

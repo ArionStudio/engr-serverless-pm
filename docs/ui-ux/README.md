@@ -82,11 +82,11 @@ Later user clarifications supersede the initial setup-first implementation order
   both themes. The [contrast review](./contrast-review.md) records the measured
   accessibility overrides to the base preset. Review appearance in the gallery;
   custom contrast audit scripts are no longer maintained.
-- **Website icons:** Entry views currently use local initials. `SiteIcon` also has
-  loaded, loading and failure presentations in the gallery using a bundled image.
-  Browser lookup, permission and preference integration remain future work in the
-  [favicon plan](./favicon-review.md#planned-work-and-implementation-triggers).
-  No core vault service is planned.
+- **Website icons:** Entry views use initials by default. The optional Chromium
+  setting in Popup and Options requests favicon permission and uses browser-local
+  lookup; Firefox keeps initials. The gallery exposes loaded, loading, failure
+  and preference states. See the [implementation and verification limits](./favicon-review.md#current-implementation).
+  No core vault service or plaintext icon index is added.
 - **No subtitles:** Product headings have no subtitles, eyebrow slogans or footer
   taglines. Keep task labels, field errors and necessary safety information; put
   longer help behind a relevant disclosure. This user preference is recorded in
@@ -122,6 +122,5 @@ checks are recorded in [the setup flow](./vault-setup.md) and
 1. Complete the remaining library-wide visual and accessibility acceptance checks.
 2. Keep the gallery current as connected application workflows change.
 3. Define complete disaster-recovery artifacts and verified import as a separate feature.
-4. Implement and validate browser icon lookup, permission and privacy behavior at
-   the milestone recorded in the
-   [favicon review](./favicon-review.md#planned-work-and-implementation-triggers).
+4. Complete the native permission-dialog, aged-cache and Firefox runtime checks
+   remaining in the [favicon review](./favicon-review.md#batch-08-verification).

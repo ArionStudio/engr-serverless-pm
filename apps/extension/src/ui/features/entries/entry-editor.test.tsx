@@ -158,6 +158,29 @@ it("does not render external image sources, including protocol-relative URLs", (
   expect(container.querySelector("img")).toBeNull();
 });
 
+it("restores initials when a loaded site icon loses its source", async () => {
+  const image = document.createElement("img");
+  const imageConstructor = vi
+    .spyOn(window, "Image")
+    .mockImplementation(function () {
+      return image;
+    });
+  try {
+    const { container, rerender } = render(
+      <SiteIcon url="https://example.test" source="/icon.svg" state="loaded" />,
+    );
+    fireEvent.load(image);
+    await waitFor(() => expect(container.querySelector("img")).not.toBeNull());
+    expect(screen.queryByText("E")).toBeNull();
+
+    rerender(<SiteIcon url="https://example.test" state="unavailable" />);
+    expect(container.querySelector("img")).toBeNull();
+    expect(screen.getByText("E")).toBeDefined();
+  } finally {
+    imageConstructor.mockRestore();
+  }
+});
+
 it("saves a reviewed email-link account without password assessment", () => {
   const save = vi.fn();
   const assess = vi.fn();

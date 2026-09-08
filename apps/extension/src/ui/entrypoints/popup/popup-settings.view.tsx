@@ -1,3 +1,4 @@
+import { SiteIconSettings } from "@/ui/features/site-icons/site-icon-settings.view";
 import { useEffect, useRef, useState } from "react";
 import { ThemeToggle, useTheme } from "@/ui/features/theme";
 import {
@@ -106,6 +107,7 @@ export function PopupSettings({
         <h2 className="text-sm font-semibold">Appearance</h2>
         <ThemeToggle preference={preference} onThemeChange={setTheme} />
       </section>
+      <SiteIconSettings />
       {capabilities ? (
         <section
           className="space-y-4 border-t border-border pt-5"

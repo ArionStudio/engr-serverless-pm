@@ -2286,6 +2286,20 @@ export const componentApi = [
     "axes": {}
   },
   {
+    "name": "SiteIconSettings",
+    "source": "features/site-icons/site-icon-settings.view.tsx",
+    "family": "P11",
+    "exported": true,
+    "axes": {}
+  },
+  {
+    "name": "SiteIconsProvider",
+    "source": "features/site-icons/site-icons-provider.view.tsx",
+    "family": "P11",
+    "exported": true,
+    "axes": {}
+  },
+  {
     "name": "Skeleton",
     "source": "components/primitives/skeleton.tsx",
     "family": "B13",

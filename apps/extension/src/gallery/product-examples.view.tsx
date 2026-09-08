@@ -1,3 +1,4 @@
+import { SiteIconsExample } from "./site-icons.example";
 import { PASSWORD_ENTRY_TAG_LIMIT } from "@lfspm/core";
 import setupScreenshot from "./s3-setup-outputs.png";
 import { GuidancePanel } from "@/ui/components/feedback/guidance-panel.view";
@@ -1130,6 +1131,7 @@ export function FeatureExamples() {
       >
         <EntriesExample />
         <SiteIconExample />
+        <SiteIconsExample />
       </Specimen>
       <Specimen
         id="P16"
