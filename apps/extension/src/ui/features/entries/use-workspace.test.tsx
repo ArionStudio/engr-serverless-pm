@@ -136,6 +136,9 @@ describe("workspace lifecycle and writes", () => {
     await waitFor(() => expect(result.current.data).toBeDefined());
     act(() =>
       result.current.edit(undefined, {
+        id: "capture",
+        tabId: 7,
+        expiresAt: null,
         login: "alex",
         password: "captured",
         url: "https://captured.example.test/sign-in",
@@ -585,6 +588,9 @@ it("reviews a captured password update without replacing organization or saving 
   await waitFor(() => expect(result.current.data).toBeDefined());
   act(() =>
     result.current.edit("entry-review", {
+      id: "capture",
+      tabId: 7,
+      expiresAt: null,
       login: "captured-user",
       password: "captured-new-password",
       url: "https://example.com/different",
@@ -602,4 +608,84 @@ it("reviews a captured password update without replacing organization or saving 
   });
   expect(view.version).toEqual(original.entry.versionVector);
   expect(capabilities.update).not.toHaveBeenCalled();
+});
+
+it.each(["add", "update"] as const)(
+  "clears the original retained capture after an edited %s succeeds, preserving a newer capture",
+  async (action) => {
+    const { capabilities } = fixture();
+    let pendingId: string | undefined = "original-capture";
+    const dismiss = vi.fn(
+      async (_vaultId: string, _tabId: number, id: string) => {
+        if (pendingId === id) pendingId = undefined;
+      },
+    );
+    capabilities.dismissCapturedLogin = dismiss;
+    const { result } = renderHook(() => useWorkspace("vault", capabilities));
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    act(() =>
+      result.current.edit(action === "update" ? "entry-review" : undefined, {
+        id: "original-capture",
+        tabId: 7,
+        expiresAt: null,
+        login: "captured-user",
+        password: "captured-secret",
+        url: "https://example.test/login",
+      }),
+    );
+    await waitFor(() => expect(result.current.view.kind).toBe("editor"));
+    const editor = result.current.view;
+    if (editor.kind !== "editor") throw new Error("Expected editor");
+    pendingId = "newer-capture";
+    await act(async () =>
+      result.current.save({
+        ...editor.initial,
+        login: "edited-user",
+        password: "edited-secret",
+        url: "https://edited.example.test",
+        allowWeakPassword: true,
+      }),
+    );
+    expect(dismiss).toHaveBeenCalledWith("vault", 7, "original-capture");
+    expect(pendingId).toBe("newer-capture");
+    expect(result.current.view.kind).toBe("list");
+    expect(result.current.feedback).toContain("Saved");
+  },
+);
+
+it("keeps the captured proposal on failed save and preserves the save receipt if cleanup fails", async () => {
+  const { capabilities } = fixture();
+  const add = capabilities.add;
+  capabilities.add = vi
+    .fn()
+    .mockRejectedValueOnce(new Error("Save unavailable"))
+    .mockImplementation(add);
+  const dismiss = vi
+    .fn()
+    .mockRejectedValue(new Error("Session storage unavailable"));
+  capabilities.dismissCapturedLogin = dismiss;
+  const { result } = renderHook(() => useWorkspace("vault", capabilities));
+  await waitFor(() => expect(result.current.data).toBeDefined());
+  act(() =>
+    result.current.edit(undefined, {
+      id: "original-capture",
+      tabId: 7,
+      expiresAt: null,
+      login: "captured-user",
+      password: "captured-secret",
+      url: "https://example.test/login",
+    }),
+  );
+  await waitFor(() => expect(result.current.view.kind).toBe("editor"));
+  const editor = result.current.view;
+  if (editor.kind !== "editor") throw new Error("Expected editor");
+  const draft = { ...editor.initial, allowWeakPassword: true };
+  await act(async () => result.current.save(draft));
+  expect(dismiss).not.toHaveBeenCalled();
+  expect(result.current.view.kind).toBe("editor");
+  await act(async () => result.current.save(draft));
+  expect(dismiss).toHaveBeenCalledOnce();
+  expect(result.current.view.kind).toBe("list");
+  expect(result.current.feedback).toContain("Saved");
+  expect(result.current.error).toContain("Your entry was saved");
 });

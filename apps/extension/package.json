@@ -4,8 +4,11 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --config ./config/vite.config.ts build --watch",
+    "dev": "node ./scripts/dev.mjs",
     "build": "./scripts/build.sh",
+    "build:chromium": "LFSPM_BROWSER_TARGET=chromium ./scripts/build.sh",
+    "build:firefox": "LFSPM_BROWSER_TARGET=firefox ./scripts/build.sh",
+    "build:all": "pnpm run build:chromium && pnpm run build:firefox",
     "gallery:build": "pnpm run gallery:check && tsc -b && vite build --config ./config/vite.gallery.config.ts",
     "gallery:preview": "vite preview --config ./config/vite.gallery.config.ts",
     "check:bip39-bundle": "bash ./scripts/check-bip39-bundle.sh",

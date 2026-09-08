@@ -1,6 +1,7 @@
 import "fake-indexeddb/auto";
 import type {
   RawMasterPassword,
+  UnlockedVaultSessionMaterial,
   VaultSnapshot,
   SyncSetupInput,
   SyncAccess,
@@ -13,6 +14,7 @@ import {
   toVaultSnapshotDescriptor,
   toVaultSnapshotIdentity,
 } from "@lfspm/core";
+import { ChromeUnlockedVaultSessionMaterialRepositoryAdapter } from "../../adapters/storage";
 import { AwsS3SyncProviderAdapter } from "../../adapters/sync/aws-s3-sync-provider.adapter";
 import { JsonTextDeviceEnrollmentTransport } from "../../adapters/device/json-text-device-enrollment.transport";
 import { WebCryptoAdapter } from "../../adapters/crypto/web-crypto.adapter";
@@ -21,7 +23,7 @@ import { createChromeStorageArea } from "../../__tests__/fixtures/chrome-storage
 import type { WebLockManager } from "../../adapters/clipboard";
 import { parseScheduledTask } from "../../adapters/system";
 import { createVaultManagerDb } from "../../infrastructure/database/dexie-db";
-import { composeScheduledTaskAlarmHandler } from "../background/clipboard-alarm-runtime";
+import { composeBackgroundApplication } from "../background/background.composition";
 import { composeExtensionApplication } from "./extension-application";
 
 const masterPassword = "Cedar!Orbit-72-Bright-River" as RawMasterPassword;
@@ -223,7 +225,9 @@ describe("production extension composition", () => {
     );
     if (!clearAlarm) throw new Error("Missing clipboard clear alarm");
     const now = vi.spyOn(Date, "now").mockReturnValue(clearAlarm[1].when + 1);
-    await composeScheduledTaskAlarmHandler(database)({ name: clearAlarm[0] });
+    await composeBackgroundApplication(database).handleScheduledTaskAlarm({
+      name: clearAlarm[0],
+    });
     expect(browser.clipboard()).toBe("");
     now.mockRestore();
     await app.copyRevealedSecret.execute({
@@ -397,15 +401,51 @@ describe("production extension composition", () => {
     const currentLockAlarm = [...browser.alarms.keys()][0];
     expect(currentLockAlarm).toBeDefined();
     expect(currentLockAlarm).not.toBe(firstLockAlarm);
+    let backgroundMaterial: UnlockedVaultSessionMaterial | undefined;
+    const readMaterial =
+      ChromeUnlockedVaultSessionMaterialRepositoryAdapter.prototype
+        .getUnlockedVaultSessionMaterial;
+    vi.spyOn(
+      ChromeUnlockedVaultSessionMaterialRepositoryAdapter.prototype,
+      "getUnlockedVaultSessionMaterial",
+    ).mockImplementation(async function (
+      this: ChromeUnlockedVaultSessionMaterialRepositoryAdapter,
+    ) {
+      const material = await readMaterial.call(this);
+      backgroundMaterial ??= material ?? undefined;
+      return material;
+    });
     // A fresh graph models a restarted worker. It must see the persisted session
     // and reject an alarm belonging to the previous activation.
-    const handleAlarm = composeScheduledTaskAlarmHandler(database);
-    await handleAlarm({ name: firstLockAlarm! });
+    const background = composeBackgroundApplication(database);
+    expect(
+      await background.browserLogins.pending.execute({
+        tabId: 7,
+        url: "https://example.com/login",
+      }),
+    ).toBe(false);
+    if (!backgroundMaterial)
+      throw new Error("Browser login did not read unlocked session material");
+    const backgroundSecretBuffers = [
+      backgroundMaterial.vaultMasterKey,
+      backgroundMaterial.devicePrivateSignKey,
+      backgroundMaterial.devicePrivateVaultKey,
+      backgroundMaterial.deviceLocalProtectionKey,
+      backgroundMaterial.payloadKey,
+    ];
+    expect(
+      backgroundSecretBuffers.some((buffer) =>
+        new Uint8Array(buffer).some((byte) => byte !== 0),
+      ),
+    ).toBe(true);
+    await background.handleScheduledTaskAlarm({ name: firstLockAlarm! });
     await expect(app.getVaultSessionStatus.execute()).resolves.toEqual({
       status: "unlocked",
       vaultId,
     });
-    await handleAlarm({ name: currentLockAlarm! });
+    await background.handleScheduledTaskAlarm({ name: currentLockAlarm! });
+    for (const buffer of backgroundSecretBuffers)
+      expect(new Uint8Array(buffer).every((byte) => byte === 0)).toBe(true);
     await expect(app.getVaultSessionStatus.execute()).resolves.toEqual({
       status: "locked",
     });

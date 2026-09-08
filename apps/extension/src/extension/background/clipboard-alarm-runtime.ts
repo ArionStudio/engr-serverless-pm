@@ -7,24 +7,30 @@ import type {
   VaultLockTaskRepositoryPort,
 } from "@lfspm/core";
 import { parseScheduledTask } from "../../adapters/system";
-import type { VaultManagerDb } from "../../infrastructure/database/dexie-db";
-import { composeSession } from "../composition/session.composition";
 
 export const CLIPBOARD_CLEAR_RETRY_DELAY_MS = 60_000;
 export const VAULT_LOCK_RETRY_DELAY_MS = 60_000;
 
 type ClearClipboardTaskExecutor = Pick<ClearClipboardTaskUseCase, "execute">;
 type LockVaultTaskExecutor = Pick<LockVaultUseCase, "execute">;
-type ClipboardAlarmHandler = (alarm: {
+export type ScheduledTaskAlarmHandler = (alarm: {
   readonly name: string;
 }) => Promise<void>;
+type ScheduledTaskAlarmResources = {
+  readonly clearClipboardTask: ClearClipboardTaskExecutor;
+  readonly lockVault: LockVaultTaskExecutor;
+  readonly clipboardClearTasks: Pick<ClipboardClearTaskRepositoryPort, "get">;
+  readonly vaultLockTasks: Pick<VaultLockTaskRepositoryPort, "get">;
+  readonly scheduledTasks: ScheduledTaskPort;
+  readonly clock: ClockPort;
+};
 
 export function createClipboardAlarmHandler(
   clearClipboardTask: ClearClipboardTaskExecutor,
   clipboardClearTasks: Pick<ClipboardClearTaskRepositoryPort, "get">,
   scheduledTasks: ScheduledTaskPort,
   clock: ClockPort,
-): ClipboardAlarmHandler {
+): ScheduledTaskAlarmHandler {
   return async (alarm) => {
     const task = parseScheduledTask(alarm.name);
 
@@ -107,7 +113,7 @@ export function createVaultLockAlarmHandler(
   vaultLockTasks: Pick<VaultLockTaskRepositoryPort, "get">,
   scheduledTasks: ScheduledTaskPort,
   clock: ClockPort,
-): ClipboardAlarmHandler {
+): ScheduledTaskAlarmHandler {
   return async (alarm) => {
     const task = parseScheduledTask(alarm.name);
 
@@ -168,8 +174,8 @@ export function createVaultLockAlarmHandler(
 }
 
 export function composeScheduledTaskAlarmHandler(
-  database?: VaultManagerDb,
-): ClipboardAlarmHandler {
+  resources: ScheduledTaskAlarmResources,
+): ScheduledTaskAlarmHandler {
   const {
     clearClipboardTask,
     lockVault,
@@ -177,7 +183,7 @@ export function composeScheduledTaskAlarmHandler(
     vaultLockTasks,
     scheduledTasks,
     clock,
-  } = composeSession(database);
+  } = resources;
   const clearClipboardAlarm = createClipboardAlarmHandler(
     clearClipboardTask,
     clipboardClearTasks,

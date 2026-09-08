@@ -1,6 +1,10 @@
 import { SetupOrganizationExample } from "./setup-organization.example";
 import { PopupSettingsExample } from "./popup-settings.example";
-import { BrowserLoginExample } from "./browser-login.example";
+import {
+  BrowserLoginExample,
+  LoginCapturePromptExample,
+  LoginFieldActionExample,
+} from "./browser-login.example";
 import { galleryDevices } from "./device-fixture";
 import { galleryFolderManagement } from "./folder-management-fixture";
 import {
@@ -597,6 +601,12 @@ export function ScreenExamples() {
                   "save",
                   "update",
                   "email-link-save",
+                  "session-redirect",
+                  "detection-refresh-error",
+                  "detection-stale-read-refresh-error",
+                  "detection-disable-cleanup-error",
+                  "retention-change-error",
+                  "authorization-lost",
                   "identifier",
                   "registration",
                   "password-change",
@@ -630,6 +640,24 @@ export function ScreenExamples() {
           {(state) => <PopupSettingsExample key={state} state={state} />}
         </Scenario>
 
+        <p className="text-sm text-muted-foreground">
+          Website prompt: review in the popup, or use the toolbar when the
+          browser cannot open it.
+        </p>
+        <LoginCapturePromptExample />
+        <Scenario
+          label="Recognized website field"
+          options={
+            [
+              "identifier",
+              "sign-in",
+              "registration",
+              "password-change",
+            ] as const
+          }
+        >
+          {(kind) => <LoginFieldActionExample key={kind} kind={kind} />}
+        </Scenario>
         <Scenario
           label="Vault quick access"
           options={

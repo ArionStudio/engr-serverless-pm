@@ -1,65 +1,75 @@
 # Browser support and builds
 
-## Current support
+LFSPM uses one source tree and produces separate unpacked builds for Chromium
+and Firefox. The browser-specific boundary covers the manifest, background
+runtime and clipboard access. UI, crypto, IndexedDB, vault operations and S3 sync
+remain shared.
 
-The current `pnpm ext:build` command produces a Chromium build in
-`apps/extension/dist`. Firefox packaging and runtime support are not implemented.
-S3 uses optional browser host permission instead of per-installation CORS origins.
-The gallery includes the missing-permission state.
+| Target   | Command                   | Unpacked output                |
+| -------- | ------------------------- | ------------------------------ |
+| Chromium | `pnpm ext:build:chromium` | `apps/extension/dist/`         |
+| Firefox  | `pnpm ext:build:firefox`  | `apps/extension/dist-firefox/` |
+| Both     | `pnpm ext:build:all`      | Both directories               |
 
-Load the existing unpacked build through the Chromium browser's extension
-management page. For a future Firefox-compatible build, development installation
-uses `about:debugging` → **This Firefox** → **Load Temporary Add-on**, selecting
-its manifest. That installation lasts until Firefox restarts. Normal permanent
-installation in Firefox requires a Mozilla-signed package, which can be privately
-self-distributed without a public store listing.
+`pnpm ext:build` remains an alias for the Chromium build.
 
-CRX Installer is a third-party converter hosted on Mozilla Add-ons. Its listing
-names Zen, Firefox Nightly, Developer Edition and LibreWolf, with extra requirements
-for regular Firefox. Conversion has not been validated for LFSPM. Installing a
-converted package does not establish that locking, clipboard clearing or sync
-work. Do not present conversion as a supported installation method yet.
-Mozilla's webextension-polyfill is a developer API wrapper, not a Chrome Store
-installer or an implementation of every Chrome-only API.
+## Load the Firefox build
 
-## Proposed implementation
+1. Run `pnpm ext:build:firefox` from the repository root.
+2. Open `about:debugging#/runtime/this-firefox` in Firefox.
+3. Choose **Load Temporary Add-on**.
+4. Select `apps/extension/dist-firefox/manifest.json`.
 
-Maintain one source tree with two explicit build targets. These commands and
-output directories are proposed, not available yet:
+The temporary installation remains until Firefox restarts. A normal permanent
+installation requires a package signed by Mozilla. Signing and distribution are
+separate from this development build.
 
-| Target   | Proposed command          | Proposed output                 |
-| -------- | ------------------------- | ------------------------------- |
-| Chromium | `pnpm ext:build:chromium` | `apps/extension/dist/chromium/` |
-| Firefox  | `pnpm ext:build:firefox`  | `apps/extension/dist/firefox/`  |
-| Both     | `pnpm ext:build:all`      | Both directories                |
+The Firefox manifest uses a non-persistent background document and does not ask
+for Chrome's `offscreen` permission. Firefox background scripts have a DOM
+environment, so clipboard reads and compare-before-clear operations use
+`navigator.clipboard` with the declared `clipboardRead` and `clipboardWrite`
+permissions. Chromium keeps its offscreen clipboard document because its
+Manifest V3 background context is a service worker.
 
-1. Share UI, core use cases, crypto, IndexedDB and S3 logic. Generate each manifest
-   from shared settings plus browser-specific settings. Keep the existing Chromium
-   build command and installed folder working during this change.
-2. Chromium retains its service worker and offscreen clipboard adapter. Firefox
-   uses an extension background script/page and its own clipboard adapter,
-   including scheduled compare-before-clear behavior. Select adapters at the
-   composition root; do not spread browser checks through core or UI.
-3. Audit shared extension APIs, session storage, alarms and messaging against each
-   browser. Configure a stable Firefox add-on ID, minimum tested version, and
-   accurate data-transmission declarations for signing. The add-on ID is distinct
-   from Firefox's internal origin UUID.
-4. Reuse the optional S3 host-permission adapter and grant access on each browser.
-   Follow [browser storage access](aws/s3/README.md#browser-storage-access).
-5. Validate each unpacked build in its actual browser: create/unlock/relock,
-   restart/session handling, clipboard clearing, recovery, and S3 read/upload.
-   Once enrollment UI is connected, test Chromium-to-Firefox enrollment and
-   two-way sync. Use disposable vaults and controlled storage for regression runs.
-6. Package Firefox for Mozilla signing after runtime validation. Store credentials
-   for signing outside the repository; publishing/signing is a separate action.
+When sync is enabled, Firefox asks for access to the configured S3 host through
+the same `optional_host_permissions` flow as Chromium. The Firefox manifest
+declares transmission of authentication information because encrypted vault
+contents and S3 credentials are handled by the user's chosen S3 service. No
+telemetry or LFSPM-operated server is added.
 
-## Sources
+## Current limits
 
-Checked September 6, 2026:
+- The Firefox build targets Firefox 140 or newer so Mozilla's built-in data
+  collection consent is available.
+- Development installation is temporary. The build has a stable Gecko add-on ID
+  for storage identity and future signing, but Firefox still assigns a separate
+  internal `moz-extension://` UUID per browser profile.
+- S3 permission is granted separately in every browser profile. It is based on
+  the S3 HTTPS host and does not depend on the internal Firefox UUID or bucket
+  CORS origins.
+- The automated build checks validate the Firefox manifest, bundle and
+  browser-specific clipboard behavior. They do not establish completion of the
+  real-Firefox workflow checklist below before distribution.
+- Mozilla signing metadata is present, but no signed `.xpi` is produced.
+- Website icons currently display local initials. Optional Chromium icons are
+  introduced in the separate site-icon batch; Firefox/Zen keeps local initials.
 
-- [Mozilla background compatibility](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/background#browser_support)
-- [Firefox temporary installation](https://extensionworkshop.com/documentation/develop/temporary-installation-in-firefox/)
-- [Mozilla signing and distribution](https://extensionworkshop.com/documentation/publish/signing-and-distribution-overview/)
+## Verification checklist
+
+In a temporary Firefox profile, verify creation, lock and unlock, recovery,
+password copy followed by timed clearing, S3 permission request, initial upload,
+and two-way sync. For cross-browser enrollment, use disposable vault data and
+test Firefox-to-Chromium and Chromium-to-Firefox approval paths.
+
+## Mozilla references
+
+Checked September 7, 2026:
+
+- [Manifest V3 background compatibility](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/background)
+- [Firefox background script environment](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Background_scripts)
+- [Clipboard access in extensions](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Interact_with_the_clipboard)
+- [Optional host permissions](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/optional_host_permissions)
 - [Firefox-specific manifest settings](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/browser_specific_settings)
-- [CRX Installer listing](https://addons.mozilla.org/en-US/firefox/addon/crxinstaller/)
-- [Mozilla webextension-polyfill](https://github.com/mozilla/webextension-polyfill)
+- [Firefox built-in data consent](https://extensionworkshop.com/documentation/develop/firefox-builtin-data-consent/)
+- [Temporary installation in Firefox](https://extensionworkshop.com/documentation/develop/temporary-installation-in-firefox/)
+- [Signing and distribution](https://extensionworkshop.com/documentation/publish/signing-and-distribution-overview/)

@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 describe("background entrypoint", () => {
   afterEach(() => {
-    vi.doUnmock("./clipboard-alarm-runtime");
+    vi.doUnmock("./background.composition");
+    vi.doUnmock("./browser-login-runtime");
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.resetModules();
@@ -13,7 +14,12 @@ describe("background entrypoint", () => {
     const handleAlarm = vi.fn(async () => {
       throw alarmError;
     });
-    const composeScheduledTaskAlarmHandler = vi.fn(() => handleAlarm);
+    const browserLogins = { capture: {}, pending: {} };
+    const composeBackgroundApplication = vi.fn(() => ({
+      browserLogins,
+      handleScheduledTaskAlarm: handleAlarm,
+    }));
+    const installBrowserLoginRuntime = vi.fn();
     const consoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
@@ -24,8 +30,11 @@ describe("background entrypoint", () => {
       },
     );
 
-    vi.doMock("./clipboard-alarm-runtime", () => ({
-      composeScheduledTaskAlarmHandler,
+    vi.doMock("./background.composition", () => ({
+      composeBackgroundApplication,
+    }));
+    vi.doMock("./browser-login-runtime", () => ({
+      installBrowserLoginRuntime,
     }));
     vi.stubGlobal("chrome", {
       alarms: {
@@ -35,7 +44,8 @@ describe("background entrypoint", () => {
 
     await import("./background");
 
-    expect(composeScheduledTaskAlarmHandler).toHaveBeenCalledOnce();
+    expect(composeBackgroundApplication).toHaveBeenCalledOnce();
+    expect(installBrowserLoginRuntime).toHaveBeenCalledWith(browserLogins);
     expect(addAlarmListener).toHaveBeenCalledOnce();
 
     alarmListener?.({ name: "clipboard-alarm" });

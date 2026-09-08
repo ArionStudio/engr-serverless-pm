@@ -1,10 +1,11 @@
 import { Switch } from "@/ui/components/primitives/switch";
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { BrowserLogins, CapturedLogin } from "@lfspm/core";
 import type { BrowserLoginCapabilities } from "./browser-login.type";
 import { Button } from "@/ui/components/primitives/button";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Globe02Icon, Login01Icon } from "@hugeicons/core-free-icons";
+import { vaultAuthorizationWasLost } from "@/ui/lib/vault-authorization";
 
 const formLabels = {
   identifier: "Email or username step detected",
@@ -26,38 +27,118 @@ export function BrowserLoginsPanel({
   onReview,
   mode = "matches",
   onPendingChange,
+  onSessionLost,
 }: {
   mode?: "matches" | "detected";
   onPendingChange?: (pending: boolean) => void;
   vaultId: string;
   capabilities: BrowserLoginCapabilities;
   onReview: (captured: CapturedLogin, entryId?: string) => void;
+  onSessionLost?: () => void;
 }) {
   const [data, setData] = useState<BrowserLogins>();
   const [enabled, setEnabled] = useState<boolean>();
+  const [retainForSession, setRetainForSession] = useState<boolean>();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
   const [feedback, setFeedback] = useState<string>();
   const owner = useRef(0);
+  const readOwner = useRef(0);
+  const busy = useRef(false);
   const detectionLabel = useId();
+  const retentionLabel = useId();
+  const retentionGuidance = useId();
   useEffect(() => {
     onPendingChange?.(pending);
   }, [pending, onPendingChange]);
+  const clearPrivateState = useCallback(() => {
+    owner.current += 1;
+    readOwner.current += 1;
+    busy.current = false;
+    setData(undefined);
+    setEnabled(undefined);
+    setRetainForSession(undefined);
+    setPending(false);
+    setError(undefined);
+    setFeedback(undefined);
+  }, []);
+  const stopForAuthorizationLoss = useCallback(
+    async (cause: unknown, generation: number, readGeneration?: number) => {
+      if (
+        owner.current !== generation ||
+        (readGeneration !== undefined && readOwner.current !== readGeneration)
+      )
+        return true;
+      const lost = await vaultAuthorizationWasLost(cause, () =>
+        capabilities.inspectAuthorization(vaultId),
+      );
+      if (
+        owner.current !== generation ||
+        (readGeneration !== undefined && readOwner.current !== readGeneration)
+      )
+        return true;
+      if (lost) {
+        clearPrivateState();
+        onSessionLost?.();
+      }
+      return lost;
+    },
+    [capabilities, clearPrivateState, onSessionLost, vaultId],
+  );
+  const handleFailure = useCallback(
+    async (
+      cause: unknown,
+      generation: number,
+      message: string,
+      readGeneration?: number,
+    ) => {
+      if (await stopForAuthorizationLoss(cause, generation, readGeneration))
+        return;
+      if (
+        owner.current === generation &&
+        (readGeneration === undefined || readOwner.current === readGeneration)
+      )
+        setError(message);
+    },
+    [stopForAuthorizationLoss],
+  );
   useEffect(() => {
     const generation = ++owner.current;
+    const readGeneration = ++readOwner.current;
+    busy.current = false;
+    setData(undefined);
+    setEnabled(undefined);
+    setRetainForSession(undefined);
+    setPending(false);
+    setError(undefined);
+    setFeedback(undefined);
     void capabilities.read(vaultId).then(
       (result) => {
-        if (owner.current === generation) setData(result);
+        if (
+          owner.current === generation &&
+          readOwner.current === readGeneration
+        )
+          setData(result);
       },
-      () => {
-        if (owner.current === generation)
-          setError("Could not read this page. Reopen the popup to try again.");
+      (cause: unknown) => {
+        void handleFailure(
+          cause,
+          generation,
+          "Could not read this page. Reopen the popup to try again.",
+          readGeneration,
+        );
       },
     );
     if (mode === "detected")
-      void capabilities.detectionEnabled().then(
-        (detection) => {
-          if (owner.current === generation) setEnabled(detection);
+      void Promise.all([
+        capabilities.detectionEnabled(),
+        capabilities.sessionRetentionEnabled(),
+      ]).then(
+        ([detection, retention]) => {
+          if (owner.current === generation) {
+            setEnabled(detection);
+            setRetainForSession(retention);
+          }
         },
         () => {
           if (owner.current === generation)
@@ -68,36 +149,112 @@ export function BrowserLoginsPanel({
       );
     return () => {
       owner.current = generation + 1;
+      readOwner.current = readGeneration + 1;
+      busy.current = false;
     };
-  }, [vaultId, capabilities, mode]);
-  // Recheck the short-lived capture before putting its password into an editor.
+  }, [vaultId, capabilities, mode, handleFailure]);
+  // Recheck the session and capture before putting its password into an editor.
   async function review(entryId?: string) {
-    await run(async () => {
+    await run(async (generation) => {
       const fresh = await capabilities.read(vaultId);
-      if (!fresh.captured || fresh.captured.id !== data?.captured?.id)
-        throw new Error(
+      if (owner.current !== generation) return;
+      if (!fresh.captured || fresh.captured.id !== data?.captured?.id) {
+        setError(
           "This captured login expired. Sign in on the website again to save it.",
         );
+        return;
+      }
+      if (entryId && !fresh.updateEntryIds.includes(entryId)) {
+        setError(
+          "This saved login changed. Reopen the popup before reviewing an update.",
+        );
+        return;
+      }
       onReview(fresh.captured, entryId);
-    });
+    }, "Could not review this login. Reopen the popup to try again.");
   }
-  async function run(operation: () => Promise<void>) {
-    if (pending) return;
+  async function run(
+    operation: (generation: number) => Promise<void>,
+    failure: string,
+  ) {
+    if (busy.current) return;
+    busy.current = true;
     const generation = owner.current;
     setPending(true);
     setError(undefined);
     setFeedback(undefined);
     try {
-      await operation();
+      await operation(generation);
     } catch (cause) {
-      if (owner.current === generation)
-        setError(
-          cause instanceof Error
-            ? cause.message
-            : "Could not complete this action.",
-        );
+      await handleFailure(cause, generation, failure);
     } finally {
-      if (owner.current === generation) setPending(false);
+      if (owner.current === generation) {
+        busy.current = false;
+        setPending(false);
+      }
+    }
+  }
+  async function changeSetting({
+    generation,
+    next,
+    set,
+    get,
+    apply,
+    failure,
+    partialFailure,
+    refreshFailure,
+  }: {
+    generation: number;
+    next: boolean;
+    set: (value: boolean) => Promise<void>;
+    get: () => Promise<boolean>;
+    apply: (value: boolean | undefined) => void;
+    failure: string;
+    partialFailure: string;
+    refreshFailure: string;
+  }) {
+    const readGeneration = ++readOwner.current;
+    setData(undefined);
+    try {
+      await set(next);
+    } catch (cause) {
+      if (await stopForAuthorizationLoss(cause, generation)) return;
+      let authoritative: boolean | undefined;
+      let fresh: BrowserLogins | undefined;
+      try {
+        authoritative = await get();
+      } catch (readCause) {
+        if (
+          await stopForAuthorizationLoss(readCause, generation, readGeneration)
+        )
+          return;
+      }
+      if (owner.current !== generation || readOwner.current !== readGeneration)
+        return;
+      try {
+        fresh = await capabilities.read(vaultId);
+      } catch (readCause) {
+        if (
+          await stopForAuthorizationLoss(readCause, generation, readGeneration)
+        )
+          return;
+      }
+      if (owner.current !== generation || readOwner.current !== readGeneration)
+        return;
+      apply(authoritative);
+      setData(fresh);
+      setError(authoritative === next ? partialFailure : failure);
+      return;
+    }
+    if (owner.current !== generation || readOwner.current !== readGeneration)
+      return;
+    apply(next);
+    try {
+      const fresh = await capabilities.read(vaultId);
+      if (owner.current === generation && readOwner.current === readGeneration)
+        setData(fresh);
+    } catch (cause) {
+      await handleFailure(cause, generation, refreshFailure, readGeneration);
     }
   }
   const target = data?.target;
@@ -129,11 +286,26 @@ export function BrowserLoginsPanel({
                 checked={enabled ?? false}
                 disabled={pending || enabled === undefined}
                 onCheckedChange={(next) =>
-                  void run(async () => {
-                    await capabilities.setDetection(next);
-                    setEnabled(next);
-                    setData(await capabilities.read(vaultId));
-                  })
+                  void run(
+                    (generation) =>
+                      changeSetting({
+                        generation,
+                        next,
+                        set: capabilities.setDetection,
+                        get: capabilities.detectionEnabled,
+                        apply: setEnabled,
+                        failure: next
+                          ? "Could not enable login detection. Allow website access in the browser extension permissions, then try again. If LFSPM was updated, reload the extension first."
+                          : "Could not turn off login detection. Try again.",
+                        partialFailure: next
+                          ? "Login detection is on, but setup did not finish. Reload the extension, then try again."
+                          : "Login detection is off, but LFSPM could not finish clearing detected logins or stopping detection on open websites. Lock the vault and reload those websites.",
+                        refreshFailure: `Login detection is ${next ? "on" : "off"}, but this page could not be refreshed. Reopen the popup to continue.`,
+                      }),
+                    next
+                      ? "Could not enable login detection. Allow website access in the browser extension permissions, then try again. If LFSPM was updated, reload the extension first."
+                      : "Could not turn off login detection. Try again.",
+                  )
                 }
               />
             </span>
@@ -143,6 +315,46 @@ export function BrowserLoginsPanel({
             logins while your vault is unlocked. You review each login before
             saving it.
           </p>
+          <div className="space-y-2 border-t border-border pt-3">
+            <label className="flex cursor-pointer items-center justify-between gap-4">
+              <span id={retentionLabel} className="text-sm font-semibold">
+                Keep detected login across page changes
+              </span>
+              <Switch
+                aria-labelledby={retentionLabel}
+                aria-describedby={retentionGuidance}
+                checked={retainForSession ?? false}
+                disabled={pending || !enabled || retainForSession === undefined}
+                onCheckedChange={(next) =>
+                  void run(
+                    (generation) =>
+                      changeSetting({
+                        generation,
+                        next,
+                        set: capabilities.setSessionRetention,
+                        get: capabilities.sessionRetentionEnabled,
+                        apply: setRetainForSession,
+                        failure: "Could not change login retention. Try again.",
+                        partialFailure: next
+                          ? "Login retention is on, but setup did not finish. Reopen the popup, then try again."
+                          : "Login retention is off, but some detected logins could not be cleared. Lock the vault to clear them.",
+                        refreshFailure: `Login retention is ${next ? "on" : "off"}, but this page could not be refreshed. Reopen the popup to continue.`,
+                      }),
+                    "Could not change login retention. Try again.",
+                  )
+                }
+              />
+            </label>
+            <p
+              id={retentionGuidance}
+              className="text-sm leading-relaxed text-muted-foreground"
+            >
+              Keep this tab’s detected login for review until you save or
+              dismiss it, close the tab, or lock the vault. Applies to new
+              detections. Logins stay encrypted in browser memory. Turning this
+              off clears logins waiting for review.
+            </p>
+          </div>
         </section>
       ) : null}
       <div className="flex items-center gap-2 text-sm font-medium">
@@ -191,6 +403,9 @@ export function BrowserLoginsPanel({
                   : "Save this email sign-in?"}
             </h3>
             <p className="break-all text-sm text-muted-foreground">
+              {new URL(captured.url).host}
+            </p>
+            <p className="break-all text-sm text-muted-foreground">
               {captured.login || "Login without a username"}
             </p>
           </div>
@@ -208,9 +423,7 @@ export function BrowserLoginsPanel({
                 onClick={() => void review(id)}
               >
                 Review update
-                {data.updateEntryIds.length > 1
-                  ? ` · ${data.entries.find((entry) => entry.id === id)?.login}`
-                  : ""}
+                {data.updateEntryIds.length > 1 ? ` · ${captured.login}` : ""}
               </Button>
             ))}
             <Button
@@ -226,18 +439,19 @@ export function BrowserLoginsPanel({
               variant="ghost"
               disabled={pending}
               onClick={() =>
-                void run(async () => {
+                void run(async (generation) => {
                   await capabilities.dismiss(
                     vaultId,
                     captured.tabId,
                     captured.id,
                   );
+                  if (owner.current !== generation) return;
                   setData((current) =>
                     current
                       ? { ...current, captured: null, updateEntryIds: [] }
                       : current,
                   );
-                })
+                }, "Could not dismiss this login. Try again.")
               }
             >
               Dismiss
@@ -267,12 +481,13 @@ export function BrowserLoginsPanel({
                   disabled={pending || !target?.fillable}
                   onClick={() => {
                     if (target)
-                      void run(async () => {
+                      void run(async (generation) => {
                         await capabilities.fill(vaultId, entry.id, target);
+                        if (owner.current !== generation) return;
                         setFeedback(
                           "Login filled. Submit the form when you’re ready.",
                         );
-                      });
+                      }, "Could not fill this login. Reopen the page and try again.");
                   }}
                 >
                   <HugeiconsIcon

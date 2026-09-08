@@ -1,5 +1,7 @@
 import { composePopupSync } from "../composition/popup-sync.capabilities";
+import { consumePopupReviewRequest } from "../composition/popup-route";
 import { composeVaultSettings } from "../composition/vault-settings.capabilities";
+import { composeBrowserLogins } from "../composition/browser-login.capabilities";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { ThemeProvider } from "@/ui/features/theme";
@@ -9,30 +11,43 @@ import { composeWorkspace } from "../composition/workspace.capabilities";
 import { composeVaultSetup } from "../composition/vault-setup.capabilities";
 import { openOptionsPage } from "../composition/first-launch.capabilities";
 
-export function Popup() {
+export function Popup({
+  initialRoute = "vault",
+}: {
+  initialRoute?: "vault" | "detected";
+}) {
+  const [browserLogins] = React.useState(composeBrowserLogins);
   const [sync] = React.useState(composePopupSync);
   const [settings] = React.useState(composeVaultSettings);
   const [workspace] = React.useState(composeWorkspace);
   const [setup] = React.useState(composeVaultSetup);
   return (
-    <PopupWorkspace
-      setup={setup}
-      workspace={workspace}
-      settings={settings}
-      sync={sync}
-      onOpenOptions={openOptionsPage}
-    />
+    <>
+      <PopupWorkspace
+        initialRoute={initialRoute}
+        setup={setup}
+        workspace={workspace}
+        settings={settings}
+        sync={sync}
+        browserLogins={browserLogins}
+        onOpenOptions={openOptionsPage}
+      />
+    </>
   );
 }
 
 const rootElement = document.getElementById("popup");
 if (rootElement) {
   const root = ReactDOM.createRoot(rootElement);
-  root.render(
-    <React.StrictMode>
-      <ThemeProvider>
-        <Popup />
-      </ThemeProvider>
-    </React.StrictMode>,
-  );
+  void consumePopupReviewRequest()
+    .catch(() => "vault" as const)
+    .then((initialRoute) => {
+      root.render(
+        <React.StrictMode>
+          <ThemeProvider>
+            <Popup initialRoute={initialRoute} />
+          </ThemeProvider>
+        </React.StrictMode>,
+      );
+    });
 }

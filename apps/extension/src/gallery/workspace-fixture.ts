@@ -73,6 +73,7 @@ export function galleryWorkspace(
     };
   }
   return {
+    dismissCapturedLogin: async () => {},
     readActivePageUrl: async () => "https://mail.example.test/sign-in",
     read: async () => {
       if (refreshFailure) {

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-const distributionDirectory = resolve("dist");
+const distributionDirectory = resolve(process.argv[2] ?? "dist");
 const manifestPath = resolve(distributionDirectory, ".vite/manifest.json");
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
 const backgroundEntry = Object.values(manifest).find(

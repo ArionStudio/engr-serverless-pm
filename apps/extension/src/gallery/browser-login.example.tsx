@@ -1,5 +1,8 @@
-import { useState } from "react";
+import { mountLoginFieldAction } from "../extension/content/login-field-action";
+import type { BrowserLoginForm } from "@lfspm/core";
+import { useEffect, useRef, useState } from "react";
 import { BrowserLoginsPanel } from "@/ui/features/entries/browser-logins.view";
+import { mountLoginCapturePrompt } from "../extension/content/login-capture-prompt";
 import {
   galleryBrowserLogins,
   type BrowserLoginScenario,
@@ -19,6 +22,7 @@ export function BrowserLoginExample({
         vaultId="gallery-vault"
         mode={mode}
         capabilities={capabilities}
+        onSessionLost={() => setNotice("Vault session refresh requested")}
         onReview={(_, id) =>
           setNotice(
             id
@@ -30,4 +34,31 @@ export function BrowserLoginExample({
       {notice ? <p role="status">{notice}</p> : null}
     </div>
   );
+}
+export function LoginCapturePromptExample() {
+  const host = useRef<HTMLDivElement>(null);
+  useEffect(
+    () =>
+      host.current
+        ? mountLoginCapturePrompt(host.current, { onReview: async () => false })
+        : undefined,
+    [],
+  );
+  return <div ref={host} className="max-w-[360px]" />;
+}
+
+export function LoginFieldActionExample({
+  kind,
+}: {
+  kind: BrowserLoginForm["kind"];
+}) {
+  const host = useRef<HTMLDivElement>(null);
+  useEffect(
+    () =>
+      host.current
+        ? mountLoginFieldAction(host.current, kind, async () => false)
+        : undefined,
+    [kind],
+  );
+  return <div ref={host} />;
 }

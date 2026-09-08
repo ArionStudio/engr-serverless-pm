@@ -21,4 +21,4 @@ function checkDirectory(directory) {
   }
 }
 
-checkDirectory(resolve("dist"));
+checkDirectory(resolve(process.argv[2] ?? "dist"));

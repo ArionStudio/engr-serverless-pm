@@ -15,6 +15,12 @@ export function composeWorkspace(): WorkspaceCapabilities {
   const organizationLibrary = new IndexedDbGlobalLibraryRepository();
   return {
     readActivePageUrl,
+    dismissCapturedLogin: async (vaultId, tabId, id) =>
+      (await getApplication()).browserLogins.dismiss.execute({
+        vaultId,
+        tabId,
+        id,
+      }),
     read: async (vaultId) =>
       (await getApplication()).readVaultWorkspace.execute({ vaultId }),
     details: async (vaultId, entryId) =>

@@ -7,6 +7,14 @@ import { viteStaticCopy } from "vite-plugin-static-copy";
 
 const workspaceRoot = resolve(__dirname, "../../..");
 const coreSourceRoot = resolve(workspaceRoot, "packages/core/src");
+const browserTarget =
+  process.env.LFSPM_BROWSER_TARGET === "firefox" ? "firefox" : "chromium";
+const distributionDirectory =
+  browserTarget === "firefox" ? "dist-firefox" : "dist";
+const manifestPath =
+  browserTarget === "firefox"
+    ? "config/manifest.firefox.json"
+    : "config/manifest.json";
 
 function collectFiles(directory: string): string[] {
   return readdirSync(directory).flatMap((entry) => {
@@ -55,12 +63,13 @@ export default defineConfig({
     tailwindcss(),
     viteStaticCopy({
       targets: [
-        { src: "config/manifest.json", dest: "." },
+        { src: manifestPath, dest: ".", rename: "manifest.json" },
         { src: "assets/icon.svg", dest: "." },
       ],
     }),
   ],
   build: {
+    outDir: distributionDirectory,
     manifest: true,
     // Extension documents load local ES modules directly. Preload hints cause
     // Chrome cross-world resource warnings in the extension origin.
@@ -69,7 +78,9 @@ export default defineConfig({
       input: {
         popup: resolve(__dirname, "..", "popup.html"),
         options: resolve(__dirname, "..", "options.html"),
-        offscreen: resolve(__dirname, "..", "offscreen.html"),
+        ...(browserTarget === "chromium"
+          ? { offscreen: resolve(__dirname, "..", "offscreen.html") }
+          : {}),
         background: resolve(
           __dirname,
           "..",

@@ -5,7 +5,7 @@ import {
   VaultLifecycleCleanupService,
 } from "@lfspm/core/services";
 import {
-  OffscreenClipboardAdapter,
+  createBrowserClipboardAdapter,
   WebCryptoClipboardSecretHashAdapter,
   WebLocksClipboardOperationCoordinatorAdapter,
 } from "../../adapters/clipboard";
@@ -30,7 +30,7 @@ export function composeSession(database: VaultManagerDb = db) {
   const clock = new SystemClockAdapter();
   const ids = new WebCryptoIdAdapter();
   const crypto = new WebCryptoAdapter();
-  const clipboard = new OffscreenClipboardAdapter();
+  const clipboard = createBrowserClipboardAdapter();
   const clipboardSecretHash = new WebCryptoClipboardSecretHashAdapter();
   const clipboardClearTasks = new ChromeClipboardClearTaskRepositoryAdapter();
   const clipboardOperations =
