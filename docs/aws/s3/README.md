@@ -9,14 +9,13 @@ keys.
 - Private S3 bucket with public access blocked
 - Default encryption: AES256 (SSE-S3)
 - Versioning enabled; lifecycle to prune noncurrent versions and abort incomplete uploads
-- Strict CORS for extension origins; exposes `ETag` and `x-amz-version-id`
+- Optional browser host access for S3; no per-installation CORS allowlist
 - IAM user for direct S3 API access
 - Least-privilege S3 access scoped to the configured object prefix
 
 ## Parameters
 
 - `BucketName` (String): Unique S3 bucket name
-- `ExtensionOrigins` (CommaDelimitedList): CORS origins (e.g., `chrome-extension://id,https://your.site`)
 - `ObjectPrefix` (String): Object key prefix to scope extension access (default: `vault/`)
 - `IamUserName` (String): IAM user name for the extension sync credentials (default: `spm-s3-sync-user`)
 - `LifecycleEnabled` (true|false): Enable lifecycle cleanup rules (default: true)
@@ -40,7 +39,12 @@ operate a backend that can issue, refresh, or revoke provider-specific
 credentials for the user.
 
 The CloudFormation stack creates only the bucket, IAM user, and scoped policy.
-It does not create or output an access key. The user creates the access key after
+It does not create or output an access key. In the IAM access-key wizard,
+choose **Application running outside AWS** for this browser extension. Review
+AWS's alternatives, acknowledge access-key creation if asked, then choose **Next**.
+**Description tag value** is an optional label to identify this device's key
+when reviewing or replacing it. For example: `LFSPM sync - My laptop`.
+Then choose **Create access key**. The user creates the access key after
 deployment, so AWS reveals the secret access key only during key creation instead
 of persisting it in stack outputs.
 
@@ -65,19 +69,52 @@ user's behalf.
 After creating and unlocking the vault, open **Options → Sync**. Unconfigured
 sync opens **Set up S3 storage**. Choose **Use template** for CloudFormation or
 **AWS Console** to create the resources manually. **I already have storage**
-opens the connection form directly; **S3 setup instructions** returns to the guide.
+opens the connection form directly; **Back to setup guide** returns to the guide.
+
+Both methods now show one step at a time with a numbered checklist. Confirm the
+AWS action to unlock the next step; completed steps stay available for review.
+Opening a link or copying text never marks a step complete. These confirmations
+record what you checked in AWS, not a CloudFormation API verification.
+
+The template route separates upload, parameters, deployment, stack status,
+Outputs and connection. The final step contains the real connection form and an
+expandable **Create access keys in AWS** guide. Use **Create stack → With new resources
+(standard)**, then upload the existing template file. Do not use resource import.
+Leave the optional deployment role blank unless your account requires one; keep
+rollback and deployment validations enabled, and acknowledge named IAM resources.
+
+Check **Stack info** after submitting. While the stack is in progress, wait and
+refresh; Outputs are unavailable. For failure or rollback, read the failed
+resource's **Status reason** in **Events**. Only confirm **CREATE_COMPLETE** after
+AWS shows it. If Outputs remains empty after completion and refresh, check that
+the uploaded Template contains its Outputs section.
+
+Copy the bucket, region and prefix from Outputs into the guide. They carry into
+the final connection step as a storage summary. **Edit storage** returns to the
+location step and retains entered keys in memory. Changing the location invalidates
+dependent confirmations and any access-test result. Progress survives switching
+methods and returning from the direct connection form during
+the same mounted Sync page. It resets when leaving the page, reloading or changing
+the vault/session. No setup progress or access keys are persisted by this guide.
+**Test access** checks reads and shows its result beside the key fields;
+**Enable sync** performs the real encrypted upload. Missing required fields show
+inline errors. Only the active connection form renders credential inputs.
+The storage summary sits above the key fields. The access result uses the same
+SyncStatus panel in the extension and gallery; a confirmed read does not claim
+that upload permission was checked or sync enabled.
 
 The template download uses `providers/aws/s3.template.yaml` from the same build.
 The guide explains its parameters, IAM acknowledgement, stack outputs, lifecycle
-retention and separate access-key creation. It displays this installation's actual
-extension origin for CORS.
+retention and separate access-key creation. Browser storage access is requested
+when you test or enable sync.
 
 For manual setup, enter the new bucket name, region and vault prefix. The guide
-generates copyable CORS, HTTPS-only bucket policy and IAM permission documents
+generates copyable HTTPS-only bucket policy and IAM permission documents
 for that location. The IAM document scopes object access and listing to the
 chosen prefix. Wildcards and IAM policy variables are rejected in these inputs.
 Use the same dedicated prefix on every device. The guide carries the location
-into the connection form; access keys belong only in that form.
+into the final connection step; access keys belong only in that form.
+The manual route combines access-key instructions and connection in its fourth step.
 
 Keep Block Public Access enabled, disable ACLs, enable versioning and use SSE-S3.
 The manual path does not install lifecycle cleanup; retained versions incur
@@ -88,10 +125,12 @@ instructions in their AWS account.
 References checked September 6, 2026:
 
 - [AWS CloudFormation console deployment](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cfn-console-create-stack.html)
+- [CloudFormation Outputs availability](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/outputs-section-structure.html)
 - [Creating an S3 bucket](https://docs.aws.amazon.com/AmazonS3/latest/userguide/create-bucket-overview.html)
 - [Editing S3 CORS](https://docs.aws.amazon.com/AmazonS3/latest/userguide/enabling-cors-examples.html)
 - [S3 bucket policy examples, including HTTPS enforcement](https://docs.aws.amazon.com/AmazonS3/latest/userguide/example-bucket-policies.html)
 - [Creating IAM policies in the console](https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_create-console.html)
+- [Access-key wizard: description and retrieval](https://docs.aws.amazon.com/IAM/latest/UserGuide/access-key-self-managed.html)
 - [Managing IAM access keys](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys_update.html)
 
 ### AWS CloudShell
@@ -108,7 +147,6 @@ aws cloudformation deploy \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameter-overrides \
     BucketName=<bucket-name> \
-    ExtensionOrigins="<extension-origins>" \
     ObjectPrefix="<prefix>" \
     IamUserName="<iam-user-name>" \
     LifecycleEnabled=true \
@@ -128,7 +166,6 @@ aws cloudformation deploy \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameter-overrides \
     BucketName=<bucket-name> \
-    ExtensionOrigins="<extension-origins>" \
     ObjectPrefix="<prefix>" \
     IamUserName="<iam-user-name>" \
     LifecycleEnabled=true \
@@ -146,23 +183,52 @@ aws cloudformation deploy \
 ## Required Values
 
 - `<bucket-name>`: Globally unique S3 bucket name.
-- `<extension-origins>`: CORS origins for the extension and optional website.
 - `<prefix>`: S3 object prefix the extension may read and write.
 - `<iam-user-name>`: IAM user name to create for this sync setup.
 
-## Extension Origins
+## Browser storage access
 
-1. Go to `chrome://extensions/`.
-2. Enable Developer mode.
-3. Copy the extension ID and format it as `chrome-extension://<extension-id>`.
-4. Add any website or local development origins if needed.
-5. Separate multiple origins with commas.
+Choose **Test access** or **Enable sync** and allow the browser's storage-access
+request. Each installation grants its own permission. Firefox UUIDs and Chromium
+extension IDs do not need to be added to the bucket's CORS settings.
 
-Example:
+The extension requests the exact HTTPS hostname resolved by the AWS SDK. For a
+bucket without dots this is a bucket-specific host, such as
+`https://my-vault.s3.eu-central-1.amazonaws.com/*`. Dotted bucket names require
+path-style addressing, so the prompt covers the shared regional S3 hostname.
+Browser permissions cannot restrict an object prefix. The scoped IAM policy
+continues to enforce bucket and prefix access in both cases.
 
-```text
-chrome-extension://abcdefghijklmnopqrstuvwxyz123456,https://yourdomain.com,http://localhost:3000
-```
+The manifest declares AWS domains as optional eligibility patterns. It does not
+grant access to all AWS hosts. Runtime requests ask only for the configured host.
+Every SDK request checks permission again, including retries. Unexpected hosts
+and HTTP redirects are rejected. Requests originate in trusted extension code;
+web pages cannot use the extension as a general fetch proxy.
+
+If access is denied or revoked, local vault data remains intact. Open Sync and
+choose **Allow storage access**, then retry or check sync. An upload interrupted
+after it started can remain pending until reconciliation confirms its outcome.
+
+### Existing buckets and stacks
+
+No AWS changes are required to use this permission flow with an existing bucket.
+Existing CORS rules may stay in place. New templates omit `ExtensionOrigins` and
+`CorsConfiguration`. To remove old CORS rules from a CloudFormation-managed
+bucket, update its existing stack using the new template; keep bucket, prefix,
+IAM user and lifecycle values unchanged and review the change set. Do not create
+another bucket. Keep rules needed by older installations or other clients until
+those clients have been updated. Do not change the IAM policy or public-access
+blocking to resolve a browser permission problem.
+
+This network design is shared across Chromium and Firefox. Complete Firefox
+packaging/runtime support remains a separate task. See [browser support](../../browser-support.md).
+
+References checked September 6, 2026:
+
+- [Chrome optional permissions](https://developer.chrome.com/docs/extensions/reference/api/permissions)
+- [Chrome extension network requests](https://developer.chrome.com/docs/extensions/develop/concepts/network-requests)
+- [Firefox host permissions](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/host_permissions)
+- [S3 authorization still applies with CORS](https://docs.aws.amazon.com/AmazonS3/latest/userguide/enabling-cors-examples.html)
 
 ## Get Outputs
 
@@ -238,7 +304,7 @@ revocation only removes that key pair's storage access.
 
 - TLS-only access is enforced.
 - Public S3 access is blocked.
-- CORS origins must match exactly.
+- Browser storage permission must be granted for the configured S3 hostname.
 - Lifecycle rules apply only to `ObjectPrefix`.
 - The IAM policy allows list/read/write/delete only within the configured prefix.
 - The configured prefix is intended for one user's vault storage. Devices on

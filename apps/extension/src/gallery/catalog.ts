@@ -102,6 +102,7 @@ export const catalog = [
   { id: "B36", name: "Resizable" },
   { id: "B37", name: "Kbd" },
   { id: "B38", name: "Avatar" },
+  { id: "P29", name: "GuidancePanel" },
   {
     id: "P01",
     name: "StepNavigation",
@@ -250,7 +251,7 @@ export function collectionFor(id: string) {
   const n = Number(id.slice(1));
   if (id.startsWith("B"))
     return n <= 20 ? "base" : n <= 28 ? "additions" : "expanded";
-  return [1, 2, 3, 4, 5, 6, 7, 8, 12, 13, 14, 15, 26, 28].includes(n)
+  return [1, 2, 3, 4, 5, 6, 7, 8, 12, 13, 14, 15, 26, 28, 29].includes(n)
     ? "shared"
     : "features";
 }

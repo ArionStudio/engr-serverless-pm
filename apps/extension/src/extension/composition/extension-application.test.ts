@@ -63,6 +63,7 @@ function installBrowser() {
   const createDocument = vi.fn(async () => undefined);
   vi.stubGlobal("navigator", { locks });
   vi.stubGlobal("chrome", {
+    permissions: { contains: async () => true },
     storage: { session: storageArea },
     alarms: { create, clear },
     offscreen: { createDocument },

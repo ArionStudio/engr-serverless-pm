@@ -1,3 +1,5 @@
+import setupScreenshot from "./s3-setup-outputs.png";
+import { GuidancePanel } from "@/ui/components/feedback/guidance-panel.view";
 import { EntryDetailsExample, SiteIconExample } from "./entry-widgets.example";
 import { vaultLockOptions } from "@/ui/lib/vault-lock-options";
 import { EntryTableExample } from "./entry-table-example.view";
@@ -79,6 +81,133 @@ export function SharedExamples() {
   const [locked, setLocked] = useState(false);
   return (
     <div className="review-grid grid gap-x-8 gap-y-10">
+      <Specimen
+        id="P29"
+        name="GuidancePanel"
+        owner="Shared presentation · components/feedback"
+        wide
+      >
+        <Scenario
+          label="Guidance content"
+          options={
+            ["long", "short", "links-and-image", "grouped-info"] as const
+          }
+        >
+          {(content) => (
+            <div className="grid items-start gap-5 @3xl:grid-cols-2">
+              <GuidancePanel
+                title="What the template creates"
+                links={
+                  content === "links-and-image" ? (
+                    <>
+                      <a
+                        href="https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cfn-console-create-stack.html"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        AWS stack instructions ↗
+                      </a>
+                      <a
+                        href="https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/outputs-section-structure.html"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        AWS Outputs reference ↗
+                      </a>
+                    </>
+                  ) : undefined
+                }
+                attachments={
+                  content === "links-and-image" ? (
+                    <figure>
+                      <a
+                        href={setupScreenshot}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label="Open setup screenshot at full size"
+                      >
+                        <img
+                          src={setupScreenshot}
+                          alt="Extension S3 guide showing bucket, region and prefix fields in the Record Outputs step."
+                          loading="lazy"
+                          width={1000}
+                          height={850}
+                        />
+                      </a>
+                      <figcaption>
+                        Record the stack Outputs in the extension. Open the
+                        image for full size.
+                      </figcaption>
+                    </figure>
+                  ) : undefined
+                }
+              >
+                {content === "grouped-info" ? (
+                  <dl className="space-y-4">
+                    <div>
+                      <dt className="font-semibold">Stored in S3</dt>
+                      <dd>
+                        The encrypted vault and its previous object versions.
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="font-semibold">Kept on this device</dt>
+                      <dd>
+                        Your encrypted access keys. Enter keys separately on
+                        each device.
+                      </dd>
+                    </div>
+                  </dl>
+                ) : null}
+                <p>
+                  The template creates a private, versioned bucket and an IAM
+                  user restricted to your vault prefix.
+                </p>
+                {content === "long" ? (
+                  <>
+                    <p>
+                      Encryption, extension access and HTTPS-only access are
+                      configured together. Access keys are created separately.
+                    </p>
+                    <ul>
+                      <li>
+                        Keep the same bucket, region and prefix on each device.
+                      </li>
+                      <li>
+                        Use the stack Outputs to fill the connection form.
+                      </li>
+                      <li>Test access before enabling sync.</li>
+                    </ul>
+                  </>
+                ) : null}
+              </GuidancePanel>
+              <GuidancePanel
+                variant="warning"
+                title="Keep the secret access key private"
+              >
+                <p>AWS reveals the secret only when the key is created.</p>
+                {content === "long" ? (
+                  <>
+                    <p>
+                      Keep it available until you have entered it in the
+                      extension.
+                    </p>
+                    <ul>
+                      <li>Never use root or administrator access keys.</li>
+                      <li>
+                        Do not include keys in screenshots or support messages.
+                      </li>
+                      <li>
+                        Remove an unencrypted CSV after saving the key securely.
+                      </li>
+                    </ul>
+                  </>
+                ) : null}
+              </GuidancePanel>
+            </div>
+          )}
+        </Scenario>
+      </Specimen>
       <Specimen
         id="P01"
         name="StepNavigation"
@@ -984,6 +1113,7 @@ export function FeatureExamples() {
           label="Sync status"
           options={[
             "unconfigured",
+            "permission-required",
             "not-checked",
             "access-confirmed",
             "checking",
@@ -999,10 +1129,12 @@ export function FeatureExamples() {
               state={state}
               detail={
                 {
+                  "permission-required":
+                    "Allow this browser to connect to your S3 storage. Your local vault remains available.",
                   "not-checked":
                     "Sync is configured. Check for remote changes.",
                   "access-confirmed":
-                    "Read access confirmed. Upload permissions have not been tested.",
+                    "Your keys can read this storage location. Upload permission will be checked when you enable sync.",
                   unconfigured: "Connect your own S3 storage when ready.",
                   checking: "Checking remote state.",
                   uploading: "Uploading encrypted changes.",

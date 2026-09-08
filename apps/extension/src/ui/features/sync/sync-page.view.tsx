@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { S3SetupGuide } from "./s3-setup-guide.view";
 import { Button } from "@/ui/components/primitives/button";
 import { CredentialForm } from "./credential-form.view";
@@ -16,20 +15,40 @@ export function SyncPage({
   capabilities: SyncCapabilities;
   onBack: () => void;
 }) {
-  const [showGuide, setShowGuide] = useState(true);
   const sync = useSync(vaultId, capabilities);
   const busy = !!sync.operation;
   const items = sync.review ? comparisons(sync.review) : [];
   const form = sync.target === null || sync.repairing;
+  function connection(onEditLocation?: () => void) {
+    return (
+      <CredentialForm
+        key={sync.generation}
+        mode={sync.repairing ? "repair" : "setup"}
+        value={sync.draft}
+        onChange={sync.change}
+        onEditLocation={onEditLocation}
+        feedback={sync.feedback ? <SyncStatus {...sync.feedback} /> : undefined}
+        message={sync.error}
+        onSubmit={() => void sync.save()}
+        onCancel={() => {
+          sync.cancel();
+          if (!busy && !sync.repairing) onBack();
+        }}
+        onTest={() => void sync.test()}
+        testing={sync.operation === "test"}
+        state={busy ? "pending" : sync.error ? "error" : "idle"}
+      />
+    );
+  }
   return (
     <section className="space-y-6" aria-label="Sync">
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold tracking-tight">Sync</h1>
-        <Button variant="ghost" onClick={onBack}>
+        <Button variant="ghost" disabled={busy} onClick={onBack}>
           Back to vault
         </Button>
       </div>
-      {sync.error ? (
+      {sync.error && !form ? (
         <p role="alert" className="text-sm text-destructive">
           {sync.error}
         </p>
@@ -61,7 +80,12 @@ export function SyncPage({
           ))}
         </dl>
       ) : null}
-      {sync.feedback ? (
+      {sync.accessMissing && !form ? (
+        <SyncStatus
+          state="permission-required"
+          detail="Allow this browser to connect to your S3 storage. Your local vault remains available."
+        />
+      ) : sync.feedback && !form ? (
         <SyncStatus {...sync.feedback} />
       ) : sync.target && !form && !sync.error ? (
         <SyncStatus
@@ -70,57 +94,42 @@ export function SyncPage({
         />
       ) : null}
       {form ? (
-        <>
-          {showGuide && !sync.repairing ? (
-            <S3SetupGuide
-              origin={capabilities.origin}
-              location={{
-                bucket: sync.draft.bucket,
-                region: sync.draft.region,
-                prefix: sync.draft.prefix,
-              }}
-              onLocationChange={(location) =>
-                sync.change({ ...sync.draft, ...location })
-              }
-              onCopy={capabilities.copySetupText}
-              onContinue={() => setShowGuide(false)}
-            />
-          ) : (
-            <div className="max-w-xl space-y-6">
-              {!sync.repairing ? (
-                <Button
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => setShowGuide(true)}
-                >
-                  S3 setup instructions
-                </Button>
-              ) : null}
-              <CredentialForm
-                key={sync.generation}
-                mode={sync.repairing ? "repair" : "setup"}
-                value={sync.draft}
-                onChange={sync.change}
-                onSubmit={() => void sync.save()}
-                onCancel={() => {
-                  sync.cancel();
-                  if (!busy && !sync.repairing) onBack();
-                }}
-                onTest={() => void sync.test()}
-                testing={sync.operation === "test"}
-                state={busy ? "pending" : "idle"}
-              />
-            </div>
-          )}
-        </>
+        sync.repairing ? (
+          <div className="s3-setup-guide mx-auto max-w-3xl">{connection()}</div>
+        ) : (
+          <S3SetupGuide
+            key={`${vaultId}:${sync.generation}`}
+            location={{
+              bucket: sync.draft.bucket,
+              region: sync.draft.region,
+              prefix: sync.draft.prefix,
+            }}
+            onLocationChange={(location) =>
+              sync.change({ ...sync.draft, ...location })
+            }
+            onCopy={capabilities.copySetupText}
+            busy={busy}
+            connection={connection}
+          />
+        )
       ) : sync.target ? (
         <div className="flex flex-wrap gap-3">
-          <Button disabled={busy} onClick={() => void sync.check()}>
+          {sync.accessMissing ? (
+            <Button disabled={busy} onClick={() => void sync.allowAccess()}>
+              {sync.operation === "permission"
+                ? "Requesting access…"
+                : "Allow storage access"}
+            </Button>
+          ) : null}
+          <Button
+            disabled={busy || sync.accessMissing}
+            onClick={() => void sync.check()}
+          >
             {sync.operation === "review" ? "Checking…" : "Check sync"}
           </Button>
           <Button
             variant="outline"
-            disabled={busy}
+            disabled={busy || sync.accessMissing}
             onClick={() => void sync.upload()}
           >
             {sync.operation === "upload" ? "Uploading…" : "Retry upload"}

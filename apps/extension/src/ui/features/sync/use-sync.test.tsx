@@ -22,7 +22,7 @@ function mount(capabilities = gallerySync()) {
   return {
     ...renderHook(() => useSync("gallery-vault", capabilities)),
     capabilities,
-    notify: (reason: "session" | "focus") => listener(reason),
+    notify: (reason: "session" | "focus" | "permissions") => listener(reason),
     unsubscribe,
   };
 }
@@ -198,7 +198,7 @@ describe("sync UI lifecycle", () => {
     act(() => {
       pending = ctx.result.current.save();
     });
-    act(() => ctx.notify("focus"));
+    await act(async () => ctx.notify("focus"));
     await act(async () => {
       finishSave();
       await pending;
@@ -206,6 +206,67 @@ describe("sync UI lifecycle", () => {
     expect(ctx.result.current.target).toEqual(syncLocation);
     await act(async () => finishInspection());
     expect(ctx.result.current.target).toEqual(syncLocation);
+  });
+  it("clears an access confirmation when permission changes before setup is saved", async () => {
+    const ctx = mount();
+    await ready(ctx);
+    act(() => ctx.result.current.change(input));
+    await act(() => ctx.result.current.test());
+    expect(ctx.result.current.feedback?.state).toBe("access-confirmed");
+    await act(async () => ctx.notify("permissions"));
+    expect(ctx.result.current.feedback).toBeUndefined();
+    expect(ctx.result.current.draft).toEqual(input);
+  });
+  it("keeps entered keys on denied permission and sends no operation", async () => {
+    const ctx = mount();
+    await ready(ctx);
+    ctx.capabilities.requestAccess = async () => {
+      const e = new Error();
+      e.name = "StorageHostPermissionRequiredError";
+      throw e;
+    };
+    ctx.capabilities.test = vi.fn();
+    act(() => ctx.result.current.change(input));
+    await act(() => ctx.result.current.test());
+    expect(ctx.capabilities.test).not.toHaveBeenCalled();
+    expect(ctx.result.current.draft).toEqual(input);
+    expect(ctx.result.current.error).toContain("Storage access is not allowed");
+  });
+  it("discards review after permission revocation and permits recovery without losing configuration", async () => {
+    const ctx = mount(gallerySync("sync-review"));
+    await ready(ctx);
+    await act(() => ctx.result.current.check());
+    ctx.capabilities.hasAccess = async () => false;
+    await act(async () => ctx.notify("permissions"));
+    expect(ctx.result.current.accessMissing).toBe(true);
+    expect(ctx.result.current.target).toEqual(syncLocation);
+    expect(ctx.result.current.review).toBeUndefined();
+    expect(ctx.result.current.feedback).toBeUndefined();
+    ctx.capabilities.hasAccess = async () => true;
+    await act(() => ctx.result.current.allowAccess());
+    expect(ctx.result.current.accessMissing).toBe(false);
+  });
+  it("does not start an operation if the vault locks while permission is pending", async () => {
+    const ctx = mount();
+    await ready(ctx);
+    let grant = () => {};
+    ctx.capabilities.requestAccess = () =>
+      new Promise<void>((resolve) => {
+        grant = resolve;
+      });
+    ctx.capabilities.configure = vi.fn();
+    act(() => ctx.result.current.change(input));
+    let pending: Promise<void>;
+    act(() => {
+      pending = ctx.result.current.save();
+    });
+    await act(async () => ctx.notify("session"));
+    await act(async () => {
+      grant();
+      await pending;
+    });
+    expect(ctx.capabilities.configure).not.toHaveBeenCalled();
+    expect(ctx.result.current.draft.secretAccessKey).toBe("");
   });
   it("does not send incomplete choices to core", () => {
     expect(comparisons(syncReview)[0].id).toBe("tag:1");

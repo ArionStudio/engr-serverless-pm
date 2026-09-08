@@ -20,6 +20,18 @@ const os = require("node:os");
       path: path.resolve("apps/extension/dist"),
     });
     const origin = `chrome-extension://${id}`;
+    // Browser-owned permission grant for headless automation. The production
+    // click path still calls permissions.request; no permission API is mocked.
+    const management = await context.newPage();
+    await management.goto("chrome://extensions");
+    await management.evaluate(
+      async ({ id, host }) => {
+        await chrome.developerPrivate.addHostPermission(id, host);
+      },
+      { id, host: "https://personal-vault.s3.eu-central-1.amazonaws.com/*" },
+    );
+    await management.close();
+
     const page = await context.newPage();
     page.setDefaultTimeout(15000);
     const errors = [];
@@ -33,15 +45,12 @@ const os = require("node:os");
         const request = route.request();
         const method = request.method();
         requests.push({ method, url: request.url() });
-        const headers = {
-          "access-control-allow-origin": origin,
-          "access-control-allow-methods": "GET,PUT,DELETE",
-          "access-control-allow-headers": "*",
-          "access-control-expose-headers": "ETag",
-          ETag: etag,
-        };
-        if (method === "OPTIONS")
-          return route.fulfill({ status: 200, headers });
+        const headers = { ETag: etag };
+        assert.notEqual(
+          method,
+          "OPTIONS",
+          "Privileged S3 requests must not need CORS preflight",
+        );
         assert(
           request.headers().authorization?.includes("AWS4-HMAC-SHA256"),
           "Actual AWS SDK must sign requests",
@@ -122,9 +131,7 @@ const os = require("node:os");
     await page
       .getByRole("button", { name: "Check words", exact: true })
       .click();
-    await page
-      .getByRole("heading", { name: "Vault ready", exact: true })
-      .waitFor();
+    await page.getByRole("heading", { name: "Entries", exact: true }).waitFor();
     await page.getByRole("button", { name: "Sync", exact: true }).click();
     const downloadReady = page.waitForEvent("download");
     await page.getByRole("button", { name: "Download S3 template" }).click();
@@ -141,13 +148,9 @@ const os = require("node:os");
     await page.getByLabel("S3 region", { exact: true }).fill("eu-central-1");
     await page
       .getByRole("button", {
-        name: "2. Allow this extension and require HTTPS",
+        name: "I created this private bucket",
       })
       .click();
-    const cors = JSON.parse(
-      await page.getByLabel("CORS configuration", { exact: true }).inputValue(),
-    );
-    assert.deepEqual(cors[0].AllowedOrigins, [origin]);
     assert.equal(requests.length, 0, "Setup instructions must not contact S3");
     await page
       .getByRole("button", { name: "I already have storage", exact: true })
@@ -161,6 +164,43 @@ const os = require("node:os");
       "eu-central-1",
     );
     await page
+      .getByRole("button", { name: "Back to setup guide", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "I saved the HTTPS policy", exact: true })
+      .click();
+    await page
+      .getByRole("button", {
+        name: "I attached the scoped policy to the user",
+        exact: true,
+      })
+      .click();
+    await page
+      .getByRole("heading", { name: "4. Connect vault", exact: true })
+      .waitFor();
+    assert(
+      (
+        await page
+          .getByRole("region", { name: "Storage location", exact: true })
+          .textContent()
+      ).includes("personal-vault"),
+    );
+    assert.equal(
+      await page.getByLabel("Secret access key", { exact: true }).count(),
+      1,
+    );
+    await page
+      .getByRole("button", { name: "Test access", exact: true })
+      .click();
+    await page
+      .getByText("Access key ID is required.", { exact: true })
+      .waitFor();
+    assert.equal(
+      requests.length,
+      0,
+      "Incomplete credentials must not contact S3",
+    );
+    await page
       .getByLabel("Access key ID", { exact: true })
       .fill("EXAMPLEACCESSKEYID123");
     const secret = "controlled-secret-access-key-never-a-real-key";
@@ -168,7 +208,7 @@ const os = require("node:os");
     await page
       .getByRole("button", { name: "Test access", exact: true })
       .click();
-    await page.getByText(/Read access confirmed\./).waitFor();
+    await page.getByText(/Read access confirmed/).waitFor();
     assert.equal(writes, 0);
     await page
       .getByRole("button", { name: "Enable sync", exact: true })
@@ -216,6 +256,55 @@ const os = require("node:os");
       .getByText("The encrypted vault is up to date in S3.", { exact: true })
       .waitFor();
     assert.equal(writes, 1);
+    const grants = await page.evaluate(() => chrome.permissions.getAll());
+    assert.deepEqual(grants.origins, [
+      "https://personal-vault.s3.eu-central-1.amazonaws.com/*",
+    ]);
+    const requestsBeforeRevoke = requests.length;
+    await page.evaluate(() =>
+      chrome.permissions.remove({
+        origins: ["https://personal-vault.s3.eu-central-1.amazonaws.com/*"],
+      }),
+    );
+    await page.getByText("Storage access is needed", { exact: true }).waitFor();
+    assert(
+      await page
+        .getByRole("button", { name: "Check sync", exact: true })
+        .isDisabled(),
+    );
+    assert(
+      await page
+        .getByRole("button", { name: "Retry upload", exact: true })
+        .isDisabled(),
+    );
+    assert.equal(requests.length, requestsBeforeRevoke);
+    const restore = await context.newPage();
+    await restore.goto("chrome://extensions");
+    await restore.evaluate(
+      async ({ id, host }) => {
+        await chrome.developerPrivate.addHostPermission(id, host);
+      },
+      { id, host: "https://personal-vault.s3.eu-central-1.amazonaws.com/*" },
+    );
+    await restore.close();
+    if (
+      await page
+        .getByRole("button", { name: "Allow storage access", exact: true })
+        .isVisible()
+    ) {
+      await page
+        .getByRole("button", { name: "Allow storage access", exact: true })
+        .click();
+    }
+    await page
+      .getByText("Storage access is needed", { exact: true })
+      .waitFor({ state: "hidden" });
+    await page.getByRole("button", { name: "Check sync", exact: true }).click();
+    await page
+      .getByText("This device and S3 have the same verified vault.", {
+        exact: true,
+      })
+      .waitFor();
     await page.reload();
     await page.getByRole("button", { name: "Sync", exact: true }).click();
     await page.getByText("personal-vault", { exact: true }).waitFor();
@@ -243,7 +332,10 @@ const os = require("node:os");
         writes,
         signedRequests: requests.length,
         checks: [
-          "setup",
+          "setup without CORS",
+          "exact host grant",
+          "revocation pauses sync without losing the vault",
+          "permission restoration",
           "read-only access test",
           "conditional first upload",
           "verified equality",

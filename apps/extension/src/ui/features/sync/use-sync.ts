@@ -8,6 +8,8 @@ import type { Resolution, SyncDisplayState } from "./sync-review.view";
 import { resolutionFromChoices } from "./sync-review.mapper";
 
 type Operation =
+  | "permission"
+  | "refresh"
   | "test"
   | "configure"
   | "repair"
@@ -18,6 +20,7 @@ export function useSync(vaultId: string, capabilities: SyncCapabilities) {
   const [target, setTarget] = useState<SyncLocation | null>();
   const [draft, setDraft] = useState<CredentialDraft>({ ...emptyCredentials });
   const [repairing, setRepairing] = useState(false);
+  const [accessMissing, setAccessMissing] = useState(false);
   const [operation, setOperation] = useState<Operation>();
   const [error, setError] = useState<string>();
   const [feedback, setFeedback] = useState<{
@@ -56,8 +59,16 @@ export function useSync(vaultId: string, capabilities: SyncCapabilities) {
       const owner = epoch.current;
       try {
         const next = await capabilities.inspect(vaultId);
-        if (owner === epoch.current && inspection === inspectEpoch.current)
+        const missing = next !== null && !(await capabilities.hasAccess(next));
+        if (owner === epoch.current && inspection === inspectEpoch.current) {
           setTarget(next);
+          setAccessMissing(missing);
+          if (missing) {
+            setFeedback(undefined);
+            setReview(undefined);
+            setChoices({});
+          }
+        }
       } catch (cause) {
         if (owner !== epoch.current || inspection !== inspectEpoch.current)
           return;
@@ -73,9 +84,14 @@ export function useSync(vaultId: string, capabilities: SyncCapabilities) {
       }
     }
     void inspect(false);
-    const unsubscribe = capabilities.subscribe(
-      (reason) => void inspect(reason === "session"),
-    );
+    const unsubscribe = capabilities.subscribe((reason) => {
+      if (reason === "permissions") {
+        setFeedback(undefined);
+        setReview(undefined);
+        setChoices({});
+      }
+      void inspect(reason === "session");
+    });
     return () => {
       unsubscribe();
       ++lifecycle.current;
@@ -92,6 +108,16 @@ export function useSync(vaultId: string, capabilities: SyncCapabilities) {
     setOperation(kind);
     setError(undefined);
     try {
+      if (kind !== "refresh") {
+        const location = target && !repairing ? target : draft;
+        await capabilities.requestAccess({
+          bucket: location.bucket,
+          region: location.region,
+          prefix: location.prefix,
+        });
+        if (current !== epoch.current) return;
+        setAccessMissing(false);
+      }
       await task();
     } catch (cause) {
       if (current !== epoch.current) return;
@@ -105,7 +131,11 @@ export function useSync(vaultId: string, capabilities: SyncCapabilities) {
         const next = await capabilities.inspect(vaultId);
         if (current === epoch.current) {
           setTarget(next);
-          if (next) clearSecrets();
+          if (next) {
+            clearSecrets();
+            const missing = !(await capabilities.hasAccess(next));
+            if (current === epoch.current) setAccessMissing(missing);
+          }
         }
       } catch {
         if (current === epoch.current) {
@@ -124,7 +154,11 @@ export function useSync(vaultId: string, capabilities: SyncCapabilities) {
   async function refreshConfiguration(current: number) {
     try {
       const next = await capabilities.inspect(vaultId);
-      if (current === epoch.current) setTarget(next);
+      const missing = next !== null && !(await capabilities.hasAccess(next));
+      if (current === epoch.current) {
+        setTarget(next);
+        setAccessMissing(missing);
+      }
     } catch {
       if (current !== epoch.current) return;
       setTarget(undefined);
@@ -151,6 +185,7 @@ export function useSync(vaultId: string, capabilities: SyncCapabilities) {
     target,
     draft,
     repairing,
+    accessMissing,
     operation,
     error,
     feedback,
@@ -179,7 +214,8 @@ export function useSync(vaultId: string, capabilities: SyncCapabilities) {
       setError(undefined);
       setFeedback(undefined);
     },
-    refresh: () => run("review", () => refreshConfiguration(epoch.current)),
+    allowAccess: () => run("permission", async () => {}),
+    refresh: () => run("refresh", () => refreshConfiguration(epoch.current)),
     test: () =>
       run("test", async () => {
         const current = epoch.current;
@@ -188,7 +224,7 @@ export function useSync(vaultId: string, capabilities: SyncCapabilities) {
           setFeedback({
             state: "access-confirmed",
             detail:
-              "Read access confirmed. Enabling sync also requires permission to upload to this location.",
+              "Your keys can read this storage location. Upload permission will be checked when you enable sync.",
           });
       }),
     save: () =>

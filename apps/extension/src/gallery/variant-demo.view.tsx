@@ -1,3 +1,4 @@
+import { GuidancePanel } from "@/ui/components/feedback/guidance-panel.view";
 import { emptyEntryDraft } from "@/ui/features/entries/entry-draft";
 import { EntryEditor } from "@/ui/features/entries/entry-editor.view";
 import { entryToolsFixture } from "./entry-tools-fixture";
@@ -69,6 +70,18 @@ export function VariantDemo({
   const iconButton = (name: string, iconSize?: string) =>
     iconSize?.startsWith("icon") ? <Mark /> : name;
   switch (id) {
+    case "P29":
+      return (
+        <GuidancePanel
+          title="Keep access keys private"
+          {...p(GuidancePanel, "GuidancePanel")}
+        >
+          <p>
+            Enter keys only in the extension's connection form. Do not include
+            them in screenshots or support messages.
+          </p>
+        </GuidancePanel>
+      );
     case "F05":
       return (
         <CredentialForm

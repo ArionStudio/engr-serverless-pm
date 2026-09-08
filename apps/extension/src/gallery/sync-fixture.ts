@@ -63,6 +63,7 @@ export const syncReview: PrepareSyncReviewResult = {
   },
 };
 export type SyncScenario =
+  | "sync-permission"
   | "sync-setup"
   | "sync-access-pending"
   | "sync-saved-refresh-error"
@@ -84,8 +85,12 @@ export function gallerySync(
       ? null
       : { ...syncLocation };
   let refreshFailure = false;
+  let permitted = scenario !== "sync-permission";
   return {
-    origin: "chrome-extension://abcdefghijklmnopabcdefghijklmnop",
+    requestAccess: async () => {
+      permitted = true;
+    },
+    hasAccess: async () => permitted,
     copySetupText: async () => {},
     inspect: async () => {
       if (refreshFailure) {

@@ -633,13 +633,6 @@ export const componentApi = [
     "axes": {}
   },
   {
-    "name": "ConnectionInstructions",
-    "source": "features/sync/s3-setup-guide.view.tsx",
-    "family": "S04",
-    "exported": false,
-    "axes": {}
-  },
-  {
     "name": "CopyAction",
     "source": "components/feedback/action-feedback.view.tsx",
     "family": "P14",
@@ -1144,6 +1137,18 @@ export const componentApi = [
     "family": "P20",
     "exported": true,
     "axes": {}
+  },
+  {
+    "name": "GuidancePanel",
+    "source": "components/feedback/guidance-panel.view.tsx",
+    "family": "P29",
+    "exported": true,
+    "axes": {
+      "variant": [
+        "info",
+        "warning"
+      ]
+    }
   },
   {
     "name": "Input",
@@ -1742,6 +1747,13 @@ export const componentApi = [
     "axes": {}
   },
   {
+    "name": "SetupChecklist",
+    "source": "features/sync/setup-checklist.view.tsx",
+    "family": "S04",
+    "exported": true,
+    "axes": {}
+  },
+  {
     "name": "SetupConnection",
     "source": "features/vault-setup/setup-connection.view.tsx",
     "family": "S02",
@@ -1777,6 +1789,13 @@ export const componentApi = [
     "axes": {}
   },
   {
+    "name": "SetupLocation",
+    "source": "features/sync/s3-setup-guide.view.tsx",
+    "family": "S04",
+    "exported": false,
+    "axes": {}
+  },
+  {
     "name": "SetupPassword",
     "source": "features/vault-setup/setup-password.view.tsx",
     "family": "S02",
@@ -1787,6 +1806,13 @@ export const componentApi = [
     "name": "SetupRecoveryView",
     "source": "features/vault-setup/setup-recovery.view.tsx",
     "family": "S02",
+    "exported": true,
+    "axes": {}
+  },
+  {
+    "name": "SetupStage",
+    "source": "features/sync/setup-checklist.view.tsx",
+    "family": "S04",
     "exported": true,
     "axes": {}
   },

@@ -1,0 +1,55 @@
+/* Setup instructions use reading-size controls; the compact primitive defaults
+   remain available for dense tables and toolbars elsewhere. */
+:is(.s3-setup-guide, .sync-credentials) [data-slot="button"],
+:is(.s3-setup-guide, .sync-credentials) [data-slot="tabs-trigger"],
+:is(.s3-setup-guide, .sync-credentials) [data-slot="native-select"] {
+  min-height: 2.5rem;
+  height: auto;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+:is(.s3-setup-guide, .sync-credentials) [data-slot="button"] {
+  white-space: normal;
+  padding-block: 0.5rem;
+  padding-inline: 0.875rem;
+}
+
+:is(.s3-setup-guide, .sync-credentials) [data-slot="tabs-list"] {
+  height: auto;
+  min-height: 2.875rem;
+}
+
+:is(.s3-setup-guide, .sync-credentials) [data-slot="native-select"],
+:is(.s3-setup-guide, .sync-credentials) [data-slot="input"] {
+  min-height: 2.75rem;
+  font-size: 1rem;
+}
+
+.s3-setup-guide .s3-steps [data-slot="button"] {
+  padding-inline: 0.25rem;
+}
+
+@container s3 (min-width: 56rem) {
+  .s3-setup-guide .s3-steps [data-slot="button"] {
+    padding-inline: 0.875rem;
+  }
+}
+
+.sync-credentials [data-slot="input-group"] {
+  height: 2.75rem;
+}
+
+.sync-credentials [data-slot="input-group-control"] {
+  height: 100%;
+  font-size: 1rem;
+}
+
+.sync-credentials [data-slot="input-group-addon"] {
+  padding-block: 0;
+}
+
+.sync-credentials [data-slot="input-group-addon"] [data-slot="button"] {
+  min-height: 2rem;
+  padding-block: 0.25rem;
+}
