@@ -193,7 +193,11 @@ export function OptionsExample({
   const [verification, setVerification] = useState(
     state.startsWith("verification") || state === "recovered-verification",
   );
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState(
+    state === "unlock-error"
+      ? "Could not unlock this vault. Check your password."
+      : "",
+  );
   const assessPassword = useCallback(
     async (password: string) => {
       if (state === "password-pending")
@@ -441,11 +445,7 @@ export function OptionsExample({
           complete: false,
         }}
         pending={state === "unlock-pending" || state === "replacement-pending"}
-        error={
-          state === "unlock-error"
-            ? "Could not unlock this vault. Check your password."
-            : notice || undefined
-        }
+        error={notice || undefined}
         assessPassword={assessPassword}
         onRecover={() => setNotice("Recovery requested")}
         onDismissError={() => setNotice("")}
@@ -558,6 +558,7 @@ export function ScreenExamples() {
               "sync-configured",
               "sync-copy-session-lost",
               "sync-permission",
+              "sync-permission-error",
               "sync-pending",
               "sync-error",
               "sync-session-expired",

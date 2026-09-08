@@ -51,7 +51,12 @@ export function useStorageAccess(
     }
     void check();
     const unsubscribe = capabilities.subscribe((reason) => {
-      if (reason === "permissions" || reason === "focus") void check();
+      if (
+        reason === "permissions" ||
+        reason === "permissions-removed" ||
+        reason === "focus"
+      )
+        void check();
     });
     return () => {
       active = false;

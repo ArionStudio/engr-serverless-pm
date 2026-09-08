@@ -39,6 +39,10 @@ const os = require("node:os");
     let remote;
     let writes = 0;
     let rejectRead = false;
+    let redirecting = false;
+    let redirectResponses = 0;
+    const redirectDestination =
+      "https://personal-vault.s3.eu-central-1.amazonaws.com/redirect-target";
     const etag = '"controlled-object"';
     await context.route(
       "https://personal-vault.s3.eu-central-1.amazonaws.com/**",
@@ -56,6 +60,14 @@ const os = require("node:os");
           request.headers().authorization?.includes("AWS4-HMAC-SHA256"),
           "Actual AWS SDK must sign requests",
         );
+        if (redirecting && request.url() !== redirectDestination) {
+          assert.equal(method, "GET");
+          redirectResponses++;
+          return route.fulfill({
+            status: 307,
+            headers: { Location: redirectDestination },
+          });
+        }
         if (method === "PUT") {
           assert.equal(
             request.headers()[remote ? "if-match" : "if-none-match"],
@@ -95,17 +107,33 @@ const os = require("node:os");
       if (
         ["warning", "error"].includes(message.type()) &&
         !message.text().includes("404") &&
-        !message.text().includes("403")
+        !message.text().includes("403") &&
+        !(
+          message.text().includes("net::ERR_FAILED") &&
+          redirectResponses > 0 &&
+          message.location().url === redirectDestination
+        )
       )
         errors.push(message.text());
     });
     const log = await context.newCDPSession(page);
     await log.send("Log.enable");
+    await log.send("Network.enable");
+    await log.send("Network.setBlockedURLs", { urls: [redirectDestination] });
+    let redirectAttempts = 0;
+    log.on("Network.requestWillBeSent", ({ request }) => {
+      if (request.url === redirectDestination) redirectAttempts++;
+    });
     log.on("Log.entryAdded", ({ entry }) => {
       if (
         ["warning", "error"].includes(entry.level) &&
         !entry.text.includes("404") &&
-        !entry.text.includes("403")
+        !entry.text.includes("403") &&
+        !(
+          entry.text.includes("net::ERR_FAILED") &&
+          redirectResponses > 0 &&
+          entry.url === redirectDestination
+        )
       )
         errors.push(entry.text);
     });
@@ -362,6 +390,27 @@ const os = require("node:os");
     await page
       .getByText("Storage access is needed", { exact: true })
       .waitFor({ state: "hidden" });
+    await page.getByRole("button", { name: "Check sync", exact: true }).click();
+    await page
+      .getByText("This device and S3 have the same verified vault.", {
+        exact: true,
+      })
+      .waitFor();
+    // A same-host redirect isolates fetch redirect policy from host grants/CORS.
+    redirecting = true;
+    await page.getByRole("button", { name: "Check sync", exact: true }).click();
+    await page
+      .getByText("The sync review could not be prepared. Reopen Sync and try again.", {
+        exact: true,
+      })
+      .waitFor();
+    assert(redirectResponses > 0);
+    assert.equal(
+      redirectAttempts,
+      0,
+      "Signed S3 requests must not attempt redirects",
+    );
+    redirecting = false;
     await page.getByRole("button", { name: "Check sync", exact: true }).click();
     await page
       .getByText("This device and S3 have the same verified vault.", {
@@ -647,6 +696,7 @@ const os = require("node:os");
         checks: [
           "setup without CORS",
           "exact host grant",
+          "real fetch rejects redirects without contacting the destination",
           "revocation pauses sync without losing the vault",
           "permission restoration",
           "read-only access test",
