@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
   type Ref,
@@ -116,55 +117,74 @@ export function PopupEntries({
   useEffect(() => {
     if (initialDraft) onDraftConsumed();
   }, [initialDraft, onDraftConsumed]);
-  const labels = Object.fromEntries(
-    (live.data?.tags ?? []).map((tag) => [tag.id, tag.name]),
-  );
-  const tagGroups = (live.data?.tagGroups ??
-    []) as readonly TagGroupPresentation[];
-  const tagOptions = Object.fromEntries(
-    (live.data?.tags ?? []).map((tag) => [
-      tag.id,
-      {
-        id: tag.id,
-        label: tag.name,
-        group: getTagGroupPresentation(tag.groupId, tagGroups),
-        color: tag.color,
-        shade: tag.shade,
-      },
-    ]),
-  );
-  const folders = (live.data?.folders ?? []).map((folder) => ({
-    ...folder,
-    entryCount: (live.data?.entries ?? []).filter(
-      (entry) => entry.folderId === folder.id,
-    ).length,
-    childCount: (live.data?.folders ?? []).filter(
-      (candidate) => candidate.parentId === folder.id,
-    ).length,
-  }));
-  const uncategorized = {
-    id: "uncategorized" as const,
-    name: "Uncategorized" as const,
-    entryCount: (live.data?.entries ?? []).filter(
-      (entry) => entry.folderId === "uncategorized",
-    ).length,
-  };
-  const folderPresentations = Object.fromEntries([
-    ...folders.map(
-      (folder) =>
-        [folder.id, { name: folder.name, icon: folder.icon }] as const,
-    ),
-    [uncategorized.id, { name: uncategorized.name, icon: "folder" }] as const,
-  ]);
+  const {
+    labels,
+    tagGroups,
+    tagOptions,
+    folders,
+    uncategorized,
+    folderPresentations,
+    suggestions,
+  } = useMemo(() => {
+    const labels = Object.fromEntries(
+      (live.data?.tags ?? []).map((tag) => [tag.id, tag.name]),
+    );
+    const tagGroups = (live.data?.tagGroups ??
+      []) as readonly TagGroupPresentation[];
+    const tagOptions = Object.fromEntries(
+      (live.data?.tags ?? []).map((tag) => [
+        tag.id,
+        {
+          id: tag.id,
+          label: tag.name,
+          group: getTagGroupPresentation(tag.groupId, tagGroups),
+          color: tag.color,
+          shade: tag.shade,
+        },
+      ]),
+    );
+    const folders = (live.data?.folders ?? []).map((folder) => ({
+      ...folder,
+      entryCount: (live.data?.entries ?? []).filter(
+        (entry) => entry.folderId === folder.id,
+      ).length,
+      childCount: (live.data?.folders ?? []).filter(
+        (candidate) => candidate.parentId === folder.id,
+      ).length,
+    }));
+    const uncategorized = {
+      id: "uncategorized" as const,
+      name: "Uncategorized" as const,
+      entryCount: (live.data?.entries ?? []).filter(
+        (entry) => entry.folderId === "uncategorized",
+      ).length,
+    };
+    const folderPresentations = Object.fromEntries([
+      ...folders.map(
+        (folder) =>
+          [folder.id, { name: folder.name, icon: folder.icon }] as const,
+      ),
+      [uncategorized.id, { name: uncategorized.name, icon: "folder" }] as const,
+    ]);
+    const suggestions = entrySearchSuggestions(
+      live.data?.entries ?? [],
+      labels,
+      folderPresentations,
+    );
+    return {
+      labels,
+      tagGroups,
+      tagOptions,
+      folders,
+      uncategorized,
+      folderPresentations,
+      suggestions,
+    };
+  }, [live.data]);
   const normalized = query.trim().toLocaleLowerCase();
   const terms = parseEntrySearch(query);
   const entries = (live.data?.entries ?? []).filter((entry) =>
     matchesEntrySearch(entry, terms, labels, folderPresentations),
-  );
-  const suggestions = entrySearchSuggestions(
-    live.data?.entries ?? [],
-    labels,
-    folderPresentations,
   );
   const { view } = live;
   return (

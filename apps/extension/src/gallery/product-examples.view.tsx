@@ -1019,7 +1019,7 @@ function SearchExample({
     state === "empty"
       ? ""
       : state === "filters"
-        ? "@adrian #Personal /Work :example.test"
+        ? "@adrian #Personal /Uncategorized :example.test"
         : "adrian",
   );
   const [notice, setNotice] = useState("");
@@ -1030,7 +1030,7 @@ function SearchExample({
         suggestions={{
           login: ["adrian@example.test", "alex@example.test"],
           tag: ["Personal", "Shared work"],
-          folder: ["Work", "Finance"],
+          folder: ["Uncategorized"],
           website: ["mail.example.test", "bank.example.test"],
         }}
         onChange={setQuery}

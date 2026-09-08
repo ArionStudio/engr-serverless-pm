@@ -9,8 +9,11 @@ afterEach(cleanup);
 it("offers filter kinds after the parent clears the query", async () => {
   const props = { onChange: vi.fn(), onSubmit: vi.fn() };
   const { rerender } = render(<SearchField {...props} value="query" />);
-  rerender(<SearchField {...props} value="" />);
+  const input = screen.getByRole("combobox", { name: "Search entries" });
   await userEvent.setup().tab();
+  expect(input).toHaveFocus();
+  rerender(<SearchField {...props} value="" />);
+  expect(input).toHaveFocus();
   expect(await screen.findAllByRole("option")).toHaveLength(4);
 });
 it("completes a multiword filter with the keyboard and removes it without losing other terms", async () => {
@@ -37,6 +40,7 @@ it("completes a multiword filter with the keyboard and removes it without losing
   await user.keyboard("{ArrowDown}{Enter}");
   expect(input).toHaveValue('@alex #"Shared work" ');
   expect(submit).not.toHaveBeenCalled();
+  expect(screen.getByRole("group", { name: "Search filters" })).toBeVisible();
   await user.click(
     screen.getByRole("button", { name: "Remove tag filter Shared work" }),
   );

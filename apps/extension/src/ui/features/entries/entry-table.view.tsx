@@ -248,6 +248,10 @@ export function EntryTable({
       ),
     [entries],
   );
+  const suggestions = useMemo(
+    () => entrySearchSuggestions(displayData, tagLabels, folders),
+    [displayData, tagLabels, folders],
+  );
   const terms = useMemo(() => parseEntrySearch(query), [query]);
   const data = useMemo(
     () =>
@@ -294,11 +298,7 @@ export function EntryTable({
       <div className="entry-table-toolbar flex flex-wrap items-end gap-3">
         <div className="min-w-0 flex-1 basis-56">
           <SearchField
-            suggestions={entrySearchSuggestions(
-              displayData,
-              tagLabels,
-              folders,
-            )}
+            suggestions={suggestions}
             onSubmit={() => {}}
             value={query}
             disabled={!available}

@@ -55,7 +55,8 @@ export function SearchField({
   const input = useRef<HTMLInputElement>(null);
   const anchor = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  const [cursor, setCursor] = useState(value.length);
+  const [caret, setCursor] = useState(value.length);
+  const cursor = Math.min(caret, value.length);
   const terms = parseEntrySearch(value);
   const last = terms.at(-1);
   const active =
@@ -214,7 +215,11 @@ export function SearchField({
         </ComboboxContent>
       </Combobox>
       {terms.some((term) => term.kind !== "any") ? (
-        <div className="flex flex-wrap gap-1.5" aria-label="Search filters">
+        <div
+          role="group"
+          className="flex flex-wrap gap-1.5"
+          aria-label="Search filters"
+        >
           {terms
             .filter((term) => term.kind !== "any")
             .map((term) => {
