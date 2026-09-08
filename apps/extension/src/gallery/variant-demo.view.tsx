@@ -1,3 +1,4 @@
+import { SearchField } from "@/ui/features/entries/search-field.view";
 import { BrowserLoginsPanel } from "@/ui/features/entries/browser-logins.view";
 import { galleryBrowserLogins } from "./browser-login-fixture";
 import { GuidancePanel } from "@/ui/components/feedback/guidance-panel.view";
@@ -8,7 +9,6 @@ import {
   EntryRow,
   EntrySelection,
 } from "@/ui/features/entries/entries.view";
-import { SearchField } from "@/ui/features/entries/search-field.view";
 import { PasswordToolsPage } from "@/ui/features/password-tools/password-tools-page.view";
 import { entryToolsFixture } from "./entry-tools-fixture";
 import { CredentialForm } from "@/ui/features/sync/credential-form.view";

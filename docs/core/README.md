@@ -26,7 +26,7 @@ Core contains the implemented domain and application workflows. The extension
 constructs them with production browser and AWS adapters in
 [`composeExtensionApplication`](../../apps/extension/src/extension/composition/extension-application.ts).
 Options and popup receive narrow capabilities for their workflows. The
-background root composes scheduled-task cleanup.
-See the [application coverage map](../plans/full-application-ui.md) for UI
-integration and its limits. Website-login display contracts and gallery examples
-are present; browser capture and Fill runtime integration are separate work.
+background roots compose scheduled-task cleanup and website-login handling.
+See the [application coverage map](../plans/full-application-ui.md) and
+[website login contracts](../architecture/website-logins.md) for UI integration
+and its limits.

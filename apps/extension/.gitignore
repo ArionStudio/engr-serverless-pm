@@ -1,5 +1,6 @@
 # Extension build output
 dist/
+dist-firefox/
 dist-gallery/
 
 # Extension specific

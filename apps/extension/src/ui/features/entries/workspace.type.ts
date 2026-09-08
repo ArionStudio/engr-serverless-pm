@@ -19,6 +19,11 @@ export type WorkspaceControls = {
 };
 
 export type WorkspaceCapabilities = {
+  dismissCapturedLogin: (
+    vaultId: string,
+    tabId: number,
+    id: string,
+  ) => Promise<void>;
   readActivePageUrl?: () => Promise<string>;
   read: (vaultId: string) => Promise<VisibleVaultFields>;
   details: (vaultId: string, entryId: string) => Promise<ReadEntryResult>;

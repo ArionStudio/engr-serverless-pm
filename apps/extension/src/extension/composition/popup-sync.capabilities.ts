@@ -3,9 +3,12 @@ import { getApplication } from "./first-launch.capabilities";
 import { decodeTargetConfig } from "../../adapters/sync/aws-s3-sync-provider.adapter";
 import { composeSync } from "./sync.capabilities";
 import { composeWorkspace } from "./workspace.capabilities";
+import type { SyncLocation } from "@/ui/features/sync/sync.type";
 
 export function composePopupSync(): PopupSyncCapabilities {
   const sync = composeSync();
+  const workspace = composeWorkspace();
+  let currentTarget: SyncLocation | null | undefined;
   return {
     inspect: async (vaultId) => {
       const result = await (
@@ -15,6 +18,7 @@ export function composePopupSync(): PopupSyncCapabilities {
         result.target === null
           ? null
           : decodeTargetConfig(result.target.targetConfig);
+      currentTarget = target;
       return {
         version: result.snapshotVersionVector,
         configured: result.target !== null,
@@ -25,6 +29,21 @@ export function composePopupSync(): PopupSyncCapabilities {
     review: sync.review,
     upload: sync.upload,
     apply: sync.apply,
-    subscribe: composeWorkspace().subscribe,
+    subscribe: (listener) => {
+      const unsubscribeWorkspace = workspace.subscribe(listener);
+      const unsubscribeSync = sync.subscribe((reason, affectsLocation) => {
+        if (
+          (reason !== "permissions" && reason !== "permissions-removed") ||
+          !currentTarget ||
+          (affectsLocation && !affectsLocation(currentTarget))
+        )
+          return;
+        listener("data");
+      });
+      return () => {
+        unsubscribeWorkspace();
+        unsubscribeSync();
+      };
+    },
   };
 }

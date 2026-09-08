@@ -3,8 +3,7 @@
 Status: accepted product decisions and implemented application workflows, with
 remaining work called out below. Options connects setup, recovery, entries,
 organization, password tools, devices, sync and settings. Popup provides entry
-actions, password tools, settings and sync review. Website-login presentations
-are reviewable in the gallery; browser capture and Fill are not activated.
+actions, explicit website Fill, opt-in login detection and sync review.
 Coding rules remain in
 [the standards](../standards/README.md).
 
@@ -13,12 +12,13 @@ The component and screen galleries expose the production implementations for rev
 [TanStack verification report](./tanstack-verification.md). See also the
 [component contrast review](./contrast-review.md) and
 [website icon plan and safety review](./favicon-review.md). The
-[full application coverage map](../plans/full-application-ui.md) describes
-connected workflows and their validation limits.
+[full application coverage map](../plans/full-application-ui.md) and
+[website login contracts](../architecture/website-logins.md) describe connected
+workflows and their validation limits.
 
 The [workspace checklist](../plans/vault-workspace-checklist.md) records the
 entry-workspace delivery. Its original scope was extended by the later full
-application work.
+application and website-login work.
 
 ## Read in this order
 

@@ -1,16 +1,16 @@
 # LFSPM browser extension
 
-A Chromium extension built with Vite, React, TypeScript, Base UI,
+A Chromium and Firefox extension built with Vite, React, TypeScript, Base UI,
 Hugeicons and Tailwind CSS.
 
 ## Features
 
-- Chromium Manifest V3 build
+- Separate Chromium and Firefox Manifest V3 builds
 - React with TypeScript
 - React Router v7 for navigation
 - Base UI components
 - Tailwind CSS for styling
-- **Hot reload development** - Live updates during development
+- Watch builds for the extension pages, background worker and content script
 - **Critical testing** - Vitest for essential functionality
 
 ## Tech Stack
@@ -18,23 +18,24 @@ Hugeicons and Tailwind CSS.
 - **Frontend**: React 19, TypeScript
 - **Build Tool**: Vite
 - **Routing**: React Router v7
-- **UI Components**: Shadcn
+- **UI Components**: Base UI
 - **Styling**: Tailwind CSS
 - **Testing**: Vitest, Testing Library
-- **Extension**: Chromium Manifest V3
+- **Extension**: Chromium and Firefox Manifest V3
 
 ## Setup
 
 1. Clone the repository
 2. Install dependencies: `pnpm install`
-3. Start development server: `pnpm dev`
+3. Start the development watchers: `pnpm dev`
 4. Build Chromium: `pnpm build`
+5. Build Firefox: `pnpm build:firefox`
 
 ## Development
 
-### Hot Reload Development (Recommended)
+### Watch development
 
-1. Start the development server with hot reload:
+1. Start both extension bundle watchers:
 
    ```bash
    pnpm dev
@@ -45,14 +46,17 @@ Hugeicons and Tailwind CSS.
    - Enable "Developer mode"
    - Click "Load unpacked" and select the `dist` folder
 
-3. **Automatic Updates**: The extension will automatically reload when you make changes to your code!
+3. Reload the unpacked extension after a rebuild. The watchers update the main
+   extension bundle and `login-content.js` in the same `dist` directory.
 
 ### Manual Build
 
 1. Build the extension: `pnpm build`
 2. Reload the extension in Chrome extensions page
 
-Firefox packaging is planned separately.
+For Firefox, run `pnpm build:firefox`, open
+`about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on**, and
+select `dist-firefox/manifest.json`.
 
 ### Testing
 
@@ -79,7 +83,7 @@ app/
 │   └── vite.svg
 ├── src/
 │   ├── components/
-│   │   ├── ui/               # Shadcn UI components
+│   │   ├── ui/               # Base UI components
 │   │   ├── Popup.tsx         # Extension popup component
 │   │   └── Options.tsx       # Extension options component
 │   ├── test/
@@ -96,8 +100,10 @@ app/
 
 ## Build
 
-- `pnpm dev` - Development with hot reload
+- `pnpm dev` - Watch the main and content-script bundles in `dist/`
 - `pnpm build` - Build Chromium extension into `dist/`
+- `pnpm build:firefox` - Build Firefox extension into `dist-firefox/`
+- `pnpm build:all` - Build both browser targets
 - `pnpm test` - Run tests
 - `pnpm lint` - Run ESLint
 

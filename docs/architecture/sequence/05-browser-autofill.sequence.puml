@@ -1,60 +1,50 @@
 @startuml 05-browser-autofill
-title Browser Autofill Flow
-
-skinparam backgroundColor #FEFEFE
-skinparam roundcorner 10
-skinparam shadowing false
-
-skinparam sequence {
-    ArrowColor #1976D2
-    LifeLineBorderColor #1976D2
-    ParticipantBackgroundColor #E3F2FD
-    ParticipantBorderColor #1976D2
-}
-
-participant "Web Page" as page
-participant "Content Script" as content
-participant "Background SW" as bg
-participant "Popup" as popup
+title Explicit popup Fill and login review
 actor User as user
+participant "Website (top frame)" as page
+participant "Isolated content script" as content
+participant "Popup + composed use cases" as popup
+participant "Background + composed capture use cases" as bg
+participant "Unlocked session" as vault
+participant "Encrypted session capture" as pending
 
-== Form Detection ==
-
-page -> content : DOMContentLoaded
-content -> content : Scan for login forms
-content -> bg : Forms detected (URL, fields)
-
-== Match Credentials ==
-
-bg -> bg : Check vault unlocked?
-
-alt Vault locked
-    bg -> popup : Request unlock
-    popup -> user : Show unlock prompt
-    user -> popup : Enter password
-    popup -> bg : Vault unlocked
+== Explicit Fill ==
+user -> popup : Open toolbar popup
+popup -> content : Inspect active tab via activeTab + scripting
+content --> popup : Current URL, document token, supported form
+popup -> vault : Read exact-origin matches while unlocked
+vault --> popup : Entry IDs and visible fields only
+user -> popup : Choose entry and click Fill
+popup -> vault : Read selected entry under session lock
+vault --> popup : Selected username/password
+popup -> popup : Recheck active tab and URL
+popup -> content : Fill, URL and document token
+content -> content : Recheck token, URL, fields and form destination
+alt Safe matching form
+  content -> page : Set values; dispatch input/change
+  content --> popup : Filled
+else Page or form changed
+  content --> popup : Refused
 end
+user -> page : Submit when ready
 
-bg -> bg : Search vault for URL match
-
-alt Multiple matches
-    bg -> content : Show credential picker
-    content -> user : Display options
-    user -> content : Select credential
-    content -> bg : User chose entry
+== Optional capture ==
+user -> popup : Enable login detection; grant website access
+popup -> content : Register bundled script for future pages
+user -> page : Submit entered login
+content -> bg : Trusted submission candidate, current URL
+bg -> bg : Validate sender, top frame, origin and opt-in
+bg -> vault : Require current unlocked session
+alt New or changed login
+  bg -> pending : Encrypt candidate bound to vault/session/tab; 2-minute expiry or opt-in session retention
+  bg --> content : Offer review
+  content -> user : Review login prompt
+  user -> popup : Open review
+  popup -> pending : Read/decrypt unexpired candidate in same session
+  popup -> user : Existing Add/Edit entry form
+  user -> popup : Confirm save/update
+  popup -> vault : Existing CRUD use case with stale-edit protection
+else Locked, duplicate or disallowed
+  bg --> content : No capture
 end
-
-bg --> content : Credential to fill
-
-== Fill Form ==
-
-content -> page : Fill username field
-content -> page : Fill password field
-content -> content : Show filled indicator
-
-== Submit ==
-
-user -> page : Click submit
-page -> page : Form submits
-
 @enduml

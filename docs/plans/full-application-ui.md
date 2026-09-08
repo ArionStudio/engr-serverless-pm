@@ -66,7 +66,7 @@ Retrieved through Mobbin MCP and visually inspected on 2026-09-06. These are int
 - [x] Actual screen implementations render in the gallery with named behavior states.
 - [x] Browser review covers desktop, narrow layouts, dark/light themes and unpacked Chrome.
 
-Browser capture and Fill runtime integration remain separate work. Their display contracts and optional popup views are available for gallery review. A Firefox package, external favicon fetching, whole-vault import formats and another sync provider remain outside this scope. Folder organization, grouped tags, local global-library suggestions and editable onboarding archetypes are implemented through explicit application contracts.
+The later [website login implementation](../architecture/website-logins.md) adds explicit popup Fill and opt-in login capture. A Firefox package, external favicon fetching, whole-vault import formats and another sync provider remain outside this scope. Folder organization, grouped tags, local global-library suggestions and editable onboarding archetypes are implemented through explicit application contracts.
 
 ## Validation result
 

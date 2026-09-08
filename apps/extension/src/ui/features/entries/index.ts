@@ -1,5 +1,5 @@
-export { EntryRow, EntryList, EntrySelection } from "./entries.view";
 export { SearchField } from "./search-field.view";
+export { EntryRow, EntryList, EntrySelection } from "./entries.view";
 export { TagSelection } from "./tag-selection.view";
 export type { TagOption } from "./tag-selection.view";
 export { EntryForm } from "./entry-form.view";

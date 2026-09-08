@@ -2,6 +2,7 @@ import { vaultAuthorizationWasLost } from "@/ui/lib/vault-authorization";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AddEntryResult,
+  CapturedLogin,
   ReadEntryResult,
   VersionVector,
   VisibleVaultFields,
@@ -23,6 +24,7 @@ type View =
       kind: "editor";
       initial: EntryDraft;
       entryId?: string;
+      captured?: Pick<CapturedLogin, "id" | "tabId">;
       version?: VersionVector;
       key: number;
     };
@@ -279,14 +281,7 @@ export function useWorkspace(
       if (owner === epoch.current) setView({ kind, record });
     });
   }
-  function edit(
-    entryId?: string,
-    captured?: {
-      readonly login: string;
-      readonly password: string;
-      readonly url: string;
-    },
-  ) {
+  function edit(entryId?: string, captured?: CapturedLogin) {
     hide();
     const secretOwner = secretReadEpoch.current;
     void run(async (owner) => {
@@ -301,6 +296,9 @@ export function useWorkspace(
         kind: "editor",
         key: ++editorKey.current,
         entryId,
+        captured: captured
+          ? { id: captured.id, tabId: captured.tabId }
+          : undefined,
         version: entry ? { ...entry.versionVector } : undefined,
         initial: entry
           ? {
@@ -315,19 +313,54 @@ export function useWorkspace(
           : {
               ...emptyEntryDraft,
               url: activeUrl,
-              ...captured,
+              ...(captured
+                ? {
+                    login: captured.login,
+                    password: captured.password,
+                    url: captured.url,
+                  }
+                : {}),
               withoutPassword: captured?.password === "",
               tagIds: [],
             },
       });
     });
   }
-  async function committed(owner: number, result: AddEntryResult) {
+  async function committed(
+    owner: number,
+    result: AddEntryResult,
+    captured?: Pick<CapturedLogin, "id" | "tabId">,
+  ) {
     if (owner !== epoch.current) return;
     hide();
     setView({ kind: "list" });
     reportSave(result);
-    await refresh();
+    if (captured) {
+      try {
+        await capabilities.dismissCapturedLogin(
+          vaultId,
+          captured.tabId,
+          captured.id,
+        );
+      } catch (cause) {
+        if (owner !== epoch.current) return;
+        const lost = await vaultAuthorizationWasLost(cause, () =>
+          read(() => capabilities.read(vaultId)),
+        );
+        if (owner !== epoch.current) return;
+        if (lost) {
+          reset(true);
+          onSessionLost?.();
+          return;
+        }
+        setError({
+          message:
+            "Your entry was saved, but its detected login could not be cleared. Dismiss it in Detected before reviewing another login.",
+          recoverOnRead: false,
+        });
+      }
+    }
+    if (owner === epoch.current) await refresh();
   }
   function reportSave(
     receipt: {
@@ -397,7 +430,7 @@ export function useWorkspace(
               expectedEntryVersionVector: editor.version,
             })
           : await capabilities.add(params);
-      await committed(owner, result);
+      await committed(owner, result, editor.captured);
     });
   }
   function remove() {

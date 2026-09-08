@@ -252,6 +252,7 @@ export function PopupEntries({
               onPendingChange={setBrowserPending}
               vaultId={vaultId}
               capabilities={browserLogins}
+              onSessionLost={onSessionLost}
               onReview={(captured, entryId) => live.edit(entryId, captured)}
             />
           ) : null}

@@ -1,4 +1,5 @@
 import { VaultMutationService } from "@lfspm/core/services";
+import { composeBrowserLoginApplication } from "./browser-login.composition";
 import {
   CopyEntryPasswordUseCase,
   CopyRevealedSecretUseCase,
@@ -140,6 +141,7 @@ export function composeExtensionApplication(database: VaultManagerDb = db) {
   );
 
   return {
+    browserLogins: composeBrowserLoginApplication(sessionResources),
     revealSyncCredentials: new RevealSyncCredentialsUseCase(
       crypto,
       vaultLocalRepository,

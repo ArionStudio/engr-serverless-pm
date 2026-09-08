@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "Serverless Password Manager",
+  "version": "1.0.0",
+  "description": "A secure, serverless password manager extension",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "alarms",
+    "clipboardRead",
+    "clipboardWrite",
+    "scripting"
+  ],
+  "optional_host_permissions": [
+    "https://*.amazonaws.com/*",
+    "https://*.amazonaws.com.cn/*",
+    "https://*/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "http://[::1]/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "SPM Extension"
+  },
+  "options_page": "options.html",
+  "background": {
+    "scripts": ["background.js"],
+    "type": "module"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'; img-src 'self';"
+  },
+  "icons": {
+    "16": "icon.svg",
+    "48": "icon.svg",
+    "128": "icon.svg"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "lfspm@engr-serverless-pm.local",
+      "strict_min_version": "140.0",
+      "data_collection_permissions": {
+        "required": ["authenticationInfo"]
+      }
+    }
+  },
+  "optional_permissions": []
+}

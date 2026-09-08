@@ -8,3 +8,4 @@ export * from "./vault-tags";
 export * from "./vault-folders";
 export * from "./tag-groups";
 export * from "./session";
+export * from "./browser-login";

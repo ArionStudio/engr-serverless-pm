@@ -31,10 +31,11 @@ constructs all current core use cases with production adapters and shared
 services. The background alarm root reuses its session and cleanup construction.
 The popup and options roots inject capabilities backed by that factory into
 their feature views. Setup, recovery, entries, organization, password tools,
-devices, sync and vault settings have production UI integration. Website-login
-views accept optional capabilities for gallery review; this build does not
-activate browser capture or Fill. See the
-[application coverage map](../plans/full-application-ui.md).
+devices, sync and vault settings have production UI integration. Website login
+Fill and opt-in detection use the browser-login composition and validated
+background/content-script boundaries. See the
+[application coverage map](../plans/full-application-ui.md) and
+[website login contracts](../architecture/website-logins.md).
 
 The concrete implementations follow `BOUNDARY-013`: core contracts use `*Port`
 in `.port.ts` files, and extension implementations use `*Adapter` in
