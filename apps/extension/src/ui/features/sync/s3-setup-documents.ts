@@ -4,7 +4,13 @@ import type { SyncLocation } from "./sync.type";
 // No credentials are accepted here. Reject IAM wildcard syntax in user input.
 export function s3SetupDocuments(location: SyncLocation) {
   const { bucket, prefix } = location;
-  const validBucket = /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(bucket);
+  // These policy ARNs require a general purpose bucket, not an access-point alias.
+  const validBucket =
+    /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(bucket) &&
+    !bucket.includes("..") &&
+    !/^(?:xn--|sthree-|amzn-s3-demo-)/.test(bucket) &&
+    !/(?:-s3alias|--ol-s3|\.mrap|--x-s3|--table-s3)$/.test(bucket) &&
+    !/^\d{1,3}(?:\.\d{1,3}){3}$/.test(bucket);
   const validPrefix =
     /^[a-zA-Z0-9][a-zA-Z0-9/_-]*\/$/.test(prefix) &&
     prefix.length <= 128 &&

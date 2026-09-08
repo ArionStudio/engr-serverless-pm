@@ -342,6 +342,7 @@ export function ScreenExamples() {
               "sync-saved-refresh-error",
               "sync-configured",
               "sync-permission",
+              "sync-permission-error",
               "sync-pending",
               "sync-error",
               "sync-session-expired",

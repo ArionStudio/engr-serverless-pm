@@ -51,6 +51,35 @@ describe("browser S3 host permission", () => {
   ])("matches SDK addressing for %j", (value, expected) => {
     expect(s3PermissionOrigin(value)).toBe(expected);
   });
+  it("matches permission changes to the SDK host, including broader grants and dotted buckets", () => {
+    const access = new BrowserS3AccessAdapter({
+      request: vi.fn(async () => true),
+      contains: vi.fn(async () => true),
+    });
+    for (const [pattern, expected] of [
+      [origin, true],
+      ["https://other-vault.s3.eu-central-1.amazonaws.com/*", false],
+      ["https://*.amazonaws.com/*", true],
+      ["*://*.amazonaws.com/*", true],
+      ["https://*.amazonaws.com.cn/*", false],
+      ["https://*.amazonaws.com.evil.test/*", false],
+      ["http://*.amazonaws.com/*", false],
+      ["<all_urls>", true],
+    ] as const)
+      expect(access.affects(target, { origins: [pattern] }), pattern).toBe(
+        expected,
+      );
+    expect(access.affects(target, { permissions: ["storage"] })).toBe(false);
+    expect(
+      access.affects({ ...target, bucket: "" }, { origins: [origin] }),
+    ).toBe(false);
+    expect(
+      access.affects(
+        { ...target, bucket: "personal.vault" },
+        { origins: ["https://s3.eu-central-1.amazonaws.com/*"] },
+      ),
+    ).toBe(true);
+  });
   it("requests only the configured HTTPS host synchronously and reports denial", async () => {
     const request = vi.fn(async () => false);
     const permissions = { request, contains: vi.fn(async () => false) };

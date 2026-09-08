@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { PrepareSyncReviewResult, SyncUploadResult } from "@lfspm/core";
 import type { CredentialDraft } from "./credential-form.view";
 import type { SyncCapabilities, SyncLocation } from "./sync.type";
@@ -6,6 +6,32 @@ import { emptyCredentials } from "./sync.type";
 import { syncError } from "./sync-error";
 import type { Resolution, SyncDisplayState } from "./sync-review.view";
 import { resolutionFromChoices } from "./sync-review.mapper";
+
+const permissionLookupError =
+  "Could not check this browser's S3 access. Allow storage access and try again.";
+
+type SyncInspection = {
+  target: SyncLocation | null;
+  accessMissing: boolean;
+  error: string | undefined;
+};
+
+async function inspectConfiguration(
+  vaultId: string,
+  capabilities: SyncCapabilities,
+): Promise<SyncInspection> {
+  // Failure of the authorized session read must still reach the caller's cleanup.
+  const target = await capabilities.inspect(vaultId);
+  try {
+    return {
+      target,
+      accessMissing: target !== null && !(await capabilities.hasAccess(target)),
+      error: undefined,
+    };
+  } catch {
+    return { target, accessMissing: true, error: permissionLookupError };
+  }
+}
 
 type Operation =
   | "permission"
@@ -29,23 +55,45 @@ export function useSync(vaultId: string, capabilities: SyncCapabilities) {
   }>();
   const [review, setReview] = useState<PrepareSyncReviewResult>();
   const [choices, setChoices] = useState<Record<string, Resolution>>({});
+  const setConfiguration = useCallback((configuration: SyncInspection) => {
+    setTarget(configuration.target);
+    setAccessMissing(configuration.accessMissing);
+    setError((previous) =>
+      previous && previous !== permissionLookupError
+        ? previous
+        : configuration.error,
+    );
+  }, []);
   const [generation, setGeneration] = useState(0);
   const epoch = useRef(0);
+  const sessionEpoch = useRef(0);
   const busy = useRef(false);
   const inspectEpoch = useRef(0);
+  const permissionTarget = useRef<SyncLocation | null>(null);
+  useEffect(() => {
+    const location = target && !repairing ? target : draft;
+    permissionTarget.current = {
+      bucket: location.bucket,
+      region: location.region,
+      prefix: location.prefix,
+    };
+  }, [target, repairing, draft]);
   function clearSecrets() {
     setDraft({ ...emptyCredentials });
     setRepairing(false);
     setGeneration((n) => n + 1);
   }
   useEffect(() => {
-    const lifecycle = epoch;
+    const lifecycle = sessionEpoch;
+    const operations = epoch;
     const inspections = inspectEpoch;
     ++lifecycle.current;
+    ++epoch.current;
     busy.current = false;
     async function inspect(hard: boolean) {
       const inspection = ++inspectEpoch.current;
       if (hard) {
+        ++lifecycle.current;
         ++epoch.current;
         busy.current = false;
         setOperation(undefined);
@@ -58,12 +106,10 @@ export function useSync(vaultId: string, capabilities: SyncCapabilities) {
       }
       const owner = epoch.current;
       try {
-        const next = await capabilities.inspect(vaultId);
-        const missing = next !== null && !(await capabilities.hasAccess(next));
+        const configuration = await inspectConfiguration(vaultId, capabilities);
         if (owner === epoch.current && inspection === inspectEpoch.current) {
-          setTarget(next);
-          setAccessMissing(missing);
-          if (missing) {
+          setConfiguration(configuration);
+          if (configuration.accessMissing) {
             setFeedback(undefined);
             setReview(undefined);
             setChoices({});
@@ -72,6 +118,7 @@ export function useSync(vaultId: string, capabilities: SyncCapabilities) {
       } catch (cause) {
         if (owner !== epoch.current || inspection !== inspectEpoch.current)
           return;
+        ++lifecycle.current;
         ++epoch.current;
         busy.current = false;
         setOperation(undefined);
@@ -84,8 +131,19 @@ export function useSync(vaultId: string, capabilities: SyncCapabilities) {
       }
     }
     void inspect(false);
-    const unsubscribe = capabilities.subscribe((reason) => {
-      if (reason === "permissions") {
+    const unsubscribe = capabilities.subscribe((reason, affectsLocation) => {
+      if (
+        (reason === "permissions" || reason === "permissions-removed") &&
+        affectsLocation &&
+        (!permissionTarget.current ||
+          !affectsLocation(permissionTarget.current))
+      )
+        return;
+      if (reason === "permissions-removed") {
+        ++epoch.current;
+        setAccessMissing(true);
+      }
+      if (reason === "permissions" || reason === "permissions-removed") {
         setFeedback(undefined);
         setReview(undefined);
         setChoices({});
@@ -95,15 +153,17 @@ export function useSync(vaultId: string, capabilities: SyncCapabilities) {
     return () => {
       unsubscribe();
       ++lifecycle.current;
+      ++operations.current;
       ++inspections.current;
       busy.current = false;
     };
-  }, [vaultId, capabilities]);
+  }, [vaultId, capabilities, setConfiguration]);
 
   async function run(kind: Operation, task: () => Promise<void>) {
     if (busy.current) return;
     busy.current = true;
     const current = epoch.current;
+    const sessionOwner = sessionEpoch.current;
     ++inspectEpoch.current;
     setOperation(kind);
     setError(undefined);
@@ -128,14 +188,10 @@ export function useSync(vaultId: string, capabilities: SyncCapabilities) {
       // Only initial setup may have installed configuration despite an upload error.
       if (kind !== "configure") return;
       try {
-        const next = await capabilities.inspect(vaultId);
+        const configuration = await inspectConfiguration(vaultId, capabilities);
         if (current === epoch.current) {
-          setTarget(next);
-          if (next) {
-            clearSecrets();
-            const missing = !(await capabilities.hasAccess(next));
-            if (current === epoch.current) setAccessMissing(missing);
-          }
+          setConfiguration(configuration);
+          if (configuration.target) clearSecrets();
         }
       } catch {
         if (current === epoch.current) {
@@ -144,7 +200,19 @@ export function useSync(vaultId: string, capabilities: SyncCapabilities) {
         }
       }
     } finally {
-      if (current === epoch.current) {
+      // Revocation discards the operation's result, but setup may still have
+      // committed. Read current configuration only while this session survives.
+      if (
+        kind === "configure" &&
+        current !== epoch.current &&
+        sessionOwner === sessionEpoch.current
+      ) {
+        const owner = epoch.current;
+        const savedTarget = await refreshConfiguration(owner);
+        if (savedTarget && sessionOwner === sessionEpoch.current)
+          clearSecrets();
+      }
+      if (sessionOwner === sessionEpoch.current) {
         ++inspectEpoch.current;
         busy.current = false;
         setOperation(undefined);
@@ -152,15 +220,19 @@ export function useSync(vaultId: string, capabilities: SyncCapabilities) {
     }
   }
   async function refreshConfiguration(current: number) {
+    const sessionOwner = sessionEpoch.current;
+    const inspection = ++inspectEpoch.current;
     try {
-      const next = await capabilities.inspect(vaultId);
-      const missing = next !== null && !(await capabilities.hasAccess(next));
-      if (current === epoch.current) {
-        setTarget(next);
-        setAccessMissing(missing);
+      const configuration = await inspectConfiguration(vaultId, capabilities);
+      if (current === epoch.current && inspection === inspectEpoch.current) {
+        setConfiguration(configuration);
       }
+      // Display freshness must not cancel same-session post-save secret cleanup.
+      return configuration.target;
     } catch {
-      if (current !== epoch.current) return;
+      if (sessionOwner === sessionEpoch.current) clearSecrets();
+      if (current !== epoch.current || inspection !== inspectEpoch.current)
+        return;
       setTarget(undefined);
       setError(
         "Could not load the sync configuration. Choose Try again to reload it.",
@@ -215,7 +287,10 @@ export function useSync(vaultId: string, capabilities: SyncCapabilities) {
       setFeedback(undefined);
     },
     allowAccess: () => run("permission", async () => {}),
-    refresh: () => run("refresh", () => refreshConfiguration(epoch.current)),
+    refresh: () =>
+      run("refresh", async () => {
+        await refreshConfiguration(epoch.current);
+      }),
     test: () =>
       run("test", async () => {
         const current = epoch.current;

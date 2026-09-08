@@ -119,7 +119,7 @@ export function S3SetupGuide({
   const locationErrors: Partial<Record<keyof SyncLocation, string>> = {
     bucket:
       documentField === "bucket"
-        ? "Enter 3–63 lowercase letters, numbers or hyphens. Start and end with a letter or number."
+        ? "Enter 3–63 lowercase letters, numbers, dots or hyphens. Start and end with a letter or number. Avoid consecutive dots, IP addresses and AWS-reserved prefixes or suffixes."
         : undefined,
     region: validRegion
       ? undefined
@@ -656,7 +656,7 @@ function SetupLocation({
         label="S3 bucket name"
         value={location.bucket}
         onChange={(e) => onChange({ ...location, bucket: e.target.value })}
-        description="3–63 lowercase letters, numbers or hyphens."
+        description="3–63 lowercase letters, numbers, dots or hyphens. Avoid consecutive dots and IP addresses."
         error={errors.bucket}
       />
       <TextField
