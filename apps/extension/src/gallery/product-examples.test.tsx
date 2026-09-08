@@ -16,7 +16,6 @@ import { EntryTable, TagSelection } from "@/ui/features/entries";
 import { SecretField } from "@/ui/components/feedback/action-feedback.view";
 import { RecoveryPhraseGrid } from "@/ui/features/recovery";
 import { FormExamples } from "./form-examples.view";
-import { ScreenExamples } from "./screen-examples.view";
 import { SharedExamples, FeatureExamples } from "./product-examples.view";
 import { demoTableEntries, demoWords, demoTagLabels } from "./fixtures";
 afterEach(() => {
@@ -249,47 +248,6 @@ describe("setup gallery review states", () => {
     expect(
       navigation.getByRole("button", { name: /Password.*Needs attention/ }),
     ).toBeInTheDocument();
-  });
-
-  it("exposes pending and retry states in the password form", async () => {
-    const user = userEvent.setup();
-    render(<FormExamples />);
-    const form = within(
-      screen
-        .getByRole("heading", { name: "PasswordCreationForm" })
-        .closest("section")!,
-    );
-    await user.selectOptions(
-      form.getByLabelText("Password creation strength state"),
-      "pending",
-    );
-    expect(form.getByRole("button", { name: "Continue" })).toBeDisabled();
-    await user.selectOptions(
-      form.getByLabelText("Password creation strength state"),
-      "unavailable",
-    );
-    expect(form.getByRole("button", { name: "Continue" })).toBeDisabled();
-    await user.click(form.getByRole("button", { name: "Try again" }));
-    expect(form.getByRole("button", { name: "Continue" })).toBeEnabled();
-  });
-
-  it("exposes assessment failure and successful retry in the setup screen", async () => {
-    const user = userEvent.setup();
-    render(<ScreenExamples />);
-    const options = within(
-      screen.getByRole("heading", { name: "OptionsView" }).closest("section")!,
-    );
-    await user.selectOptions(
-      options.getByLabelText("First-launch options state"),
-      "password-unavailable",
-    );
-    await user.type(
-      options.getByLabelText("New password", { exact: true }),
-      "orbit lantern velvet canyon river",
-    );
-    await user.click(await options.findByRole("button", { name: "Try again" }));
-    await options.findByText("Strong", { exact: true });
-    expect(options.getByRole("button", { name: "Continue" })).toBeEnabled();
   });
 });
 

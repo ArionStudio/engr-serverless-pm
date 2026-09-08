@@ -14,6 +14,38 @@ const screens: readonly {
   states: readonly { id: OptionsScenario; label: string }[];
 }[] = [
   {
+    id: "s3-setup",
+    name: "Set up S3",
+    states: [
+      { id: "s3-guide", label: "Instructions" },
+      { id: "s3-copy-error", label: "Copy error" },
+      { id: "s3-invalid-bucket", label: "Invalid bucket" },
+      { id: "s3-invalid-prefix", label: "Invalid prefix" },
+      { id: "s3-invalid-origin", label: "Unsupported origin" },
+      { id: "s3-firefox-origin", label: "Firefox origin" },
+    ],
+  },
+  {
+    id: "sync",
+    name: "Sync",
+    states: [
+      { id: "sync-setup", label: "Set up" },
+      { id: "sync-access-pending", label: "Pending access check" },
+      {
+        id: "sync-saved-refresh-error",
+        label: "Saved, configuration refresh failed",
+      },
+      { id: "sync-configured", label: "Configured" },
+      { id: "sync-pending", label: "Pending upload" },
+      { id: "sync-error", label: "Connection error" },
+      { id: "sync-session-expired", label: "Session expired" },
+      { id: "sync-review", label: "Remote changes" },
+      { id: "sync-revision", label: "Newer revision, unchanged content" },
+      { id: "sync-repair-error", label: "Key repair failure" },
+      { id: "sync-loading", label: "Loading" },
+    ],
+  },
+  {
     id: "popup",
     name: "Popup",
     states: [
@@ -207,6 +239,7 @@ export function ScreenGallery() {
           id="screen-presentation"
           className="min-w-0 p-4 sm:p-6"
           tabIndex={-1}
+          data-focus-target
         >
           <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
             <h1 className="text-2xl font-semibold">{screen.name}</h1>
@@ -281,7 +314,9 @@ export function ScreenGallery() {
                   screen.id,
                 ) && !["creation-pending", "creation-error"].includes(state)
                   ? ""
-                  : "mx-auto max-w-xl px-5 py-8 @lg:py-12"
+                  : ["s3-setup", "sync"].includes(screen.id)
+                    ? "mx-auto max-w-4xl px-5 py-8 @lg:py-12"
+                    : "mx-auto max-w-xl px-5 py-8 @lg:py-12"
               }
             >
               {screen.id === "popup" ? (

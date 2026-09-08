@@ -1,5 +1,19 @@
 import "fake-indexeddb/auto";
-import type { RawMasterPassword } from "@lfspm/core";
+import type {
+  RawMasterPassword,
+  VaultSnapshot,
+  SyncSetupInput,
+  SyncAccess,
+  VaultSyncResolution,
+} from "@lfspm/core";
+import {
+  areVaultSnapshotIdentitiesEqual,
+  PasswordEntryChangedError,
+  toVaultSnapshotDescriptor,
+  toVaultSnapshotIdentity,
+} from "@lfspm/core";
+import { AwsS3SyncProviderAdapter } from "../../adapters/sync/aws-s3-sync-provider.adapter";
+import { WebCryptoAdapter } from "../../adapters/crypto/web-crypto.adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createChromeStorageArea } from "../../__tests__/fixtures/chrome-storage-area";
 import type { WebLockManager } from "../../adapters/clipboard";
@@ -280,4 +294,348 @@ describe("production extension composition", () => {
     );
     expect(browser.clipboard()).toBe("unrelated clipboard");
   }, 15_000);
+  it("converges between enrolled devices, rejects stale forms, and repairs credentials after a lost upload response", async () => {
+    const cryptoAdapter = new WebCryptoAdapter();
+    let remote: VaultSnapshot | null = null;
+    let loseNextResponse = false;
+    let rejectOriginalCredentials = false;
+    const syncConfig = {
+      provider: "aws-s3-v1",
+      providerConfig: {
+        target: {
+          bucket: "sync-test-bucket",
+          region: "eu-central-1",
+          prefix: "vaults/",
+        },
+        credentials: {
+          accessKeyId: "test-original-key",
+          secretAccessKey: "test-original-secret",
+        },
+      },
+    } satisfies SyncSetupInput;
+    const replacement = {
+      ...syncConfig,
+      providerConfig: {
+        ...syncConfig.providerConfig,
+        credentials: {
+          accessKeyId: "test-replacement-key",
+          secretAccessKey: "test-replacement-secret",
+        },
+      },
+    };
+    const requireAccess = (access: SyncAccess) => {
+      if (
+        rejectOriginalCredentials &&
+        JSON.stringify(access.credentials.credentialsConfig) ===
+          JSON.stringify(syncConfig.providerConfig.credentials)
+      )
+        throw new Error("Authentication rejected");
+    };
+    vi.spyOn(
+      AwsS3SyncProviderAdapter.prototype,
+      "getLatestVaultSnapshotDescriptor",
+    ).mockImplementation(async (access, vaultId) => {
+      requireAccess(access);
+      return remote === null
+        ? null
+        : toVaultSnapshotDescriptor(vaultId, remote);
+    });
+    vi.spyOn(
+      AwsS3SyncProviderAdapter.prototype,
+      "downloadVaultSnapshot",
+    ).mockImplementation(async (access) => {
+      requireAccess(access);
+      if (remote === null) throw new Error("Remote snapshot missing");
+      return structuredClone(remote);
+    });
+    vi.spyOn(
+      AwsS3SyncProviderAdapter.prototype,
+      "checkVaultAccess",
+    ).mockImplementation(async (access) => {
+      try {
+        requireAccess(access);
+        return "accessible";
+      } catch {
+        return "authentication_rejected";
+      }
+    });
+    const upload = vi
+      .spyOn(AwsS3SyncProviderAdapter.prototype, "prepareVaultSnapshotUpload")
+      .mockImplementation(async (access, snapshot, expected) => {
+        requireAccess(access);
+        const before = remote;
+        const actual =
+          before === null
+            ? null
+            : toVaultSnapshotIdentity(
+                before.metadata.id,
+                before,
+                await cryptoAdapter.digestVaultSnapshot(before),
+              );
+        if (
+          (actual === null) !== (expected === null) ||
+          (actual !== null &&
+            expected !== null &&
+            !areVaultSnapshotIdentitiesEqual(actual, expected))
+        ) {
+          return {
+            status: "not_started",
+            outcome: {
+              status: "definitely_not_committed",
+              reason: "remote_snapshot_changed",
+            },
+          };
+        }
+        return {
+          status: "ready",
+          start: () => {
+            if (remote !== before)
+              return {
+                outcome: Promise.resolve({
+                  status: "definitely_not_committed",
+                  reason: "remote_snapshot_changed",
+                }),
+              };
+            remote = structuredClone(snapshot);
+            const status = loseNextResponse ? "outcome_unknown" : "committed";
+            loseNextResponse = false;
+            return { outcome: Promise.resolve({ status }) };
+          },
+        };
+      });
+    const browserA = installBrowser();
+    const chromeA = globalThis.chrome;
+    const navigatorA = globalThis.navigator;
+    const deviceA = composeExtensionApplication(database);
+    await deviceA.initializeVault.execute({
+      masterPassword,
+      deviceName: "Device A",
+      lockAfterMs: 60_000,
+    });
+    const status = await deviceA.getVaultSessionStatus.execute();
+    if (status.status !== "unlocked")
+      throw new Error("Expected unlocked vault");
+    const { vaultId } = status;
+    await deviceA.setupSync.execute({ vaultId, syncConfig });
+    const snapshot = remote as VaultSnapshot | null;
+    if (snapshot === null) throw new Error("Expected uploaded vault");
+    const genesisDigest = await cryptoAdapter.digestVaultTrustCertificate(
+      snapshot.trustChain.certificates[0],
+    );
+    const databaseB = createVaultManagerDb(
+      `sync-device-b-${crypto.randomUUID()}`,
+    );
+    try {
+      const browserB = installBrowser();
+      const chromeB = globalThis.chrome;
+      const navigatorB = globalThis.navigator;
+      const activateA = () => {
+        vi.stubGlobal("chrome", chromeA);
+        vi.stubGlobal("navigator", navigatorA);
+      };
+      const activateB = () => {
+        vi.stubGlobal("chrome", chromeB);
+        vi.stubGlobal("navigator", navigatorB);
+      };
+      const deviceB = composeExtensionApplication(databaseB);
+      const request = await deviceB.createDeviceEnrollmentRequest.execute({
+        vaultId,
+        expectedGenesisCertificateDigest: genesisDigest,
+        masterPassword,
+      });
+      activateA();
+      const authorization = await deviceA.initializeDeviceEnrollment.execute({
+        vaultId,
+        request,
+      });
+      activateB();
+      await deviceB.performDeviceEnrollment.execute({
+        enrollmentResponse: authorization.enrollmentResponse,
+        masterPassword,
+        deviceName: "Device B",
+        syncConfig,
+        lockAfterMs: 60_000,
+      });
+      const acceptRemote = async (app: typeof deviceA) => {
+        const review = await app.prepareSyncReview.execute({ vaultId });
+        if (review.review === null) return;
+        const { actionable } = review.review;
+        const resolution: VaultSyncResolution = {
+          entryResolutions: actionable.entryReviews.map((item) => ({
+            entryId: item.entryId,
+            action: "use_remote",
+          })),
+          tagResolutions: actionable.tagReviews.map((item) => ({
+            tagId: item.tagId,
+            action: "use_remote",
+          })),
+          deviceProfileResolutions: actionable.deviceProfileReviews.map(
+            (item) => ({ deviceId: item.deviceId, action: "use_remote" }),
+          ),
+        };
+        await app.applySyncResolution.execute({
+          vaultId,
+          reviewedSnapshotIdentities: review.reviewedSnapshotIdentities,
+          resolution,
+        });
+      };
+      activateA();
+      await acceptRemote(deviceA);
+      const { entryId } = await deviceA.addEntry.execute({
+        vaultId,
+        allowWeakPassword: true,
+        entry: {
+          password: "original",
+          login: "alice",
+          tags: [],
+          url: "https://example.test",
+        },
+      });
+      const stale = await deviceA.readEntry.execute({ vaultId, entryId });
+      activateB();
+      await acceptRemote(deviceB);
+      const readB = await deviceB.readEntry.execute({ vaultId, entryId });
+      await deviceB.updateEntry.execute({
+        vaultId,
+        entryId,
+        expectedEntryVersionVector: readB.entryVersionVector,
+        allowWeakPassword: true,
+        entry: {
+          password: "newer",
+          login: "bob",
+          tags: [],
+          url: "https://example.test",
+        },
+      });
+      activateA();
+      await acceptRemote(deviceA);
+      const uploadCount = upload.mock.calls.length;
+      for (let round = 0; round < 3; round += 1) {
+        activateA();
+        await expect(
+          deviceA.prepareSyncReview.execute({ vaultId }),
+        ).resolves.toMatchObject({ relation: "equal", review: null });
+        activateB();
+        await expect(
+          deviceB.prepareSyncReview.execute({ vaultId }),
+        ).resolves.toMatchObject({ relation: "equal", review: null });
+      }
+      expect(upload).toHaveBeenCalledTimes(uploadCount);
+      activateA();
+      await expect(
+        deviceA.updateEntry.execute({
+          vaultId,
+          entryId,
+          expectedEntryVersionVector: stale.entryVersionVector,
+          allowWeakPassword: true,
+          entry: {
+            password: "original",
+            login: "alice",
+            tags: [],
+            url: "https://example.test",
+          },
+        }),
+      ).rejects.toBeInstanceOf(PasswordEntryChangedError);
+      await expect(
+        deviceA.removeEntry.execute({
+          vaultId,
+          entryId,
+          expectedEntryVersionVector: stale.entryVersionVector,
+        }),
+      ).rejects.toBeInstanceOf(PasswordEntryChangedError);
+      expect(upload).toHaveBeenCalledTimes(uploadCount);
+      const current = await deviceA.readEntry.execute({ vaultId, entryId });
+      loseNextResponse = true;
+      await expect(
+        deviceA.removeEntry.execute({
+          vaultId,
+          entryId,
+          expectedEntryVersionVector: current.entryVersionVector,
+        }),
+      ).resolves.toMatchObject({ syncUpload: "pending" });
+      const snapshotBefore = await database.vaultSnapshots.get(vaultId);
+      const checkpointBefore =
+        await database.localVaultTrustCheckpoints.get(vaultId);
+      const credentialsBefore =
+        await database.deviceSyncCredentialStates.get(vaultId);
+      rejectOriginalCredentials = true;
+      await expect(
+        deviceA.prepareSyncReview.execute({ vaultId }),
+      ).rejects.toThrow("Authentication rejected");
+      await deviceA.updateSyncCredentials.execute({
+        vaultId,
+        syncConfig: replacement,
+      });
+      expect(await database.vaultSnapshots.get(vaultId)).toEqual(
+        snapshotBefore,
+      );
+      expect(await database.localVaultTrustCheckpoints.get(vaultId)).toEqual(
+        checkpointBefore,
+      );
+      const repaired = await database.deviceSyncCredentialStates.get(vaultId);
+      expect(repaired).not.toEqual(credentialsBefore);
+      expect(JSON.stringify(repaired)).not.toContain("test-replacement-secret");
+      const uploadsBeforeRetry = upload.mock.calls.length;
+      await deviceA.syncUpload.execute({ vaultId });
+      expect(upload).toHaveBeenCalledTimes(uploadsBeforeRetry);
+      await expect(
+        deviceA.prepareSyncReview.execute({ vaultId }),
+      ).resolves.toMatchObject({ relation: "equal", review: null });
+      activateB();
+      await deviceB.updateSyncCredentials.execute({
+        vaultId,
+        syncConfig: replacement,
+      });
+      await acceptRemote(deviceB);
+      await expect(
+        deviceB.readEntry.execute({ vaultId, entryId }),
+      ).rejects.toThrow();
+      await expect(
+        deviceB.prepareSyncReview.execute({ vaultId }),
+      ).resolves.toMatchObject({ relation: "equal", review: null });
+      await deviceB.lockVault.execute();
+      activateA();
+      let notifyProbeStarted!: () => void;
+      const probeStarted = new Promise<void>((resolve) => {
+        notifyProbeStarted = resolve;
+      });
+      let releaseProbe!: () => void;
+      const finishProbe = new Promise<void>((resolve) => {
+        releaseProbe = resolve;
+      });
+      vi.spyOn(
+        AwsS3SyncProviderAdapter.prototype,
+        "checkVaultAccess",
+      ).mockImplementationOnce(async () => {
+        notifyProbeStarted();
+        await finishProbe;
+        return "accessible";
+      });
+      const credentialsBeforeLock =
+        await database.deviceSyncCredentialStates.get(vaultId);
+      const blockedRepair = deviceA.updateSyncCredentials.execute({
+        vaultId,
+        syncConfig: replacement,
+      });
+      await probeStarted;
+      await deviceA.lockVault.execute();
+      releaseProbe();
+      await expect(blockedRepair).rejects.toThrow();
+      expect(await database.deviceSyncCredentialStates.get(vaultId)).toEqual(
+        credentialsBeforeLock,
+      );
+      await deviceA.unlockVault.execute({
+        vaultId,
+        masterPassword,
+        lockAfterMs: 60_000,
+      });
+      await expect(
+        deviceA.prepareSyncReview.execute({ vaultId }),
+      ).resolves.toMatchObject({ relation: "equal", review: null });
+      expect(browserA.fetch).not.toHaveBeenCalled();
+      expect(browserB.fetch).not.toHaveBeenCalled();
+    } finally {
+      await databaseB.delete();
+    }
+  }, 30_000);
 });

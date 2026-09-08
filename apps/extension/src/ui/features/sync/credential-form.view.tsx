@@ -16,20 +16,22 @@ export function CredentialForm({
   errors,
   onTest,
   testing = false,
+  mode = "setup",
   ...form
 }: FormPresentation<CredentialDraft> & {
   onTest: () => void;
   testing?: boolean;
+  mode?: "setup" | "repair";
 }) {
   return (
     <FormFrame
       {...form}
       state={testing ? "pending" : form.state}
-      label="Save sync configuration"
+      label={mode === "repair" ? "Save access keys" : "Enable sync"}
     >
       <SafetyHelp
         title="Your S3 storage"
-        essential="Use credentials limited to this vault's storage location. Testing access does not configure sync or upload a vault."
+        essential="Use access keys limited to this bucket and prefix. Keys are encrypted on this device and are not shared through the vault."
       />
       {(["bucket", "region", "prefix", "accessKeyId"] as const).map((key) => (
         <TextField
@@ -42,6 +44,8 @@ export function CredentialForm({
               accessKeyId: "Access key ID",
             }[key]
           }
+          readOnly={mode === "repair" && key !== "accessKeyId"}
+          required={key !== "prefix"}
           value={value[key]}
           onChange={(e) => onChange({ ...value, [key]: e.target.value })}
           error={errors?.[key]}

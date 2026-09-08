@@ -50,3 +50,19 @@ export class PasswordEntryNotFoundError extends Error {
     this.name = "PasswordEntryNotFoundError";
   }
 }
+
+export class InvalidExpectedEntryVersionError extends Error {
+  override readonly name = "InvalidExpectedEntryVersionError";
+
+  constructor() {
+    super("The expected password entry version is invalid.");
+  }
+}
+
+export class PasswordEntryChangedError extends Error {
+  override readonly name = "PasswordEntryChangedError";
+
+  constructor() {
+    super("The password entry changed after it was read.");
+  }
+}

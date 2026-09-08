@@ -1,3 +1,5 @@
+import { SyncPage } from "@/ui/features/sync/sync-page.view";
+import type { SyncCapabilities } from "@/ui/features/sync/sync.type";
 import { VaultPicker } from "@/ui/features/vault-access";
 import { VaultLockSettings } from "@/ui/features/settings/vault-lock-settings.view";
 import { SetupRecoveryView } from "@/ui/features/vault-setup/setup-recovery.view";
@@ -28,15 +30,18 @@ export function OptionsView({
   assessPassword,
   initialStep = "welcome",
   setup,
+  sync,
 }: {
   preference: "light" | "dark" | "system";
   onThemeChange: (preference: "light" | "dark" | "system") => void;
   assessPassword: AssessPassword;
   initialStep?: SetupStep;
   setup: SetupCapabilities;
+  sync: SyncCapabilities;
 }) {
   const live = useVaultSetup(setup);
   const [step, setStep] = useState<SetupStep>(initialStep);
+  const [showSync, setShowSync] = useState(false);
   const [settings, setSettings] = useState(false);
   const [draft, setDraft] = useState<PasswordCreationDraft>({
     password: "",
@@ -55,6 +60,7 @@ export function OptionsView({
   }, [
     step,
     settings,
+    showSync,
     live.recovery,
     live.verifying,
     live.vault?.vaultId,
@@ -69,6 +75,7 @@ export function OptionsView({
   }
   function showSettings() {
     reset();
+    setShowSync(false);
     setSettings(true);
   }
   const creating = step === "password" || step === "device";
@@ -86,6 +93,17 @@ export function OptionsView({
             LFSPM
           </span>
           <div className="flex items-center gap-3">
+            {live.vault?.complete && live.vault.unlocked ? (
+              <Button
+                variant={showSync ? "secondary" : "ghost"}
+                onClick={() => {
+                  setSettings(false);
+                  setShowSync(true);
+                }}
+              >
+                Sync
+              </Button>
+            ) : null}
             <Button
               variant="ghost"
               disabled={live.pending || !!live.recovery}
@@ -105,12 +123,14 @@ export function OptionsView({
       <main
         className={cn(
           "mx-auto space-y-8 px-5 py-8 @lg:py-12",
-          !settings &&
-            !live.vault &&
-            live.vaults.length === 0 &&
-            step === "welcome"
+          showSync && live.vault?.complete && live.vault.unlocked
             ? "max-w-4xl"
-            : "max-w-xl",
+            : !settings &&
+                !live.vault &&
+                live.vaults.length === 0 &&
+                step === "welcome"
+              ? "max-w-4xl"
+              : "max-w-xl",
         )}
       >
         {!settings &&
@@ -130,7 +150,12 @@ export function OptionsView({
             }}
           />
         ) : null}
-        <div ref={content} tabIndex={-1} className="outline-none">
+        <div
+          ref={content}
+          tabIndex={-1}
+          data-focus-target
+          className="outline-none"
+        >
           {!live.vault && live.error ? (
             <p role="alert" className="mb-5 text-sm text-destructive">
               {live.error}
@@ -160,6 +185,13 @@ export function OptionsView({
                 onThemeChange={onThemeChange}
               />
             </section>
+          ) : showSync && live.vault?.complete && live.vault.unlocked ? (
+            <SyncPage
+              key={live.vault.vaultId}
+              vaultId={live.vault.vaultId}
+              capabilities={sync}
+              onBack={() => setShowSync(false)}
+            />
           ) : live.recovery ? (
             <SetupRecoveryView
               key={live.recovery.vault.vaultId}

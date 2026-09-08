@@ -60,6 +60,40 @@ user's behalf.
 
 ## Deploy
 
+### Extension setup guide
+
+After creating and unlocking the vault, open **Options → Sync**. Unconfigured
+sync opens **Set up S3 storage**. Choose **Use template** for CloudFormation or
+**AWS Console** to create the resources manually. **I already have storage**
+opens the connection form directly; **S3 setup instructions** returns to the guide.
+
+The template download uses `providers/aws/s3.template.yaml` from the same build.
+The guide explains its parameters, IAM acknowledgement, stack outputs, lifecycle
+retention and separate access-key creation. It displays this installation's actual
+extension origin for CORS.
+
+For manual setup, enter the new bucket name, region and vault prefix. The guide
+generates copyable CORS, HTTPS-only bucket policy and IAM permission documents
+for that location. The IAM document scopes object access and listing to the
+chosen prefix. Wildcards and IAM policy variables are rejected in these inputs.
+Use the same dedicated prefix on every device. The guide carries the location
+into the connection form; access keys belong only in that form.
+
+Keep Block Public Access enabled, disable ACLs, enable versioning and use SSE-S3.
+The manual path does not install lifecycle cleanup; retained versions incur
+storage costs. It uses the commercial AWS partition, like the supplied template.
+Neither path provisions resources from the extension. The user applies the
+instructions in their AWS account.
+
+References checked September 6, 2026:
+
+- [AWS CloudFormation console deployment](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cfn-console-create-stack.html)
+- [Creating an S3 bucket](https://docs.aws.amazon.com/AmazonS3/latest/userguide/create-bucket-overview.html)
+- [Editing S3 CORS](https://docs.aws.amazon.com/AmazonS3/latest/userguide/enabling-cors-examples.html)
+- [S3 bucket policy examples, including HTTPS enforcement](https://docs.aws.amazon.com/AmazonS3/latest/userguide/example-bucket-policies.html)
+- [Creating IAM policies in the console](https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_create-console.html)
+- [Managing IAM access keys](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys_update.html)
+
 ### AWS CloudShell
 
 1. Open AWS CloudShell from the AWS Console.

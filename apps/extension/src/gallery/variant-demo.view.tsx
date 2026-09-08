@@ -1,3 +1,5 @@
+import { CredentialForm } from "@/ui/features/sync/credential-form.view";
+import { emptyCredentials } from "@/ui/features/sync/sync.type";
 import { vaultLockOptions } from "@/ui/lib/vault-lock-options";
 import * as Dialog from "@/ui/components/primitives/dialog";
 import * as Table from "@/ui/components/primitives/table";
@@ -48,6 +50,11 @@ export function VariantDemo({
   id: string;
   propsFor: PreviewProps;
 }) {
+  const [credentials, setCredentials] = useState({
+    ...emptyCredentials,
+    bucket: "personal-vault",
+    region: "eu-central-1",
+  });
   const label = useId();
   const [draft, setDraft] = useState<EntryDraft>({
     login: "demo@example.test",
@@ -59,6 +66,17 @@ export function VariantDemo({
   const iconButton = (name: string, iconSize?: string) =>
     iconSize?.startsWith("icon") ? <Mark /> : name;
   switch (id) {
+    case "F05":
+      return (
+        <CredentialForm
+          {...p(CredentialForm, "CredentialForm")}
+          value={credentials}
+          onChange={setCredentials}
+          onSubmit={() => {}}
+          onCancel={() => setCredentials({ ...emptyCredentials })}
+          onTest={() => {}}
+        />
+      );
     case "B01":
       return (
         <B.Button {...p(B.Button, "Button")} aria-label="Example action">

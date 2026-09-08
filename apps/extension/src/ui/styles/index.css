@@ -134,6 +134,13 @@
   }
 }
 
+/* Focus geometry must not animate through the browser's default thick outline. */
+:where(a, button, input, select, textarea, summary, [tabindex]) {
+  transition-property:
+    color, background-color, border-color, box-shadow, opacity, transform,
+    translate;
+}
+
 /* One focus indicator, following the control's radius. Keep this unlayered so
    primitive outline/ring utilities cannot add a second halo or hide focus. */
 :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible,
@@ -143,8 +150,13 @@
 [data-focus-group]:has(:focus-visible) {
   --tw-ring-shadow: 0 0 #0000;
   --tw-ring-offset-shadow: 0 0 #0000;
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
+  outline: 1px solid var(--ring);
+  outline-offset: 1px;
+}
+
+/* Navigation targets receive focus for reading order, not a control border. */
+[data-focus-target]:focus {
+  outline: none;
 }
 
 /* The enclosing field or choice card owns focus for these inner controls.
@@ -164,7 +176,7 @@
   [role="menuitemradio"],
   [role="option"]
 ):focus-visible {
-  outline-offset: -2px;
+  outline-offset: -1px;
 }
 
 /* Chip actions have their own indicator; avoid the parent's focus-within halo. */

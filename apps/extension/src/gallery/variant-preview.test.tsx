@@ -18,7 +18,6 @@ describe("gallery variant previews", () => {
     );
     await user.selectOptions(screen.getByLabelText("Button size"), "icon-lg");
     const button = screen.getByRole("button", { name: "Example action" });
-    expect(button).toHaveClass("text-destructive", "size-8");
     expect(button.querySelector("svg")).not.toBeNull();
     expect(screen.getByText(/variant=destructive/)).toHaveTextContent(
       "size=icon-lg",

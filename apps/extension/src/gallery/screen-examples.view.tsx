@@ -1,3 +1,8 @@
+import { S3SetupGuide } from "@/ui/features/sync/s3-setup-guide.view";
+import { SyncPage } from "@/ui/features/sync/sync-page.view";
+import { CredentialForm } from "@/ui/features/sync/credential-form.view";
+import { emptyCredentials } from "@/ui/features/sync/sync.type";
+import { gallerySync, type SyncScenario } from "./sync-fixture";
 import { ThemeToggle } from "@/ui/features/theme";
 import { VaultLockSettings } from "@/ui/features/settings/vault-lock-settings.view";
 import { SetupDevice } from "@/ui/features/vault-setup/setup-device.view";
@@ -11,6 +16,13 @@ import { PopupView } from "@/ui/entrypoints/popup/popup.view";
 import { Specimen, Scenario } from "./specimen.view";
 const strength = new CheckPasswordStrengthUseCase();
 export type OptionsScenario =
+  | "s3-guide"
+  | "s3-copy-error"
+  | "s3-invalid-bucket"
+  | "s3-invalid-prefix"
+  | "s3-invalid-origin"
+  | "s3-firefox-origin"
+  | SyncScenario
   | "appearance"
   | "lock-settings"
   | "lock-settings-pending"
@@ -47,6 +59,18 @@ export function OptionsExample({
   preference: "light" | "dark" | "system";
   onThemeChange: (preference: "light" | "dark" | "system") => void;
 }) {
+  const [sync] = useState(() =>
+    gallerySync(
+      state.startsWith("sync-") ? (state as SyncScenario) : "sync-setup",
+    ),
+  );
+  const [s3Location, setS3Location] = useState({
+    bucket: state === "s3-invalid-bucket" ? "" : "personal-vault",
+    region: "eu-central-1",
+    prefix: state === "s3-invalid-prefix" ? "" : "vault/",
+  });
+  const [guideDone, setGuideDone] = useState(false);
+  const [connection, setConnection] = useState(emptyCredentials);
   const [savedDuration, setSavedDuration] = useState(600_000);
   const failed = useRef(false);
   const [setup] = useState(() =>
@@ -74,6 +98,47 @@ export function OptionsExample({
     },
     [state],
   );
+  if (state.startsWith("s3-"))
+    return guideDone ? (
+      <div className="max-w-xl space-y-4">
+        <CredentialForm
+          value={connection}
+          onChange={setConnection}
+          onCancel={() => setGuideDone(false)}
+          onSubmit={() => setNotice("Sync enabled")}
+          onTest={() => setNotice("Access confirmed")}
+        />
+        {notice ? <p role="status">{notice}</p> : null}
+      </div>
+    ) : (
+      <S3SetupGuide
+        origin={
+          state === "s3-invalid-origin"
+            ? "https://example.com"
+            : state === "s3-firefox-origin"
+              ? "moz-extension://2c127fa4-62c7-7e4f-90e5-472b45eecfdc"
+              : sync.origin
+        }
+        location={s3Location}
+        onLocationChange={setS3Location}
+        onCopy={async () => {
+          if (state === "s3-copy-error")
+            throw new Error("Clipboard unavailable");
+        }}
+        onContinue={() => {
+          setConnection({ ...emptyCredentials, ...s3Location });
+          setGuideDone(true);
+        }}
+      />
+    );
+  if (state.startsWith("sync-"))
+    return (
+      <SyncPage
+        vaultId="gallery-vault"
+        capabilities={sync}
+        onBack={() => setNotice("Back requested")}
+      />
+    );
   if (state === "appearance")
     return (
       <section className="space-y-6">
@@ -174,6 +239,7 @@ export function OptionsExample({
   return (
     <OptionsView
       setup={setup}
+      sync={sync}
       preference={preference}
       onThemeChange={onThemeChange}
       initialStep={
@@ -197,6 +263,57 @@ export function ScreenExamples() {
   const [action, setAction] = useState("");
   return (
     <div className="space-y-8">
+      <Specimen id="S04" name="S3SetupGuide" owner="features/sync" wide>
+        <Scenario
+          label="S3 setup guide"
+          options={
+            [
+              "s3-guide",
+              "s3-copy-error",
+              "s3-invalid-bucket",
+              "s3-invalid-prefix",
+              "s3-invalid-origin",
+              "s3-firefox-origin",
+            ] as const
+          }
+        >
+          {(state) => (
+            <OptionsExample
+              state={state}
+              preference={preference}
+              onThemeChange={setPreference}
+            />
+          )}
+        </Scenario>
+      </Specimen>
+      <Specimen id="S03" name="SyncPage" owner="features/sync" wide>
+        <Scenario
+          label="Sync screen"
+          options={
+            [
+              "sync-setup",
+              "sync-access-pending",
+              "sync-saved-refresh-error",
+              "sync-configured",
+              "sync-pending",
+              "sync-error",
+              "sync-session-expired",
+              "sync-review",
+              "sync-revision",
+              "sync-repair-error",
+              "sync-loading",
+            ] as const
+          }
+        >
+          {(state) => (
+            <OptionsExample
+              state={state}
+              preference={preference}
+              onThemeChange={setPreference}
+            />
+          )}
+        </Scenario>
+      </Specimen>
       <Specimen id="S01" name="PopupView" owner="entrypoints/popup">
         <Scenario
           label="First-launch popup"

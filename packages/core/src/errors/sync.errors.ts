@@ -45,6 +45,14 @@ export class LocalSyncCredentialsMissingError extends Error {
   }
 }
 
+export class SyncCredentialsRejectedError extends Error {
+  override readonly name = "SyncCredentialsRejectedError";
+
+  constructor() {
+    super("The sync provider rejected the replacement credentials.");
+  }
+}
+
 export class ReplacementSyncCredentialsRequiredError extends Error {
   override readonly name = "ReplacementSyncCredentialsRequiredError";
 

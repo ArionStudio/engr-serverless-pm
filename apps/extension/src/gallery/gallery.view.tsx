@@ -238,6 +238,7 @@ export function Gallery() {
           <main
             id="review-content"
             tabIndex={-1}
+            data-focus-target
             className="mx-auto max-w-7xl px-4 py-8 outline-none sm:px-8 lg:px-10 lg:py-10"
           >
             <div className="mb-8 flex flex-wrap items-start justify-between gap-5">

@@ -2,5 +2,8 @@ export * from "./apply-sync-resolution";
 export * from "./disable-sync";
 export * from "./prepare-sync-review";
 export * from "./setup-sync";
+export * from "./update-sync-credentials";
 export * from "./sync-upload";
 export * from "./complete-provider-credential-revocation";
+export * from "./get-sync-configuration";
+export * from "./test-sync-access";

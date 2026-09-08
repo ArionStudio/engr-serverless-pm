@@ -1,17 +1,23 @@
 # Extension UI and UX plan
 
-Status: accepted product decisions with proposed layouts and implementation work.
-Checked on 2026-09-05 against commit `8ec2614860506318a2c1b0610d3c33518ee761eb`.
-These documents describe the intended experience; they do not claim that the UI
-or missing core capabilities have been implemented. Coding rules remain in
+Status: accepted product decisions with implemented setup and Sync screens;
+entry workspace and existing-vault enrollment remain pending in this batch.
+Updated on 2026-09-08. Individual plans distinguish implemented workflows from
+proposed layouts and missing core capabilities. Coding rules remain in
 [the standards](../standards/README.md).
 
 The complete gallery is now implemented for review. Start with the
 [component review inventory and ownership map](./review-inventory.md) and the
 [TanStack verification report](./tanstack-verification.md). See also the
 [component contrast review](./contrast-review.md) and
-[website icon plan and safety review](./favicon-review.md). Screens and live
-workflows still follow library review.
+[website icon plan and safety review](./favicon-review.md). Options connects vault
+creation, recovery saving and verification, plus S3 setup, access testing,
+configuration, credential repair, upload retry and explicit sync review.
+
+Before the next vault-screen implementation, use the
+[recovered workspace checklist](../plans/vault-workspace-checklist.md). It
+distinguishes accepted requirements, current contract gaps and proposed screen
+scope after the implemented Sync screen.
 
 ## Read in this order
 
@@ -69,9 +75,12 @@ Later user clarifications supersede the initial setup-first implementation order
   all planned library components before screen assembly and live workflow integration.
   The user explicitly corrected the earlier ordering and authorized this specification.
 
+- **Sync delivery order:** Configure and enable sync from Options before implementing the entry workspace. The [sync configuration plan](../plans/sync-configuration-ui.md) records the scope and validation.
+- **Focus appearance:** Programmatically focused page containers have no outline. Interactive controls use a thin 1px keyboard focus border with a 1px gap, without a thick animated halo. Shared fields and selectable cards own their inner control indicator.
 - **Contrast requirement:** Component contrast must meet WCAG AA thresholds in
   both themes. The [contrast review](./contrast-review.md) records the measured
-  accessibility overrides to the base preset and the repeatable gallery audit.
+  accessibility overrides to the base preset. Review appearance in the gallery;
+  custom contrast audit scripts are no longer maintained.
 - **Website icons:** Add `SiteIcon` to the entries-library work; defer browser
   permissions and the device-local preference workflow until entries/settings
   integration. Real-extension verification gates shipping. The user accepted
@@ -96,7 +105,7 @@ Later user clarifications supersede the initial setup-first implementation order
 | Gap                         | Why it matters                                                                 | Proposed next action                                                                                       |
 | --------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
 | Complete disaster recovery  | Words alone cannot restore a lost installation.                                | Define backup artifacts and import verification separately; do not label a word sheet a full vault backup. |
-| Remaining UI integration    | Existing-vault enrollment and entry/sync screens are not connected yet.        | Inject narrow use-case capabilities as those feature screens are built.                                    |
+| Remaining UI integration    | Existing-vault enrollment and entry workspace are not connected yet.        | Inject narrow use-case capabilities as those feature screens are built.                                    |
 | Later settings/read screens | Device, tag, and configuration summaries lack dedicated public read workflows. | Add explicit read contracts when those slices are implemented.                                             |
 
 ## Delivery sequence

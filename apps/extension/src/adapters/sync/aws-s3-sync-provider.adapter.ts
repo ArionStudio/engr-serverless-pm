@@ -701,10 +701,7 @@ function requireTrimmedString(
 }
 
 function isNotFound(error: unknown): boolean {
-  return (
-    getHttpStatusCode(error) === 404 ||
-    NOT_FOUND_ERROR_CODES.has(getErrorCode(error) ?? "")
-  );
+  return NOT_FOUND_ERROR_CODES.has(getErrorCode(error) ?? "");
 }
 
 function isConditionalConflict(error: unknown): boolean {

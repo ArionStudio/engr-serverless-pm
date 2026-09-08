@@ -229,6 +229,8 @@ export class PrepareSyncReviewUseCase {
       remoteVault.providerCredentialRevocationPending === undefined;
 
     if (
+      remoteSnapshot.metadata.vaultCreationTimestamp !==
+        localSnapshot.metadata.vaultCreationTimestamp ||
       !areJsonEqual(remoteVault.syncTarget, unlockedVault.vault.syncTarget) ||
       !areJsonEqual(
         remoteVault.syncRemovalPending,
