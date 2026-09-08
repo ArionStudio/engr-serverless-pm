@@ -556,36 +556,56 @@ it("shows one sync panel only on the Vault list while checking once even when op
   expect(sync.review).toHaveBeenCalledTimes(1);
 });
 
-it("reports a rejected popup reveal without exposing the cause and permits retry", async () => {
-  const user = userEvent.setup();
-  const capabilities = galleryWorkspace();
-  const edit = capabilities.edit;
-  capabilities.edit = vi
-    .fn()
-    .mockRejectedValueOnce(new Error("private repository details"))
-    .mockImplementation(edit);
-  render(
-    <PopupEntries
-      vaultId="vault"
-      capabilities={capabilities}
-      onDraftConsumed={() => {}}
-      onStateChange={() => {}}
-      onOpenSync={() => {}}
-      onLock={() => {}}
-    />,
-  );
-  await user.click(
-    await screen.findByRole("button", { name: /adrian@example\.test/ }),
-  );
-  await user.click(await screen.findByRole("button", { name: "Reveal" }));
-  expect(await screen.findByRole("alert")).not.toHaveTextContent(
-    "private repository details",
-  );
-  expect(screen.getByRole("alert")).toHaveFocus();
-  expect(screen.getByRole("button", { name: "Reload entries" })).toBeVisible();
-  await user.click(screen.getByRole("button", { name: "Reveal" }));
-  expect(
-    await screen.findByText("Gallery-River-8!Pine-Sky", { exact: true }),
-  ).toBeVisible();
-  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-});
+it.each(["popup", "options"])(
+  "reports a rejected %s reveal without exposing the cause and permits retry",
+  async (surface) => {
+    const user = userEvent.setup();
+    const capabilities = galleryWorkspace();
+    const edit = capabilities.edit;
+    capabilities.edit = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("private repository details"))
+      .mockImplementation(edit);
+    render(
+      surface === "popup" ? (
+        <PopupEntries
+          vaultId="vault"
+          capabilities={capabilities}
+          onDraftConsumed={() => {}}
+          onStateChange={() => {}}
+          onOpenSync={() => {}}
+          onLock={() => {}}
+        />
+      ) : (
+        <EntryWorkspace
+          vaultId="vault"
+          capabilities={capabilities}
+          onDraftConsumed={() => {}}
+          onLock={() => {}}
+          onSync={() => {}}
+        />
+      ),
+    );
+    await user.click(
+      await screen.findByRole("button", {
+        name:
+          surface === "popup"
+            ? /adrian@example\.test/
+            : "Open adrian@example.test",
+      }),
+    );
+    await user.click(await screen.findByRole("button", { name: "Reveal" }));
+    expect(await screen.findByRole("alert")).not.toHaveTextContent(
+      "private repository details",
+    );
+    expect(screen.getByRole("alert")).toHaveFocus();
+    expect(
+      screen.getByRole("button", { name: "Reload entries" }),
+    ).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Reveal" }));
+    expect(
+      await screen.findByText("Gallery-River-8!Pine-Sky", { exact: true }),
+    ).toBeVisible();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  },
+);

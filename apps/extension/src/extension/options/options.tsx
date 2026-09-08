@@ -27,14 +27,26 @@ export function Options() {
   const [folderManagement] = useState(composeFolderManagement);
   const [sync] = useState(composeSync);
   const [setup] = useState(composeVaultSetup);
-  const [route] = useState(() => readOptionsRoute(window.location.hash));
-  const [activeRoute, setActiveRoute] = useState(route);
+  const [navigation, setNavigation] = useState(() => ({
+    route: readOptionsRoute(window.location.hash),
+    requestId: 0,
+  }));
   useEffect(() => {
-    const updateRoute = () =>
-      setActiveRoute(readOptionsRoute(window.location.hash));
+    const updateRoute = () => {
+      const route = readOptionsRoute(window.location.hash);
+      setNavigation((current) =>
+        current.route === route
+          ? current
+          : { route, requestId: current.requestId + 1 },
+      );
+    };
     const receiveRoute = (message: unknown) => {
-      const next = readOptionsRouteMessage(message);
-      if (next) setActiveRoute(next);
+      const route = readOptionsRouteMessage(message);
+      if (route)
+        setNavigation((current) => ({
+          route,
+          requestId: current.requestId + 1,
+        }));
     };
     window.addEventListener("hashchange", updateRoute);
     chrome.runtime.onMessage.addListener(receiveRoute);
@@ -43,6 +55,7 @@ export function Options() {
       chrome.runtime.onMessage.removeListener(receiveRoute);
     };
   }, []);
+  const activeRoute = navigation.route;
   const { preference, setTheme } = useTheme();
   return (
     <>
@@ -58,10 +71,18 @@ export function Options() {
         onThemeChange={setTheme}
         assessPassword={assessSetupPassword}
         initialDestination={destinationForOptionsRoute(activeRoute)}
+        routeRequestId={navigation.requestId}
         initialRecovery={activeRoute === "recover-access"}
         onExitRecovery={() => {
           window.location.hash = "entries";
-          setActiveRoute("entries");
+          setNavigation((current) =>
+            current.route === "entries"
+              ? current
+              : {
+                  route: "entries",
+                  requestId: current.requestId + 1,
+                },
+          );
         }}
         initialEntryDraft={
           activeRoute === "add-entry" ? emptyEntryDraft : undefined

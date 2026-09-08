@@ -200,6 +200,7 @@ const screens: readonly {
       { id: "organization", label: "Default" },
       { id: "organization-pending", label: "Creating" },
       { id: "organization-error", label: "Error" },
+      { id: "organization-name-conflicts", label: "Name conflicts" },
     ],
   },
   {
@@ -460,6 +461,7 @@ export function ScreenGallery() {
                   "creation-error",
                   "organization-pending",
                   "organization-error",
+                  "organization-name-conflicts",
                 ].includes(state)
                   ? ""
                   : screen.id === "workspace"

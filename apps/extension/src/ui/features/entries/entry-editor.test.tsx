@@ -34,7 +34,7 @@ it("prefills a library folder and warns when inline creation is nested beyond tw
           id: "finance",
           name: "Finance",
           icon: "banknote",
-          parent: null,
+          parent: "ｗｏｒｋ",
           description: "Bank accounts",
         },
       ]}
@@ -67,6 +67,10 @@ it("prefills a library folder and warns when inline creation is nested beyond tw
   expect(
     (screen.getByLabelText("Name", { exact: true }) as HTMLInputElement).value,
   ).toBe("Finance");
+  expect(
+    (screen.getByRole("combobox", { name: "Location" }) as HTMLSelectElement)
+      .value,
+  ).toBe("work");
   await user.selectOptions(
     screen.getByRole("combobox", { name: "Location" }),
     "child",

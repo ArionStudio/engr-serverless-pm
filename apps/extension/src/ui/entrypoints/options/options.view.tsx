@@ -47,6 +47,7 @@ export function OptionsView({
   devices,
   vaultSettings,
   initialDestination,
+  routeRequestId = 0,
   initialEntryDraft,
   initialRecovery = false,
   onExitRecovery,
@@ -63,6 +64,7 @@ export function OptionsView({
   devices: DeviceCapabilities;
   vaultSettings: VaultSettingsCapabilities;
   initialDestination?: VaultDestination;
+  routeRequestId?: number;
   initialEntryDraft?: EntryDraft;
   initialRecovery?: boolean;
   onExitRecovery?: () => void;
@@ -267,7 +269,7 @@ export function OptionsView({
                 </p>
               ) : null}
               <VaultApplication
-                key={`${live.vault.vaultId}:${live.draftRevision}:${initialDestination ?? "entries"}:${initialEntryDraft ? "add" : "browse"}`}
+                key={`${live.vault.vaultId}:${live.draftRevision}:${initialDestination ?? "entries"}:${initialEntryDraft ? "add" : "browse"}:${routeRequestId}`}
                 vault={live.vault}
                 workspace={workspace}
                 tagManagement={tagManagement}

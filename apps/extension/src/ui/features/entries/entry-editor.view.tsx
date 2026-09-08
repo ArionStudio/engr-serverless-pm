@@ -7,7 +7,10 @@ import type {
   GlobalFolderDefinition,
   ReadFoldersResult,
 } from "@lfspm/core";
-import { PASSWORD_ENTRY_TAG_LIMIT } from "@lfspm/core";
+import {
+  PASSWORD_ENTRY_TAG_LIMIT,
+  resolveSuggestedFolderParent,
+} from "@lfspm/core";
 import {
   tagGroupPresentations,
   type TagGroupPresentation,
@@ -339,10 +342,11 @@ export function EntryEditor({
             onSuggestionSelected={(suggestion) => {
               if (suggestion.parent === null) setFolderParentId(null);
               else {
-                const parent = folders.find(
-                  ({ name }) => name === suggestion.parent,
+                const parentId = resolveSuggestedFolderParent(
+                  folders,
+                  suggestion.parent,
                 );
-                if (parent) setFolderParentId(parent.id);
+                if (parentId) setFolderParentId(parentId);
               }
             }}
             deepNesting={folderDepth(folderParentId, folders) + 1 > 2}

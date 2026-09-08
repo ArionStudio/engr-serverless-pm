@@ -5,6 +5,7 @@ export type PopupSyncScenario =
   | "sync-current"
   | "sync-changed-during-check"
   | "sync-review"
+  | "sync-review-read-error"
   | "sync-off"
   | "sync-permission"
   | "sync-error"
@@ -16,18 +17,29 @@ export type PopupSyncScenario =
   | "sync-pending-refresh-error";
 export function galleryPopupSync(
   scenario: PopupSyncScenario = "sync-current",
-): PopupSyncCapabilities {
+): PopupSyncCapabilities & { simulateFailedRefresh: () => void } {
   let notify: Parameters<PopupSyncCapabilities["subscribe"]>[0] = () => {};
   let reads = 0;
+  let failedInspection = false;
   let applied = false;
   let uploaded = false;
   const refreshFails = scenario.endsWith("refresh-error");
   const pending =
     scenario === "sync-pending" || scenario === "sync-pending-refresh-error";
   const needsReview =
-    scenario === "sync-review" || scenario === "sync-apply-refresh-error";
+    scenario === "sync-review" ||
+    scenario === "sync-review-read-error" ||
+    scenario === "sync-apply-refresh-error";
   return {
+    simulateFailedRefresh: () => {
+      failedInspection = true;
+      notify("data");
+    },
     inspect: async () => {
+      if (failedInspection) {
+        failedInspection = false;
+        throw new Error("Status unavailable");
+      }
       if (++reads === 2 && scenario === "sync-changed-during-check")
         notify("data");
       if (refreshFails && (uploaded || applied))

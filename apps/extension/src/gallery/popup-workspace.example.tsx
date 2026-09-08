@@ -1,3 +1,4 @@
+import { Button } from "@/ui/components/primitives/button";
 import { galleryPopupSync, type PopupSyncScenario } from "./popup-sync-fixture";
 import { galleryVaultSettings } from "./settings-fixture";
 import { galleryBrowserLogins } from "./browser-login-fixture";
@@ -59,6 +60,11 @@ export function PopupWorkspaceExample({
   const [notice, setNotice] = useState("");
   return (
     <>
+      {state === "sync-review-read-error" ? (
+        <Button variant="outline" onClick={sync.simulateFailedRefresh}>
+          Fail subscription refresh
+        </Button>
+      ) : null}
       <PopupWorkspace
         setup={setup}
         sync={sync}

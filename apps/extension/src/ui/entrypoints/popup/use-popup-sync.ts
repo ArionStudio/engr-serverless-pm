@@ -173,9 +173,16 @@ export function usePopupSync(
       ++dataRevision.current;
       if (busy.current) return;
       const owner = epoch.current;
-      void read(owner).then(
+      const pendingInspection = read(owner);
+      const request = inspection.current;
+      void pendingInspection.then(
         (value) => {
-          if (owner !== epoch.current || busy.current) return;
+          if (
+            owner !== epoch.current ||
+            request !== inspection.current ||
+            busy.current
+          )
+            return;
           setStatus(
             value.configured
               ? value.access
@@ -188,7 +195,10 @@ export function usePopupSync(
           setError(undefined);
         },
         () => {
-          if (owner === epoch.current) {
+          if (owner === epoch.current && request === inspection.current) {
+            setSnapshot(undefined);
+            setReview(undefined);
+            setChoices({});
             setStatus("error");
             setError("Could not read sync status. Try again.");
           }

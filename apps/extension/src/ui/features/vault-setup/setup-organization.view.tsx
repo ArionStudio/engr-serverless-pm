@@ -15,6 +15,7 @@ import { useId, useMemo } from "react";
 import { Button } from "@/ui/components/primitives/button";
 import { Card } from "@/ui/components/primitives/card";
 import { Input } from "@/ui/components/primitives/input";
+import { FieldError } from "@/ui/components/primitives/field";
 import {
   NativeSelect,
   NativeSelectOption,
@@ -36,6 +37,7 @@ import {
 } from "@/ui/features/tags";
 import {
   createOrganizationSetupDraft,
+  findOrganizationSetupNameConflicts,
   type OrganizationSetupDraft,
 } from "./setup-organization";
 
@@ -98,6 +100,30 @@ export function SetupOrganization({
   const groupById = useMemo(
     () => new Map(groups.map((group) => [group.id, group])),
     [groups],
+  );
+  const nameConflicts = useMemo(
+    () => findOrganizationSetupNameConflicts(value),
+    [value],
+  );
+  const folderNameErrors = new Map(
+    value.folders.flatMap((folder) => {
+      const error = !folder.name.trim()
+        ? "Enter a folder name."
+        : nameConflicts.folderIds.has(folder.id)
+          ? "Use a unique name among folders in this location."
+          : undefined;
+      return error ? [[folder.id, error] as const] : [];
+    }),
+  );
+  const tagNameErrors = new Map(
+    value.tags.flatMap((tag) => {
+      const error = !tag.name.trim()
+        ? "Enter a tag name."
+        : nameConflicts.tagIds.has(tag.id)
+          ? "Use a unique tag name."
+          : undefined;
+      return error ? [[tag.id, error] as const] : [];
+    }),
   );
   return (
     <section className="space-y-8">
@@ -205,14 +231,22 @@ export function SetupOrganization({
                 disabled={pending}
                 className="after:hidden px-4 py-2 text-sm"
               >
-                Folders ({value.folders.length})
+                Folders ({value.folders.length}
+                {folderNameErrors.size
+                  ? `, ${folderNameErrors.size} need attention`
+                  : ""}
+                )
               </TabsTrigger>
               <TabsTrigger
                 value="tags"
                 disabled={pending}
                 className="after:hidden px-4 py-2 text-sm"
               >
-                Tags ({value.tags.length})
+                Tags ({value.tags.length}
+                {tagNameErrors.size
+                  ? `, ${tagNameErrors.size} need attention`
+                  : ""}
+                )
               </TabsTrigger>
             </TabsList>
             <TabsContent value="folders" className="space-y-3 text-sm">
@@ -221,16 +255,25 @@ export function SetupOrganization({
                   folder.id,
                   value.folders,
                 );
+                const nameError = folderNameErrors.get(folder.id);
+                const nameId = `${id}-folder-${folder.id}-name`;
                 return (
                   <div
                     key={folder.id}
                     className="grid gap-4 rounded-lg border bg-background p-4 @xl:grid-cols-2"
                   >
-                    <label className="space-y-2">
-                      <span className="block font-medium">Folder name</span>
+                    <div className="space-y-2">
+                      <label className="block font-medium" htmlFor={nameId}>
+                        Folder name
+                      </label>
                       <Input
+                        id={nameId}
                         value={folder.name}
                         maxLength={64}
+                        aria-invalid={!!nameError}
+                        aria-describedby={
+                          nameError ? `${nameId}-error` : undefined
+                        }
                         onChange={(event) =>
                           onChange({
                             ...value,
@@ -242,7 +285,12 @@ export function SetupOrganization({
                           })
                         }
                       />
-                    </label>
+                      {nameError ? (
+                        <FieldError id={`${nameId}-error`}>
+                          {nameError}
+                        </FieldError>
+                      ) : null}
+                    </div>
                     <label className="space-y-2">
                       <span className="block font-medium">Location</span>
                       <NativeSelect
@@ -288,17 +336,26 @@ export function SetupOrganization({
               {value.tags.map((tag) => {
                 const group =
                   groupById.get(tag.groupId) ?? groups[groups.length - 1];
+                const nameError = tagNameErrors.get(tag.id);
+                const nameId = `${id}-tag-${tag.id}-name`;
                 return (
                   <div
                     key={tag.id}
                     className="space-y-5 rounded-lg border bg-background p-4"
                   >
                     <div className="grid gap-3 @xl:grid-cols-[1fr_auto] @xl:items-center">
-                      <label className="space-y-2">
-                        <span className="block font-medium">Tag name</span>
+                      <div className="space-y-2">
+                        <label className="block font-medium" htmlFor={nameId}>
+                          Tag name
+                        </label>
                         <Input
+                          id={nameId}
                           value={tag.name}
                           maxLength={32}
+                          aria-invalid={!!nameError}
+                          aria-describedby={
+                            nameError ? `${nameId}-error` : undefined
+                          }
                           onChange={(event) =>
                             onChange({
                               ...value,
@@ -310,7 +367,12 @@ export function SetupOrganization({
                             })
                           }
                         />
-                      </label>
+                        {nameError ? (
+                          <FieldError id={`${nameId}-error`}>
+                            {nameError}
+                          </FieldError>
+                        ) : null}
+                      </div>
                       {group ? (
                         <TagPill
                           name={tag.name || "Unnamed tag"}
@@ -362,9 +424,7 @@ export function SetupOrganization({
           <Button
             type="button"
             disabled={
-              pending ||
-              value.folders.some(({ name }) => !name.trim()) ||
-              value.tags.some(({ name }) => !name.trim())
+              pending || folderNameErrors.size > 0 || tagNameErrors.size > 0
             }
             onClick={() => {
               if (!pending) onContinue();
