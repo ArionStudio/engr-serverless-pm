@@ -1,4 +1,9 @@
 import { SearchField } from "./search-field.view";
+import {
+  parseEntrySearch,
+  matchesEntrySearch,
+  entrySearchSuggestions,
+} from "./entry-search";
 import { SiteIcon } from "./site-icon.view";
 import { useId, useMemo, useState } from "react";
 import type { VisiblePasswordEntryFields } from "@lfspm/core";
@@ -243,22 +248,21 @@ export function EntryTable({
       ),
     [entries],
   );
-  const normalized = query.trim().toLowerCase();
+  const suggestions = useMemo(
+    () => entrySearchSuggestions(displayData, tagLabels, folders),
+    [displayData, tagLabels, folders],
+  );
+  const terms = useMemo(() => parseEntrySearch(query), [query]);
   const data = useMemo(
     () =>
       available
         ? displayData.filter(
             (entry) =>
               (!tag || entry.tags.includes(tag)) &&
-              [
-                entry.login,
-                entry.sanitizedUrl,
-                folders[entry.folderId]?.name ?? "Uncategorized",
-                ...entry.tags.map((id) => tagLabels[id] ?? ""),
-              ].some((value) => value.toLowerCase().includes(normalized)),
+              matchesEntrySearch(entry, terms, tagLabels, folders),
           )
         : [],
-    [displayData, normalized, tag, tagLabels, folders, available],
+    [displayData, terms, tag, tagLabels, folders, available],
   );
   const columns = useMemo(
     () => createColumns(tagLabels, tagOptions, folders, !!onReviewSelection),
@@ -294,6 +298,7 @@ export function EntryTable({
       <div className="entry-table-toolbar flex flex-wrap items-end gap-3">
         <div className="min-w-0 flex-1 basis-56">
           <SearchField
+            suggestions={suggestions}
             onSubmit={() => {}}
             value={query}
             disabled={!available}

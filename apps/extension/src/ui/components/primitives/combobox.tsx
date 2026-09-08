@@ -72,6 +72,7 @@ function ComboboxInput({
   showClear = false,
   ...props
 }: ComboboxPrimitive.Input.Props & {
+  ref?: React.Ref<HTMLInputElement>;
   showTrigger?: boolean;
   showClear?: boolean;
 }) {
