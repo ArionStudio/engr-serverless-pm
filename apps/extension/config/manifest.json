@@ -12,6 +12,10 @@
     "clipboardWrite",
     "offscreen"
   ],
+  "optional_host_permissions": [
+    "https://*.amazonaws.com/*",
+    "https://*.amazonaws.com.cn/*"
+  ],
   "action": {
     "default_popup": "popup.html",
     "default_title": "SPM Extension"

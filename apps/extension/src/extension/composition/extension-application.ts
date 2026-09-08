@@ -48,6 +48,7 @@ import {
 import { ScureBip39Adapter } from "../../adapters/crypto/scure-bip39.adapter";
 import { IndexedDbVaultLocalRepositoryAdapter } from "../../adapters/storage";
 import { AwsS3SyncProviderAdapter } from "../../adapters/sync";
+import { createBrowserS3Client } from "../../adapters/sync/browser-s3-access.adapter";
 import { db } from "../../infrastructure/database/dexie-db";
 import type { VaultManagerDb } from "../../infrastructure/database/dexie-db";
 import { composeSession } from "./session.composition";
@@ -78,7 +79,7 @@ export function composeExtensionApplication(database: VaultManagerDb = db) {
     crypto,
   );
   const syncProvider = new AwsS3SyncProviderAdapter(
-    undefined,
+    createBrowserS3Client,
     undefined,
     crypto,
   );

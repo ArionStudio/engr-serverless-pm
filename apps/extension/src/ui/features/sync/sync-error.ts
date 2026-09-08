@@ -1,9 +1,12 @@
 export function syncError(
   error: unknown,
-  fallbackMessage = "Could not reach or authenticate with S3. Check your connection, region, key permissions and the bucket's CORS configuration, then try again.",
+  fallbackMessage = "Could not reach or authenticate with S3. Check your connection, region, key permissions and browser storage access, then try again.",
 ): string {
   const name = error instanceof Error ? error.name : "";
   switch (name) {
+    case "StorageHostPermissionRequiredError":
+      return "Storage access is not allowed in this browser. Allow access to resume sync. Your local vault is unchanged.";
+    case "InvalidSyncProviderResponseError":
     case "InvalidSyncConfigError":
       return "Check the bucket, region, prefix and access keys.";
     case "SyncCredentialsRejectedError":

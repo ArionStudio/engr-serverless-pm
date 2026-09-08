@@ -234,7 +234,7 @@ export function FormExamples() {
         name="CredentialForm"
         owner="Feature form · sync"
         initial={{
-          bucket: "",
+          bucket: "personal-vault",
           region: "eu-central-1",
           prefix: "vault/",
           accessKeyId: "",
@@ -249,19 +249,24 @@ export function FormExamples() {
           <>
             <Scenario
               label="Credential form mode"
-              options={["setup", "repair"] as const}
+              options={["setup", "guided", "repair"] as const}
             >
               {(mode) => (
                 <CredentialForm
-                  mode={mode}
                   {...props}
+                  mode={mode === "repair" ? "repair" : "setup"}
+                  onEditLocation={
+                    mode === "guided"
+                      ? () => setTestMessage("Storage step requested.")
+                      : undefined
+                  }
+                  feedback={
+                    testMessage ? <p role="status">{testMessage}</p> : undefined
+                  }
                   onTest={() => setTestMessage("Access test requested.")}
                 />
               )}
             </Scenario>
-            <p role="status" className="mt-3 text-xs">
-              {testMessage}
-            </p>
           </>
         )}
       </FormExample>

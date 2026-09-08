@@ -42,7 +42,7 @@ import {
 
 const JSON_CONTENT_TYPE = "application/json";
 
-type AwsS3TargetConfig = {
+export type AwsS3TargetConfig = {
   readonly bucket: string;
   readonly region: string;
   readonly prefix: string;
@@ -456,14 +456,43 @@ function providerRejectedUploadOutcome(): SyncUploadOutcome {
   };
 }
 
-function createAwsS3Client(
+export function createAwsS3Client(
   target: AwsS3TargetConfig,
   credentials: AwsS3CredentialsConfig,
+  beforeRequest?: (url: URL) => Promise<void>,
 ): S3SyncClient {
   const client = new S3Client({
     region: target.region,
     credentials,
+    // Never forward a signed request through an unapproved redirect.
+    requestHandler: { requestInit: () => ({ redirect: "error" }) },
   });
+  if (beforeRequest) {
+    client.middlewareStack.add(
+      (next) => async (args) => {
+        const request = args.request;
+        if (
+          typeof request !== "object" ||
+          request === null ||
+          !("hostname" in request) ||
+          typeof request.hostname !== "string" ||
+          !("protocol" in request) ||
+          typeof request.protocol !== "string"
+        ) {
+          throw new InvalidSyncProviderResponseError();
+        }
+        await beforeRequest(
+          new URL(`${request.protocol}//${request.hostname}`),
+        );
+        return next(args);
+      },
+      {
+        name: "storageHostPermission",
+        step: "finalizeRequest",
+        priority: "low",
+      },
+    );
+  }
 
   return {
     getObject: (input) => client.send(new GetObjectCommand(input)),
@@ -638,7 +667,7 @@ function requireEtag(remote: RemoteVaultSnapshotObject): string {
   return remote.etag;
 }
 
-function decodeTargetConfig(value: unknown): AwsS3TargetConfig {
+export function decodeTargetConfig(value: unknown): AwsS3TargetConfig {
   const record = requireExactRecord(value, ["bucket", "prefix", "region"]);
   const bucket = requireTrimmedString(record.bucket, 3, 63);
   const region = requireTrimmedString(record.region, 3, 64);

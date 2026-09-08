@@ -77,3 +77,5 @@ that directory through `chrome://extensions` with developer mode enabled.
 - [Coding standards](./docs/standards/README.md)
 - [AWS S3 setup](./docs/aws/s3/README.md)
 - [Development references](./docs/development/reference-links.md)
+
+Browser targets and installation limitations: [browser support](docs/browser-support.md).

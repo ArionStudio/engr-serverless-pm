@@ -63,6 +63,8 @@ export const syncReview: PrepareSyncReviewResult = {
   },
 };
 export type SyncScenario =
+  | "sync-permission-error"
+  | "sync-permission"
   | "sync-setup"
   | "sync-access-pending"
   | "sync-saved-refresh-error"
@@ -84,8 +86,18 @@ export function gallerySync(
       ? null
       : { ...syncLocation };
   let refreshFailure = false;
+  let permitted = scenario !== "sync-permission";
+  let permissionLookupFails = scenario === "sync-permission-error";
   return {
-    origin: "chrome-extension://abcdefghijklmnopabcdefghijklmnop",
+    requestAccess: async () => {
+      permitted = true;
+      permissionLookupFails = false;
+    },
+    hasAccess: async () => {
+      if (permissionLookupFails)
+        throw new Error("Browser permission API unavailable");
+      return permitted;
+    },
     copySetupText: async () => {},
     inspect: async () => {
       if (refreshFailure) {

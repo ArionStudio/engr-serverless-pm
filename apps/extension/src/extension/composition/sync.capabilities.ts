@@ -1,3 +1,4 @@
+import { BrowserS3AccessAdapter } from "../../adapters/sync/browser-s3-access.adapter";
 import type { SyncSetupInput } from "@lfspm/core";
 import type { CredentialDraft } from "@/ui/features/sync/credential-form.view";
 import type {
@@ -42,8 +43,10 @@ function sessionId(value: unknown): unknown {
     : undefined;
 }
 export function composeSync(): SyncCapabilities {
+  const access = new BrowserS3AccessAdapter();
   return {
-    origin: chrome.runtime.getURL("").replace(/\/$/, ""),
+    requestAccess: (target) => access.request(target),
+    hasAccess: (target) => access.contains(target),
     copySetupText: (value) => navigator.clipboard.writeText(value),
     inspect: async (vaultId) => {
       const { target } = await (
@@ -89,12 +92,22 @@ export function composeSync(): SyncCapabilities {
         )
           listener("session");
       };
+      const onPermissions = (change: chrome.permissions.Permissions) =>
+        listener("permissions", (target) => access.affects(target, change));
+      const onPermissionsRemoved = (change: chrome.permissions.Permissions) =>
+        listener("permissions-removed", (target) =>
+          access.affects(target, change),
+        );
+      chrome.permissions.onAdded.addListener(onPermissions);
+      chrome.permissions.onRemoved.addListener(onPermissionsRemoved);
       const onFocus = () => listener("focus");
       const onHide = () => listener("session");
       chrome.storage.onChanged.addListener(onStorage);
       window.addEventListener("focus", onFocus);
       window.addEventListener("pagehide", onHide);
       return () => {
+        chrome.permissions.onAdded.removeListener(onPermissions);
+        chrome.permissions.onRemoved.removeListener(onPermissionsRemoved);
         chrome.storage.onChanged.removeListener(onStorage);
         window.removeEventListener("focus", onFocus);
         window.removeEventListener("pagehide", onHide);

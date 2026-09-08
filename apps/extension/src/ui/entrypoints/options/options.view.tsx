@@ -138,9 +138,7 @@ export function OptionsView({
         className={cn(
           "mx-auto space-y-8 px-5 py-8 @lg:py-12",
           !settings && live.vault?.complete && live.vault.unlocked
-            ? showSync
-              ? "max-w-4xl"
-              : "max-w-6xl"
+            ? "max-w-6xl"
             : !settings &&
                 !live.vault &&
                 live.vaults.length === 0 &&

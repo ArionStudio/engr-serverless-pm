@@ -11,6 +11,7 @@ export function FormFrame({
   message,
   label = "Save",
   canSubmit = true,
+  noValidate = false,
 }: {
   children: ReactNode;
   actions?: ReactNode;
@@ -20,9 +21,11 @@ export function FormFrame({
   message?: string;
   label?: string;
   canSubmit?: boolean;
+  noValidate?: boolean;
 }) {
   return (
     <form
+      noValidate={noValidate}
       className="space-y-5"
       onSubmit={(e) => {
         e.preventDefault();

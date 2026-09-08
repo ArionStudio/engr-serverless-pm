@@ -5,9 +5,7 @@ Parameters:
   BucketName:
     Type: String
     Description: Globally unique S3 bucket name
-  ExtensionOrigins:
-    Type: CommaDelimitedList
-    Description: Comma-separated list of allowed CORS origins (e.g., chrome-extension://id,https://your.site)
+
   ObjectPrefix:
     Type: String
     Default: "vault/"
@@ -52,13 +50,7 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: "AES256"
-      CorsConfiguration:
-        CorsRules:
-          - AllowedMethods: [GET, PUT, DELETE, HEAD]
-            AllowedOrigins: !Ref ExtensionOrigins
-            AllowedHeaders: ["*"]
-            ExposedHeaders: ["ETag", "x-amz-version-id"]
-            MaxAge: 300
+
       LifecycleConfiguration: !If
         - IsLifecycleEnabled
         - Rules:

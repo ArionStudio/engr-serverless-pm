@@ -1,5 +1,12 @@
 import { useId } from "react";
-import { Badge } from "@/ui/components/primitives/badge";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  Alert02Icon,
+  CheckmarkCircle02Icon,
+  InformationCircleIcon,
+} from "@hugeicons/core-free-icons";
+import { Spinner } from "@/ui/components/primitives/spinner";
+import { cn } from "cn";
 import { Button } from "@/ui/components/primitives/button";
 import {
   RadioGroup,
@@ -12,6 +19,7 @@ import {
   AlertDescription,
 } from "@/ui/components/primitives/alert";
 export type SyncDisplayState =
+  | "permission-required"
   | "not-checked"
   | "access-confirmed"
   | "unconfigured"
@@ -32,22 +40,67 @@ export function SyncStatus({
   onAction?: () => void;
   action?: string;
 }) {
+  const confirmed = state === "access-confirmed" || state === "complete";
+  const working = state === "checking" || state === "uploading";
+  const warning =
+    state === "pending" ||
+    state === "review-required" ||
+    state === "permission-required";
+  const title = {
+    "permission-required": "Storage access is needed",
+    "not-checked": "Sync has not been checked",
+    "access-confirmed": "Read access confirmed",
+    unconfigured: "Sync is not configured",
+    checking: "Checking sync",
+    uploading: "Uploading encrypted changes",
+    complete: "Vault is up to date",
+    pending: "Upload pending",
+    "review-required": "Changes need your review",
+    failed: "Sync could not finish",
+  }[state];
   return (
-    <div className="space-y-3">
-      <Badge variant={state === "failed" ? "destructive" : "outline"}>
-        {state.replaceAll("-", " ")}
-      </Badge>
-      <p role="status" className="text-sm text-muted-foreground">
-        {detail}
-      </p>
-      {onAction && action ? (
-        <Button variant="outline" onClick={onAction}>
-          {action}
-        </Button>
-      ) : null}
+    <div
+      role="status"
+      className={cn(
+        "flex min-w-0 items-start gap-4 rounded-lg border p-5",
+        state === "failed"
+          ? "border-destructive/50 bg-destructive/10 text-destructive"
+          : warning
+            ? "border-warning-border bg-warning text-warning-foreground"
+            : "border-info-border bg-info text-info-foreground",
+      )}
+    >
+      {working ? (
+        <Spinner aria-hidden="true" className="mt-0.5 size-7 shrink-0" />
+      ) : (
+        <HugeiconsIcon
+          icon={
+            confirmed
+              ? CheckmarkCircle02Icon
+              : warning || state === "failed"
+                ? Alert02Icon
+                : InformationCircleIcon
+          }
+          aria-hidden="true"
+          strokeWidth={1.75}
+          className="mt-0.5 size-7 shrink-0"
+        />
+      )}
+      <div className="min-w-0 space-y-2">
+        <p className="text-lg font-semibold leading-7">{title}</p>
+        <p className="max-w-[65ch] text-base leading-7 wrap-anywhere">
+          {detail}
+        </p>
+        {onAction && action ? (
+          <Button className="mt-2" variant="outline" onClick={onAction}>
+            {action}
+          </Button>
+        ) : null}
+      </div>
     </div>
   );
 }
+
 export type Resolution = "use_local" | "use_remote";
 export type Comparison = {
   id: string;

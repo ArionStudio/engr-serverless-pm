@@ -22,7 +22,7 @@ function mount(capabilities = gallerySync()) {
   return {
     ...renderHook(() => useSync("gallery-vault", capabilities)),
     capabilities,
-    notify: (reason: "session" | "focus") => listener(reason),
+    notify: (...event: Parameters<typeof listener>) => listener(...event),
     unsubscribe,
   };
 }
@@ -85,6 +85,30 @@ describe("sync UI lifecycle", () => {
     act(() => ctx.result.current.change(input));
     await act(async () => ctx.notify("focus"));
     expect(ctx.result.current.draft).toEqual(input);
+  });
+  it("preserves a repair draft when the browser permission lookup fails on focus", async () => {
+    const ctx = mount(gallerySync("sync-configured"));
+    await ready(ctx);
+    act(() => ctx.result.current.beginRepair());
+    act(() => ctx.result.current.change(input));
+    ctx.capabilities.test = async () => {
+      throw new Error("Upload unavailable");
+    };
+    await act(() => ctx.result.current.test());
+    const operationError = ctx.result.current.error;
+    expect(operationError).toBeTruthy();
+    ctx.capabilities.hasAccess = vi
+      .fn()
+      .mockRejectedValue(new Error("Browser API unavailable"));
+    await act(async () => ctx.notify("focus"));
+    expect(ctx.result.current.draft).toEqual(input);
+    expect(ctx.result.current.repairing).toBe(true);
+    expect(ctx.result.current.target).toEqual(syncLocation);
+    expect(ctx.result.current.accessMissing).toBe(true);
+    expect(ctx.result.current.error).toBe(operationError);
+    ctx.capabilities.hasAccess = async () => true;
+    await act(async () => ctx.notify("focus"));
+    expect(ctx.result.current.error).toBe(operationError);
   });
   it("clears secrets immediately on session change and ignores a late access result", async () => {
     const ctx = mount();
@@ -198,7 +222,7 @@ describe("sync UI lifecycle", () => {
     act(() => {
       pending = ctx.result.current.save();
     });
-    act(() => ctx.notify("focus"));
+    await act(async () => ctx.notify("focus"));
     await act(async () => {
       finishSave();
       await pending;
@@ -206,6 +230,128 @@ describe("sync UI lifecycle", () => {
     expect(ctx.result.current.target).toEqual(syncLocation);
     await act(async () => finishInspection());
     expect(ctx.result.current.target).toEqual(syncLocation);
+  });
+  it("clears an access confirmation when permission changes before setup is saved", async () => {
+    const ctx = mount();
+    await ready(ctx);
+    act(() => ctx.result.current.change(input));
+    await act(() => ctx.result.current.test());
+    expect(ctx.result.current.feedback?.state).toBe("access-confirmed");
+    await act(async () => ctx.notify("permissions"));
+    expect(ctx.result.current.feedback).toBeUndefined();
+    expect(ctx.result.current.draft).toEqual(input);
+  });
+  it("keeps entered keys on denied permission and sends no operation", async () => {
+    const ctx = mount();
+    await ready(ctx);
+    ctx.capabilities.requestAccess = async () => {
+      const e = new Error();
+      e.name = "StorageHostPermissionRequiredError";
+      throw e;
+    };
+    ctx.capabilities.test = vi.fn();
+    act(() => ctx.result.current.change(input));
+    await act(() => ctx.result.current.test());
+    expect(ctx.capabilities.test).not.toHaveBeenCalled();
+    expect(ctx.result.current.draft).toEqual(input);
+    expect(ctx.result.current.error).toContain("Storage access is not allowed");
+  });
+  it("discards review after permission revocation and permits recovery without losing configuration", async () => {
+    const ctx = mount(gallerySync("sync-review"));
+    await ready(ctx);
+    await act(() => ctx.result.current.check());
+    const review = ctx.result.current.review;
+    const unaffected = vi.fn(() => false);
+    await act(async () => ctx.notify("permissions-removed", unaffected));
+    await act(async () => ctx.notify("permissions", unaffected));
+    expect(unaffected).toHaveBeenCalledWith(syncLocation);
+    expect(ctx.result.current.review).toBe(review);
+    ctx.capabilities.hasAccess = async () => false;
+    await act(async () => ctx.notify("permissions-removed"));
+    expect(ctx.result.current.accessMissing).toBe(true);
+    expect(ctx.result.current.target).toEqual(syncLocation);
+    expect(ctx.result.current.review).toBeUndefined();
+    expect(ctx.result.current.feedback).toBeUndefined();
+    ctx.capabilities.hasAccess = async () => true;
+    await act(() => ctx.result.current.allowAccess());
+    expect(ctx.result.current.accessMissing).toBe(false);
+  });
+  it.each(["check", "upload"] as const)(
+    "ignores a late %s result after permission removal and allows a new grant",
+    async (operation) => {
+      const ctx = mount(gallerySync("sync-review"));
+      await ready(ctx);
+      let finish = () => {};
+      if (operation === "check")
+        ctx.capabilities.review = () =>
+          new Promise((resolve) => {
+            finish = () => resolve(syncReview);
+          });
+      else
+        ctx.capabilities.upload = () =>
+          new Promise((resolve) => {
+            finish = () => resolve({ syncUpload: "complete" });
+          });
+      let pending: Promise<void>;
+      act(() => {
+        pending = ctx.result.current[operation]();
+      });
+      await waitFor(() =>
+        expect(ctx.result.current.operation).toBe(
+          operation === "check" ? "review" : "upload",
+        ),
+      );
+      await act(async () => {});
+      const unrelated = vi.fn(() => false);
+      await act(async () => ctx.notify("permissions-removed", unrelated));
+      expect(unrelated).toHaveBeenCalledWith(syncLocation);
+      expect(ctx.result.current.operation).toBe(
+        operation === "check" ? "review" : "upload",
+      );
+      ctx.capabilities.hasAccess = async () => false;
+      await act(async () => ctx.notify("permissions-removed"));
+      expect(ctx.result.current.accessMissing).toBe(true);
+      expect(ctx.result.current.operation).toBe(
+        operation === "check" ? "review" : "upload",
+      );
+      await act(async () => {
+        finish();
+        await pending;
+      });
+      expect(ctx.result.current.operation).toBeUndefined();
+      expect(ctx.result.current.review).toBeUndefined();
+      expect(ctx.result.current.feedback).toBeUndefined();
+      ctx.capabilities.requestAccess = async () => {
+        ctx.capabilities.hasAccess = async () => true;
+        ctx.notify("permissions");
+      };
+      ctx.capabilities.review = async () => syncReview;
+      await act(() => ctx.result.current.check());
+      expect(ctx.result.current.review).toEqual(syncReview);
+      expect(ctx.result.current.accessMissing).toBe(false);
+    },
+  );
+  it("does not start an operation if the vault locks while permission is pending", async () => {
+    const ctx = mount();
+    await ready(ctx);
+    let grant = () => {};
+    ctx.capabilities.requestAccess = () =>
+      new Promise<void>((resolve) => {
+        grant = resolve;
+      });
+    ctx.capabilities.configure = vi.fn();
+    act(() => ctx.result.current.change(input));
+    let pending: Promise<void>;
+    act(() => {
+      pending = ctx.result.current.save();
+    });
+    await act(async () => ctx.notify("session"));
+    await act(async () => {
+      grant();
+      await pending;
+    });
+    expect(ctx.capabilities.configure).not.toHaveBeenCalled();
+    expect(ctx.result.current.draft.secretAccessKey).toBe("");
   });
   it("does not send incomplete choices to core", () => {
     expect(comparisons(syncReview)[0].id).toBe("tag:1");
@@ -293,3 +439,169 @@ it("clears obsolete inspection errors when a new session loads successfully", as
   expect(ctx.result.current.target).toEqual(syncLocation);
   expect(ctx.result.current.error).toBeUndefined();
 });
+
+it.each(["save", "reconcile"] as const)(
+  "keeps the authorized saved target when permission lookup fails during %s",
+  async (mode) => {
+    const ctx = mount();
+    await ready(ctx);
+    act(() => ctx.result.current.change(input));
+    ctx.capabilities.configure = async () => {
+      ctx.capabilities.inspect = async () => syncLocation;
+      if (mode === "reconcile") throw new Error("Upload response lost");
+      return { syncUpload: "complete" };
+    };
+    ctx.capabilities.hasAccess = async () => {
+      throw new Error("Browser API unavailable");
+    };
+    await act(() => ctx.result.current.save());
+    expect(ctx.result.current.target).toEqual(syncLocation);
+    expect(ctx.result.current.accessMissing).toBe(true);
+    expect(ctx.result.current.draft.secretAccessKey).toBe("");
+    const expectedError =
+      mode === "save"
+        ? "Could not check this browser's S3 access. Allow storage access and try again."
+        : "Could not reach or authenticate with S3. Check your connection, region, key permissions and browser storage access, then try again.";
+    expect(ctx.result.current.error).toBe(expectedError);
+    ctx.capabilities.hasAccess = async () => true;
+    await act(async () => ctx.notify("permissions"));
+    expect(ctx.result.current.accessMissing).toBe(false);
+    expect(ctx.result.current.error).toBe(
+      mode === "save" ? undefined : expectedError,
+    );
+  },
+);
+
+it.each(["surviving", "replaced", "read-failed"] as const)(
+  "reconciles revoked setup in a %s session",
+  async (session) => {
+    const ctx = mount();
+    await ready(ctx);
+    act(() => ctx.result.current.change(input));
+    let finish = () => {};
+    ctx.capabilities.configure = vi.fn<SyncCapabilities["configure"]>(
+      () =>
+        new Promise((resolve) => {
+          finish = () => {
+            ctx.capabilities.inspect = vi.fn(async () => {
+              if (session === "read-failed")
+                throw new Error("Session unavailable");
+              return syncLocation;
+            });
+            resolve({ syncUpload: "complete" });
+          };
+        }),
+    );
+    let pending: Promise<void>;
+    act(() => {
+      pending = ctx.result.current.save();
+    });
+    await waitFor(() => expect(ctx.capabilities.configure).toHaveBeenCalled());
+    ctx.capabilities.hasAccess = async () => false;
+    await act(async () => ctx.notify("permissions-removed"));
+    expect(ctx.result.current.target).toBeNull();
+    if (session === "replaced") {
+      await act(async () => ctx.notify("session"));
+      act(() =>
+        ctx.result.current.change({
+          ...input,
+          secretAccessKey: "new-session-draft",
+        }),
+      );
+    }
+    ctx.capabilities.test = vi.fn();
+    if (session !== "replaced") {
+      ctx.capabilities.hasAccess = async () => true;
+      await act(async () => ctx.notify("permissions"));
+      await act(() => ctx.result.current.test());
+      expect(ctx.capabilities.test).not.toHaveBeenCalled();
+      expect(ctx.result.current.operation).toBe("configure");
+      ctx.capabilities.hasAccess = async () => false;
+    }
+    await act(async () => {
+      finish();
+      await pending;
+    });
+    expect(ctx.result.current.feedback).toBeUndefined();
+    expect(ctx.result.current.operation).toBeUndefined();
+    if (session === "replaced") {
+      expect(ctx.capabilities.inspect).not.toHaveBeenCalled();
+      expect(ctx.result.current.draft.secretAccessKey).toBe(
+        "new-session-draft",
+      );
+    } else {
+      if (session === "read-failed") {
+        expect(ctx.result.current.target).toBeUndefined();
+        expect(ctx.result.current.error).toContain(
+          "Could not load the sync configuration",
+        );
+      } else {
+        expect(ctx.result.current.target).toEqual(syncLocation);
+        expect(ctx.result.current.accessMissing).toBe(true);
+      }
+      expect(ctx.result.current.draft.secretAccessKey).toBe("");
+    }
+  },
+);
+
+it.each(
+  (["focus", "permissions-removed", "session"] as const).flatMap((event) =>
+    (["saved", "read-failed"] as const).map((outcome) => ({ event, outcome })),
+  ),
+)(
+  "keeps setup cleanup session-owned when $event interrupts $outcome reconciliation",
+  async ({ event, outcome }) => {
+    const ctx = mount();
+    await ready(ctx);
+    act(() => ctx.result.current.change(input));
+    let finishConfigure = () => {};
+    ctx.capabilities.configure = vi.fn(
+      () =>
+        new Promise<{ syncUpload: "complete" }>((resolve) => {
+          finishConfigure = () => resolve({ syncUpload: "complete" });
+        }),
+    );
+    let pending: Promise<void>;
+    act(() => {
+      pending = ctx.result.current.save();
+    });
+    await waitFor(() => expect(ctx.capabilities.configure).toHaveBeenCalled());
+    await act(async () => ctx.notify("permissions-removed"));
+    let finishInspection = () => {};
+    ctx.capabilities.inspect = vi
+      .fn<SyncCapabilities["inspect"]>()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve, reject) => {
+            finishInspection = () =>
+              outcome === "read-failed"
+                ? reject(new Error("Session unavailable"))
+                : resolve(syncLocation);
+          }),
+      )
+      .mockResolvedValue(syncLocation);
+    await act(async () => finishConfigure());
+    await waitFor(() =>
+      expect(ctx.capabilities.inspect).toHaveBeenCalledTimes(1),
+    );
+    await act(async () => ctx.notify(event));
+    if (event === "session")
+      act(() =>
+        ctx.result.current.change({
+          ...input,
+          secretAccessKey: "new-session-draft",
+        }),
+      );
+    await act(async () => {
+      finishInspection();
+      await pending;
+    });
+    expect(ctx.result.current.target).toEqual(syncLocation);
+    expect(ctx.result.current.draft.accessKeyId).toBe(
+      event === "session" ? input.accessKeyId : "",
+    );
+    expect(ctx.result.current.draft.secretAccessKey).toBe(
+      event === "session" ? "new-session-draft" : "",
+    );
+  },
+);

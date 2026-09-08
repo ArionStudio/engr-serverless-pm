@@ -35,8 +35,6 @@ const screens: readonly {
       { id: "s3-copy-error", label: "Copy error" },
       { id: "s3-invalid-bucket", label: "Invalid bucket" },
       { id: "s3-invalid-prefix", label: "Invalid prefix" },
-      { id: "s3-invalid-origin", label: "Unsupported origin" },
-      { id: "s3-firefox-origin", label: "Firefox origin" },
     ],
   },
   {
@@ -50,6 +48,8 @@ const screens: readonly {
         label: "Saved, configuration refresh failed",
       },
       { id: "sync-configured", label: "Configured" },
+      { id: "sync-permission", label: "Storage permission missing" },
+      { id: "sync-permission-error", label: "Storage permission check failed" },
       { id: "sync-pending", label: "Pending upload" },
       { id: "sync-error", label: "Connection error" },
       { id: "sync-session-expired", label: "Session expired" },
@@ -337,7 +337,7 @@ export function ScreenGallery() {
                   : screen.id === "workspace"
                     ? "mx-auto max-w-6xl px-5 py-8"
                     : ["s3-setup", "sync"].includes(screen.id)
-                      ? "mx-auto max-w-4xl px-5 py-8 @lg:py-12"
+                      ? "mx-auto max-w-6xl px-5 py-8 @lg:py-12"
                       : "mx-auto max-w-xl px-5 py-8 @lg:py-12"
               }
             >

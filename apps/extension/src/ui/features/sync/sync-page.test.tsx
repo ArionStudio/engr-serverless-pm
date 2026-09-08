@@ -6,6 +6,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import { gallerySync } from "@/gallery/sync-fixture";
 import { SyncPage } from "./sync-page.view";
@@ -34,20 +35,24 @@ it("keeps the tested location fixed until the access check finishes", async () =
   fireEvent.change(screen.getByLabelText("Bucket"), {
     target: { value: "tested-bucket" },
   });
+  for (const [label, value] of [
+    ["Region", "eu-central-1"],
+    ["Access key ID", "TESTKEY"],
+    ["Secret access key", "test-secret"],
+  ])
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
   fireEvent.click(screen.getByRole("button", { name: "Test access" }));
-  fireEvent.click(
-    screen.getByRole("button", { name: "S3 setup instructions" }),
-  );
-  expect(screen.queryByRole("region", { name: "S3 storage setup" })).toBeNull();
-  expect(capabilities.test).toHaveBeenCalledWith(
-    "gallery-vault",
-    expect.objectContaining({ bucket: "tested-bucket" }),
+  fireEvent.click(screen.getByRole("button", { name: "Back to setup guide" }));
+  expect(screen.queryByRole("tab", { name: "Use template" })).toBeNull();
+  await waitFor(() =>
+    expect(capabilities.test).toHaveBeenCalledWith(
+      "gallery-vault",
+      expect.objectContaining({ bucket: "tested-bucket" }),
+    ),
   );
   await act(async () => finish());
-  fireEvent.click(
-    screen.getByRole("button", { name: "S3 setup instructions" }),
-  );
-  expect(screen.getByRole("region", { name: "S3 storage setup" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Back to setup guide" }));
+  expect(screen.getByRole("tab", { name: "Use template" })).toBeTruthy();
 });
 
 it("carries manual setup values into the connection form without contacting S3", async () => {
@@ -70,85 +75,94 @@ it("carries manual setup values into the connection form without contacting S3",
     target: { value: "eu-west-1" },
   });
   fireEvent.change(screen.getByLabelText("Vault object prefix"), {
+    target: { value: "*" },
+  });
+  const continueSetup = screen.getByRole("button", {
+    name: "I created this private bucket",
+  });
+  expect((continueSetup as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(continueSetup);
+  expect(screen.queryByLabelText("Access key ID")).toBeNull();
+  fireEvent.change(screen.getByLabelText("Vault object prefix"), {
     target: { value: "private/" },
   });
-  fireEvent.click(
-    screen.getByRole("button", { name: "5. Connect this vault" }),
-  );
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Enter connection details" }),
-  );
-  expect((screen.getByLabelText("Bucket") as HTMLInputElement).value).toBe(
-    "chosen-vault",
-  );
-  expect((screen.getByLabelText("Region") as HTMLInputElement).value).toBe(
-    "eu-west-1",
-  );
+  for (const name of [
+    "I created this private bucket",
+    "I saved the HTTPS policy",
+    "I attached the scoped policy to the user",
+  ]) {
+    fireEvent.click(screen.getByRole("button", { name }));
+  }
   expect(
-    (screen.getByLabelText("Object prefix") as HTMLInputElement).value,
-  ).toBe("private/");
+    screen.getByRole("heading", { name: "4. Connect vault" }),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole("region", { name: "Storage location" }).textContent,
+  ).toContain("chosen-vault");
+  expect(
+    screen.getByRole("region", { name: "Storage location" }).textContent,
+  ).toContain("eu-west-1");
+  expect(
+    screen.getByRole("region", { name: "Storage location" }).textContent,
+  ).toContain("private/");
   expect(
     (screen.getByLabelText("Secret access key") as HTMLInputElement).value,
   ).toBe("");
   expect(capabilities.test).not.toHaveBeenCalled();
   expect(capabilities.configure).not.toHaveBeenCalled();
-  fireEvent.click(
-    screen.getByRole("button", { name: "S3 setup instructions" }),
-  );
-  fireEvent.click(screen.getByRole("tab", { name: "AWS Console" }));
+  fireEvent.change(screen.getByLabelText("Secret access key"), {
+    target: { value: "gallery-secret" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Edit storage" }));
+  expect(screen.queryByLabelText("Secret access key")).toBeNull();
   expect(
     (screen.getByLabelText("S3 bucket name") as HTMLInputElement).value,
   ).toBe("chosen-vault");
+  fireEvent.click(screen.getByRole("button", { name: "Connect vault" }));
+  expect(screen.getAllByLabelText("Secret access key")).toHaveLength(1);
+  expect(
+    (screen.getByLabelText("Secret access key") as HTMLInputElement).value,
+  ).toBe("gallery-secret");
+  fireEvent.click(screen.getByRole("tab", { name: "Use template" }));
+  expect(screen.queryByLabelText("Secret access key")).toBeNull();
 });
 
-it("blocks invalid manual setup while preserving the existing-storage and template handoffs", async () => {
+it("shows required errors inline and tests only complete input beside the keys", async () => {
+  const capabilities = gallerySync();
+  capabilities.test = vi.fn().mockResolvedValue(undefined);
+  capabilities.configure = vi.fn();
   render(
     <SyncPage
       vaultId="gallery-vault"
-      capabilities={gallerySync()}
+      capabilities={capabilities}
       onBack={() => {}}
     />,
   );
-  await screen.findByRole("region", { name: "S3 storage setup" });
-  fireEvent.click(screen.getByRole("tab", { name: "AWS Console" }));
   fireEvent.click(
-    screen.getByRole("button", { name: "5. Connect this vault" }),
+    await screen.findByRole("button", { name: "I already have storage" }),
   );
-  const connect = await screen.findByRole("button", {
-    name: "Enter connection details",
+  fireEvent.click(screen.getByRole("button", { name: "Test access" }));
+  expect(screen.getByText("Access key ID is required.")).toBeTruthy();
+  expect(screen.getByText("Secret access key is required.")).toBeTruthy();
+  expect(capabilities.test).not.toHaveBeenCalled();
+  for (const [label, value] of [
+    ["Bucket", "private-vault"],
+    ["Region", "eu-central-1"],
+    ["Access key ID", "EXAMPLEKEY"],
+    ["Secret access key", "gallery-secret"],
+  ]) {
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  }
+  fireEvent.click(screen.getByRole("button", { name: "Test access" }));
+  await screen.findByText(/Read access confirmed/);
+  expect(
+    screen.getByRole("region", { name: "Access keys" }).textContent,
+  ).toContain("Read access confirmed");
+  expect(capabilities.configure).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText("Secret access key"), {
+    target: { value: "changed" },
   });
-  expect((connect as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.click(connect);
-  expect(screen.queryByLabelText("Access key ID")).toBeNull();
-  fireEvent.change(screen.getByLabelText("S3 bucket name"), {
-    target: { value: "safe-vault" },
-  });
-  fireEvent.change(screen.getByLabelText("Vault object prefix"), {
-    target: { value: "*" },
-  });
-  expect((connect as HTMLButtonElement).disabled).toBe(true);
-  expect(screen.getByText(/In step 1, enter a prefix/)).toBeTruthy();
-  fireEvent.change(screen.getByLabelText("Vault object prefix"), {
-    target: { value: "private/" },
-  });
-  expect((connect as HTMLButtonElement).disabled).toBe(false);
-  fireEvent.change(screen.getByLabelText("Vault object prefix"), {
-    target: { value: "" },
-  });
-  fireEvent.click(
-    screen.getByRole("button", { name: "I already have storage" }),
-  );
-  expect(screen.getByLabelText("Access key ID")).toBeTruthy();
-  fireEvent.click(
-    screen.getByRole("button", { name: "S3 setup instructions" }),
-  );
-  fireEvent.click(
-    screen.getByRole("button", { name: "3. Connect this vault" }),
-  );
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Enter connection details" }),
-  );
-  expect(screen.getByLabelText("Access key ID")).toBeTruthy();
+  expect(screen.queryByText(/Read access confirmed/)).toBeNull();
 });
 
 it("offers explicit acceptance for a verified newer revision with unchanged content", async () => {
@@ -165,15 +179,17 @@ it("offers explicit acceptance for a verified newer revision with unchanged cont
   fireEvent.click(
     await screen.findByRole("button", { name: "Accept remote revision" }),
   );
-  expect(capabilities.apply).toHaveBeenCalledWith(
-    expect.objectContaining({
-      vaultId: "gallery-vault",
-      resolution: {
-        entryResolutions: [],
-        tagResolutions: [],
-        deviceProfileResolutions: [],
-      },
-    }),
+  await waitFor(() =>
+    expect(capabilities.apply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        vaultId: "gallery-vault",
+        resolution: {
+          entryResolutions: [],
+          tagResolutions: [],
+          deviceProfileResolutions: [],
+        },
+      }),
+    ),
   );
   await screen.findByText("The encrypted vault is up to date in S3.");
 });

@@ -10,7 +10,8 @@ export type SyncLocation = Pick<
   "bucket" | "region" | "prefix"
 >;
 export type SyncCapabilities = {
-  origin: string;
+  requestAccess: (target: SyncLocation) => Promise<void>;
+  hasAccess: (target: SyncLocation) => Promise<boolean>;
   copySetupText: (value: string) => Promise<void>;
   inspect: (vaultId: string) => Promise<SyncLocation | null>;
   test: (vaultId: string, draft: CredentialDraft) => Promise<void>;
@@ -24,7 +25,12 @@ export type SyncCapabilities = {
   apply: (
     params: ApplySyncResolutionCommandParams,
   ) => Promise<SyncUploadResult>;
-  subscribe: (listener: (reason: "session" | "focus") => void) => () => void;
+  subscribe: (
+    listener: (
+      reason: "session" | "focus" | "permissions" | "permissions-removed",
+      affectsLocation?: (location: SyncLocation) => boolean,
+    ) => void,
+  ) => () => void;
 };
 
 export const emptyCredentials: CredentialDraft = {
