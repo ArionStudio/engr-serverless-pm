@@ -123,7 +123,7 @@ export function S3SetupGuide({
   const locationErrors: Partial<Record<keyof SyncLocation, string>> = {
     bucket:
       !existingStorage && documentField === "bucket"
-        ? "Enter 3–63 lowercase letters, numbers or hyphens. Start and end with a letter or number."
+        ? "Enter 3–63 lowercase letters, numbers, dots or hyphens. Start and end with a letter or number. Avoid consecutive dots, IP addresses and AWS-reserved prefixes or suffixes."
         : undefined,
     region: validRegion
       ? undefined
@@ -747,7 +747,7 @@ function SetupLocation({
         description={
           existing
             ? "The name of your existing S3 bucket."
-            : "3–63 lowercase letters, numbers or hyphens."
+            : "3–63 lowercase letters, numbers, dots or hyphens. Avoid consecutive dots and IP addresses."
         }
         error={errors.bucket}
       />

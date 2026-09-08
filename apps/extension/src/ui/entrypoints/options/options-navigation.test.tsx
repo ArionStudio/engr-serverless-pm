@@ -115,6 +115,35 @@ describe("Options navigation and session refresh", () => {
       await screen.findByRole("heading", { name: "Add entry" }),
     ).toBeVisible();
   });
+  it("reapplies the same popup shortcut after internal navigation", async () => {
+    const setup = gallerySetup();
+    const unlocked = { ...setupVault, complete: true, unlocked: true };
+    setup.inspect = async () => ({ vault: unlocked, vaults: [unlocked] });
+    const props = {
+      preference: "dark" as const,
+      onThemeChange: () => {},
+      assessPassword: async () => ({ score: 4 as const }),
+      setup,
+      workspace: galleryWorkspace(),
+      sync: gallerySync(),
+      devices: galleryDevices(),
+      vaultSettings: galleryVaultSettings(),
+      tagManagement: galleryTagManagement(),
+      folderManagement: galleryFolderManagement(),
+      initialDestination: "sync" as const,
+    };
+    const user = userEvent.setup();
+    const view = render(<OptionsView {...props} routeRequestId={0} />);
+
+    expect(await screen.findByRole("heading", { name: "Sync" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Entries" }));
+    expect(
+      await screen.findByRole("heading", { name: "Entries" }),
+    ).toBeVisible();
+
+    view.rerender(<OptionsView {...props} routeRequestId={1} />);
+    expect(await screen.findByRole("heading", { name: "Sync" })).toBeVisible();
+  });
   it("opens the selected locked vault directly in password recovery", async () => {
     const setup = gallerySetup("existing");
     let notify: (clearDraft?: boolean) => void = () => {};

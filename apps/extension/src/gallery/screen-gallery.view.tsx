@@ -140,6 +140,7 @@ const screens: readonly {
         label: "Refresh fails after upload or shutdown",
       },
       { id: "sync-permission", label: "Storage permission missing" },
+      { id: "sync-permission-error", label: "Storage permission check failed" },
       { id: "sync-pending", label: "Pending upload" },
       { id: "sync-error", label: "Connection error" },
       { id: "sync-session-expired", label: "Session expired" },
@@ -199,6 +200,7 @@ const screens: readonly {
       { id: "organization", label: "Default" },
       { id: "organization-pending", label: "Creating" },
       { id: "organization-error", label: "Error" },
+      { id: "organization-name-conflicts", label: "Name conflicts" },
     ],
   },
   {
@@ -459,6 +461,7 @@ export function ScreenGallery() {
                   "creation-error",
                   "organization-pending",
                   "organization-error",
+                  "organization-name-conflicts",
                 ].includes(state)
                   ? ""
                   : screen.id === "workspace"

@@ -162,9 +162,13 @@ export function EntryEditorExample() {
               : demoTags
           }
           tagGroups={tagGroupPresentations}
-          folderSuggestions={
-            globalLibrarySchema.parse(organizationLibrary).folders
-          }
+          folderSuggestions={globalLibrarySchema
+            .parse(organizationLibrary)
+            .folders.map((folder) =>
+              state === "folder-suggestions" && folder.name === "Clients"
+                ? { ...folder, parent: "ｗｏｒｋ" }
+                : folder,
+            )}
           folders={state === "folder-suggestions" ? folders : []}
           onCreateFolder={
             state === "folder-suggestions"

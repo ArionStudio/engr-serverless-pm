@@ -78,14 +78,26 @@ export function EntryWorkspace({
     if (initialDraft) onDraftConsumed?.();
   }, [initialDraft, onDraftConsumed]);
   const content = useRef<HTMLElement>(null);
+  const alert = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (
+      !live.error ||
+      live.view.kind === "editor" ||
+      live.view.kind === "delete"
+    )
+      return;
+    alert.current?.focus({ preventScroll: true });
+    alert.current?.scrollIntoView?.({ block: "nearest", behavior: "instant" });
+  }, [live.error, live.view.kind]);
   const firstFocus = useRef(true);
   useEffect(() => {
     if (firstFocus.current) {
       firstFocus.current = false;
       return;
     }
+    if (live.error) return;
     content.current?.focus();
-  }, [live.view.kind]);
+  }, [live.error, live.view.kind]);
   const labels = Object.fromEntries(
     (live.data?.tags ?? []).map((tag) => [tag.id, tag.name]),
   );
@@ -164,7 +176,13 @@ export function EntryWorkspace({
         </div>
       ) : null}
       {live.error && view.kind !== "editor" && view.kind !== "delete" ? (
-        <div role="alert" className="space-y-3 text-sm text-destructive">
+        <div
+          ref={alert}
+          role="alert"
+          tabIndex={-1}
+          data-focus-target
+          className="space-y-3 text-sm text-destructive"
+        >
           <p>{live.error}</p>
           <Button variant="outline" onClick={() => void live.refresh()}>
             Reload entries

@@ -1,3 +1,4 @@
+import { Button } from "@/ui/components/primitives/button";
 import { SetupOrganizationExample } from "./setup-organization.example";
 import { PopupSettingsExample } from "./popup-settings.example";
 import {
@@ -108,6 +109,7 @@ export type OptionsScenario =
   | "organization"
   | "organization-pending"
   | "organization-error"
+  | "organization-name-conflicts"
   | "connect"
   | "multiple-vaults"
   | "existing"
@@ -122,6 +124,7 @@ export function OptionsExample({
   preference: "light" | "dark" | "system";
   onThemeChange: (preference: "light" | "dark" | "system") => void;
 }) {
+  const [routeRequestId, setRouteRequestId] = useState(0);
   const [devices] = useState(() => {
     const capabilities = galleryDevices(
       state === "devices-error",
@@ -197,7 +200,11 @@ export function OptionsExample({
   const [verification, setVerification] = useState(
     state.startsWith("verification") || state === "recovered-verification",
   );
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState(
+    state === "unlock-error"
+      ? "Could not unlock this vault. Check your password."
+      : "",
+  );
   const assessPassword = useCallback(
     async (password: string) => {
       if (state === "password-pending")
@@ -445,11 +452,7 @@ export function OptionsExample({
           complete: false,
         }}
         pending={state === "unlock-pending" || state === "replacement-pending"}
-        error={
-          state === "unlock-error"
-            ? "Could not unlock this vault. Check your password."
-            : notice || undefined
-        }
+        error={notice || undefined}
         assessPassword={assessPassword}
         onRecover={() => setNotice("Recovery requested")}
         onDismissError={() => setNotice("")}
@@ -458,34 +461,52 @@ export function OptionsExample({
         onLock={() => setNotice("Lock requested")}
       />
     );
-  if (state === "organization-pending" || state === "organization-error")
+  if (
+    state === "organization-pending" ||
+    state === "organization-error" ||
+    state === "organization-name-conflicts"
+  )
     return (
-      <SetupOrganizationExample pending={state === "organization-pending"} />
+      <SetupOrganizationExample
+        pending={state === "organization-pending"}
+        nameConflicts={state === "organization-name-conflicts"}
+      />
     );
   return (
-    <OptionsView
-      devices={devices}
-      vaultSettings={vaultSettings}
-      workspace={workspace}
-      tagManagement={tagManagement}
-      folderManagement={folderManagement}
-      setup={setup}
-      sync={sync}
-      preference={preference}
-      onThemeChange={onThemeChange}
-      initialStep={
-        state === "password-pending" || state === "password-unavailable"
-          ? "password"
-          : state === "welcome" ||
-              state === "password" ||
-              state === "device" ||
-              state === "organization" ||
-              state === "connect"
-            ? state
-            : "welcome"
-      }
-      assessPassword={assessPassword}
-    />
+    <>
+      {state === "application" ? (
+        <Button
+          variant="outline"
+          onClick={() => setRouteRequestId((id) => id + 1)}
+        >
+          Open Entries shortcut
+        </Button>
+      ) : null}
+      <OptionsView
+        routeRequestId={routeRequestId}
+        devices={devices}
+        vaultSettings={vaultSettings}
+        workspace={workspace}
+        tagManagement={tagManagement}
+        folderManagement={folderManagement}
+        setup={setup}
+        sync={sync}
+        preference={preference}
+        onThemeChange={onThemeChange}
+        initialStep={
+          state === "password-pending" || state === "password-unavailable"
+            ? "password"
+            : state === "welcome" ||
+                state === "password" ||
+                state === "device" ||
+                state === "organization" ||
+                state === "connect"
+              ? state
+              : "welcome"
+        }
+        assessPassword={assessPassword}
+      />
+    </>
   );
 }
 export function ScreenExamples() {
@@ -562,6 +583,7 @@ export function ScreenExamples() {
               "sync-configured",
               "sync-copy-session-lost",
               "sync-permission",
+              "sync-permission-error",
               "sync-pending",
               "sync-error",
               "sync-session-expired",
@@ -671,6 +693,7 @@ export function ScreenExamples() {
               "reveal-error",
               "sync-current",
               "sync-changed-during-check",
+              "sync-review-read-error",
               "sync-review",
               "sync-off",
               "sync-permission",
@@ -749,6 +772,7 @@ export function ScreenExamples() {
               "organization",
               "organization-pending",
               "organization-error",
+              "organization-name-conflicts",
               "connect",
               "recover-access",
               "recover-access-pending",

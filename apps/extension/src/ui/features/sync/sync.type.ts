@@ -85,7 +85,13 @@ export type SyncCapabilities = {
   ) => Promise<SyncUploadResult>;
   subscribe: (
     listener: (
-      reason: "session" | "focus" | "permissions" | "pagehide",
+      reason:
+        | "session"
+        | "focus"
+        | "permissions"
+        | "permissions-removed"
+        | "pagehide",
+      affectsLocation?: (location: SyncLocation) => boolean,
     ) => void,
   ) => () => void;
 };

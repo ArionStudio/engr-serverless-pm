@@ -181,9 +181,14 @@ export function composeSync(): SyncCapabilities {
         )
           listener("session");
       };
-      const onPermissions = () => listener("permissions");
+      const onPermissions = (change: chrome.permissions.Permissions) =>
+        listener("permissions", (target) => access.affects(target, change));
+      const onPermissionsRemoved = (change: chrome.permissions.Permissions) =>
+        listener("permissions-removed", (target) =>
+          access.affects(target, change),
+        );
       chrome.permissions.onAdded.addListener(onPermissions);
-      chrome.permissions.onRemoved.addListener(onPermissions);
+      chrome.permissions.onRemoved.addListener(onPermissionsRemoved);
       const onFocus = () => listener("focus");
       const onHide = () => listener("pagehide");
       chrome.storage.onChanged.addListener(onStorage);
@@ -191,7 +196,7 @@ export function composeSync(): SyncCapabilities {
       window.addEventListener("pagehide", onHide);
       return () => {
         chrome.permissions.onAdded.removeListener(onPermissions);
-        chrome.permissions.onRemoved.removeListener(onPermissions);
+        chrome.permissions.onRemoved.removeListener(onPermissionsRemoved);
         chrome.storage.onChanged.removeListener(onStorage);
         window.removeEventListener("focus", onFocus);
         window.removeEventListener("pagehide", onHide);

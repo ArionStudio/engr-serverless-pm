@@ -52,12 +52,14 @@ the retained entry version.
 | `ReadTagsUseCase`      | Reads the unlocked vault's tags                                    |
 | `AddTagUseCase`        | Validates and creates a tag, persists the change and attempts sync |
 | `UpdateTagUseCase`     | Updates the reviewed tag version and attempts sync                 |
-| `RemoveTagUseCase`     | Removes a reviewed tag and updates affected entries                |
+| `RemoveTagUseCase`     | Rejects referenced tags; otherwise records a deletion tombstone                |
 | `ReadFoldersUseCase`   | Reads the unlocked vault's folder hierarchy                        |
 | `AddFolderUseCase`     | Creates a folder within the validated hierarchy                    |
 | `UpdateFolderUseCase`  | Renames a reviewed folder                                          |
 | `MoveFolderUseCase`    | Moves a reviewed folder while enforcing hierarchy rules            |
-| `RemoveFolderUseCase`  | Removes a reviewed folder and handles its affected entries         |
+| `RemoveFolderUseCase`  | Rejects folders with entries or children; otherwise records a deletion tombstone         |
+
+Successful tag and folder removal leaves entries unchanged.
 
 Entry, tag and folder mutations return `syncConfigured` from the state used for
 that mutation alongside upload status, so the UI can report the saved outcome

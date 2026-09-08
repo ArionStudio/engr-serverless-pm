@@ -79,7 +79,7 @@ export function SyncStatus({
       )}
     >
       {working ? (
-        <Spinner className="mt-0.5 size-7 shrink-0" />
+        <Spinner aria-hidden="true" className="mt-0.5 size-7 shrink-0" />
       ) : (
         <HugeiconsIcon
           icon={

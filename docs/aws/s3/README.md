@@ -137,7 +137,6 @@ References checked September 6, 2026:
 - [AWS CloudFormation console deployment](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cfn-console-create-stack.html)
 - [CloudFormation Outputs availability](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/outputs-section-structure.html)
 - [Creating an S3 bucket](https://docs.aws.amazon.com/AmazonS3/latest/userguide/create-bucket-overview.html)
-- [Editing S3 CORS](https://docs.aws.amazon.com/AmazonS3/latest/userguide/enabling-cors-examples.html)
 - [S3 bucket policy examples, including HTTPS enforcement](https://docs.aws.amazon.com/AmazonS3/latest/userguide/example-bucket-policies.html)
 - [Creating IAM policies in the console](https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_create-console.html)
 - [Access-key wizard: description and retrieval](https://docs.aws.amazon.com/IAM/latest/UserGuide/access-key-self-managed.html)
@@ -241,6 +240,7 @@ References checked September 6, 2026:
 - [Chrome optional permissions](https://developer.chrome.com/docs/extensions/reference/api/permissions)
 - [Chrome extension network requests](https://developer.chrome.com/docs/extensions/develop/concepts/network-requests)
 - [Firefox host permissions](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/host_permissions)
+- [Editing S3 CORS](https://docs.aws.amazon.com/AmazonS3/latest/userguide/enabling-cors-examples.html)
 - [S3 authorization still applies with CORS](https://docs.aws.amazon.com/AmazonS3/latest/userguide/enabling-cors-examples.html)
 
 ## Get Outputs

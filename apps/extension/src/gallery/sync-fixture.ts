@@ -182,6 +182,7 @@ export const organizationSyncReview: PrepareSyncReviewResult = {
   },
 };
 export type SyncScenario =
+  | "sync-permission-error"
   | "sync-permission"
   | "sync-setup"
   | "sync-access-pending"
@@ -217,6 +218,7 @@ export function gallerySync(
   let revocationPending =
     scenario === "sync-revocation-pending" ||
     scenario === "sync-revocation-denied";
+  let permissionLookupFails = scenario === "sync-permission-error";
   return {
     revealAccessKeys: async (_vaultId, password) => {
       if (password !== "gallery") throw new Error("Incorrect password");
@@ -277,8 +279,13 @@ export function gallerySync(
     },
     requestAccess: async () => {
       permitted = true;
+      permissionLookupFails = false;
     },
-    hasAccess: async () => permitted,
+    hasAccess: async () => {
+      if (permissionLookupFails)
+        throw new Error("Browser permission API unavailable");
+      return permitted;
+    },
     copySetupText: async () => {},
     inspect: async () => {
       if (refreshFailure) {

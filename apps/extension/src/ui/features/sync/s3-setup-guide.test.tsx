@@ -185,7 +185,7 @@ it("gates existing-storage credentials on permission and rejects a stale grant f
     });
   let notify: () => void = () => {};
   access.subscribe = (listener) => {
-    notify = () => listener("permissions");
+    notify = () => listener("permissions-removed");
     return () => {};
   };
   render(<Guide access={access} />);

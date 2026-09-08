@@ -206,8 +206,8 @@ it("invalidates a sync result when local data changes during its final inspectio
   expect(result.current.status).toBe("current");
 });
 
-it("clears an old sync error when a subscription inspection succeeds", async () => {
-  const capabilities = galleryPopupSync("sync-error");
+it("clears a failed subscription's stale review and recovers on the next update", async () => {
+  const capabilities = galleryPopupSync("sync-review");
   let notify: Parameters<PopupSyncCapabilities["subscribe"]>[0] = () => {};
   capabilities.subscribe = (listener) => {
     notify = listener;
@@ -216,9 +216,74 @@ it("clears an old sync error when a subscription inspection succeeds", async () 
   const { result } = renderHook(() =>
     usePopupSync("gallery-vault", capabilities),
   );
-  await waitFor(() => expect(result.current.status).toBe("error"));
-  expect(result.current.error).toBeDefined();
+  await waitFor(() => expect(result.current.status).toBe("review"));
+  act(() => result.current.choose("tag:tag-personal", "use_remote"));
+  expect(result.current.review?.review).toBeTruthy();
+  expect(result.current.snapshot).toBeDefined();
+  expect(result.current.choices).toEqual({ "tag:tag-personal": "use_remote" });
+  capabilities.inspect = vi
+    .fn(capabilities.inspect)
+    .mockRejectedValueOnce(new Error("Status unavailable"));
   await act(async () => notify("data"));
+  expect(result.current.status).toBe("error");
+  expect(result.current.error).toBeDefined();
+  expect(result.current.snapshot).toBeUndefined();
+  expect(result.current.review).toBeUndefined();
+  expect(result.current.choices).toEqual({});
+  await act(async () => notify("data"));
+  expect(result.current.status).toBe("unchecked");
+  expect(result.current.snapshot).toBeDefined();
+  expect(result.current.error).toBeUndefined();
+});
+
+it("ignores an older subscription inspection that finishes after a newer one", async () => {
+  const capabilities = galleryPopupSync();
+  const current = await capabilities.inspect("gallery-vault");
+  let notify: Parameters<PopupSyncCapabilities["subscribe"]>[0] = () => {};
+  capabilities.subscribe = (listener) => {
+    notify = listener;
+    return () => {};
+  };
+  const { result } = renderHook(() =>
+    usePopupSync("gallery-vault", capabilities),
+  );
+  await waitFor(() => expect(result.current.status).toBe("current"));
+
+  let resolveOlder!: (value: typeof current) => void;
+  let resolveNewer!: (value: typeof current) => void;
+  capabilities.inspect = vi
+    .fn<PopupSyncCapabilities["inspect"]>()
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveOlder = resolve;
+        }),
+    )
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveNewer = resolve;
+        }),
+    );
+
+  act(() => {
+    notify("data");
+    notify("data");
+  });
+  await act(async () => resolveNewer({ ...current, version: { current: 2 } }));
+  expect(result.current.snapshot?.version).toEqual({ current: 2 });
+  expect(result.current.status).toBe("unchecked");
+  expect(result.current.error).toBeUndefined();
+
+  await act(async () =>
+    resolveOlder({
+      ...current,
+      version: { stale: 1 },
+      configured: false,
+      access: false,
+    }),
+  );
+  expect(result.current.snapshot?.version).toEqual({ current: 2 });
   expect(result.current.status).toBe("unchecked");
   expect(result.current.error).toBeUndefined();
 });

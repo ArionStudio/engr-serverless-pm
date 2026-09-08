@@ -53,7 +53,7 @@ export function GuidancePanel({
           </span>
           {title}
         </p>
-        <div className="col-span-2 max-w-[70ch] space-y-3 text-base leading-7 wrap-anywhere [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:space-y-2 [&_ol]:pl-5 [&_a]:font-medium [&_a]:text-inherit [&_a]:decoration-current [&_a]:underline-offset-4">
+        <div className="col-span-2 max-w-[70ch] space-y-3 text-base leading-7 wrap-anywhere [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:space-y-2 [&_ol]:pl-5 [&_a]:font-medium [&_a]:text-inherit [&_a]:decoration-current [&_a]:underline [&_a]:underline-offset-4">
           {children}
         </div>
         {attachments ? (
@@ -62,7 +62,7 @@ export function GuidancePanel({
           </div>
         ) : null}
         {links ? (
-          <div className="col-span-2 flex flex-wrap gap-x-5 gap-y-3 pt-2 text-sm font-medium [&_a]:text-inherit [&_a]:underline-offset-4">
+          <div className="col-span-2 flex flex-wrap gap-x-5 gap-y-3 pt-2 text-sm font-medium [&_a]:text-inherit [&_a]:underline [&_a]:underline-offset-4">
             {links}
           </div>
         ) : null}
