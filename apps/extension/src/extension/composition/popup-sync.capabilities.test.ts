@@ -83,10 +83,20 @@ it("refreshes popup sync for relevant permission changes and cleans up both subs
   removed.emit({ origins: ["https://*.amazonaws.com/*"] });
   expect(reasons).toEqual(["data", "data"]);
 
+  const unchangedSession = {
+    unlockedVaultSessionMaterial: {
+      oldValue: { sessionId: "session" },
+      newValue: { sessionId: "session" },
+    },
+  };
+  storageChanged.emit(unchangedSession, "session");
+  expect(reasons).toEqual(["data", "data", "data"]);
+
   unsubscribe();
   added.emit({ origins: ["https://*/*"] });
   removed.emit({ origins: ["https://*/*"] });
-  expect(reasons).toEqual(["data", "data"]);
+  storageChanged.emit(unchangedSession, "session");
+  expect(reasons).toEqual(["data", "data", "data"]);
   expect(added.size()).toBe(0);
   expect(removed.size()).toBe(0);
   expect(storageChanged.size()).toBe(0);

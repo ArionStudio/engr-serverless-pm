@@ -31,6 +31,7 @@ export function galleryBrowserLogins(
   );
   let dismissed = false;
   let refreshFails = false;
+  let retentionReadFails = false;
   let pendingInitialRead:
     | {
         readonly result: BrowserLogins;
@@ -137,10 +138,15 @@ export function galleryBrowserLogins(
     dismiss: async () => {
       dismissed = true;
     },
-    sessionRetentionEnabled: async () => retention,
+    sessionRetentionEnabled: async () => {
+      if (retentionReadFails) throw new Error("Preference read failed");
+      return retention;
+    },
     setSessionRetention: async (value) => {
-      if (scenario === "retention-change-error")
+      if (scenario === "retention-change-error") {
+        retentionReadFails = true;
         throw new Error("Detected login cleanup failed");
+      }
       retention = value;
       if (!value) dismissed = true;
     },

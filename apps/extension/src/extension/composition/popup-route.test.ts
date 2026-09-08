@@ -41,6 +41,20 @@ describe("popup review handoff", () => {
     expect(await consumePopupReviewRequest()).toBe("vault");
   });
 
+  it("discards an unconsumed handoff after its deadline", async () => {
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    try {
+      expect(await openDetectedPopup(7, 3, now + 100)).toBe(true);
+      clock.mockReturnValue(now + 100);
+      expect(await consumePopupReviewRequest()).toBe("vault");
+      clock.mockReturnValue(now);
+      expect(await consumePopupReviewRequest()).toBe("vault");
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it("does not route a different tab to Detected", async () => {
     await openDetectedPopup(7, 3, Date.now() + 5_000);
     activeTab = 8;

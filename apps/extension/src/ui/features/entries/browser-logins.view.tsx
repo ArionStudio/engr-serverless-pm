@@ -45,6 +45,8 @@ export function BrowserLoginsPanel({
   const owner = useRef(0);
   const readOwner = useRef(0);
   const busy = useRef(false);
+  const onSessionLostRef = useRef(onSessionLost);
+  onSessionLostRef.current = onSessionLost;
   const detectionLabel = useId();
   const retentionLabel = useId();
   const retentionGuidance = useId();
@@ -79,11 +81,11 @@ export function BrowserLoginsPanel({
         return true;
       if (lost) {
         clearPrivateState();
-        onSessionLost?.();
+        onSessionLostRef.current?.();
       }
       return lost;
     },
-    [capabilities, clearPrivateState, onSessionLost, vaultId],
+    [capabilities, clearPrivateState, vaultId],
   );
   const handleFailure = useCallback(
     async (
@@ -241,7 +243,7 @@ export function BrowserLoginsPanel({
       }
       if (owner.current !== generation || readOwner.current !== readGeneration)
         return;
-      apply(authoritative);
+      if (authoritative !== undefined) apply(authoritative);
       setData(fresh);
       setError(authoritative === next ? partialFailure : failure);
       return;

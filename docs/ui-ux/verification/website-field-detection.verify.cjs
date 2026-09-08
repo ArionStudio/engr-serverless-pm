@@ -6,14 +6,15 @@ const fs = require("node:fs"),
   assert = require("node:assert/strict");
 (async () => {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), "lfspm-fields-"));
-  const context = await chromium.launchPersistentContext(profile, {
-    executablePath: process.env.CHROMIUM_EXECUTABLE || "/usr/bin/google-chrome",
-    headless: process.env.HEADED !== "1",
-    ignoreDefaultArgs: ["--disable-extensions"],
-    args: ["--enable-unsafe-extension-debugging"],
-    viewport: { width: 1280, height: 900 },
-  });
+  let context;
   try {
+    context = await chromium.launchPersistentContext(profile, {
+      executablePath: process.env.CHROMIUM_EXECUTABLE || "/usr/bin/google-chrome",
+      headless: process.env.HEADED !== "1",
+      ignoreDefaultArgs: ["--disable-extensions"],
+      args: ["--enable-unsafe-extension-debugging"],
+      viewport: { width: 1280, height: 900 },
+    });
     const cdp = await context.browser().newBrowserCDPSession();
     const { id } = await cdp.send("Extensions.loadUnpacked", {
       path: path.resolve("apps/extension/dist"),
@@ -131,8 +132,11 @@ const fs = require("node:fs"),
       "PASS: XRBazaar identifier/password/registration fields recognized; unrelated email form excluded. No credentials entered.",
     );
   } finally {
-    await context.close();
-    fs.rmSync(profile, { recursive: true, force: true });
+    try {
+      await context?.close();
+    } finally {
+      fs.rmSync(profile, { recursive: true, force: true });
+    }
   }
 })().catch((e) => {
   console.error(e);

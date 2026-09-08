@@ -8,7 +8,11 @@ The browser adapter uses MV3 `activeTab` and `scripting` for manual Fill. It
 checks the active tab and URL again before sending only the selected login and
 password to frame 0. The content script checks its per-document random token,
 current URL, inspected form identity, visible editable fields and form destination before inserting
-values through native setters and input/change events.
+values through native setters and input/change events. Inputs need a rendered
+rectangle with positive width and height. Formless authentication copy comes
+from a nearby semantic form, dialog, section or article, not global navigation.
+A password-only field without such a boundary needs current-password metadata;
+registration and password-change fields are never filled with a saved password.
 
 Login detection is off initially. The popup's Login detection control requests
 optional website permission and registers a bundled content script. Turning it
@@ -29,6 +33,8 @@ The background accepts messages only from this extension's top-frame content
 script, on an allowed origin, with detection permission enabled. Capturing while
 locked is ignored. Capture and popup requests expire after five seconds; the
 background rechecks their deadline after waits and before the requested action.
+The stored popup handoff carries that same deadline and is removed when consumed;
+a later toolbar opening cannot reuse an expired handoff.
 One background composition graph shares its session resources between browser
 login handling and scheduled lock cleanup so locking wipes the material they used.
 Pending credentials are encrypted with AES-GCM using an HKDF
@@ -61,13 +67,15 @@ directs the user to dismiss the capture in Detected.
 - Email/username steps with authentication context, then explicit password Fill.
 - Registration and password-change recognition from autocomplete, labels, names,
   headings and submit actions. Existing passwords are never filled into these forms.
+  Native action inputs and role buttons use their accessible names, including
+  image alt text. Clicks inside open-shadow controls use the semantic button host.
 - Focus and DOM changes refresh a small LFSPM action beside the recognized field.
   Its click opens Detected, with a toolbar fallback when the browser refuses.
   The request is bound to the active tab and consumed once; a failed opening
   removes only its own request, preserving any newer request.
 - Password-only Fill and capture require current-password metadata or explicit
-  sign-in context. An ambiguous Password/Continue step requires manual entry and
-  does not produce a captured login.
+  sign-in context. An ambiguous Password/Continue or lone Confirm password step
+  requires manual entry and does not produce a captured login.
 - Current-password fields for Fill; consistent new/confirmation passwords for
   capture. OTP fields are excluded.
 - Cross-origin form destinations, hidden/read-only/disabled fields, ambiguous
@@ -121,7 +129,9 @@ local snapshot version vector and, when sync is configured and browser storage
 access is already granted, downloads and verifies S3 through the existing sync
 review use case. Focus changes and popup tab navigation do not start more S3
 requests. There is no background permission prompt. Disabled sync and missing
-permission remain visible beside the configuration action.
+permission remain visible beside the configuration action. Relevant permission
+grants and removals refresh the local access status even when Detected is open;
+this refresh does not itself start another S3 request.
 
 The popup displays verified equality, remote changes awaiting explicit review,
 local changes needing upload, provider errors, and the local version vector.

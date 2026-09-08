@@ -4,8 +4,21 @@ import { browserLoginPageOrigin } from "../../adapters/browser-login/browser-log
 const emailLinkAction =
   /\b(?:magic|sign[ -]?in|log[ -]?in)[ -]?link\b|\b(?:email|send)(?: me)? (?:a |the )?link\b/i;
 const signInContext = /\b(?:sign[ -]?in|log[ -]?in)\b/i;
+const registrationActionPattern = String.raw`sign(?:\s*|-)up|register|(?:create|set up) (?:(?:an?|your|new) )?account|join now`;
+const registrationContext = new RegExp(
+  String.raw`\b(?:${registrationActionPattern})\b`,
+  "i",
+);
+const exactRegistrationAction = new RegExp(
+  `^(?:${registrationActionPattern})$`,
+  "i",
+);
 const freshPasswordContext =
-  /\b(?:choose|create|set|confirm)(?: (?:a|the|your|new)){0,2} password\b|\bnew password\b/i;
+  /\b(?:choose|create|set)(?: (?:a|the|your|new)){0,2} password\b|\bnew password\b/i;
+const semanticLoginContainer =
+  '[role="form"], dialog, [role="dialog"], section, article';
+export const loginActionSelector =
+  "button, input[type=submit], input[type=image], input[type=button], [role=button]";
 
 /** DOM access stays in the isolated content script. No credentials enter page messages. */
 export interface LoginFields {
@@ -24,12 +37,52 @@ export function isEmailLinkAction(value: string): boolean {
   return emailLinkAction.test(value);
 }
 
-function inputsWithin(root: Document | ShadowRoot): HTMLInputElement[] {
-  const inputs = Array.from(root.querySelectorAll("input"));
-  for (const element of root.querySelectorAll("*")) {
-    if (element.shadowRoot) inputs.push(...inputsWithin(element.shadowRoot));
+export function isRegistrationAction(value: string): boolean {
+  return exactRegistrationAction.test(value.trim());
+}
+
+export function loginActionName(control: Element): string {
+  const root = control.getRootNode();
+  const labelledBy = (control.getAttribute("aria-labelledby") ?? "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((id) =>
+      root instanceof Document || root instanceof ShadowRoot
+        ? (root.getElementById(id)?.textContent ?? "")
+        : "",
+    )
+    .join(" ")
+    .trim();
+  if (labelledBy) return labelledBy;
+  const ariaLabel = control.getAttribute("aria-label")?.trim();
+  if (ariaLabel) return ariaLabel;
+  if (control instanceof HTMLInputElement) {
+    if (control.type === "image")
+      return control.alt.trim() || control.value.trim();
+    return ["button", "submit"].includes(control.type)
+      ? control.value.trim()
+      : "";
   }
-  return inputs;
+  return control.textContent?.trim() ?? "";
+}
+
+export function elementsWithinOpenRoots(
+  root: Document | ShadowRoot,
+  selector: string,
+): Element[] {
+  const matches = Array.from(root.querySelectorAll(selector));
+  for (const element of root.querySelectorAll("*")) {
+    if (element.shadowRoot)
+      matches.push(...elementsWithinOpenRoots(element.shadowRoot, selector));
+  }
+  return matches;
+}
+
+function inputsWithin(root: Document | ShadowRoot): HTMLInputElement[] {
+  return elementsWithinOpenRoots(root, "input").filter(
+    (element): element is HTMLInputElement =>
+      element instanceof HTMLInputElement,
+  );
 }
 
 function parentElement(element: Element): Element | null {
@@ -42,12 +95,15 @@ function parentElement(element: Element): Element | null {
 }
 
 function usable(input: HTMLInputElement): boolean {
+  const hasVisibleArea = Array.from(input.getClientRects()).some(
+    (rect) => rect.width > 0 && rect.height > 0,
+  );
   if (
     input.matches(":disabled") ||
     input.readOnly ||
     input.type === "hidden" ||
     !input.isConnected ||
-    input.getClientRects().length === 0
+    !hasVisibleArea
   )
     return false;
   for (
@@ -67,6 +123,16 @@ function usable(input: HTMLInputElement): boolean {
       return false;
   }
   return true;
+}
+
+type LoginFieldGroup = HTMLFormElement | Element | Document | ShadowRoot;
+
+function loginFieldGroup(input: HTMLInputElement): LoginFieldGroup {
+  return (
+    input.form ??
+    input.closest(semanticLoginContainer) ??
+    (input.getRootNode() as Document | ShadowRoot)
+  );
 }
 
 function autocomplete(input: HTMLInputElement): string[] {
@@ -146,13 +212,10 @@ export function findLoginFields(
 ): LoginFields | undefined {
   if (!isAllowedLoginUrl(document.location.href)) return undefined;
   const inputs = inputsWithin(document).filter(usable);
-  const groups = new Map<
-    HTMLFormElement | Document | ShadowRoot,
-    HTMLInputElement[]
-  >();
+  const groups = new Map<LoginFieldGroup, HTMLInputElement[]>();
   for (const input of inputs) {
     if (excluded(input)) continue;
-    const root = input.form ?? (input.getRootNode() as Document | ShadowRoot);
+    const root = loginFieldGroup(input);
     groups.set(root, [...(groups.get(root) ?? []), input]);
   }
   const results: LoginFields[] = [];
@@ -167,7 +230,9 @@ export function findLoginFields(
           !form.contains(target) &&
           !(target instanceof HTMLInputElement && target.form === form) &&
           !(target instanceof HTMLButtonElement && target.form === form)
-        : target.getRootNode() !== root)
+        : root instanceof Element
+          ? target !== root && !root.contains(target)
+          : target.getRootNode() !== root)
     )
       continue;
     const passwords = related.filter(
@@ -187,35 +252,31 @@ export function findLoginFields(
     const fresh = passwords.filter(
       (input) =>
         autocomplete(input).includes("new-password") ||
-        /\b(new|create|choose|set|confirm|repeat|retype)\b/.test(
-          fieldHint(input),
-        ),
+        /\b(new|create|choose|set)\b/.test(fieldHint(input)) ||
+        (current.length > 0 &&
+          /\b(confirm|repeat|retype)\b/.test(fieldHint(input))),
     );
+    const contextRoot = form ?? (root instanceof Element ? root : null);
     const controls = form
-      ? [
-          ...Array.from(form.elements),
-          ...Array.from(form.querySelectorAll("[role=button]")),
-        ]
-      : Array.from(
-          root.querySelectorAll("button, input[type=submit], [role=button]"),
-        );
+      ? Array.from(
+          new Set([
+            ...Array.from(form.elements),
+            ...Array.from(form.querySelectorAll(loginActionSelector)),
+          ]),
+        )
+      : contextRoot
+        ? Array.from(contextRoot.querySelectorAll(loginActionSelector))
+        : [];
     const actions = controls
-      .filter(
-        (control) =>
-          control instanceof HTMLButtonElement ||
-          (control instanceof HTMLInputElement && control.type === "submit") ||
-          control.getAttribute("role") === "button",
-      )
-      .map((control) =>
-        control instanceof HTMLInputElement
-          ? control.value
-          : control.textContent,
-      )
+      .filter((control) => control.matches(loginActionSelector))
+      .map(loginActionName)
       .join(" ");
-    const headings = Array.from(
-      root.querySelectorAll("h1,h2,h3,legend"),
-      (element) => element.textContent,
-    ).join(" ");
+    const headings = contextRoot
+      ? Array.from(
+          contextRoot.querySelectorAll("h1,h2,h3,legend"),
+          (element) => element.textContent,
+        ).join(" ")
+      : "";
     const context = [
       actions,
       headings,
@@ -223,10 +284,7 @@ export function findLoginFields(
       form?.id,
       form?.name,
     ].join(" ");
-    const registration =
-      /\b(sign[ -]?up|register|create (?:an? )?account|join now)\b/i.test(
-        context,
-      );
+    const registration = registrationContext.test(context);
     const change =
       /\b(change|reset|update) (?:your )?password\b/i.test(context) ||
       /\bset (?:a |your )?new password\b/i.test(context);
@@ -352,18 +410,14 @@ export function readSubmittedLogin(
 ): { login: string; password: string } | undefined {
   const fields = findLoginFields(document, "capture", target);
   if (!fields) return undefined;
-  const clicked = target?.closest("button, input[type=submit], [role=button]");
+  const clicked = target?.closest(loginActionSelector);
   const controls = clicked
     ? [clicked]
     : !fields.password && fields.form
-      ? Array.from(fields.form.querySelectorAll("button, input[type=submit]"))
+      ? Array.from(fields.form.querySelectorAll(loginActionSelector))
       : [];
   const requestsEmailLink = controls.some((control) =>
-    isEmailLinkAction(
-      control instanceof HTMLInputElement
-        ? control.value
-        : (control.textContent ?? ""),
-    ),
+    isEmailLinkAction(loginActionName(control)),
   );
   if (requestsEmailLink && fields.login?.checkValidity()) {
     const login = fields.login.value.trim();

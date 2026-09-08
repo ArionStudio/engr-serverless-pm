@@ -9,39 +9,40 @@ const fs = require("node:fs"),
 (async () => {
   fs.mkdirSync(".local/login-validation", { recursive: true });
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), "lfspm-login-"));
-  const context = await chromium.launchPersistentContext(profile, {
-    executablePath: process.env.CHROMIUM_EXECUTABLE || "/usr/bin/google-chrome",
-    headless: true,
-    ignoreDefaultArgs: ["--disable-extensions"],
-    args: ["--no-sandbox", "--enable-unsafe-extension-debugging"],
-    viewport: { width: 1280, height: 1000 },
-  });
+  let context;
   let page;
-  const errors = [];
-  const monitors = [];
-  context.on("page", (target) => {
-    target.on("pageerror", (error) => errors.push(error.message));
-    target.on("console", (message) => {
-      if (
-        ["warning", "error"].includes(message.type()) &&
-        !target.url().startsWith("chrome://")
-      )
-        errors.push(`console ${message.type()}: ${message.text()}`);
-    });
-    monitors.push(
-      context.newCDPSession(target).then(async (log) => {
-        log.on("Log.entryAdded", ({ entry }) => {
-          if (
-            ["warning", "error"].includes(entry.level) &&
-            !target.url().startsWith("chrome://")
-          )
-            errors.push(`log ${entry.level}: ${entry.text}`);
-        });
-        await log.send("Log.enable");
-      }),
-    );
-  });
   try {
+    context = await chromium.launchPersistentContext(profile, {
+      executablePath: process.env.CHROMIUM_EXECUTABLE || "/usr/bin/google-chrome",
+      headless: true,
+      ignoreDefaultArgs: ["--disable-extensions"],
+      args: ["--no-sandbox", "--enable-unsafe-extension-debugging"],
+      viewport: { width: 1280, height: 1000 },
+    });
+    const errors = [];
+    const monitors = [];
+    context.on("page", (target) => {
+      target.on("pageerror", (error) => errors.push(error.message));
+      target.on("console", (message) => {
+        if (
+          ["warning", "error"].includes(message.type()) &&
+          !target.url().startsWith("chrome://")
+        )
+          errors.push(`console ${message.type()}: ${message.text()}`);
+      });
+      monitors.push(
+        context.newCDPSession(target).then(async (log) => {
+          log.on("Log.entryAdded", ({ entry }) => {
+            if (
+              ["warning", "error"].includes(entry.level) &&
+              !target.url().startsWith("chrome://")
+            )
+              errors.push(`log ${entry.level}: ${entry.text}`);
+          });
+          await log.send("Log.enable");
+        }),
+      );
+    });
     const cdp = await context.browser().newBrowserCDPSession();
     const { id } = await cdp.send("Extensions.loadUnpacked", {
       path: path.resolve("apps/extension/dist"),
@@ -138,6 +139,75 @@ const fs = require("node:fs"),
       }),
     );
     const site = await context.newPage();
+    await site.goto("https://example.com/login");
+    await site.getByLabel("Password").focus();
+    await site.locator("[data-lfspm-field-action]").waitFor({ state: "visible" });
+    await site.evaluate(() => {
+      document.body.style.minHeight = "3000px";
+      window.scrollTo(0, 1500);
+    });
+    await site.locator("[data-lfspm-field-action]").waitFor({ state: "hidden" });
+    await site.evaluate(() => window.scrollTo(0, 0));
+    await site.locator("[data-lfspm-field-action]").waitFor({ state: "visible" });
+    await site.evaluate(() => {
+      const container = document.createElement("div");
+      document.body.replaceChildren(container);
+      const root = container.attachShadow({ mode: "open" });
+      root.innerHTML = `<form>
+        <input aria-label="Shadow password" type="password" autocomplete="current-password"
+          style="position:fixed;left:100px;top:120px;width:200px;height:40px;box-sizing:border-box">
+        <button type="button" style="display:none;position:fixed;left:308px;top:120px;width:180px;height:40px">Shadow sign in</button>
+      </form>`;
+      root.querySelector("button").addEventListener("click", () => {
+        document.body.dataset.shadowSignInClicked = "true";
+      });
+    });
+    await site.getByLabel("Shadow password").focus();
+    await site.locator("[data-lfspm-field-action]").waitFor({ state: "visible" });
+    await site.evaluate(() => {
+      document.querySelector("div").shadowRoot.querySelector("button").style.display = "block";
+    });
+    await site.getByRole("button", { name: "Shadow sign in", exact: true }).click({ timeout: 2000 });
+    assert.equal(await site.evaluate(() => document.body.dataset.shadowSignInClicked), "true");
+    console.log("Website sign-in control remains clickable beside a shadow-root field");
+    for (const actionKind of ["shadow", "input"]) {
+      await site.goto("https://example.com/login");
+      await site.evaluate((actionKind) => {
+        document.body.innerHTML = `<section><h1>Create your account</h1>
+          <label>Email<input type="email" name="email"></label>
+          <label>Password<input type="password" autocomplete="new-password"></label>
+          <div id="registration-action"></div></section>`;
+        const host = document.getElementById("registration-action");
+        if (actionKind === "shadow") {
+          host.setAttribute("role", "button");
+          host.setAttribute("tabindex", "0");
+          host.setAttribute("aria-label", "Create your account");
+          host.attachShadow({ mode: "open" }).innerHTML = '<span>→</span>';
+        } else {
+          host.innerHTML = '<input type="button" aria-label="Create your account" value="→">';
+        }
+      }, actionKind);
+      await site.getByLabel("Email").fill("new-account@example.com");
+      await site.getByLabel("Password").fill("timber violet harbor granite meadow");
+      if (actionKind === "shadow")
+        await site.locator("#registration-action span").click();
+      else
+        await site.getByRole("button", { name: "Create your account", exact: true }).click();
+      await page.waitForFunction(async () =>
+        Object.keys(await chrome.storage.session.get(null)).some((key) =>
+          key.startsWith("lfspm.captured-login."),
+        ),
+        undefined,
+        { timeout: 3000 },
+      );
+      const registrationReview = await openToolbar();
+      await registrationReview.click("Detected");
+      await registrationReview.wait("new-account@example.com");
+      await registrationReview.click("Dismiss");
+      await registrationReview.wait("No login waiting to be saved");
+      await registrationReview.close();
+      console.log("Non-submit registration action captured credentials for review");
+    }
     await site.goto("https://example.com/login");
     await site.getByLabel("Username").fill("alex@example.com");
     await site.getByLabel("Password").fill("violet harbor timber prism meadow");
@@ -602,7 +672,9 @@ const fs = require("node:fs"),
     updated = await openToolbar();
     await updated.click("Detected");
     await updated.wait("Login detection");
-    await updated.evaluate(`document.querySelector('[role="switch"]').click()`);
+    await updated.evaluate(
+      `Array.from(document.querySelectorAll('label')).find(label => label.textContent.includes('Login detection')).querySelector('[role="switch"]').click()`,
+    );
     await updated.wait("Off");
     await updated.close();
     await site.getByLabel("Password").fill("unused disabled capture password");
@@ -625,13 +697,20 @@ const fs = require("node:fs"),
     console.log("PASS");
   } catch (e) {
     if (page) {
-      console.error((await page.locator("body").innerText()).slice(0, 2000));
-      await page.screenshot({ path: ".local/login-validation/failure.png" });
+      try {
+        console.error((await page.locator("body").innerText()).slice(0, 2000));
+        await page.screenshot({ path: ".local/login-validation/failure.png" });
+      } catch {
+        // A closed page must not replace the original validation failure.
+      }
     }
     throw e;
   } finally {
-    await context.close();
-    fs.rmSync(profile, { recursive: true, force: true });
+    try {
+      await context?.close();
+    } finally {
+      fs.rmSync(profile, { recursive: true, force: true });
+    }
   }
 })().catch((e) => {
   console.error(e);

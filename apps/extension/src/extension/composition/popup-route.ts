@@ -14,7 +14,9 @@ export async function openDetectedPopup(
   const key = `${POPUP_REVIEW_REQUEST_KEY}:${windowId}`;
   const ready = await withRequestLock(async () => {
     if (!isLiveBrowserLoginDeadline(deadlineEpochMs)) return false;
-    await chrome.storage.session.set({ [key]: { tabId, token } });
+    await chrome.storage.session.set({
+      [key]: { tabId, token, deadlineEpochMs },
+    });
     return true;
   });
   if (!ready) return false;
@@ -60,6 +62,8 @@ export async function consumePopupReviewRequest(): Promise<
       typeof request.token === "string" &&
       "tabId" in request &&
       typeof request.tabId === "number" &&
+      "deadlineEpochMs" in request &&
+      isLiveBrowserLoginDeadline(request.deadlineEpochMs) &&
       request.tabId === tab?.id
       ? "detected"
       : "vault";

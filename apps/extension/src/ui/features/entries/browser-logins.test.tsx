@@ -163,6 +163,36 @@ it("does not return captured credentials after the panel changes vault", async (
   expect(onReview).not.toHaveBeenCalled();
 });
 
+it("does not restart the page read when the session-loss callback changes", async () => {
+  const capabilities = galleryBrowserLogins("save");
+  capabilities.read = vi.fn(capabilities.read);
+  const onReview = vi.fn();
+  const { rerender } = render(
+    <BrowserLoginsPanel
+      vaultId="vault"
+      capabilities={capabilities}
+      onReview={onReview}
+      onSessionLost={() => {}}
+      mode="detected"
+    />,
+  );
+  await screen.findByText("Save this login?");
+  expect(capabilities.read).toHaveBeenCalledOnce();
+
+  rerender(
+    <BrowserLoginsPanel
+      vaultId="vault"
+      capabilities={capabilities}
+      onReview={onReview}
+      onSessionLost={() => {}}
+      mode="detected"
+    />,
+  );
+
+  await waitFor(() => expect(capabilities.read).toHaveBeenCalledOnce());
+  expect(screen.getByText("Save this login?")).toBeInTheDocument();
+});
+
 it("enables session retention through its label only after login detection is enabled", async () => {
   const capabilities = galleryBrowserLogins("save");
   capabilities.setSessionRetention = vi.fn(capabilities.setSessionRetention);
@@ -310,6 +340,37 @@ it("restores authoritative retention after a rejected change", async () => {
   expect(
     screen.getByRole("button", { name: "Review new login" }),
   ).toBeInTheDocument();
+});
+
+it("keeps retention retryable when the write and authoritative read fail", async () => {
+  const capabilities = galleryBrowserLogins("retention-change-error");
+  capabilities.setSessionRetention = vi.fn(capabilities.setSessionRetention);
+  capabilities.sessionRetentionEnabled = vi.fn(
+    capabilities.sessionRetentionEnabled,
+  );
+  render(
+    <BrowserLoginsPanel
+      vaultId="vault"
+      capabilities={capabilities}
+      onReview={() => {}}
+      mode="detected"
+    />,
+  );
+  const label = "Keep detected login across page changes";
+  const retention = await screen.findByRole("switch", { name: label });
+  expect(retention).toBeChecked();
+
+  fireEvent.click(screen.getByText(label));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Could not change login retention.",
+  );
+  expect(retention).toBeChecked();
+  expect(retention).not.toHaveAttribute("aria-disabled", "true");
+  fireEvent.click(screen.getByText(label));
+  await waitFor(() =>
+    expect(capabilities.setSessionRetention).toHaveBeenCalledTimes(2),
+  );
 });
 
 it("clears authorization-lost settings without rereading captured credentials", async () => {

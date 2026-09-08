@@ -65,6 +65,20 @@ Entry, tag and folder mutations return `syncConfigured` from the state used for
 that mutation alongside upload status, so the UI can report the saved outcome
 without relying on an older workspace read.
 
+## Website logins
+
+| Use case | Behavior |
+| --- | --- |
+| `CaptureBrowserLoginUseCase` | Validates a submitted login and deadline, then stores an encrypted, session-bound proposal for review without creating a vault entry. |
+| `ReadBrowserLoginsUseCase` | Inspects the active page, rechecks the authorized session, and returns matching entry summaries and an eligible captured proposal. |
+| `HasCapturedLoginUseCase` | Reports whether the current session has an unexpired capture for the tab and matching origin, without returning its credentials. |
+| `DismissCapturedLoginUseCase` | Removes the identified proposal under the unlocked-session coordinator, preserving a newer capture. |
+| `FillBrowserLoginUseCase` | Authorizes an explicit fill of a saved entry into a supported form at the matching origin; the browser adapter rechecks the target before dispatch. |
+
+Saving a reviewed proposal uses the existing entry add or update workflow.
+[Website login contracts](../architecture/website-logins.md) describe detection,
+retention, permission checks and supported forms.
+
 ## Password tools
 
 | Use case                       | Behavior                                                                                                           |

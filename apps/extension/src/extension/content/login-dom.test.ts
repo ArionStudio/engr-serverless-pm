@@ -85,13 +85,24 @@ describe("login DOM boundary", () => {
     ).toBe("");
   });
 
+  it("does not inspect or fill a zero-area password field", () => {
+    const password =
+      document.querySelector<HTMLInputElement>('[type="password"]')!;
+    vi.spyOn(password, "getClientRects").mockReturnValue([
+      new DOMRect(0, 0, 0, 0),
+    ] as unknown as DOMRectList);
+
+    expect(findLoginFields(document, "inspect")).toBeUndefined();
+    expect(fillLogin(document, "alice", "secret")).toBe(false);
+    expect(password.value).toBe("");
+  });
+
   it("does not fill password creation or ambiguous password-only steps", () => {
     for (const [heading, kind] of [
       ["Choose a password", "registration"],
       ["Create your password", "registration"],
       ["Set a new password", "password-change"],
       ["New password", "registration"],
-      ["Confirm password", "registration"],
     ] as const) {
       document.body.innerHTML = `<form><h1>${heading}</h1><input type="password" value="chosen-secret"><button>Continue</button></form>`;
       expect(findLoginFields(document, "inspect")?.description.kind).toBe(kind);
@@ -109,6 +120,16 @@ describe("login DOM boundary", () => {
       '<form><h1>Password</h1><input type="password" value="page-secret"><button>Continue</button></form>';
     expect(fillLogin(document, "", "saved-secret")).toBe(false);
     expect(readSubmittedLogin(document)).toBeUndefined();
+
+    for (const confirmation of [
+      "Confirm password",
+      "Repeat password",
+      "Retype password",
+    ]) {
+      document.body.innerHTML = `<form><h1>${confirmation}</h1><input type="password" aria-label="${confirmation}" value="page-secret"><button>Continue</button></form>`;
+      expect(fillLogin(document, "", "saved-secret")).toBe(false);
+      expect(readSubmittedLogin(document)).toBeUndefined();
+    }
   });
 
   it("fills and captures a password-only step with explicit sign-in or current-password evidence", () => {
@@ -253,6 +274,34 @@ describe("login DOM boundary", () => {
     expect(fillLogin(document, "alice", "old-secret")).toBe(false);
   });
 
+  it("recognizes account-creation copy with an unannotated password", () => {
+    document.body.innerHTML =
+      '<section><h1>Create your account</h1><input type="email" value="alice@example.com"><input type="password" value="new-secret"><button>Continue</button></section>';
+
+    expect(findLoginFields(document, "inspect")?.description).toEqual({
+      kind: "registration",
+      fields: ["email", "new-password"],
+    });
+    expect(readSubmittedLogin(document)).toEqual({
+      login: "alice@example.com",
+      password: "new-secret",
+    });
+    expect(fillLogin(document, "alice@example.com", "saved-secret")).toBe(
+      false,
+    );
+  });
+
+  it("does not use an unrelated global sign-in action for a formless password", () => {
+    document.body.innerHTML =
+      '<nav><button>Sign in</button></nav><main><input type="password" value="page-secret"></main>';
+
+    expect(readSubmittedLogin(document)).toBeUndefined();
+    expect(fillLogin(document, "", "saved-secret")).toBe(false);
+    expect(document.querySelector<HTMLInputElement>("input")!.value).toBe(
+      "page-secret",
+    );
+  });
+
   it("does not mistake newsletter, search or verification forms for email-first authentication", () => {
     for (const html of [
       '<form><h1>Newsletter</h1><input type="email"><button>Subscribe</button></form>',
@@ -278,5 +327,27 @@ describe("login DOM boundary", () => {
     expect(
       readSubmittedLogin(document, document.querySelector("#link")!),
     ).toBeUndefined();
+  });
+
+  it("uses image-button alt text for password and email-link actions", () => {
+    document.body.innerHTML =
+      '<form><input type="password" value="page-secret"><input type="image" alt="Sign in"></form>';
+    const signIn = document.querySelector<HTMLInputElement>("[type=image]")!;
+    expect(readSubmittedLogin(document, signIn)).toEqual({
+      login: "",
+      password: "page-secret",
+    });
+    expect(fillLogin(document, "", "saved-secret")).toBe(true);
+    expect(
+      document.querySelector<HTMLInputElement>("[type=password]")!.value,
+    ).toBe("saved-secret");
+
+    document.body.innerHTML =
+      '<form><input type="email" value="alice@example.com"><input type="password" value="existing-secret"><input type="image" alt="Send sign-in link"></form>';
+    const emailLink = document.querySelector<HTMLInputElement>("[type=image]")!;
+    expect(readSubmittedLogin(document, emailLink)).toEqual({
+      login: "alice@example.com",
+      password: "",
+    });
   });
 });

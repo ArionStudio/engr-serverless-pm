@@ -5,6 +5,9 @@ import {
   findLoginFields,
   isAllowedLoginUrl,
   isEmailLinkAction,
+  isRegistrationAction,
+  loginActionName,
+  loginActionSelector,
   readSubmittedLogin,
 } from "./login-dom";
 import { mountLoginCapturePrompt } from "./login-capture-prompt";
@@ -200,26 +203,23 @@ function installLoginContent(): void {
     "click",
     (event) => {
       if (!event.isTrusted) return;
-      const target = event
-        .composedPath()
-        .find((element) => element instanceof Element);
-      if (!(target instanceof Element)) return;
       trustedGestureTime = Date.now();
-      const button = target.closest(
-        "button, input[type=submit], input[type=image], [role=button]",
-      );
+      const button = event
+        .composedPath()
+        .find(
+          (element): element is Element =>
+            element instanceof Element && element.matches(loginActionSelector),
+        );
       if (!button) return;
       const nativeSubmit =
         (button instanceof HTMLButtonElement ||
           button instanceof HTMLInputElement) &&
         (button.type === "submit" || button.type === "image");
-      const label =
-        button instanceof HTMLInputElement
-          ? button.value.trim()
-          : (button.textContent?.trim() ?? "");
+      const label = loginActionName(button);
       const loginButton =
         isEmailLinkAction(label) ||
-        /^(sign\s*in|log\s*in|sign\s*up|register|create account|save password|change password|continue)$/i.test(
+        isRegistrationAction(label) ||
+        /^(sign\s*in|log\s*in|save password|change password|continue)$/i.test(
           label,
         );
       if (nativeSubmit || loginButton) capture(button);

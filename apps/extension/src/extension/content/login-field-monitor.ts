@@ -1,5 +1,5 @@
 import { BROWSER_LOGIN_REQUEST_TIMEOUT_MS } from "../../adapters/browser-login/browser-login-deadline";
-import { findLoginFields } from "./login-dom";
+import { elementsWithinOpenRoots, findLoginFields } from "./login-dom";
 import { mountLoginFieldAction } from "./login-field-action";
 
 /** Re-evaluate metadata on focus and DOM changes; never read or retain field values. */
@@ -18,16 +18,15 @@ export function installLoginFieldMonitor(): () => boolean {
     if (!host || !anchor) return;
     const bounds = anchor.getBoundingClientRect();
     if (bounds.bottom <= 0 || bounds.top >= innerHeight) {
-      remove();
+      host.style.display = "none";
       return;
     }
     host.style.display = "block";
     const width = host.offsetWidth;
     const height = host.offsetHeight;
-    const obstacles = Array.from(
-      document.querySelectorAll(
-        "input, button, select, textarea, a[href], [role=button], label",
-      ),
+    const obstacles = elementsWithinOpenRoots(
+      document,
+      "input, button, select, textarea, a[href], [role=button], label",
     )
       .filter(
         (element) =>
@@ -68,6 +67,7 @@ export function installLoginFieldMonitor(): () => boolean {
     }
   };
   const refresh = () => {
+    observeRoots();
     if (scheduled !== undefined) clearTimeout(scheduled);
     scheduled = undefined;
     if (!enabled || !anchor?.isConnected) {
@@ -150,9 +150,10 @@ export function installLoginFieldMonitor(): () => boolean {
     )
       schedule();
   });
-  observer.observe(document.documentElement, {
+  const observationOptions: MutationObserverInit = {
     subtree: true,
     childList: true,
+    characterData: true,
     attributes: true,
     attributeFilter: [
       "type",
@@ -162,13 +163,28 @@ export function installLoginFieldMonitor(): () => boolean {
       "placeholder",
       "aria-label",
       "aria-labelledby",
+      "role",
+      "form",
+      "action",
+      "formaction",
       "hidden",
       "disabled",
       "readonly",
       "class",
       "style",
     ],
-  });
+  };
+  function observeRoots() {
+    // Reconnect to the current tree so detached component roots are released.
+    observer.disconnect();
+    observer.observe(document.documentElement, observationOptions);
+    if (!enabled || !anchor?.isConnected) return;
+    for (const element of elementsWithinOpenRoots(document, "*")) {
+      if (element.shadowRoot)
+        observer.observe(element.shadowRoot, observationOptions);
+    }
+  }
+  observeRoots();
   const apply = (value: boolean) => {
     enabled = value;
     if (document.activeElement instanceof HTMLInputElement)
