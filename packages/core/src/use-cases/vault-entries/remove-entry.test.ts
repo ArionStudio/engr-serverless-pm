@@ -64,6 +64,7 @@ describe("RemoveEntryUseCase", () => {
       },
       revisionTimestamp: ctx.values.timestamp + 1,
       syncUpload: "complete",
+      syncConfigured: false,
     });
     expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries).toEqual(
       [secondPasswordEntry],
@@ -184,6 +185,7 @@ describe("RemoveEntryUseCase", () => {
     });
 
     expect(result.syncUpload).toBe("pending");
+    expect(result.syncConfigured).toBe(true);
     expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries).toEqual(
       [secondPasswordEntry],
     );

@@ -85,6 +85,7 @@ describe("AddEntryUseCase", () => {
       },
       revisionTimestamp: ctx.values.timestamp + 1,
       syncUpload: "complete",
+      syncConfigured: false,
     });
     expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries).toEqual(
       [
@@ -579,6 +580,7 @@ describe("AddEntryUseCase", () => {
       });
 
       expect(result.syncUpload).toBe("pending");
+      expect(result.syncConfigured).toBe(true);
       expect(ctx.saved.vaultSnapshot?.metadata.snapshotVersionVector).toEqual({
         [ctx.values.deviceId]: 2,
       });

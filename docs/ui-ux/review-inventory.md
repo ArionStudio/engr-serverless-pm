@@ -1,6 +1,18 @@
 # Review inventory and ownership
 
-Updated 2026-09-06. All **75 catalog IDs** have rendered gallery examples: 38 base controls, 28 presentation families, seven forms and two current screen views. IDs describe review scope, not file count. Status for every row is **implemented for review**. Full visual/accessibility acceptance remains pending. New-vault setup, recovery saving/verification, interrupted-setup continuation and local lock settings are connected in the production extension; enrollment and entry/sync screens remain follow-up work.
+Updated 2026-09-08. Every family in the generated
+[catalog](../../apps/extension/src/gallery/catalog.ts) has a rendered gallery
+example, including the four current screen families. Catalog IDs describe review
+scope, not file count. Status for every row is **implemented for review**. Full
+visual/accessibility acceptance remains pending. New-vault setup, recovery
+saving/verification, interrupted-setup continuation and local lock settings are
+connected in the production extension; Options entry and sync screens and popup
+entry quick access are also connected. Existing-vault enrollment remains
+follow-up work.
+
+Numeric catalog, component and variant totals in the dated validation sections
+below record those historical runs. Use the generated catalog and
+`component-api.generated.ts` for the current inventory.
 
 Use the gallery collection navigation or **Find a component or widget**. Theme, canvas width and **Reset examples** apply to every collection. State selectors expose synthetic outcomes; buttons call local drivers. The gallery uses no connected vault, network operation, clipboard write, real download, print job or trust verification.
 

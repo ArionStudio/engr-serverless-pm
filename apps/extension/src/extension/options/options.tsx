@@ -1,3 +1,4 @@
+import { composeWorkspace } from "../composition/workspace.capabilities";
 import { composeSync } from "../composition/sync.capabilities";
 import React, { useState } from "react";
 import { composeVaultSetup } from "../composition/vault-setup.capabilities";
@@ -9,11 +10,13 @@ import { OptionsView } from "@/ui/entrypoints/options/options.view";
 import { assessSetupPassword } from "../composition/first-launch.capabilities";
 
 export function Options() {
+  const [workspace] = useState(composeWorkspace);
   const [sync] = useState(composeSync);
   const [setup] = useState(composeVaultSetup);
   const { preference, setTheme } = useTheme();
   return (
     <OptionsView
+      workspace={workspace}
       setup={setup}
       sync={sync}
       preference={preference}

@@ -3,7 +3,9 @@
 Status: popup-to-options navigation and new-vault setup are implemented. Roots
 inject vault creation, password assessment, recovery-word verification and export,
 interrupted-setup continuation, lock/unlock and device-local lock settings.
-Existing-vault enrollment and entry/sync screen integration remain subsequent work. Existing
+Options also connects entry and sync screens; the popup provides entry quick
+access through the same feature capabilities. Existing-vault enrollment remains
+subsequent work. Existing
 [core architecture](../standards/core-architecture.md) and
 [React/UI standards](../standards/react-and-ui.md) remain authoritative.
 
@@ -197,8 +199,8 @@ vaults require an explicit selection, retained across lock/unlock in this page.
 1. Keep every component and variant reviewable as enrollment and entry screens grow.
 2. Resolve the remaining [setup contracts](./vault-setup.md#implementation-gaps)
    for enrollment and complete disaster recovery at their implementation milestones.
-3. Integrate entry and sync features through narrow capabilities, reusing current
-   aliases, `cn`, ThemeProvider and composition.
+3. Keep entry and sync features connected through their narrow capabilities,
+   reusing current aliases, `cn`, ThemeProvider and composition.
 4. Verify shared features in both shells without adapter imports or duplicated core behavior.
 5. Retain regression checks for cross-context locking, stale async completion,
    popup closure, already-open options, double submission and setup interruption.

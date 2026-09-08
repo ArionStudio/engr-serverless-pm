@@ -1,4 +1,7 @@
-export function syncError(error: unknown): string {
+export function syncError(
+  error: unknown,
+  fallbackMessage = "Could not reach or authenticate with S3. Check your connection, region, key permissions and the bucket's CORS configuration, then try again.",
+): string {
   const name = error instanceof Error ? error.name : "";
   switch (name) {
     case "InvalidSyncConfigError":
@@ -33,6 +36,6 @@ export function syncError(error: unknown): string {
     case "UnlockedVaultSessionExpiredError":
       return "Unlock this vault again before continuing.";
     default:
-      return "Could not reach or authenticate with S3. Check your connection, region, key permissions and the bucket's CORS configuration, then try again.";
+      return fallbackMessage;
   }
 }

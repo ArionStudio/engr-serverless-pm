@@ -22,6 +22,7 @@ export type RemoveEntryResult = {
   snapshotVersionVector: VersionVector;
   revisionTimestamp: number;
   syncUpload: SyncUploadStatus;
+  syncConfigured: boolean;
 };
 
 export class RemoveEntryUseCase {
@@ -152,6 +153,7 @@ export class RemoveEntryUseCase {
       snapshotVersionVector: persistedSnapshot.snapshotVersionVector,
       revisionTimestamp: persistedSnapshot.revisionTimestamp,
       syncUpload,
+      syncConfigured: syncState.syncAccess !== undefined,
     };
   }
 }

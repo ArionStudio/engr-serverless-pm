@@ -964,6 +964,25 @@ export const componentApi = [
     "axes": {}
   },
   {
+    "name": "EntryDetails",
+    "source": "features/entries/entry-details.view.tsx",
+    "family": "P12",
+    "exported": true,
+    "axes": {}
+  },
+  {
+    "name": "EntryEditor",
+    "source": "features/entries/entry-editor.view.tsx",
+    "family": "F02",
+    "exported": true,
+    "axes": {
+      "mode": [
+        "add",
+        "edit"
+      ]
+    }
+  },
+  {
     "name": "EntryForm",
     "source": "features/entries/entry-form.view.tsx",
     "family": "F02",
@@ -1000,6 +1019,13 @@ export const componentApi = [
     "name": "EntryTable",
     "source": "features/entries/entry-table.view.tsx",
     "family": "P11",
+    "exported": true,
+    "axes": {}
+  },
+  {
+    "name": "EntryWorkspace",
+    "source": "features/entries/entry-workspace.view.tsx",
+    "family": "S02",
     "exported": true,
     "axes": {}
   },
@@ -1517,8 +1543,22 @@ export const componentApi = [
     "axes": {}
   },
   {
+    "name": "PopupEntries",
+    "source": "entrypoints/popup/popup-entries.view.tsx",
+    "family": "S01",
+    "exported": true,
+    "axes": {}
+  },
+  {
     "name": "PopupView",
     "source": "entrypoints/popup/popup.view.tsx",
+    "family": "S01",
+    "exported": true,
+    "axes": {}
+  },
+  {
+    "name": "PopupWorkspace",
+    "source": "entrypoints/popup/popup-workspace.view.tsx",
     "family": "S01",
     "exported": true,
     "axes": {}
@@ -2062,6 +2102,13 @@ export const componentApi = [
         "xs"
       ]
     }
+  },
+  {
+    "name": "SiteIcon",
+    "source": "features/entries/site-icon.view.tsx",
+    "family": "P11",
+    "exported": true,
+    "axes": {}
   },
   {
     "name": "Skeleton",

@@ -35,6 +35,7 @@ export type UpdateEntryResult = {
   snapshotVersionVector: VersionVector;
   revisionTimestamp: number;
   syncUpload: SyncUploadStatus;
+  syncConfigured: boolean;
 };
 
 export class UpdateEntryUseCase {
@@ -191,6 +192,7 @@ export class UpdateEntryUseCase {
       snapshotVersionVector: persistedSnapshot.snapshotVersionVector,
       revisionTimestamp: persistedSnapshot.revisionTimestamp,
       syncUpload,
+      syncConfigured: syncState.syncAccess !== undefined,
     };
   }
 }

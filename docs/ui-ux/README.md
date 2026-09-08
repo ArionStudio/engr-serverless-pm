@@ -1,7 +1,7 @@
 # Extension UI and UX plan
 
-Status: accepted product decisions with implemented setup and Sync screens;
-entry workspace and existing-vault enrollment remain pending in this batch.
+Status: accepted product decisions with implemented setup, entry workspace and
+Sync screens. Existing-vault enrollment remains pending in this batch.
 Updated on 2026-09-08. Individual plans distinguish implemented workflows from
 proposed layouts and missing core capabilities. Coding rules remain in
 [the standards](../standards/README.md).
@@ -12,12 +12,12 @@ The complete gallery is now implemented for review. Start with the
 [component contrast review](./contrast-review.md) and
 [website icon plan and safety review](./favicon-review.md). Options connects vault
 creation, recovery saving and verification, plus S3 setup, access testing,
-configuration, credential repair, upload retry and explicit sync review.
+configuration, credential repair, upload retry and explicit sync review. The
+entry workspace supports browse, search, add, edit and delete, with quick access
+to existing entries in the popup.
 
-Before the next vault-screen implementation, use the
-[recovered workspace checklist](../plans/vault-workspace-checklist.md). It
-distinguishes accepted requirements, current contract gaps and proposed screen
-scope after the implemented Sync screen.
+The [workspace checklist](../plans/vault-workspace-checklist.md) records the
+implemented entry workflows and separates the remaining feature work.
 
 ## Read in this order
 
@@ -102,21 +102,23 @@ Later user clarifications supersede the initial setup-first implementation order
 
 ## Unresolved work that affects the experience
 
-| Gap                         | Why it matters                                                                 | Proposed next action                                                                                       |
-| --------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| Complete disaster recovery  | Words alone cannot restore a lost installation.                                | Define backup artifacts and import verification separately; do not label a word sheet a full vault backup. |
-| Remaining UI integration    | Existing-vault enrollment and entry workspace are not connected yet.        | Inject narrow use-case capabilities as those feature screens are built.                                    |
-| Later settings/read screens | Device, tag, and configuration summaries lack dedicated public read workflows. | Add explicit read contracts when those slices are implemented.                                             |
+| Gap                         | Why it matters                                                          | Proposed next action                                                                                       |
+| --------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Complete disaster recovery  | Words alone cannot restore a lost installation.                         | Define backup artifacts and import verification separately; do not label a word sheet a full vault backup. |
+| Remaining UI integration    | Existing-vault enrollment is not connected yet.                         | Inject narrow use-case capabilities as those feature screens are built.                                    |
+| Later settings/read screens | Device and organization summaries need dedicated public read workflows. | Add explicit read contracts when those slices are implemented.                                             |
 
 ## Delivery sequence
 
 The preset, component library, gallery, and new-vault Options flow are implemented.
 Setup includes recovery saving and verification, interrupted-setup continuation,
 lock/unlock, and persistent device-local lock preferences. Runtime checks are
-recorded in [the setup flow](./vault-setup.md).
+recorded in [the setup flow](./vault-setup.md). Options also connects the entry
+workspace and sync, while the popup provides entry quick access.
 
 1. Complete the remaining library-wide visual and accessibility acceptance checks.
-2. Build existing-vault enrollment and entry screens from the reviewed components.
-3. Resolve the documented sync/read contract gaps before connecting those workflows.
+2. Build existing-vault enrollment from the reviewed components.
+3. Add the remaining device and organization read contracts before connecting
+   those settings screens.
 4. Implement site icons at the entries/settings integration milestone in the
    [favicon plan](./favicon-review.md#planned-work-and-implementation-triggers).

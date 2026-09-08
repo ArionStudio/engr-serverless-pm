@@ -1,3 +1,4 @@
+import { galleryWorkspace } from "@/gallery/workspace-fixture";
 import { gallerySync } from "@/gallery/sync-fixture";
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -18,6 +19,7 @@ function mount(
 ) {
   return render(
     <OptionsView
+      workspace={galleryWorkspace()}
       sync={gallerySync()}
       setup={setup}
       preference="dark"
@@ -220,7 +222,7 @@ describe("live setup UI", () => {
       );
     await user.click(screen.getByRole("button", { name: "Check words" }));
     expect(
-      await screen.findByRole("heading", { name: "Vault ready" }),
+      await screen.findByRole("heading", { name: "Entries" }),
     ).toBeVisible();
     expect(screen.queryByLabelText("Word 3")).not.toBeInTheDocument();
     expect(

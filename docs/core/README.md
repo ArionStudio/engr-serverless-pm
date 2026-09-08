@@ -24,5 +24,6 @@ follow, see the [code standards](../standards/README.md).
 
 Core contains the implemented domain and application workflows. The extension
 contains concrete browser and AWS adapters, background alarm handling, and a
-compile-time composition fixture. It does not yet have one production
-composition root that exposes every core workflow to the popup and options UI.
+production composition root for core workflows. Feature capabilities expose vault
+setup, entries and sync in Options, with entry quick access in the popup.
+Existing-vault enrollment remains deferred in the UI.

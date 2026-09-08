@@ -1,5 +1,6 @@
 import type { FormPresentation } from "@/ui/components/forms/form-state.type";
 import { FormFrame, FormPassword } from "@/ui/components/forms/form-frame.view";
+import type { ReactNode } from "react";
 import { useId } from "react";
 import { TextField } from "@/ui/components/forms/fields.view";
 import { Checkbox } from "@/ui/components/primitives/checkbox";
@@ -19,11 +20,15 @@ export function EntryForm({
   tags,
   mode = "add",
   weakPassword = false,
+  passwordFeedback,
+  tools,
   ...form
 }: FormPresentation<EntryDraft> & {
   tags: readonly TagOption[];
   mode?: "add" | "edit";
   weakPassword?: boolean;
+  passwordFeedback?: ReactNode;
+  tools?: ReactNode;
 }) {
   const id = useId();
   return (
@@ -43,13 +48,15 @@ export function EntryForm({
         error={errors?.url}
       />
       <FormPassword
-        label={mode === "edit" ? "Replacement password" : "Password"}
+        label="Password"
         value={value.password}
         onChange={(password) =>
           onChange({ ...value, password, allowWeakPassword: false })
         }
         error={errors?.password}
       />
+      {passwordFeedback}
+      {tools}
       <TagSelection
         options={tags}
         value={value.tagIds}

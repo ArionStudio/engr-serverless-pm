@@ -1,3 +1,4 @@
+import { galleryWorkspace } from "@/gallery/workspace-fixture";
 import { gallerySync } from "@/gallery/sync-fixture";
 import { gallerySetup } from "@/gallery/setup-fixture";
 // @vitest-environment jsdom
@@ -74,6 +75,7 @@ describe("first-launch screens", () => {
     const user = userEvent.setup();
     render(
       createElement(OptionsView, {
+        workspace: galleryWorkspace(),
         sync: gallerySync(),
         setup: gallerySetup(),
         preference: "light",
@@ -136,6 +138,7 @@ describe("first-launch screens", () => {
   it("does not route an existing vault into first-time creation", async () => {
     render(
       createElement(OptionsView, {
+        workspace: galleryWorkspace(),
         sync: gallerySync(),
         setup: gallerySetup("existing"),
         preference: "light",

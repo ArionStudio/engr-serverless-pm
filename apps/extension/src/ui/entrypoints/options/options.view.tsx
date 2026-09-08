@@ -1,3 +1,5 @@
+import { EntryWorkspace } from "@/ui/features/entries/entry-workspace.view";
+import type { WorkspaceCapabilities } from "@/ui/features/entries/workspace.type";
 import { SyncPage } from "@/ui/features/sync/sync-page.view";
 import type { SyncCapabilities } from "@/ui/features/sync/sync.type";
 import { VaultPicker } from "@/ui/features/vault-access";
@@ -31,6 +33,7 @@ export function OptionsView({
   initialStep = "welcome",
   setup,
   sync,
+  workspace,
 }: {
   preference: "light" | "dark" | "system";
   onThemeChange: (preference: "light" | "dark" | "system") => void;
@@ -38,6 +41,7 @@ export function OptionsView({
   initialStep?: SetupStep;
   setup: SetupCapabilities;
   sync: SyncCapabilities;
+  workspace: WorkspaceCapabilities;
 }) {
   const live = useVaultSetup(setup);
   const [step, setStep] = useState<SetupStep>(initialStep);
@@ -82,7 +86,17 @@ export function OptionsView({
   return (
     <div className="@container bg-background text-foreground">
       <header className="border-b">
-        <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-3 px-5 py-4">
+        <div
+          className={cn(
+            "mx-auto flex flex-wrap items-center justify-between gap-3 px-5 py-4",
+            live.vault?.complete &&
+              live.vault.unlocked &&
+              !settings &&
+              !showSync
+              ? "max-w-6xl"
+              : "max-w-4xl",
+          )}
+        >
           <span className="flex items-center gap-2 text-sm font-semibold">
             <HugeiconsIcon
               icon={SecurityCheckIcon}
@@ -123,8 +137,10 @@ export function OptionsView({
       <main
         className={cn(
           "mx-auto space-y-8 px-5 py-8 @lg:py-12",
-          showSync && live.vault?.complete && live.vault.unlocked
-            ? "max-w-4xl"
+          !settings && live.vault?.complete && live.vault.unlocked
+            ? showSync
+              ? "max-w-4xl"
+              : "max-w-6xl"
             : !settings &&
                 !live.vault &&
                 live.vaults.length === 0 &&
@@ -209,6 +225,22 @@ export function OptionsView({
                 void live.lock();
               }}
             />
+          ) : live.vault?.complete && live.vault.unlocked ? (
+            <>
+              {live.error ? (
+                <p role="alert" className="mb-5 text-sm text-destructive">
+                  {live.error}
+                </p>
+              ) : null}
+              <EntryWorkspace
+                key={live.vault.vaultId}
+                vaultId={live.vault.vaultId}
+                capabilities={workspace}
+                onSessionLost={live.retry}
+                onLock={live.lock}
+                onSync={() => setShowSync(true)}
+              />
+            </>
           ) : live.vault ? (
             <SetupVaultAccess
               key={`${live.vault.vaultId}:${live.vault.unlocked}`}

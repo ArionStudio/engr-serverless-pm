@@ -2,20 +2,18 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { ThemeProvider } from "@/ui/features/theme";
 import "@/ui/styles/index.css";
-import { PopupView } from "@/ui/entrypoints/popup/popup.view";
-
-import { useVaultAvailability } from "@/ui/entrypoints/use-vault-availability";
-import {
-  readLocalVaultCount,
-  openOptionsPage,
-} from "../composition/first-launch.capabilities";
+import { PopupWorkspace } from "@/ui/entrypoints/popup/popup-workspace.view";
+import { composeWorkspace } from "../composition/workspace.capabilities";
+import { composeVaultSetup } from "../composition/vault-setup.capabilities";
+import { openOptionsPage } from "../composition/first-launch.capabilities";
 
 export function Popup() {
-  const { availability, retry } = useVaultAvailability(readLocalVaultCount);
+  const [workspace] = React.useState(composeWorkspace);
+  const [setup] = React.useState(composeVaultSetup);
   return (
-    <PopupView
-      availability={availability}
-      onRetry={retry}
+    <PopupWorkspace
+      setup={setup}
+      workspace={workspace}
       onOpenOptions={openOptionsPage}
     />
   );

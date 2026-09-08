@@ -1,3 +1,4 @@
+import { EntryDetailsExample, SiteIconExample } from "./entry-widgets.example";
 import { vaultLockOptions } from "@/ui/lib/vault-lock-options";
 import { EntryTableExample } from "./entry-table-example.view";
 import { useState, useEffect } from "react";
@@ -308,6 +309,7 @@ export function SharedExamples() {
           url="javascript:alert('inert')"
         />
         <DetailField label="Missing field" />
+        <EntryDetailsExample />
       </Specimen>
       <Specimen
         id="P13"
@@ -940,6 +942,7 @@ export function FeatureExamples() {
         wide
       >
         <EntriesExample />
+        <SiteIconExample />
       </Specimen>
       <Specimen
         id="P16"

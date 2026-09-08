@@ -29,8 +29,9 @@ The repository has implementations for every current core port.
 [`composeExtensionApplication`](../../apps/extension/src/extension/composition/extension-application.ts)
 constructs all current core use cases with production adapters and shared
 services. The background alarm root reuses its session and cleanup construction.
-The popup and options UI do not yet call the application factory or expose vault
-workflows. That UI integration is the next application step.
+Options and popup use feature capabilities composed from the application factory.
+Options exposes vault setup, entries and sync; the popup provides entry quick
+access and hands setup and sync configuration off to Options.
 
 The concrete implementations follow `BOUNDARY-013`: core contracts use `*Port`
 in `.port.ts` files, and extension implementations use `*Adapter` in
