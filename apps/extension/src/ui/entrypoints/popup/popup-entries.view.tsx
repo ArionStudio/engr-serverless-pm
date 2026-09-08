@@ -6,6 +6,11 @@ import {
   useState,
   type Ref,
 } from "react";
+import {
+  parseEntrySearch,
+  matchesEntrySearch,
+  entrySearchSuggestions,
+} from "@/ui/features/entries/entry-search";
 import { BrowserLoginsPanel } from "@/ui/features/entries/browser-logins.view";
 import type { BrowserLoginCapabilities } from "@/ui/features/entries/browser-login.type";
 import type { WorkspaceCapabilities } from "@/ui/features/entries/workspace.type";
@@ -152,13 +157,14 @@ export function PopupEntries({
     [uncategorized.id, { name: uncategorized.name, icon: "folder" }] as const,
   ]);
   const normalized = query.trim().toLocaleLowerCase();
+  const terms = parseEntrySearch(query);
   const entries = (live.data?.entries ?? []).filter((entry) =>
-    [
-      entry.login,
-      entry.sanitizedUrl,
-      folderPresentations[entry.folderId]?.name ?? "Uncategorized",
-      ...entry.tags.map((id) => labels[id] ?? ""),
-    ].some((value) => value.toLocaleLowerCase().includes(normalized)),
+    matchesEntrySearch(entry, terms, labels, folderPresentations),
+  );
+  const suggestions = entrySearchSuggestions(
+    live.data?.entries ?? [],
+    labels,
+    folderPresentations,
   );
   const { view } = live;
   return (
@@ -260,6 +266,7 @@ export function PopupEntries({
             <>
               <SearchField
                 value={query}
+                suggestions={suggestions}
                 onChange={setQuery}
                 onSubmit={() => {}}
                 presentation="popup"

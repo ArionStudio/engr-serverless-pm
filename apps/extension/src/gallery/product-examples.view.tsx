@@ -35,6 +35,8 @@ import type { ThemePreference } from "@/ui/features/theme";
 import { VaultPicker } from "@/ui/features/vault-access";
 import {
   SearchField,
+  parseEntrySearch,
+  matchesEntrySearch,
   EntrySelection,
   TagSelection,
 } from "@/ui/features/entries";
@@ -1010,15 +1012,27 @@ function SearchExample({
   state,
   presentation,
 }: {
-  state: "empty" | "filled" | "searching";
+  state: "empty" | "filled" | "searching" | "filters";
   presentation: "default" | "popup";
 }) {
-  const [query, setQuery] = useState(state === "empty" ? "" : "adrian");
+  const [query, setQuery] = useState(
+    state === "empty"
+      ? ""
+      : state === "filters"
+        ? "@adrian #Personal /Work :example.test"
+        : "adrian",
+  );
   const [notice, setNotice] = useState("");
   return (
     <>
       <SearchField
         value={query}
+        suggestions={{
+          login: ["adrian@example.test", "alex@example.test"],
+          tag: ["Personal", "Shared work"],
+          folder: ["Work", "Finance"],
+          website: ["mail.example.test", "bank.example.test"],
+        }}
         onChange={setQuery}
         onSubmit={() => setNotice("Search submitted.")}
         searching={state === "searching"}
@@ -1026,7 +1040,15 @@ function SearchExample({
         summary={
           state === "searching"
             ? "Searching entries…"
-            : `${demoEntries.filter((entry) => entry.login.includes(query)).length} example results`
+            : `${
+                demoEntries.filter((entry) =>
+                  matchesEntrySearch(
+                    entry,
+                    parseEntrySearch(query),
+                    demoTagLabels,
+                  ),
+                ).length
+              } example results`
         }
       />
       {notice ? <p role="status">{notice}</p> : null}
@@ -1087,7 +1109,7 @@ export function FeatureExamples() {
           {(presentation) => (
             <Scenario
               label="Search field"
-              options={["empty", "filled", "searching"]}
+              options={["empty", "filled", "searching", "filters"]}
             >
               {(state) => (
                 <SearchExample

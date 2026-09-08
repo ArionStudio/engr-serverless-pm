@@ -78,7 +78,7 @@ it("searches visible fields and copies through the capability without reading a 
   await screen.findByText("adrian@example.test");
   expect(workspace.edit).not.toHaveBeenCalled();
   await user.type(
-    screen.getByRole("textbox", { name: "Search entries" }),
+    screen.getByRole("combobox", { name: "Search entries" }),
     "unmatched",
   );
   expect(screen.getByText("No matching entries")).toBeVisible();
@@ -155,14 +155,14 @@ it.each(["popup", "options"])(
       ),
     );
     await screen.findByText("adrian@example.test");
-    const search = screen.getByRole("textbox", { name: "Search entries" });
+    const search = screen.getByRole("combobox", { name: "Search entries" });
     await user.type(search, "private query");
     await act(async () => notify("data"));
     expect(search).toHaveValue("private query");
     await act(async () => notify("session"));
-    expect(screen.getByRole("textbox", { name: "Search entries" })).toHaveValue(
-      "",
-    );
+    expect(
+      screen.getByRole("combobox", { name: "Search entries" }),
+    ).toHaveValue("");
     expect(await screen.findByText("adrian@example.test")).toBeVisible();
   },
 );

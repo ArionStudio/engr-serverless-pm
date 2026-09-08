@@ -186,7 +186,14 @@ All widths are fluid unless the row describes an alternate layout.
 
 ### Entries, actions and navigation
 
-Search matches plain text across visible login, website, tag and folder fields.
+Search supports plain terms and field prefixes: `@` login, `#` tag, `/` folder,
+and `:` website. Prefixes apply only at the start of a term; email addresses and
+full URLs remain literal. Terms combine with AND, with case-insensitive substring
+matching within the chosen field. Double quotes group multiword values; incomplete
+quotes and empty prefixes remain editable without a syntax error. Suggestions
+insert quoted values, and removable chips name the active fields. Its width
+follows the container; use the gallery canvas chooser to review narrow and wide
+layouts. No separate compact/expanded API is required.
 
 | ID  | Public family / purpose and proposed data contract                                                                                             | Variants / states                                                                                         | Required gallery evidence                                                                                                                                                                 |
 | --- | ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
