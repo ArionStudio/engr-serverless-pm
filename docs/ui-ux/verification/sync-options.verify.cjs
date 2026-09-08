@@ -132,6 +132,22 @@ const os = require("node:os");
       .getByRole("button", { name: "Check words", exact: true })
       .click();
     await page.getByRole("heading", { name: "Entries", exact: true }).waitFor();
+    // Keep an actual encrypted entry through sync and local password recovery.
+    await page
+      .getByRole("button", { name: "Add entry", exact: true })
+      .first()
+      .click();
+    await page
+      .getByLabel("Login", { exact: true })
+      .fill("recovery@example.test");
+    await page
+      .getByLabel("Website", { exact: true })
+      .fill("https://example.test");
+    await page
+      .getByLabel("Password", { exact: true })
+      .fill("entry violet meadow lantern river");
+    await page.getByText("Strong", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Add entry", exact: true }).click();
     await page.getByRole("button", { name: "Sync", exact: true }).click();
     const downloadReady = page.waitForEvent("download");
     await page.getByRole("button", { name: "Download S3 template" }).click();
@@ -324,6 +340,103 @@ const os = require("node:os");
       await page.getByLabel("Secret access key", { exact: true }).count(),
       0,
     );
+    await other.close();
+    await page
+      .getByRole("button", { name: "Forgot password?", exact: true })
+      .click();
+    const artifactDir = path.resolve(".local/recovery-validation");
+    fs.mkdirSync(artifactDir, { recursive: true });
+    await page.screenshot({
+      path: path.join(artifactDir, "recover-access.png"),
+      fullPage: true,
+    });
+    const newPassword = "copper forest harbor ripple velvet";
+    await page
+      .getByLabel("Recovery phrase", { exact: true })
+      .fill(Array(24).fill("abandon").join(" "));
+    await page.getByLabel("New password", { exact: true }).fill(newPassword);
+    await page
+      .getByLabel("Confirm new password", { exact: true })
+      .fill(newPassword);
+    await page.getByText("Strong", { exact: true }).waitFor();
+    await page
+      .getByRole("button", { name: "Set new password", exact: true })
+      .click();
+    await page.getByText(/Could not recover this vault/).waitFor();
+    const requestsBeforeRecovery = requests.length;
+    await page
+      .getByLabel("Recovery phrase", { exact: true })
+      .fill(
+        words
+          .map((word, index) => `${index + 1}. ${word.toUpperCase()}`)
+          .join("\n"),
+      );
+    await page
+      .getByRole("button", { name: "Set new password", exact: true })
+      .click();
+    await page
+      .getByRole("heading", {
+        name: "Save replacement recovery words",
+        exact: true,
+      })
+      .waitFor();
+    assert.equal(
+      requests.length,
+      requestsBeforeRecovery,
+      "Local recovery must not contact S3",
+    );
+    await page.screenshot({
+      path: path.join(artifactDir, "replacement-words-hidden.png"),
+      fullPage: true,
+    });
+    await page
+      .getByRole("button", { name: "Reveal recovery words", exact: true })
+      .click();
+    const replacementWords = await page
+      .locator('section[aria-label="Recovery words"] li')
+      .evaluateAll((nodes) =>
+        nodes.map((node) => node.lastElementChild.textContent),
+      );
+    assert.equal(replacementWords.length, 24);
+    assert.notDeepEqual(replacementWords, words);
+    await page.getByRole("button", { name: "I saved all 24 words" }).click();
+    const challenge = (await page.locator("label").allTextContents())
+      .filter((text) => /^Word \d+$/.test(text))
+      .map((text) => Number(text.split(" ")[1]));
+    assert.equal(new Set(challenge).size, 3);
+    for (const position of challenge)
+      await page
+        .getByLabel(`Word ${position}`, { exact: true })
+        .fill(replacementWords[position - 1]);
+    await page
+      .getByRole("button", { name: "Check words", exact: true })
+      .click();
+    await page.getByRole("heading", { name: "Entries", exact: true }).waitFor();
+    await page.getByText("recovery@example.test", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Sync", exact: true }).click();
+    await page.getByText("personal-vault", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Check sync", exact: true }).click();
+    await page
+      .getByText("This device and S3 have the same verified vault.", {
+        exact: true,
+      })
+      .waitFor();
+    assert.equal(
+      writes,
+      1,
+      "Password recovery preserves the vault and saved sync credentials",
+    );
+    await page
+      .getByRole("button", { name: "Back to vault", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Lock vault", exact: true }).click();
+    await page.getByLabel("Vault password", { exact: true }).fill(password);
+    await page.getByRole("button", { name: "Unlock", exact: true }).click();
+    await page.getByText(/Could not unlock this vault/).waitFor();
+    await page.getByLabel("Vault password", { exact: true }).fill(newPassword);
+    await page.getByRole("button", { name: "Unlock", exact: true }).click();
+    await page.getByRole("heading", { name: "Entries", exact: true }).waitFor();
+    await page.getByText("recovery@example.test", { exact: true }).waitFor();
     await page.waitForTimeout(6500);
     assert.deepEqual(errors, []);
     console.info(
@@ -343,6 +456,11 @@ const os = require("node:os");
           "no redundant upload",
           "persisted target",
           "cross-page lock",
+          "rejected recovery leaves the vault recoverable",
+          "local password recovery replaces words",
+          "three-word recovery verification",
+          "entry and sync credential preservation",
+          "old password rejected, new password unlocks",
         ],
         errors,
       }),

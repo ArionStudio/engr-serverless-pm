@@ -9,6 +9,7 @@ import type {
 
 export function useVaultSetup(capabilities: SetupCapabilities) {
   const [loading, setLoading] = useState(true);
+  const [draftRevision, setDraftRevision] = useState(0);
   const [vault, setVault] = useState<SetupVault | null>(null);
   const [vaults, setVaults] = useState<SetupInspection["vaults"]>([]);
   const selectedId = useRef<string>(undefined);
@@ -51,7 +52,9 @@ export function useVaultSetup(capabilities: SetupCapabilities) {
   }, [capabilities, applyInspection]);
   useEffect(() => {
     void refresh();
-    const unsubscribe = capabilities.subscribe(() => {
+    const unsubscribe = capabilities.subscribe((clearDraft = true) => {
+      if (!clearDraft && busy.current) return;
+      if (clearDraft) setDraftRevision((value) => value + 1);
       void refresh();
     });
     return () => {
@@ -61,7 +64,7 @@ export function useVaultSetup(capabilities: SetupCapabilities) {
   }, [capabilities, refresh]);
   async function run(
     action: (request: number) => Promise<void>,
-    failure: string,
+    failure: string | ((cause: unknown) => string),
   ) {
     if (busy.current) return;
     busy.current = true;
@@ -71,9 +74,9 @@ export function useVaultSetup(capabilities: SetupCapabilities) {
     setError(undefined);
     try {
       await action(request);
-    } catch {
+    } catch (cause) {
       if (request !== epoch.current) return;
-      setError(failure);
+      setError(typeof failure === "function" ? failure(cause) : failure);
       // Initialization may have committed before a later failure. Always
       // reconcile persistence before allowing another creation attempt.
       try {
@@ -105,6 +108,7 @@ export function useVaultSetup(capabilities: SetupCapabilities) {
     setVerifying(false);
   }
   return {
+    draftRevision,
     loading,
     inspectionFailed,
     retry: refresh,
@@ -138,6 +142,50 @@ export function useVaultSetup(capabilities: SetupCapabilities) {
           if (request === epoch.current) setVault(next);
         }
       }, "Could not unlock this vault. Check your password and try again."),
+    recover: (words: readonly string[], password: string) =>
+      run(
+        async () => {
+          if (vault)
+            await accept(() =>
+              capabilities.recover(vault.vaultId, words, password),
+            );
+        },
+        (cause) => {
+          const name = cause instanceof Error ? cause.name : "";
+          if (name === "PasswordRecoveryCompletionError") {
+            setDraftRevision((value) => value + 1);
+            return "Your password has changed. Unlock with your new password if needed, then generate replacement recovery words.";
+          }
+          if (
+            name === "DeviceAccessRecoveryBackupNotFoundError" ||
+            name === "LocalVaultTrustCheckpointNotFoundError" ||
+            name === "VaultSnapshotNotFoundError"
+          )
+            return "The required recovery data is missing from this browser. These words alone cannot restore it. Keep the remaining vault data and use another enrolled device if available.";
+          if (name === "DeviceAccessMaterialChangedError")
+            return "This browser's access records changed or no longer match. Finish any password or recovery change in another tab, then use the latest recovery words. Keep this browser's vault data.";
+          if (name === "UnsupportedAlgorithmSuiteError")
+            return "This extension version cannot use the vault's encryption format. Use the matching extension version and keep this browser's vault data.";
+          if (
+            [
+              "DeviceAccessRecoveryBackupMismatchError",
+              "DeviceKeySlotNotFoundError",
+              "DeviceKeySlotVerificationFailedError",
+              "PersistedVaultMismatchError",
+              "LocalVaultTrustCheckpointInvalidError",
+              "VaultTrustStateInvalidError",
+              "VaultSnapshotRollbackDetectedError",
+              "InvalidLocalVaultSecurityRecordError",
+              "InvalidLocalVaultSnapshotRecordError",
+              "VaultSnapshotSignerNotTrustedError",
+              "VaultSnapshotSignatureVerificationFailedError",
+            ].includes(name)
+          )
+            return "This browser's local recovery data could not be verified. Re-entering the words cannot repair missing, mismatched or invalid records. Keep the vault data and use another enrolled device if available.";
+          return "Could not recover this vault. The recovery words or saved local data could not be verified. Check all 24 words and their order against the latest copy saved for this browser. If they match, keep the local vault data and use another enrolled device if available.";
+        },
+      ),
+    dismissError: () => setError(undefined),
     replace: () =>
       run(async () => {
         if (vault) await accept(() => capabilities.replace(vault.vaultId));

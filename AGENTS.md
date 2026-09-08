@@ -78,6 +78,7 @@ Run project commands from repo root unless a task explicitly requires a subdirec
 - **Vault lock durations:** Use the core `AVAILABLE_VAULT_LOCK_DELAYS_MS` values in milliseconds for UI drafts and gallery examples. Reuse `ui/lib/vault-lock-options.ts` for labels; do not duplicate choices in minutes or seconds.
 - **Test scope:** Test application behavior, data safety and real integration boundaries. Do not add bespoke contrast/pixel audits, CSS-class assertions or filename/naming regex tests. Review appearance in the gallery; retain the required component/variant inventory check.
 - **Focus targets:** Mark programmatically focused page containers with `data-focus-target` so the shared control focus rule does not draw a border around the entire screen. Keep keyboard focus visible on controls, including menu items with negative tab indices.
+- **Recovery paste formats:** Accept the numbered 1–24 list produced by our own PDF/text recovery export as well as plain words. Validate the numbers and preserve order; never blindly strip arbitrary text or reorder words. Keep actual recovery words out of fixtures and logs.
 - **Empty password strength:** Hide the entire strength block while the password is empty. Do not add placeholder copy or reserve an empty gap. Show feedback after typing; hide it again when cleared.
 
 - **Field guidance:** State what is required and the field’s purpose. Do not narrate internal checks or UI behavior. Additional explanations are for security concerns, safe data handling, and why a security requirement matters.

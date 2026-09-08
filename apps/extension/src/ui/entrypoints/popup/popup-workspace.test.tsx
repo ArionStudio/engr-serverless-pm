@@ -210,8 +210,9 @@ it("does not remount a closing workspace when a failed-lock error is cleared", a
     throw new Error("Clipboard coordination unavailable");
   };
   setup.subscribe = (listener) => {
-    window.addEventListener("pagehide", listener);
-    return () => window.removeEventListener("pagehide", listener);
+    const onHide = () => listener();
+    window.addEventListener("pagehide", onHide);
+    return () => window.removeEventListener("pagehide", onHide);
   };
   const workspace = galleryWorkspace();
   workspace.subscribe = () => () => {};

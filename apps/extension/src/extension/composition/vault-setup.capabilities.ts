@@ -182,20 +182,76 @@ export function composeVaultSetup(): SetupCapabilities {
           initializing = false;
         }
       }),
-    unlock: async (vaultId, password) => {
-      const settings = await preference(vaultId);
-      await (
-        await getApplication()
-      ).unlockVault.execute({
-        vaultId,
-        masterPassword: password as RawMasterPassword,
-        lockAfterMs: durationValue(settings.duration),
-      });
-      const { vault } = await inspect(vaultId);
-      if (!vault || vault.vaultId !== vaultId || !vault.unlocked)
-        throw new Error("Could not unlock vault");
-      return vault;
-    },
+    unlock: async (vaultId, password) =>
+      navigator.locks.request("lfspm:first-vault-setup", async () => {
+        const settings = await preference(vaultId);
+        await (
+          await getApplication()
+        ).unlockVault.execute({
+          vaultId,
+          masterPassword: password as RawMasterPassword,
+          lockAfterMs: durationValue(settings.duration),
+        });
+        const { vault } = await inspect(vaultId);
+        if (!vault || vault.vaultId !== vaultId || !vault.unlocked)
+          throw new Error("Could not unlock vault");
+        return vault;
+      }),
+    recover: async (vaultId, words, password) =>
+      navigator.locks.request("lfspm:first-vault-setup", async () => {
+        clear();
+        const { vault } = await inspect(vaultId);
+        if (!vault || vault.vaultId !== vaultId || vault.unlocked)
+          throw new Error("Select a locked vault to recover");
+        const app = await getApplication();
+        const settings = await preference(vaultId);
+        initializing = true;
+        let changed = false;
+        const receipt = crypto.randomUUID();
+        token = receipt;
+        // Persist the unfinished state before changing credentials. If this
+        // document closes after the atomic core write, unlock resumes word setup.
+        try {
+          await writePreference(vaultId, {
+            ...settings,
+            complete: false,
+            token: receipt,
+          });
+          const result = await app.recoverDeviceAccess.execute({
+            vaultId,
+            recoveryMnemonicKey: { format: "BIP39", words },
+            newMasterPassword: password as RawMasterPassword,
+          });
+          changed = true;
+          await app.unlockVault.execute({
+            vaultId,
+            masterPassword: password as RawMasterPassword,
+            lockAfterMs: durationValue(settings.duration),
+          });
+          const { vault: unlocked } = await inspect(vaultId);
+          if (!unlocked?.unlocked || unlocked.vaultId !== vaultId)
+            throw new Error("Recovery session ended");
+          return {
+            ...remember(unlocked, result.recoveryMnemonicKey.words, receipt),
+            purpose: "password-recovery" as const,
+          };
+        } catch (cause) {
+          if (changed) {
+            const error = new Error(
+              "Password changed but recovery setup was interrupted",
+            );
+            error.name = "PasswordRecoveryCompletionError";
+            throw error;
+          }
+          // Core rejects before its atomic write. Restore the prior completion
+          // receipt; a storage failure leaves a conservative unfinished state.
+          token = settings.token;
+          await writePreference(vaultId, settings);
+          throw cause;
+        } finally {
+          initializing = false;
+        }
+      }),
     replace: async (vaultId) =>
       await navigator.locks.request("lfspm:first-vault-setup", async () => {
         clear();
@@ -297,7 +353,17 @@ export function composeVaultSetup(): SetupCapabilities {
       }),
     lock: async () => {
       clear();
-      await (await getApplication()).lockVault.execute();
+      const app = await getApplication();
+      // Remove access immediately, including while an export owns the setup
+      // lock. Then fence any queued recovery or unlock that could activate later.
+      const attempts = await Promise.allSettled([
+        app.lockVault.execute(),
+        navigator.locks.request("lfspm:first-vault-setup", () =>
+          app.lockVault.execute(),
+        ),
+      ]);
+      const failure = attempts.find((attempt) => attempt.status === "rejected");
+      if (failure?.status === "rejected") throw failure.reason;
     },
     saveDuration: async (vaultId, duration) =>
       navigator.locks.request("lfspm:first-vault-setup", async () => {
@@ -362,7 +428,7 @@ export function composeVaultSetup(): SetupCapabilities {
         }
       };
       const onFocus = () => {
-        if (!initializing && !recovery) listener();
+        if (!initializing && !recovery) listener(false);
         else void check();
       };
       const onHide = () => {

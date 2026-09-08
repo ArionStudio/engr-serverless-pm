@@ -241,10 +241,16 @@ export function OptionsView({
             </>
           ) : live.vault ? (
             <SetupVaultAccess
-              key={`${live.vault.vaultId}:${live.vault.unlocked}`}
+              key={`${live.vault.vaultId}:${live.vault.unlocked}:${live.draftRevision}`}
               vault={live.vault}
               pending={live.pending}
               error={live.error}
+              assessPassword={assessPassword}
+              onRecover={(words, password) => {
+                setShowSync(false);
+                void live.recover(words, password);
+              }}
+              onDismissError={live.dismissError}
               onUnlock={(password) => {
                 void live.unlock(password);
               }}

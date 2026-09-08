@@ -187,7 +187,7 @@ describe("product presentations", () => {
       "missing",
     );
     expect(
-      screen.getByRole("button", { name: "Recover local access" }),
+      screen.getByRole("button", { name: "Set new password" }),
     ).toBeDisabled();
   });
   it("keeps challenge positions stable after wrong answers and confirms only corrected positions", async () => {
