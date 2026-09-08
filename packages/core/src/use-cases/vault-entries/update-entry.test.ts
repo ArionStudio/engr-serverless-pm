@@ -78,6 +78,7 @@ describe("UpdateEntryUseCase", () => {
       },
       revisionTimestamp: ctx.values.timestamp + 1,
       syncUpload: "complete",
+      syncConfigured: false,
     });
     expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries).toEqual(
       [
@@ -285,6 +286,7 @@ describe("UpdateEntryUseCase", () => {
     });
 
     expect(result.syncUpload).toBe("pending");
+    expect(result.syncConfigured).toBe(true);
     expect(
       ctx.saved.unlockedVaultSession?.unlockedVault.vault.entries[0]?.login,
     ).toBe("pending@example.com");

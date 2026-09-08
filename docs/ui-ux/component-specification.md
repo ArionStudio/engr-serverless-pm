@@ -15,12 +15,14 @@ Build and review the complete catalog below in the gallery before assembling
 application screens. Batches order component dependencies, not product releases.
 Setup is the first application flow to assemble after the library is ready.
 
-The current catalog has **38 generated base controls, 28 presentation families,
-7 form compositions and 2 current screen views**, including feature widgets and
-shell presentation.
+The generated [catalog](../../apps/extension/src/gallery/catalog.ts) and
+[component API inventory](../../apps/extension/src/gallery/component-api.generated.ts)
+are the source of truth for current membership and variant axes. The catalog
+includes base controls, presentation families, form compositions and four
+current screen views.
 The initial 20 controls grew by eight reuse-audit additions and ten further
 review controls. A family can expose related parts without one file per name.
-All entries belong to this library review. New-vault setup is integrated; the remaining feature workflows follow separately.
+All entries belong to this library review. New-vault setup, the entry workspace and Sync are integrated; remaining feature workflows follow separately.
 
 Use the exact [preset](./component-library.md#exact-visual-foundation), Base UI,
 Figtree and Hugeicons. The [Mobbin board](./mobbin.md) documents interaction research,
@@ -263,8 +265,9 @@ call use cases. Secret fields clear/reset when their owner changes or ends the o
 P02 with F03 or F07 is a valid gallery composition example, not a connected setup
 screen. There is no multi-page router, active vault, real export or cloud operation
 in these examples. Forms do not add new password policy or treat a checkbox as
-authorization. F02 integration still needs a deliberate password-load/update
-contract because visible entry reads omit passwords.
+authorization. F02 uses `ReadEntryForEditingUseCase` to load a password and its entry version
+together. Workspace list reads remain password-free, and updates pass the
+captured version to core for stale-write rejection.
 
 ## Coverage of the earlier inventory
 
@@ -289,7 +292,7 @@ not silently added by the component specification.
 Every example includes a short visible explanation of when to use it. For
 non-obvious or overlapping controls, name a concrete vault use and distinguish
 the nearby alternatives. Keep this guidance in the gallery, separate from
-product UI copy. The catalog-typed `usage.ts` mapping covers all 75 IDs.
+product UI copy. The catalog-typed `usage.ts` mapping covers every registered ID.
 
 Create one development-only gallery with sections matching B, P and F IDs. Each
 entry shows its purpose, actual import path, dependency components, variants,
@@ -321,9 +324,10 @@ the repository toolchain; new tools still require dependency approval.
 
 The gallery must grow with the application under
 [UI-006](../standards/react-and-ui.md#ui-006-keep-the-component-gallery-current).
-The gallery now has 75 families covering 282 exported components and compound
-parts, including the two current screen views. ThemeProvider is documented as a
-nonvisual runtime provider. The generated API inventory exposes 72 variant axes.
+The generated catalog and component API inventory record current families,
+exported components, compound parts and variant axes. ThemeProvider is documented
+as a nonvisual runtime provider. Four current screen views are registered with
+the same source-derived coverage checks.
 
 Completed gallery coverage follow-up:
 
@@ -364,7 +368,7 @@ See [the setup implementation](./vault-setup.md) for persistence and session con
 - [x] E. Build F01–F07 with controlled drafts and response selectors.
       Technical validation is recorded in the gallery notes; the full visual
       and accessibility acceptance matrix remains step F.
-- [ ] Entries-library follow-up: extend P11 with an entries-owned `SiteIcon`,
+- [x] Entries-library integration: extend P11 with an entries-owned `SiteIcon`,
       reusing B38 Avatar and bundled fixtures for loaded, loading, unavailable
       and failed states. Review both themes, fallback contrast and website labels
       before entries-screen assembly. Browser permissions and lookup are later
@@ -372,14 +376,16 @@ See [the setup implementation](./vault-setup.md) for persistence and session con
 - [ ] F. Review the entire library's visual consistency and accessibility evidence.
       The gate applies to all catalog IDs, not only the setup subset.
 - [x] G. Assemble and integrate new-vault setup, recovery, verification and local lock settings.
-- [ ] Assemble the remaining existing-vault enrollment and entry/sync screens.
+- [x] Assemble Options entry/sync screens and popup entry quick access.
+- [ ] Assemble existing-vault enrollment.
 - [x] H. Connect new-vault setup to composed workflows and validate in Chrome.
-- [ ] Connect remaining enrollment, entry and sync workflows as their contracts are ready.
+- [x] Connect entry and sync workflows through composed capabilities.
+- [ ] Connect existing-vault enrollment.
       At entries/settings integration, implement the extension-level icon
       preference workflow and browser capability, then complete the favicon
       runtime acceptance checks before enabling browser icons in a release.
 
-New-vault setup is complete at the current scope; remaining workflow integration
+New-vault setup, entries and Sync are integrated at the current scope; later workflow integration
 does not change the requirement to keep the component gallery current.
 
 ## Definition of library ready

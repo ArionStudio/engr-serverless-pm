@@ -14,6 +14,20 @@ const screens: readonly {
   states: readonly { id: OptionsScenario; label: string }[];
 }[] = [
   {
+    id: "workspace",
+    name: "Entries",
+    states: [
+      { id: "workspace", label: "Ready" },
+      { id: "workspace-empty", label: "Empty vault" },
+      { id: "workspace-loading", label: "Loading" },
+      { id: "workspace-error", label: "Read error" },
+      { id: "workspace-stale", label: "Stale edit" },
+      { id: "workspace-uploaded", label: "Saved and uploaded" },
+      { id: "workspace-pending-upload", label: "Pending upload" },
+      { id: "workspace-saved-refresh-error", label: "Saved, reload failed" },
+    ],
+  },
+  {
     id: "s3-setup",
     name: "Set up S3",
     states: [
@@ -49,6 +63,12 @@ const screens: readonly {
     id: "popup",
     name: "Popup",
     states: [
+      { id: "popup-ready", label: "Entries" },
+      { id: "popup-empty", label: "Empty vault" },
+      { id: "popup-locked", label: "Locked" },
+      { id: "popup-multiple", label: "Choose vault" },
+      { id: "popup-incomplete", label: "Finish setup" },
+      { id: "popup-error", label: "Read error" },
       { id: "welcome", label: "No vault" },
       { id: "existing", label: "Existing vault" },
       { id: "loading", label: "Loading" },
@@ -314,12 +334,14 @@ export function ScreenGallery() {
                   screen.id,
                 ) && !["creation-pending", "creation-error"].includes(state)
                   ? ""
-                  : ["s3-setup", "sync"].includes(screen.id)
-                    ? "mx-auto max-w-4xl px-5 py-8 @lg:py-12"
-                    : "mx-auto max-w-xl px-5 py-8 @lg:py-12"
+                  : screen.id === "workspace"
+                    ? "mx-auto max-w-6xl px-5 py-8"
+                    : ["s3-setup", "sync"].includes(screen.id)
+                      ? "mx-auto max-w-4xl px-5 py-8 @lg:py-12"
+                      : "mx-auto max-w-xl px-5 py-8 @lg:py-12"
               }
             >
-              {screen.id === "popup" ? (
+              {screen.id === "popup" && !state.startsWith("popup-") ? (
                 <PopupView
                   availability={
                     state === "existing" ||

@@ -131,8 +131,9 @@ separate extension contexts coordinate through storage and Web Locks.
 public API fixture. The production factory has integration tests using actual
 crypto and storage adapters. The popup opens Options for setup. Options injects
 the live creation, recovery saving/verification, recovery replacement, session
-lock/unlock and local lock-preference capabilities. Existing-vault enrollment and
-entry/sync screen integration remain application work outside the core package.
+lock/unlock and local lock-preference capabilities. Options also injects entry workspace and sync capabilities. The popup provides
+entry search, details, reveal and timed copy through the same composition graph.
+Existing-vault enrollment remains deferred application work.
 
 ## Related documentation
 

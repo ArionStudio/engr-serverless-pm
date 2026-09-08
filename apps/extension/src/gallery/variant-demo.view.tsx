@@ -1,3 +1,6 @@
+import { emptyEntryDraft } from "@/ui/features/entries/entry-draft";
+import { EntryEditor } from "@/ui/features/entries/entry-editor.view";
+import { entryToolsFixture } from "./entry-tools-fixture";
 import { CredentialForm } from "@/ui/features/sync/credential-form.view";
 import { emptyCredentials } from "@/ui/features/sync/sync.type";
 import { vaultLockOptions } from "@/ui/lib/vault-lock-options";
@@ -702,14 +705,25 @@ export function VariantDemo({
       );
     case "F02":
       return (
-        <EntryForm
-          {...p(EntryForm, "EntryForm")}
-          value={draft}
-          onChange={setDraft}
-          onSubmit={() => {}}
-          onCancel={() => {}}
-          tags={demoTags}
-        />
+        <>
+          <EntryForm
+            {...p(EntryForm, "EntryForm")}
+            value={draft}
+            onChange={setDraft}
+            onSubmit={() => {}}
+            onCancel={() => {}}
+            tags={demoTags}
+          />
+          <EntryEditor
+            mode="add"
+            {...p(EntryEditor, "EntryEditor")}
+            initial={emptyEntryDraft}
+            tags={demoTags}
+            tools={entryToolsFixture}
+            onSave={() => {}}
+            onCancel={() => {}}
+          />
+        </>
       );
     default:
       return null;

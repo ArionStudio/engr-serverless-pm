@@ -1,3 +1,6 @@
+import { PopupWorkspaceExample } from "./popup-workspace.example";
+import { WorkspaceExample } from "./workspace.example";
+import { galleryWorkspace, type WorkspaceScenario } from "./workspace-fixture";
 import { S3SetupGuide } from "@/ui/features/sync/s3-setup-guide.view";
 import { SyncPage } from "@/ui/features/sync/sync-page.view";
 import { CredentialForm } from "@/ui/features/sync/credential-form.view";
@@ -16,6 +19,13 @@ import { PopupView } from "@/ui/entrypoints/popup/popup.view";
 import { Specimen, Scenario } from "./specimen.view";
 const strength = new CheckPasswordStrengthUseCase();
 export type OptionsScenario =
+  | "popup-ready"
+  | "popup-empty"
+  | "popup-locked"
+  | "popup-multiple"
+  | "popup-incomplete"
+  | "popup-error"
+  | WorkspaceScenario
   | "s3-guide"
   | "s3-copy-error"
   | "s3-invalid-bucket"
@@ -59,6 +69,7 @@ export function OptionsExample({
   preference: "light" | "dark" | "system";
   onThemeChange: (preference: "light" | "dark" | "system") => void;
 }) {
+  const [workspace] = useState(() => galleryWorkspace());
   const [sync] = useState(() =>
     gallerySync(
       state.startsWith("sync-") ? (state as SyncScenario) : "sync-setup",
@@ -98,6 +109,30 @@ export function OptionsExample({
     },
     [state],
   );
+  if (state.startsWith("popup-"))
+    return (
+      <PopupWorkspaceExample
+        key={state}
+        state={
+          state.slice(6) as
+            | "ready"
+            | "empty"
+            | "locked"
+            | "multiple"
+            | "incomplete"
+            | "error"
+        }
+      />
+    );
+  if (state.startsWith("workspace") || state === "complete")
+    return (
+      <WorkspaceExample
+        key={state}
+        state={
+          state === "complete" ? "workspace" : (state as WorkspaceScenario)
+        }
+      />
+    );
   if (state.startsWith("s3-"))
     return guideDone ? (
       <div className="max-w-xl space-y-4">
@@ -210,7 +245,6 @@ export function OptionsExample({
     [
       "locked",
       "backup-incomplete",
-      "complete",
       "unlock-pending",
       "unlock-error",
       "replacement-pending",
@@ -223,7 +257,7 @@ export function OptionsExample({
           unlocked: !["locked", "unlock-pending", "unlock-error"].includes(
             state,
           ),
-          complete: state === "complete",
+          complete: false,
         }}
         pending={state === "unlock-pending" || state === "replacement-pending"}
         error={
@@ -238,6 +272,7 @@ export function OptionsExample({
     );
   return (
     <OptionsView
+      workspace={workspace}
       setup={setup}
       sync={sync}
       preference={preference}
@@ -316,6 +351,21 @@ export function ScreenExamples() {
       </Specimen>
       <Specimen id="S01" name="PopupView" owner="entrypoints/popup">
         <Scenario
+          label="Vault quick access"
+          options={
+            [
+              "ready",
+              "empty",
+              "locked",
+              "multiple",
+              "incomplete",
+              "error",
+            ] as const
+          }
+        >
+          {(state) => <PopupWorkspaceExample key={state} state={state} />}
+        </Scenario>
+        <Scenario
           label="First-launch popup"
           options={
             ["empty", "existing", "loading", "error", "open-error"] as const
@@ -366,8 +416,15 @@ export function ScreenExamples() {
               "unlock-error",
               "replacement-pending",
               "locked",
+              "workspace",
+              "workspace-empty",
+              "workspace-loading",
+              "workspace-error",
+              "workspace-stale",
+              "workspace-uploaded",
+              "workspace-pending-upload",
+              "workspace-saved-refresh-error",
               "backup-incomplete",
-              "complete",
               "appearance",
               "lock-settings",
               "lock-settings-pending",

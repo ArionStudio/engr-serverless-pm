@@ -23,6 +23,8 @@ import {
   AddEntryUseCase,
   GetEntryPasswordUseCase,
   ReadEntryUseCase,
+  ReadEntryForEditingUseCase,
+  ReadVaultWorkspaceUseCase,
   RemoveEntryUseCase,
   SearchEntriesUseCase,
   UpdateEntryUseCase,
@@ -264,6 +266,8 @@ export function composeExtensionApplication(database: VaultManagerDb = db) {
     ),
     getEntryPassword: new GetEntryPasswordUseCase(unlockedVaultSession),
     readEntry: new ReadEntryUseCase(unlockedVaultSession),
+    readEntryForEditing: new ReadEntryForEditingUseCase(unlockedVaultSession),
+    readVaultWorkspace: new ReadVaultWorkspaceUseCase(unlockedVaultSession),
     removeEntry: new RemoveEntryUseCase(
       clock,
       unlockedVaultSession,

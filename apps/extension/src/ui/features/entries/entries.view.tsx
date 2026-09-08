@@ -1,3 +1,4 @@
+import { SiteIcon } from "./site-icon.view";
 import { useId, useRef } from "react";
 import type { VisiblePasswordEntryFields } from "@lfspm/core";
 import { Button } from "@/ui/components/primitives/button";
@@ -106,6 +107,7 @@ export function EntryRow({
 }) {
   return (
     <Item variant="outline">
+      <SiteIcon url={entry.sanitizedUrl} />
       <ItemContent>
         <ItemTitle>
           <Button

@@ -1,3 +1,4 @@
+import { SiteIcon } from "./site-icon.view";
 import { useId, useMemo, useState } from "react";
 import type { VisiblePasswordEntryFields } from "@lfspm/core";
 import {
@@ -119,8 +120,9 @@ function createColumns(
       sortFn: "text",
       enableHiding: false,
       cell: (info) => (
-        <span className="font-medium">
-          {info.getValue() || "Unnamed login"}
+        <span className="flex items-center gap-2 font-medium">
+          <SiteIcon url={info.row.original.sanitizedUrl} />
+          <span>{info.getValue() || "Unnamed login"}</span>
         </span>
       ),
     }),

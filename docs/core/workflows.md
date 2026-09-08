@@ -2,9 +2,9 @@
 
 Status: current implementation
 
-The root `@lfspm/core` entry point exports 38 use-case classes. Each class has
-one `execute` method and represents an application workflow. Runtime code
-constructs the classes with shared services and port implementations.
+The root `@lfspm/core` entry point exports 40 use-case classes. Each class has one
+`execute` method and represents an application workflow. Runtime code constructs
+the classes with shared services and port implementations.
 
 ## Vault lifecycle
 
@@ -20,18 +20,23 @@ constructs the classes with shared services and port implementations.
 
 ## Vault entries
 
-| Use case                  | Behavior                                                                                                                               |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `AddEntryUseCase`         | Validates and sanitizes a new entry, enforces password policy unless explicitly overridden, persists a new snapshot, and attempts sync |
-| `UpdateEntryUseCase`      | Requires the entry version originally read, then replaces it through the policy, snapshot, and sync path                               |
-| `RemoveEntryUseCase`      | Requires the entry version originally read, then replaces it with a versioned tombstone                                                |
-| `ReadEntryUseCase`        | Returns visible fields without the password and a detached entry version vector                                                        |
-| `SearchEntriesUseCase`    | Validates a search query and returns matching visible fields without passwords                                                         |
-| `GetEntryPasswordUseCase` | Returns the password for one entry from the active unlocked vault                                                                      |
+| Use case                     | Behavior                                                                                                                               |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `AddEntryUseCase`            | Validates and sanitizes a new entry, enforces password policy unless explicitly overridden, persists a new snapshot, and attempts sync |
+| `UpdateEntryUseCase`         | Requires the entry version originally read, then replaces it through the policy, snapshot, and sync path                               |
+| `RemoveEntryUseCase`         | Requires the entry version originally read, then replaces it with a versioned tombstone                                                |
+| `ReadEntryUseCase`           | Returns visible fields without the password and a detached entry version vector                                                        |
+| `ReadVaultWorkspaceUseCase`  | Returns the unlocked vault's visible workspace projection without passwords                                                            |
+| `ReadEntryForEditingUseCase` | Explicitly returns password, metadata and a detached version vector from one unlocked-session context                                  |
+| `SearchEntriesUseCase`       | Validates a search query and returns matching visible fields without passwords                                                         |
+| `GetEntryPasswordUseCase`    | Returns the password for one entry from the active unlocked vault                                                                      |
 
-ReadEntry returns `entryVersionVector` alongside `entry`. Editors and delete
-confirmations must retain it and pass it as `expectedEntryVersionVector` to the
-mutation. The core captures that vector before asynchronous work and rejects
+ReadEntry returns `entryVersionVector` alongside `entry`; the editor read returns
+it as `entry.versionVector`. Editors and delete confirmations retain the version
+of the record explicitly read and displayed for review, and pass it as
+`expectedEntryVersionVector` to the mutation. An explicit reveal reads and displays
+a fresh complete record; automatic list refreshes do not advance that retained
+version. The core captures that vector before asynchronous work and rejects
 malformed input with `InvalidExpectedEntryVersionError`. A mismatch with the
 current entry raises `PasswordEntryChangedError` before provider or persistence
 work. The caller must reload and let the user review newer values; it must not
@@ -91,11 +96,13 @@ storage rollback.
 ## Diagrams
 
 The [V1 use-case diagrams](../v1/use-case/README.md) provide activity diagrams
-for 27 of the 38 workflows, plus sequence and state-machine views. The eleven use
-cases without a dedicated activity diagram are:
+for 27 of the 40 workflows, plus sequence and state-machine views. The thirteen
+use cases without a dedicated activity diagram are:
 
 - `ReplaceRecoveryWordsUseCase`
 - `CopyRecoveryWordsUseCase`
+- `ReadVaultWorkspaceUseCase`
+- `ReadEntryForEditingUseCase`
 - `GetSyncConfigurationUseCase`
 - `TestSyncAccessUseCase`
 - `UpdateSyncCredentialsUseCase`

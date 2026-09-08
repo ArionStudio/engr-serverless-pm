@@ -1,3 +1,4 @@
+import { EntryEditorExample } from "./entry-widgets.example";
 import { vaultLockOptions } from "@/ui/lib/vault-lock-options";
 import type { CatalogId } from "./usage";
 import { useState, type ReactNode } from "react";
@@ -166,6 +167,7 @@ export function FormExamples() {
               mode={mode === "edit" ? "edit" : "add"}
               weakPassword={props.state === "error"}
             />
+            <EntryEditorExample />
           </>
         )}
       </FormExample>
