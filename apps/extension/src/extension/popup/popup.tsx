@@ -1,3 +1,5 @@
+import { composeSiteIcons } from "../browser/site-icons";
+import { SiteIconsProvider } from "@/ui/features/site-icons/site-icons-provider.view";
 import { composePopupSync } from "../composition/popup-sync.capabilities";
 import { consumePopupReviewRequest } from "../composition/popup-route";
 import { composeVaultSettings } from "../composition/vault-settings.capabilities";
@@ -16,13 +18,14 @@ export function Popup({
 }: {
   initialRoute?: "vault" | "detected";
 }) {
+  const [siteIcons] = React.useState(composeSiteIcons);
   const [browserLogins] = React.useState(composeBrowserLogins);
   const [sync] = React.useState(composePopupSync);
   const [settings] = React.useState(composeVaultSettings);
   const [workspace] = React.useState(composeWorkspace);
   const [setup] = React.useState(composeVaultSetup);
   return (
-    <>
+    <SiteIconsProvider capabilities={siteIcons}>
       <PopupWorkspace
         initialRoute={initialRoute}
         setup={setup}
@@ -32,7 +35,7 @@ export function Popup({
         browserLogins={browserLogins}
         onOpenOptions={openOptionsPage}
       />
-    </>
+    </SiteIconsProvider>
   );
 }
 

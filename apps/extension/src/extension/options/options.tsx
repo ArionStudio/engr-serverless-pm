@@ -1,3 +1,5 @@
+import { composeSiteIcons } from "../browser/site-icons";
+import { SiteIconsProvider } from "@/ui/features/site-icons/site-icons-provider.view";
 import { composeDeviceManagement } from "../composition/device-management.capabilities";
 import { composeVaultSettings } from "../composition/vault-settings.capabilities";
 import { composeWorkspace } from "../composition/workspace.capabilities";
@@ -20,6 +22,7 @@ import {
 } from "@/ui/entrypoints/options/options-route";
 
 export function Options() {
+  const [siteIcons] = React.useState(composeSiteIcons);
   const [devices] = useState(composeDeviceManagement);
   const [vaultSettings] = useState(composeVaultSettings);
   const [workspace] = useState(composeWorkspace);
@@ -58,7 +61,7 @@ export function Options() {
   const activeRoute = navigation.route;
   const { preference, setTheme } = useTheme();
   return (
-    <>
+    <SiteIconsProvider capabilities={siteIcons}>
       <OptionsView
         devices={devices}
         vaultSettings={vaultSettings}
@@ -88,7 +91,7 @@ export function Options() {
           activeRoute === "add-entry" ? emptyEntryDraft : undefined
         }
       />
-    </>
+    </SiteIconsProvider>
   );
 }
 

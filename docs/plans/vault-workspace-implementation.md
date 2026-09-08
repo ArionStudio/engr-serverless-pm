@@ -45,11 +45,13 @@ website and tag labels, entry details, reveal, timed copy and an Options handoff
 Core read contracts return an isolated editor record or a password-free workspace
 projection. The UI never reads vault repositories directly.
 
-Entries use local site initials in the table, popup and details. The `SiteIcon`
-family also exposes bundled-image, loading and failure states for review. Chrome
-favicon lookup and its device-local setting remain gated by the accepted network
-verification requirements in `docs/ui-ux/favicon-review.md`; this change adds no
-favicon permission, automatic site requests, icon proxy or plaintext icon index.
+The initial workspace used local site initials. Batch 08 adds an optional
+Chromium browser-icon setting in Popup and Options; initials remain the default
+and the Firefox presentation. `SiteIcon` also exposes bundled-image, loading and
+failure states for review. The integration adds optional favicon permission,
+without an icon proxy or plaintext icon index. Fresh browser verification and
+remaining native-dialog, aged-cache and Firefox checks are recorded in the
+[favicon review](../ui-ux/favicon-review.md#batch-08-verification).
 
 A saved local mutation is described separately from an uploaded mutation. An
 uncertain upload offers the existing Sync screen. Core still owns reconciliation,

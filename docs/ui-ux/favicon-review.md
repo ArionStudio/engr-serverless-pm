@@ -5,15 +5,46 @@ The original review below records the accepted plan. Implementation status is up
 
 ## Current implementation
 
-The entries-owned `SiteIcon` presentation and P11 gallery fixtures are available.
-Production browser-cache lookup, the optional favicon permission, and the
-settings capability are scheduled for stash batch 08. Popup and Options use
-local fallbacks until that integration is present.
+Batch 08 adds an optional, device-local website icon setting to Popup and Options.
+It is off by default. Chromium requires both the saved preference and the optional
+`favicon` permission. Firefox keeps initials and does not request that permission.
 
-The sections below specify the accepted design and required verification.
-They do not establish runtime or browser acceptance for this batch.
+`extension/browser/site-icons.ts` owns permission and preference operations and
+builds extension-local lookup URLs. The popup and options composition roots each
+provide one stable capability instance. A shared Web Lock serializes preference
+and permission mutations; enable rechecks the grant before saving the preference. `SiteIconsProvider` observes storage and
+permission changes across contexts; `SiteIconSettings` exposes the explicit toggle.
+Incomplete settings or permission cleanup is read from browser state and has a direct Retry cleanup action after reopening, even when the
+preference is already off. Concurrent enables reuse an already committed enabled
+preference rather than risking rollback of another context's successful change.
+Failed settings reads offer Retry settings without repeating the permission change.
+The entries-owned `SiteIcon` reuses `Avatar` and rejects remote image sources.
+Only HTTP/HTTPS origins without credentials reach the lookup endpoint. Paths,
+query strings and fragments are excluded. Only the preference is persisted.
 
-## Planned work and implementation triggers
+The planned extension-level preference operation is implemented by the composed
+capability's `setEnabled`, rather than a new core use case or port. Both manifests
+already restrict extension images with `img-src 'self'`. This change adds no host,
+history or tabs permission and no third-party image service.
+
+## Batch 08 verification
+
+On 2026-09-08, `docs/ui-ux/verification/site-icons.verify.cjs` loaded a disposable
+unpacked extension in Chrome 152.0.7977.82. It confirmed default-off behavior,
+origin-only lookup, cross-context preference changes, different cached and unknown
+site icons, offline rendering, removal of icons and entry metadata on lock, and
+no per-site icon index in browser preferences. Browser-wide NetLog recorded no
+HTTP request or DNS lookup for the fixture sites during icon lookup. Page errors,
+console warnings/errors and CDP log warnings/errors were empty. Raw results remain
+in ignored `.local/site-icons-validation/`.
+
+The verifier grants `favicon` through a temporary test manifest. It does not test
+native permission dialogs. Unit tests cover granted/denied permission and external
+revocation. Native consent, aged cache entries and Firefox runtime remain manual
+acceptance checks; neither this capture nor the original source review proves
+behavior for every browser version. Icons remain optional and off by default.
+
+## Original plan and remaining acceptance checks
 
 | Stage                             | When to implement                                                      | Owner and deliverable                                                                                                                                     | Completion evidence                                                                                                     |
 | --------------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
@@ -22,8 +53,9 @@ They do not establish runtime or browser acceptance for this batch.
 | Runtime acceptance                | Before enabling browser icons in the shipped extension                 | Integrate with authoritative session invalidation and run the verification checklist below                                                                | Browser-level network evidence for cache hits/misses and offline operation; lock/vault-switch cleanup; working fallback |
 
 - [x] Add the P11 `SiteIcon` presentation and gallery fixtures.
-- [ ] Implement the extension browser capability and preference workflow at entries/settings integration.
-- [ ] Complete real-extension privacy and lifecycle verification before shipping.
+- [x] Implement the extension browser capability and preference workflow at entries/settings integration.
+- [x] Verify cached/unknown/offline lookups and lock cleanup in a real Chromium extension.
+- [ ] Complete native permission-dialog, aged-cache and Firefox runtime checks.
 
 This extends the existing P11 family and reuses B38; it does not claim a new
 implemented catalog entry. Browser integration is not a prerequisite for the
@@ -40,9 +72,9 @@ Keep stateful capability instances shared within each composition graph. Popup
 and options have separate instances and observe permission/preference changes.
 Persist only the device-local preference, never a plaintext site-to-icon index.
 No new core vault use case, core favicon port, encrypted-entry schema or sync
-operation is required. Runtime interface/file details remain implementation work.
+operation is required. The implemented capability and provider are described above.
 
-## Recommendation
+## Original recommendation
 
 Use Chrome's extension favicon endpoint as the first implementation candidate,
 with a local initials/globe fallback. Do not add automatic website requests or a
@@ -52,7 +84,8 @@ cache entry.
 
 The extension endpoint requires the `favicon` permission. Chrome documents a
 permission warning when neither `tabs` nor host permissions are already granted.
-Our manifest has `activeTab`, but no `tabs`, host, or `favicon` permission. Prefer
+At the original review, the manifest had `activeTab`, but no `tabs`, host, or
+`favicon` permission. The recommendation was to prefer
 an optional, device-local “Use icons already available in Chrome” setting with a
 runtime permission request, after verifying that permission flow in Chrome.
 Do not ask for all-site access or browsing-history access to obtain icons.
@@ -86,7 +119,8 @@ or retains the data. Cookies and referrers depend on the loading mechanism and
 browser policy; neither CORS nor omitting cookies makes the destination or
 request timing private. Cross-origin `fetch` and displaying a remote `<img>` are
 different operations, so lack of host permissions alone is not an image-request
-firewall. Our current CSP has no `img-src` or `default-src` restriction.
+firewall. At the original review, the CSP had no `img-src` or `default-src` restriction.
+The current manifests now restrict images to the extension origin.
 [Chrome tab permissions](https://developer.chrome.com/docs/extensions/reference/api/tabs),
 [Chrome cross-origin requests](https://developer.chrome.com/docs/extensions/develop/concepts/network-requests).
 
@@ -143,7 +177,8 @@ or web-accessible resources preemptively.
 ## Verification before adoption
 
 1. Load a real MV3 build; test permission granted, declined and revoked in both
-   popup and options. Confirm no `tabs`, history or all-host permission appears.
+   popup and options. Confirm the icon action adds no `tabs`, history or all-host permission.
+   Other features may already have independently authorized host access.
 2. Capture browser-level network activity for known, unknown, stale and offline
    cache entries, including a saved URL never visited in that profile. Page-level
    DevTools events alone may miss requests made by browser services.
@@ -154,6 +189,6 @@ or web-accessible resources preemptively.
 5. Verify origin labels, fallback initials, fixed layout and contrast in both
    themes. A failed icon lookup must never prevent opening an entry.
 
-The original review performed no browser acceptance tests. Record fresh results
-here when the browser capability is integrated, including permission-dialog
-coverage and the limits of network and cache evidence.
+The original review performed no browser acceptance tests. The Batch 08 section
+above records fresh results and their limits; unchecked acceptance items remain
+explicit rather than being inferred from unit tests or the original review.

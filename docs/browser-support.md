@@ -51,8 +51,10 @@ telemetry or LFSPM-operated server is added.
   browser-specific clipboard behavior. They do not establish completion of the
   real-Firefox workflow checklist below before distribution.
 - Mozilla signing metadata is present, but no signed `.xpi` is produced.
-- Website icons currently display local initials. Optional Chromium icons are
-  introduced in the separate site-icon batch; Firefox/Zen keeps local initials.
+- Website icons use local initials by default. Chromium has an optional browser-cache
+  icon setting in Popup and Options; Firefox/Zen keeps initials. See the
+  [favicon verification record](./ui-ux/favicon-review.md#batch-08-verification)
+  for native permission-dialog, aged-cache and Firefox runtime limits.
 
 ## Verification checklist
 

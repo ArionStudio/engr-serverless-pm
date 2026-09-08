@@ -389,8 +389,8 @@ See [the setup implementation](./vault-setup.md) for persistence and session con
 - [x] Entries-library integration: extend P11 with an entries-owned `SiteIcon`,
       reusing B38 Avatar and bundled fixtures for loaded, loading, unavailable
       and failed states. Review both themes, fallback contrast and website labels
-      before entries-screen assembly. Browser permissions and lookup are later
-      integration work, as scheduled in the [favicon plan](./favicon-review.md#planned-work-and-implementation-triggers).
+      before entries-screen assembly. Browser permission and lookup integration is
+      recorded in the [favicon review](./favicon-review.md#current-implementation).
 - [ ] F. Review the entire library's visual consistency and accessibility evidence.
       The gate applies to all catalog IDs, not only the setup subset.
 - [x] G. Assemble and integrate new-vault setup, recovery, verification and local lock settings.
@@ -399,9 +399,10 @@ See [the setup implementation](./vault-setup.md) for persistence and session con
 - [x] H. Connect new-vault setup to composed workflows and validate in Chrome.
 - [x] Connect entry and sync workflows through composed capabilities.
 - [x] Connect existing-vault enrollment.
-- [ ] Implement the extension-level icon preference workflow and browser
-      capability, then complete the favicon runtime acceptance checks before
-      enabling browser icons in a release.
+- [x] Implement the extension-level icon preference workflow and browser capability.
+- [x] Verify cached/unknown/offline Chromium icons, cross-context updates and lock cleanup.
+- [ ] Complete native permission-dialog, aged-cache and Firefox runtime acceptance
+      checks recorded in the [favicon review](./favicon-review.md#batch-08-verification).
 
 Application workflows are integrated at the current scope; subsequent runtime
 integration must keep the component gallery current.

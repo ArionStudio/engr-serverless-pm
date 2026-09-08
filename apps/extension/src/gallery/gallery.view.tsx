@@ -1,14 +1,10 @@
+import { useTheme } from "@/ui/features/theme";
 import { ReviewPageNavigation } from "./review-page-navigation.view";
 import { ScreenExamples } from "./screen-examples.view";
 import { GallerySelection } from "./selection";
 import { componentApi } from "./component-api.generated";
 import { Specimen } from "./specimen.view";
-import {
-  useEffect,
-  useState,
-  useSyncExternalStore,
-  type CSSProperties,
-} from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   SecurityCheckIcon,
@@ -49,14 +45,6 @@ import { OrganizationFeatureExamples } from "./organization-examples.view";
 import { FormExamples } from "./form-examples.view";
 import "./review.css";
 
-function subscribeToTheme(onChange: () => void) {
-  const query = window.matchMedia("(prefers-color-scheme: dark)");
-  query.addEventListener("change", onChange);
-  return () => query.removeEventListener("change", onChange);
-}
-function systemIsDark() {
-  return window.matchMedia("(prefers-color-scheme: dark)").matches;
-}
 const navigation = [
   { id: "screens", name: "Screen components", icon: File01Icon },
   { id: "expanded", name: "Tables & controls", icon: GridViewIcon },
@@ -160,17 +148,11 @@ function ReviewNavigation({
 }
 
 export function Gallery() {
-  const [theme, setTheme] = useState("system");
+  const { preference: theme, setTheme } = useTheme();
   const [width, setWidth] = useState("fluid");
   const [tab, setTab] = useState("expanded");
   const [active, setActive] = useState("");
   const [reset, setReset] = useState(0);
-  const systemDark = useSyncExternalStore(subscribeToTheme, systemIsDark);
-  const dark = theme === "dark" || (theme === "system" && systemDark);
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", dark);
-    return () => document.documentElement.classList.remove("dark");
-  }, [dark]);
   useEffect(() => {
     if (active)
       document
@@ -203,7 +185,14 @@ export function Gallery() {
                 <NativeSelect
                   aria-label="Review theme"
                   value={theme}
-                  onChange={(event) => setTheme(event.target.value)}
+                  onChange={(event) =>
+                    setTheme(
+                      event.target.value === "dark" ||
+                        event.target.value === "light"
+                        ? event.target.value
+                        : "system",
+                    )
+                  }
                 >
                   <NativeSelectOption value="system">System</NativeSelectOption>
                   <NativeSelectOption value="light">Light</NativeSelectOption>

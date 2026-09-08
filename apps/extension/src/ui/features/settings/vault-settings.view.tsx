@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SiteIconSettings } from "@/ui/features/site-icons/site-icon-settings.view";
 import { Button } from "@/ui/components/primitives/button";
 import { GuidancePanel } from "@/ui/components/feedback/guidance-panel.view";
 import { DestructiveConfirmation } from "@/ui/components/feedback/destructive-confirmation.view";
@@ -149,6 +150,9 @@ export function VaultSettingsView({
           message={error ?? message}
         />
       ) : null}
+      <section className="rounded-xl border bg-card p-5 sm:p-6">
+        <SiteIconSettings />
+      </section>
       <section className="space-y-5 rounded-xl border bg-card p-5 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">This browser</h2>

@@ -38,5 +38,5 @@
     "48": "icon.svg",
     "128": "icon.svg"
   },
-  "optional_permissions": []
+  "optional_permissions": ["favicon"]
 }

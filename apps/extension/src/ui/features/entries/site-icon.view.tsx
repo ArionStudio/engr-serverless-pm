@@ -1,3 +1,4 @@
+import { useSiteIcons } from "../site-icons/site-icons.context";
 import {
   Avatar,
   AvatarFallback,
@@ -8,12 +9,16 @@ import { Skeleton } from "@/ui/components/primitives/skeleton";
 export function SiteIcon({
   url,
   source,
-  state = "unavailable",
+  state,
 }: {
   url: string;
   source?: string;
   state?: "loaded" | "loading" | "unavailable" | "failed";
 }) {
+  const icons = useSiteIcons();
+  const resolvedSource =
+    source ?? (state === undefined ? icons.source(url) : undefined);
+  const resolvedState = state ?? (resolvedSource ? "loaded" : "unavailable");
   let initial = "?";
   try {
     const parsed = new URL(url);
@@ -29,8 +34,8 @@ export function SiteIcon({
   // Sources are supplied by the browser capability or bundled gallery assets.
   let approved = false;
   try {
-    if (source) {
-      const resolved = new URL(source, window.location.href);
+    if (resolvedSource) {
+      const resolved = new URL(resolvedSource, window.location.href);
       approved =
         resolved.protocol === window.location.protocol &&
         resolved.host === window.location.host;
@@ -40,12 +45,20 @@ export function SiteIcon({
   }
   return (
     <span aria-hidden="true">
-      {state === "loading" ? (
+      {resolvedState === "loading" ? (
         <Skeleton className="size-8 rounded-full" />
       ) : (
-        <Avatar>
-          {state === "loaded" && approved ? (
-            <AvatarImage src={source} alt="" className="object-contain" />
+        <Avatar
+          key={
+            resolvedState === "loaded" && approved ? resolvedSource : "fallback"
+          }
+        >
+          {resolvedState === "loaded" && approved ? (
+            <AvatarImage
+              src={resolvedSource}
+              alt=""
+              className="object-contain"
+            />
           ) : null}
           <AvatarFallback>{initial}</AvatarFallback>
         </Avatar>
