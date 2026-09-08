@@ -18,6 +18,10 @@ const strength = new CheckPasswordStrengthUseCase();
 export type OptionsScenario =
   | "s3-guide"
   | "s3-copy-error"
+  | "s3-invalid-bucket"
+  | "s3-invalid-prefix"
+  | "s3-invalid-origin"
+  | "s3-firefox-origin"
   | SyncScenario
   | "appearance"
   | "lock-settings"
@@ -61,9 +65,9 @@ export function OptionsExample({
     ),
   );
   const [s3Location, setS3Location] = useState({
-    bucket: "personal-vault",
+    bucket: state === "s3-invalid-bucket" ? "" : "personal-vault",
     region: "eu-central-1",
-    prefix: "vault/",
+    prefix: state === "s3-invalid-prefix" ? "" : "vault/",
   });
   const [guideDone, setGuideDone] = useState(false);
   const [connection, setConnection] = useState(emptyCredentials);
@@ -94,7 +98,7 @@ export function OptionsExample({
     },
     [state],
   );
-  if (state === "s3-guide" || state === "s3-copy-error")
+  if (state.startsWith("s3-"))
     return guideDone ? (
       <div className="max-w-xl space-y-4">
         <CredentialForm
@@ -108,7 +112,13 @@ export function OptionsExample({
       </div>
     ) : (
       <S3SetupGuide
-        origin={sync.origin}
+        origin={
+          state === "s3-invalid-origin"
+            ? "https://example.com"
+            : state === "s3-firefox-origin"
+              ? "moz-extension://2c127fa4-62c7-7e4f-90e5-472b45eecfdc"
+              : sync.origin
+        }
         location={s3Location}
         onLocationChange={setS3Location}
         onCopy={async () => {
@@ -256,7 +266,16 @@ export function ScreenExamples() {
       <Specimen id="S04" name="S3SetupGuide" owner="features/sync" wide>
         <Scenario
           label="S3 setup guide"
-          options={["s3-guide", "s3-copy-error"] as const}
+          options={
+            [
+              "s3-guide",
+              "s3-copy-error",
+              "s3-invalid-bucket",
+              "s3-invalid-prefix",
+              "s3-invalid-origin",
+              "s3-firefox-origin",
+            ] as const
+          }
         >
           {(state) => (
             <OptionsExample
@@ -274,10 +293,14 @@ export function ScreenExamples() {
             [
               "sync-setup",
               "sync-access-pending",
+              "sync-saved-refresh-error",
               "sync-configured",
               "sync-pending",
               "sync-error",
+              "sync-session-expired",
               "sync-review",
+              "sync-revision",
+              "sync-repair-error",
               "sync-loading",
             ] as const
           }

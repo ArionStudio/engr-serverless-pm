@@ -30,7 +30,7 @@ export function syncError(error: unknown): string {
     case "SyncRemovalPendingError":
       return "Sync removal is pending. Finish that operation before changing sync.";
     case "VaultMustBeUnlockedError":
-    case "UnlockedVaultSessionChangedError":
+    case "UnlockedVaultSessionExpiredError":
       return "Unlock this vault again before continuing.";
     default:
       return "Could not reach or authenticate with S3. Check your connection, region, key permissions and the bucket's CORS configuration, then try again.";

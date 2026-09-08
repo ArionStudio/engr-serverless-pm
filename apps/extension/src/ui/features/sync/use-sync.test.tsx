@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { UnlockedVaultSessionExpiredError } from "@lfspm/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { gallerySync, syncLocation, syncReview } from "@/gallery/sync-fixture";
@@ -148,6 +149,20 @@ describe("sync UI lifecycle", () => {
     });
     expect(ctx.result.current.review).toBeUndefined();
   });
+  it("asks to unlock again when a repair session expires", async () => {
+    const ctx = mount(gallerySync("sync-configured"));
+    await ready(ctx);
+    ctx.capabilities.repair = vi
+      .fn()
+      .mockRejectedValue(new UnlockedVaultSessionExpiredError("gallery-vault"));
+    act(() => ctx.result.current.beginRepair());
+    act(() => ctx.result.current.change(input));
+    await act(() => ctx.result.current.save());
+    expect(ctx.result.current.error).toBe(
+      "Unlock this vault again before continuing.",
+    );
+    expect(ctx.result.current.feedback).toBeUndefined();
+  });
   it("discards stale review choices after a failed apply without exposing raw errors", async () => {
     const ctx = mount(gallerySync("sync-review"));
     await ready(ctx);
@@ -198,4 +213,83 @@ describe("sync UI lifecycle", () => {
       "Incomplete review",
     );
   });
+});
+
+it.each(["complete", "pending", "repair"] as const)(
+  "preserves the %s save outcome when configuration refresh fails and can retry the read",
+  async (outcome) => {
+    const ctx = mount(
+      gallerySync(outcome === "repair" ? "sync-configured" : "sync-setup"),
+    );
+    await ready(ctx);
+    if (outcome === "repair") act(() => ctx.result.current.beginRepair());
+    act(() => ctx.result.current.change(input));
+    ctx.capabilities.configure = vi.fn<SyncCapabilities["configure"]>(
+      async () => ({
+        syncUpload: outcome === "pending" ? "pending" : "complete",
+      }),
+    );
+    ctx.capabilities.repair = vi.fn(async () => {});
+    ctx.capabilities.inspect = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("private provider detail"))
+      .mockRejectedValueOnce(new Error("private provider detail"))
+      .mockResolvedValue(syncLocation);
+    await act(() => ctx.result.current.save());
+    const expected = outcome === "repair" ? "not-checked" : outcome;
+    expect(ctx.result.current.feedback?.state).toBe(expected);
+    expect(ctx.result.current.error).toBe(
+      "Could not load the sync configuration. Choose Try again to reload it.",
+    );
+    expect(ctx.result.current.target).toBeUndefined();
+    expect(ctx.result.current.draft.secretAccessKey).toBe("");
+    await act(() => ctx.result.current.refresh());
+    expect(ctx.result.current.feedback?.state).toBe(expected);
+    await act(() => ctx.result.current.refresh());
+    expect(ctx.result.current.error).toBeUndefined();
+    expect(ctx.result.current.target).toEqual(syncLocation);
+    expect(ctx.result.current.feedback?.state).toBe(expected);
+    expect(
+      outcome === "repair"
+        ? ctx.capabilities.repair
+        : ctx.capabilities.configure,
+    ).toHaveBeenCalledTimes(1);
+  },
+);
+
+it.each(["test", "repair"] as const)(
+  "keeps replacement keys available after a failed %s until session ownership changes",
+  async (operation) => {
+    const ctx = mount(gallerySync("sync-configured"));
+    await ready(ctx);
+    act(() => ctx.result.current.beginRepair());
+    act(() => ctx.result.current.change(input));
+    ctx.capabilities[operation] = vi.fn(async () => {
+      throw new Error("network unavailable");
+    });
+    await act(() =>
+      operation === "test"
+        ? ctx.result.current.test()
+        : ctx.result.current.save(),
+    );
+    expect(ctx.result.current.repairing).toBe(true);
+    expect(ctx.result.current.draft).toEqual(input);
+    expect(ctx.result.current.error).toBeTruthy();
+    await act(async () => ctx.notify("session"));
+    expect(ctx.result.current.draft.secretAccessKey).toBe("");
+    expect(ctx.result.current.repairing).toBe(false);
+  },
+);
+
+it("clears obsolete inspection errors when a new session loads successfully", async () => {
+  const capabilities = gallerySync("sync-configured");
+  capabilities.inspect = vi
+    .fn()
+    .mockRejectedValueOnce(new Error("session unavailable"))
+    .mockResolvedValue(syncLocation);
+  const ctx = mount(capabilities);
+  await waitFor(() => expect(ctx.result.current.error).toBeTruthy());
+  await act(async () => ctx.notify("session"));
+  expect(ctx.result.current.target).toEqual(syncLocation);
+  expect(ctx.result.current.error).toBeUndefined();
 });

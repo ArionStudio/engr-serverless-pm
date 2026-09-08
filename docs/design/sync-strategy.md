@@ -174,10 +174,13 @@ removal transition may resume its recorded compare-and-set cleanup.
 
 ## Accepting a remote review
 
+Review and apply reject changes to the original vault creation timestamp.
 ApplySyncResolution repeats the reviewed local/remote identity, trust, key-slot,
 configuration and item-choice checks before persistence. If every choice is
 `use_remote`, the local repository adopts the exact authenticated remote
-snapshot and its vectors. Acceptance does not create another content revision,
+snapshot and its vectors. A verified newer revision with unchanged content can
+be accepted explicitly with empty resolution lists; identical snapshot identities
+remain already resolved. Acceptance does not create another content revision,
 re-sign the snapshot or upload it. Entries, tags, profiles and tombstones keep
 the remote versions. Pending upload cleanup is atomic with this explicit remote
 adoption. Local or mixed choices still author a new resolution and use the

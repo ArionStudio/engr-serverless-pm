@@ -104,7 +104,17 @@ export function S3SetupGuide({
   onCopy: (value: string) => Promise<void>;
   onContinue: () => void;
 }) {
-  const docs = s3SetupDocuments(location, origin);
+  const { documents: docs, error } = s3SetupDocuments(location, origin);
+  const documentError = error
+    ? {
+        bucket:
+          "In step 1, enter a bucket name with 3–63 lowercase letters, numbers or hyphens, starting and ending with a letter or number.",
+        prefix:
+          "In step 1, enter a prefix of up to 128 characters, starting with a letter or number and ending with /. Use only letters, numbers, single / separators, _ or -.",
+        origin:
+          "Open this setup page from the installed extension so its browser origin can be included in the access configuration.",
+      }[error]
+    : undefined;
   return (
     <section className="space-y-6" aria-label="S3 storage setup">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -293,7 +303,7 @@ export function S3SetupGuide({
                   onChange={(e) =>
                     onLocationChange({ ...location, prefix: e.target.value })
                   }
-                  description="Use letters, numbers, /, _ or -. End with /; do not use wildcards."
+                  description="Use letters, numbers, single / separators, _ or -. End with /; do not use wildcards."
                 />
               </div>
               <SetupLink href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/create-bucket-overview.html">
@@ -320,10 +330,7 @@ export function S3SetupGuide({
                   onCopy={onCopy}
                 />
               ) : (
-                <p role="status">
-                  Enter a bucket name and prefix in step 1 to prepare the
-                  configuration.
-                </p>
+                <p role="status">{documentError}</p>
               )}
               <p>
                 Then open <strong>Permissions → Bucket policy → Edit</strong>{" "}
@@ -338,7 +345,9 @@ export function S3SetupGuide({
                   value={docs.tls}
                   onCopy={onCopy}
                 />
-              ) : null}
+              ) : (
+                <p role="status">{documentError}</p>
+              )}
               <p>
                 For each additional device, add its extension origin to{" "}
                 <code>AllowedOrigins</code>. Keep public access blocked.
@@ -378,17 +387,18 @@ export function S3SetupGuide({
                   onCopy={onCopy}
                 />
               ) : (
-                <p role="status">
-                  Enter a valid bucket name and prefix in step 1 before creating
-                  the policy.
-                </p>
+                <p role="status">{documentError}</p>
               )}
             </SetupStep>
             <SetupStep value="keys" title="4. Create access keys">
               <AccessKeyInstructions />
             </SetupStep>
             <SetupStep value="connect" title="5. Connect this vault">
-              <ConnectionInstructions onContinue={onContinue} />
+              <ConnectionInstructions
+                onContinue={onContinue}
+                disabled={!docs}
+              />
+              {!docs ? <p role="status">{documentError}</p> : null}
             </SetupStep>
           </Accordion>
         </TabsContent>
@@ -464,7 +474,13 @@ function AccessKeyInstructions() {
     </div>
   );
 }
-function ConnectionInstructions({ onContinue }: { onContinue: () => void }) {
+function ConnectionInstructions({
+  onContinue,
+  disabled = false,
+}: {
+  onContinue: () => void;
+  disabled?: boolean;
+}) {
   return (
     <div className="space-y-4">
       <ol className="list-decimal space-y-3 pl-5">
@@ -487,7 +503,9 @@ function ConnectionInstructions({ onContinue }: { onContinue: () => void }) {
         transferred with the vault. Keep recovery data outside this vault; S3
         sync is not a substitute for recovery material.
       </p>
-      <Button onClick={onContinue}>Enter connection details</Button>
+      <Button disabled={disabled} onClick={onContinue}>
+        Enter connection details
+      </Button>
     </div>
   );
 }

@@ -25,11 +25,13 @@ function deviceText(
       ? "Deleted"
       : value.deviceProfile.name;
 }
-function allowed(relation: string): readonly Resolution[] {
-  return relation === "remote_only"
-    ? ["use_remote"]
-    : ["use_local", "use_remote"];
-}
+const allowed: Record<
+  Review["entryReviews"][number]["relation"],
+  readonly Resolution[]
+> = {
+  remote_only: ["use_remote"],
+  remote_ahead: ["use_local", "use_remote"],
+};
 export function comparisons(result: PrepareSyncReviewResult): Comparison[] {
   const review = result.review?.actionable;
   if (!review) return [];
@@ -40,7 +42,7 @@ export function comparisons(result: PrepareSyncReviewResult): Comparison[] {
       local: entryText(row.localEntry),
       remote: entryText(row.remoteEntry),
       passwordChanged: row.passwordChanged,
-      allowed: allowed(row.relation),
+      allowed: allowed[row.relation],
     })),
     ...review.tagReviews.map((row) => ({
       id: `tag:${row.tagId}`,
@@ -48,7 +50,7 @@ export function comparisons(result: PrepareSyncReviewResult): Comparison[] {
       local: tagText(row.localTag),
       remote: tagText(row.remoteTag),
       passwordChanged: false,
-      allowed: allowed(row.relation),
+      allowed: allowed[row.relation],
     })),
     ...review.deviceProfileReviews.map((row) => ({
       id: `device:${row.deviceId}`,
@@ -56,7 +58,7 @@ export function comparisons(result: PrepareSyncReviewResult): Comparison[] {
       local: deviceText(row.localDeviceProfile),
       remote: deviceText(row.remoteDeviceProfile),
       passwordChanged: false,
-      allowed: allowed(row.relation),
+      allowed: allowed[row.relation],
     })),
   ];
 }

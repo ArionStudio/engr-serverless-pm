@@ -167,6 +167,40 @@ describe("ApplySyncResolutionUseCase", () => {
     expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });
 
+  it("adopts an explicitly reviewed newer revision with unchanged content and no resolutions", async () => {
+    const ctx = createContext([localEntry]);
+    const current = ctx.saved.unlockedVaultSession!.unlockedVault.vault;
+    const remoteVault = {
+      ...current,
+      versionVector: ctx.remoteDescriptor.snapshotVersionVector,
+    };
+    vi.mocked(ctx.ports.crypto.decryptVaultSnapshotContent).mockResolvedValue(
+      remoteVault,
+    );
+    const result = await ctx.useCase.execute({
+      vaultId: ctx.values.vaultId,
+      reviewedSnapshotIdentities: {
+        local: ctx.localIdentity,
+        remote: ctx.remoteIdentity,
+      },
+      resolution: {
+        entryResolutions: [],
+        tagResolutions: [],
+        deviceProfileResolutions: [],
+      },
+    });
+    expect(ctx.saved.vaultSnapshot).toEqual(ctx.remoteSnapshot);
+    expect(ctx.saved.unlockedVaultSession?.unlockedVault.vault).toEqual(
+      remoteVault,
+    );
+    expect(result.syncUpload).toBe("complete");
+    expect(result.snapshotVersionVector).toEqual(
+      ctx.remoteDescriptor.snapshotVersionVector,
+    );
+    expect(ctx.ports.crypto.signVaultSnapshot).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
   it("uploads the exact signed resolution persisted by the local save", async () => {
     const ctx = createContext([localEntry]);
     const getPersistedSnapshot = captureVaultSnapshotFromNextSave(ctx.ports);
@@ -656,6 +690,37 @@ describe("ApplySyncResolutionUseCase", () => {
     expect(
       ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
     ).not.toHaveBeenCalled();
+  });
+
+  it("rejects an authenticated remote creation-time change before adoption", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession;
+    const localSnapshot = ctx.saved.vaultSnapshot;
+    ctx.remoteSnapshot.metadata.vaultCreationTimestamp += 1;
+
+    await expect(
+      ctx.useCase.execute({
+        vaultId: ctx.values.vaultId,
+        reviewedSnapshotIdentities: {
+          local: ctx.localIdentity,
+          remote: ctx.remoteIdentity,
+        },
+        resolution: {
+          entryResolutions: [
+            { entryId: singlePasswordEntry.id, action: "use_remote" },
+          ],
+          tagResolutions: [],
+          deviceProfileResolutions: [],
+        },
+      }),
+    ).rejects.toBeInstanceOf(RemoteVaultSnapshotIntegrityError);
+
+    expect(ctx.saved.unlockedVaultSession).toEqual(session);
+    expect(ctx.saved.vaultSnapshot).toEqual(localSnapshot);
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
   });
 
   it("rejects a remote sync target change before applying resolution", async () => {

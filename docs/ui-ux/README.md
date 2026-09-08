@@ -1,22 +1,23 @@
 # Extension UI and UX plan
 
-Status: accepted product decisions with proposed layouts and implementation work.
-Checked on 2026-09-05 against commit `8ec2614860506318a2c1b0610d3c33518ee761eb`.
-These documents describe the intended experience; they do not claim that the UI
-or missing core capabilities have been implemented. Coding rules remain in
+Status: accepted product decisions with implemented setup and Sync screens;
+entry workspace and existing-vault enrollment remain pending in this batch.
+Updated on 2026-09-08. Individual plans distinguish implemented workflows from
+proposed layouts and missing core capabilities. Coding rules remain in
 [the standards](../standards/README.md).
 
 The complete gallery is now implemented for review. Start with the
 [component review inventory and ownership map](./review-inventory.md) and the
 [TanStack verification report](./tanstack-verification.md). See also the
 [component contrast review](./contrast-review.md) and
-[website icon plan and safety review](./favicon-review.md). Screens and live
-workflows still follow library review.
+[website icon plan and safety review](./favicon-review.md). Options connects vault
+creation, recovery saving and verification, plus S3 setup, access testing,
+configuration, credential repair, upload retry and explicit sync review.
 
 Before the next vault-screen implementation, use the
 [recovered workspace checklist](../plans/vault-workspace-checklist.md). It
 distinguishes accepted requirements, current contract gaps and proposed screen
-scope after the sync foundations work.
+scope after the implemented Sync screen.
 
 ## Read in this order
 
@@ -104,7 +105,7 @@ Later user clarifications supersede the initial setup-first implementation order
 | Gap                         | Why it matters                                                                 | Proposed next action                                                                                       |
 | --------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
 | Complete disaster recovery  | Words alone cannot restore a lost installation.                                | Define backup artifacts and import verification separately; do not label a word sheet a full vault backup. |
-| Remaining UI integration    | Existing-vault enrollment and entry/sync screens are not connected yet.        | Inject narrow use-case capabilities as those feature screens are built.                                    |
+| Remaining UI integration    | Existing-vault enrollment and entry workspace are not connected yet.        | Inject narrow use-case capabilities as those feature screens are built.                                    |
 | Later settings/read screens | Device, tag, and configuration summaries lack dedicated public read workflows. | Add explicit read contracts when those slices are implemented.                                             |
 
 ## Delivery sequence

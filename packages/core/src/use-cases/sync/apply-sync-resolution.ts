@@ -222,6 +222,8 @@ export class ApplySyncResolutionUseCase {
       remoteVault.providerCredentialRevocationPending === undefined;
 
     if (
+      remoteSnapshot.metadata.vaultCreationTimestamp !==
+        localSnapshot.metadata.vaultCreationTimestamp ||
       !areJsonEqual(remoteVault.syncTarget, unlockedVault.vault.syncTarget) ||
       !areJsonEqual(
         remoteVault.syncRemovalPending,
@@ -293,15 +295,6 @@ export class ApplySyncResolutionUseCase {
       unlockedVault.vault,
       remoteVault,
     );
-
-    if (
-      entryReviews.length === 0 &&
-      tagReviews.length === 0 &&
-      deviceProfileReviews.length === 0 &&
-      !providerCredentialRevocationCompleted
-    ) {
-      throw new SyncAlreadyResolvedError(params.vaultId);
-    }
 
     if (
       entryReviews.length !== resolution.entryResolutions.length ||

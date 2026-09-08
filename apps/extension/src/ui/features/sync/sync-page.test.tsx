@@ -100,3 +100,80 @@ it("carries manual setup values into the connection form without contacting S3",
     (screen.getByLabelText("S3 bucket name") as HTMLInputElement).value,
   ).toBe("chosen-vault");
 });
+
+it("blocks invalid manual setup while preserving the existing-storage and template handoffs", async () => {
+  render(
+    <SyncPage
+      vaultId="gallery-vault"
+      capabilities={gallerySync()}
+      onBack={() => {}}
+    />,
+  );
+  await screen.findByRole("region", { name: "S3 storage setup" });
+  fireEvent.click(screen.getByRole("tab", { name: "AWS Console" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "5. Connect this vault" }),
+  );
+  const connect = await screen.findByRole("button", {
+    name: "Enter connection details",
+  });
+  expect((connect as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(connect);
+  expect(screen.queryByLabelText("Access key ID")).toBeNull();
+  fireEvent.change(screen.getByLabelText("S3 bucket name"), {
+    target: { value: "safe-vault" },
+  });
+  fireEvent.change(screen.getByLabelText("Vault object prefix"), {
+    target: { value: "*" },
+  });
+  expect((connect as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByText(/In step 1, enter a prefix/)).toBeTruthy();
+  fireEvent.change(screen.getByLabelText("Vault object prefix"), {
+    target: { value: "private/" },
+  });
+  expect((connect as HTMLButtonElement).disabled).toBe(false);
+  fireEvent.change(screen.getByLabelText("Vault object prefix"), {
+    target: { value: "" },
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: "I already have storage" }),
+  );
+  expect(screen.getByLabelText("Access key ID")).toBeTruthy();
+  fireEvent.click(
+    screen.getByRole("button", { name: "S3 setup instructions" }),
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "3. Connect this vault" }),
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Enter connection details" }),
+  );
+  expect(screen.getByLabelText("Access key ID")).toBeTruthy();
+});
+
+it("offers explicit acceptance for a verified newer revision with unchanged content", async () => {
+  const capabilities = gallerySync("sync-revision");
+  capabilities.apply = vi.fn(async () => ({ syncUpload: "complete" as const }));
+  render(
+    <SyncPage
+      vaultId="gallery-vault"
+      capabilities={capabilities}
+      onBack={() => {}}
+    />,
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "Check sync" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Accept remote revision" }),
+  );
+  expect(capabilities.apply).toHaveBeenCalledWith(
+    expect.objectContaining({
+      vaultId: "gallery-vault",
+      resolution: {
+        entryResolutions: [],
+        tagResolutions: [],
+        deviceProfileResolutions: [],
+      },
+    }),
+  );
+  await screen.findByText("The encrypted vault is up to date in S3.");
+});

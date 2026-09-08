@@ -10,7 +10,7 @@ const origin = "chrome-extension://abcdefghijklmnopabcdefghijklmnop";
 
 describe("S3 setup permission documents", () => {
   it("restricts object access and listing to the selected prefix and CORS to this extension", () => {
-    const documents = s3SetupDocuments(location, origin)!;
+    const documents = s3SetupDocuments(location, origin).documents!;
     const policy = JSON.parse(documents.policy);
     expect(policy.Statement).toHaveLength(2);
     expect(policy.Statement[0].Resource).toBe("arn:aws:s3:::my-vault");
@@ -36,11 +36,36 @@ describe("S3 setup permission documents", () => {
       "vault?/*",
       "${aws:username}/",
       "vault",
+      "vault//",
       " vault/",
     ])
-      expect(s3SetupDocuments({ ...location, prefix }, origin)).toBeNull();
+      expect(s3SetupDocuments({ ...location, prefix }, origin)).toMatchObject({
+        documents: null,
+        error: "prefix",
+      });
     for (const bucket of ["*", "my-vault/*", "${aws:username}"])
-      expect(s3SetupDocuments({ ...location, bucket }, origin)).toBeNull();
-    expect(s3SetupDocuments(location, "*")).toBeNull();
+      expect(s3SetupDocuments({ ...location, bucket }, origin)).toMatchObject({
+        documents: null,
+        error: "bucket",
+      });
+    for (const invalidOrigin of [
+      "*",
+      "https://example.com",
+      `${origin}/path`,
+      "moz-extension://*",
+    ])
+      expect(s3SetupDocuments(location, invalidOrigin)).toEqual({
+        documents: null,
+        error: "origin",
+      });
   });
+});
+
+it("keeps Firefox CORS scoped to the browser's exact extension UUID", () => {
+  const firefoxOrigin = "moz-extension://2c127fa4-62c7-7e4f-90e5-472b45eecfdc";
+  const { documents, error } = s3SetupDocuments(location, firefoxOrigin);
+  expect(error).toBeNull();
+  expect(JSON.parse(documents!.cors)[0].AllowedOrigins).toEqual([
+    firefoxOrigin,
+  ]);
 });

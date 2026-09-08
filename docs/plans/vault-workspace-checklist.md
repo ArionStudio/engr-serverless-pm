@@ -1,9 +1,9 @@
 # Vault workspace preparation checklist
 
-Status: requirements recovery and pre-implementation checklist, 2026-09-06.
-No new screen layout is approved or implemented by this document. The preceding
-[sync foundations](./sync-foundations.md) are implemented locally; the user
-explicitly limited that pass to foundations.
+Status: entry-workspace preparation checklist, updated 2026-09-08.
+No entry-workspace layout is approved or implemented by this document. The
+[sync foundations](./sync-foundations.md) and [Sync screen](./sync-configuration-ui.md)
+are implemented. The historical decisions below explain their delivery order.
 
 ## Recovered decisions
 
@@ -82,10 +82,11 @@ first screen's exact list/table or resizable layout.
       already-open options page, switching entries/vaults and late asynchronous results.
       Invalidate old results and remove private display data when ownership changes.
 
-Full sync configuration/credential-repair/review screens remain proposed follow-up
-work. A workspace action must have a real recovery destination or an accurate
-availability result. Do not ship a dead review/retry button merely to preserve
-that proposed order. Disabling sync is destructive, not a pause toggle.
+Options already connects S3 setup, access testing, configuration, credential
+repair, upload retry and explicit sync review through the composed capabilities.
+The entry workspace should link to those implemented workflows. Existing-vault
+enrollment and entry-workspace integration remain pending in this batch.
+Disabling sync is destructive, not a pause toggle.
 
 ## Site-icon integration gate
 

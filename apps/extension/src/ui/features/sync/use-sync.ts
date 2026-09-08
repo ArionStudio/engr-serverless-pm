@@ -46,6 +46,7 @@ export function useSync(vaultId: string, capabilities: SyncCapabilities) {
         ++epoch.current;
         busy.current = false;
         setOperation(undefined);
+        setError(undefined);
         clearSecrets();
         setTarget(undefined);
         setReview(undefined);
@@ -98,7 +99,8 @@ export function useSync(vaultId: string, capabilities: SyncCapabilities) {
       setFeedback(undefined);
       setReview(undefined);
       setChoices({});
-      // Setup may have committed locally before a provider error was observed.
+      // Only initial setup may have installed configuration despite an upload error.
+      if (kind !== "configure") return;
       try {
         const next = await capabilities.inspect(vaultId);
         if (current === epoch.current) {
@@ -117,6 +119,18 @@ export function useSync(vaultId: string, capabilities: SyncCapabilities) {
         busy.current = false;
         setOperation(undefined);
       }
+    }
+  }
+  async function refreshConfiguration(current: number) {
+    try {
+      const next = await capabilities.inspect(vaultId);
+      if (current === epoch.current) setTarget(next);
+    } catch {
+      if (current !== epoch.current) return;
+      setTarget(undefined);
+      setError(
+        "Could not load the sync configuration. Choose Try again to reload it.",
+      );
     }
   }
   function uploaded(result: SyncUploadResult) {
@@ -165,12 +179,7 @@ export function useSync(vaultId: string, capabilities: SyncCapabilities) {
       setError(undefined);
       setFeedback(undefined);
     },
-    refresh: () =>
-      run("review", async () => {
-        const current = epoch.current;
-        const next = await capabilities.inspect(vaultId);
-        if (current === epoch.current) setTarget(next);
-      }),
+    refresh: () => run("review", () => refreshConfiguration(epoch.current)),
     test: () =>
       run("test", async () => {
         const current = epoch.current;
@@ -198,8 +207,7 @@ export function useSync(vaultId: string, capabilities: SyncCapabilities) {
             detail:
               "Access keys updated on this device. Check sync or retry an outstanding upload.",
           });
-        const next = await capabilities.inspect(vaultId);
-        if (current === epoch.current) setTarget(next);
+        await refreshConfiguration(current);
       }),
     upload: () =>
       run("upload", async () => {

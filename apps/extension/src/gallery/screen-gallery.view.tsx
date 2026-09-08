@@ -19,6 +19,10 @@ const screens: readonly {
     states: [
       { id: "s3-guide", label: "Instructions" },
       { id: "s3-copy-error", label: "Copy error" },
+      { id: "s3-invalid-bucket", label: "Invalid bucket" },
+      { id: "s3-invalid-prefix", label: "Invalid prefix" },
+      { id: "s3-invalid-origin", label: "Unsupported origin" },
+      { id: "s3-firefox-origin", label: "Firefox origin" },
     ],
   },
   {
@@ -27,10 +31,17 @@ const screens: readonly {
     states: [
       { id: "sync-setup", label: "Set up" },
       { id: "sync-access-pending", label: "Pending access check" },
+      {
+        id: "sync-saved-refresh-error",
+        label: "Saved, configuration refresh failed",
+      },
       { id: "sync-configured", label: "Configured" },
       { id: "sync-pending", label: "Pending upload" },
       { id: "sync-error", label: "Connection error" },
+      { id: "sync-session-expired", label: "Session expired" },
       { id: "sync-review", label: "Remote changes" },
+      { id: "sync-revision", label: "Newer revision, unchanged content" },
+      { id: "sync-repair-error", label: "Key repair failure" },
       { id: "sync-loading", label: "Loading" },
     ],
   },

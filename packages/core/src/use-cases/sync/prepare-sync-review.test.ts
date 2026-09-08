@@ -370,6 +370,24 @@ describe("PrepareSyncReviewUseCase", () => {
     ).rejects.toBeInstanceOf(InvalidVaultSyncReviewError);
   });
 
+  it("rejects an authenticated remote creation-time change before review", async () => {
+    const ctx = createContext();
+    const session = ctx.saved.unlockedVaultSession;
+    const localSnapshot = ctx.saved.vaultSnapshot;
+    ctx.remoteSnapshot.metadata.vaultCreationTimestamp += 1;
+
+    await expect(
+      ctx.useCase.execute({ vaultId: ctx.values.vaultId }),
+    ).rejects.toBeInstanceOf(RemoteVaultSnapshotIntegrityError);
+
+    expect(ctx.saved.unlockedVaultSession).toEqual(session);
+    expect(ctx.saved.vaultSnapshot).toEqual(localSnapshot);
+    expect(
+      ctx.ports.vaultLocalRepository.saveVaultSnapshotWithCheckpoint,
+    ).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
   it("rejects a remote sync target change", async () => {
     const ctx = createContext();
     const session = ctx.saved.unlockedVaultSession;
