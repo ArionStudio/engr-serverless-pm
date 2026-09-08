@@ -26,7 +26,10 @@ export type SyncCapabilities = {
     params: ApplySyncResolutionCommandParams,
   ) => Promise<SyncUploadResult>;
   subscribe: (
-    listener: (reason: "session" | "focus" | "permissions") => void,
+    listener: (
+      reason: "session" | "focus" | "permissions" | "permissions-removed",
+      affectsLocation?: (location: SyncLocation) => boolean,
+    ) => void,
   ) => () => void;
 };
 

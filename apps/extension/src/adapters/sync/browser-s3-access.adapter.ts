@@ -56,6 +56,30 @@ export class BrowserS3AccessAdapter {
   contains(target: unknown): Promise<boolean> {
     return this.permissions.contains({ origins: [s3PermissionOrigin(target)] });
   }
+  affects(target: unknown, change: chrome.permissions.Permissions): boolean {
+    let expected: URL;
+    try {
+      expected = new URL(s3PermissionOrigin(target));
+    } catch {
+      return false;
+    }
+    return (change.origins ?? []).some((pattern) => {
+      if (pattern === "<all_urls>") return true;
+      try {
+        const changed = new URL(pattern.replace(/^\*:\/\//, "https://"));
+        if (changed.protocol !== expected.protocol) return false;
+        return (
+          changed.hostname === "*" ||
+          changed.hostname === expected.hostname ||
+          (changed.hostname.startsWith("*.") &&
+            (expected.hostname === changed.hostname.slice(2) ||
+              expected.hostname.endsWith(changed.hostname.slice(1))))
+        );
+      } catch {
+        return false;
+      }
+    });
+  }
   async require(target: unknown, url: URL): Promise<void> {
     if (`${url.origin}/*` !== s3PermissionOrigin(target)) {
       throw new Error("S3 request does not match the configured storage host.");

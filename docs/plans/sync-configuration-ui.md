@@ -108,7 +108,8 @@ permission-scope regression coverage and a navigation test proving that reading
 the guide does not contact S3. Browser review covers the actual template download,
 manual policy copy and the connection handoff.
 
-Verified September 6, 2026: 525 extension tests passed, followed by all 14 sync
+Historical validation before the host-permission change, September 6, 2026:
+525 extension tests passed, followed by all 14 sync
 tests after the final policy-input and labeling fixes. Type checks, lint,
 production build and gallery inventory passed. Unpacked Chrome 152 downloaded
 a byte-identical copy of the canonical template, generated CORS for its actual
@@ -127,7 +128,7 @@ network attempt. The production composition injects the guarded S3 factory;
 core has no browser dependency. Redirects and endpoint mismatches are rejected.
 
 The Sync page reports missing access for existing vaults, clears stale review and
-access confirmations on permission changes, and offers **Allow storage access**.
+access confirmations when that storage host's permission changes, and offers **Allow storage access**.
 Late permission results cannot start work after the vault session changes.
 New setup documents omit CORS and extension-origin fields. Existing AWS stacks
 need no update to use this flow. The provisioning guide covers optional cleanup
@@ -149,7 +150,8 @@ Validation:
   conditional PUT and permission-revocation rejection passed without CORS.
   This is network-adapter validation, not a complete Firefox application build.
 - Browser automation pregranted the exact host through browser-owned mechanisms;
-  it did not mock the permission check or bypass CORS enforcement. Native prompt
+  it verified the real permission check and signed adapter requests. Controlled
+  responses omitted CORS headers and rejected OPTIONS requests. Native prompt
   acceptance remains a manual browser check. Denial and session changes while
   a prompt is pending have application regression coverage.
 
