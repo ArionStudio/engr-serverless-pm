@@ -1,4 +1,4 @@
-import type { DeletedTag, Tag } from "../entry/tag.type";
+import type { DeletedTag, Tag, TagId } from "../entry/tag.type";
 import type {
   ReviewableVaultSyncItemRelation,
   VaultSyncReviewAction,
@@ -18,7 +18,7 @@ export type ReviewableTag =
     };
 
 export type TagReviewItem = {
-  tagId: number;
+  tagId: TagId;
   relation: ReviewableVaultSyncItemRelation;
   readonly localTag: ReviewableTag;
   readonly remoteTag: ReviewableTag;

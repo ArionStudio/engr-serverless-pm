@@ -30,11 +30,30 @@ import { bestEffortWipeArrayBuffers } from "../../lib/secure-wipe.utils";
 import { VaultTrustService } from "../../services/trust/vault-trust.service";
 import { DeviceAccessMaterialChangedError } from "../../errors/vault-device.errors";
 import type { ClipboardOperationCoordinatorPort } from "../../ports/clipboard/clipboard-operation-coordinator.port";
+import { createDefaultTagGroups } from "../../domain/organization/tag-group.defaults";
+import { folderSchema } from "../../domain/organization/folder.schema";
+import type {
+  Folder,
+  FolderInput,
+} from "../../domain/organization/folder.type";
+import { tagSchema } from "../../domain/entry/tag.schema";
+import type { Tag, TagInput } from "../../domain/entry/tag.type";
+import { requireValidVaultOrganization } from "../../domain/vault/vault-organization-reference.policy";
+import { InvalidVaultFolderError } from "../../errors/vault-organization.errors";
+import { InvalidVaultTagError } from "../../errors/vault-tag.errors";
+
+export type InitializeVaultFolderInput = Omit<FolderInput, "createdAt">;
+export type InitializeVaultTagInput = Omit<TagInput, "createdAt">;
+export type InitializeVaultOrganizationInput = {
+  readonly folders: readonly InitializeVaultFolderInput[];
+  readonly tags: readonly InitializeVaultTagInput[];
+};
 
 export type InitializeVaultCommandParams = {
   masterPassword: RawMasterPassword;
   deviceName: string;
   lockAfterMs: VaultLockDelayMs;
+  organization?: InitializeVaultOrganizationInput;
 };
 
 export type InitializeVaultResult = {
@@ -91,6 +110,9 @@ export class InitializeVaultUseCase {
     );
     assertNewMasterPasswordMeetsPolicy(
       initializeVaultCommandParams.masterPassword,
+    );
+    const organizationInput = parseInitialOrganization(
+      initializeVaultCommandParams.organization,
     );
     const vaultId = await this.ids.generateId();
     const activationAuthorization =
@@ -198,6 +220,11 @@ export class InitializeVaultUseCase {
         },
       };
 
+      const organization = createInitialOrganization(
+        organizationInput,
+        deviceId,
+        timestamp,
+      );
       const vault: Vault = {
         versionVector: {
           [deviceId]: 1,
@@ -206,8 +233,11 @@ export class InitializeVaultUseCase {
         deletedEntries: [],
         deviceProfiles: [deviceProfile],
         deletedDeviceProfiles: [],
-        tags: [],
+        tags: organization.tags,
         deletedTags: [],
+        tagGroups: createDefaultTagGroups(),
+        folders: organization.folders,
+        deletedFolders: [],
       };
 
       const unsignedVaultSnapshot: UnsignedVaultSnapshot = {
@@ -341,4 +371,47 @@ export class InitializeVaultUseCase {
       }
     }
   }
+}
+
+function createInitialOrganization(
+  input: InitializeVaultOrganizationInput,
+  deviceId: string,
+  createdAt: number,
+): { readonly folders: Folder[]; readonly tags: Tag[] } {
+  const folders = input.folders.map((folderInput) => {
+    const parsed = folderSchema.safeParse({ ...folderInput, createdAt });
+    if (!parsed.success) throw new InvalidVaultFolderError(parsed.error);
+    return { ...parsed.data, versionVector: { [deviceId]: 1 } };
+  });
+  const tags = input.tags.map((tagInput) => {
+    const parsed = tagSchema.safeParse({ ...tagInput, createdAt });
+    if (!parsed.success) throw new InvalidVaultTagError(parsed.error);
+    return { ...parsed.data, versionVector: { [deviceId]: 1 } };
+  });
+
+  return { folders, tags };
+}
+
+function parseInitialOrganization(
+  input: InitializeVaultOrganizationInput | undefined,
+): InitializeVaultOrganizationInput {
+  const folders = (input === undefined ? [] : input.folders).map((folder) => {
+    const parsed = folderSchema.omit({ createdAt: true }).safeParse(folder);
+    if (!parsed.success) throw new InvalidVaultFolderError(parsed.error);
+    return parsed.data;
+  });
+  const tags = (input === undefined ? [] : input.tags).map((tag) => {
+    const parsed = tagSchema.omit({ createdAt: true }).safeParse(tag);
+    if (!parsed.success) throw new InvalidVaultTagError(parsed.error);
+    return parsed.data;
+  });
+  requireValidVaultOrganization({
+    folders,
+    tags,
+    tagGroups: createDefaultTagGroups(),
+    deletedFolders: [],
+    deletedTags: [],
+    entries: [],
+  });
+  return { folders, tags };
 }

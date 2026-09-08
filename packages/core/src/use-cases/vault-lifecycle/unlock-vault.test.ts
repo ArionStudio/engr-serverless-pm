@@ -87,6 +87,7 @@ describe("UnlockVaultUseCase", () => {
             login: singlePasswordEntry.login,
             tags: singlePasswordEntry.tags,
             sanitizedUrl: singlePasswordEntry.sanitizedUrl,
+            folderId: "uncategorized",
           },
         ],
         syncConfigured: true,
@@ -101,7 +102,7 @@ describe("UnlockVaultUseCase", () => {
       throw new Error("Expected a visible vault entry.");
     }
 
-    visibleEntry.tags.push(2);
+    visibleEntry.tags.push("personal-tag");
     result.snapshotVersionVector[ctx.values.deviceId] = 99;
 
     expect(

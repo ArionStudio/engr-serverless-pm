@@ -8,3 +8,7 @@ export * from "./consume-device-revocation";
 export * from "./consume-device-enrollment";
 export * from "./prepare-device-enrollment-consumption";
 export * from "./prepare-device-revocation-consumption";
+
+export * from "./read-device-management";
+
+export * from "./read-device-enrollment-approval";

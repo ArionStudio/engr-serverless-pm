@@ -1,17 +1,27 @@
 # Website icon safety review
 
 Reviewed 2026-09-05. The user accepted the implementation plan and its staging.
-The work below is pending; no icon loader or permission workflow is implemented.
+The original review below records the accepted plan. Implementation status is updated here.
+
+## Current implementation
+
+The entries-owned `SiteIcon` presentation and P11 gallery fixtures are available.
+Production browser-cache lookup, the optional favicon permission, and the
+settings capability are scheduled for stash batch 08. Popup and Options use
+local fallbacks until that integration is present.
+
+The sections below specify the accepted design and required verification.
+They do not establish runtime or browser acceptance for this batch.
 
 ## Planned work and implementation triggers
 
-| Stage | When to implement | Owner and deliverable | Completion evidence |
-| --- | --- | --- | --- |
-| Presentation | Next entries-component library work, before assembling entries screens | Entries-owned `SiteIcon`, reusing shared `Avatar`; extend P11 with bundled synthetic examples | Loaded, loading, unavailable and failed states; visible website label; fixed layout and contrast in both themes |
-| Browser capability and preference | When connecting the entries screens and device-local settings | Browser integration under `extension/browser/`; extension-level `SetSiteIconPreferenceUseCase`; inject narrow capabilities from popup/options composition | Permission grant, denial and revocation; preference persistence and cross-context updates; validated origin-only lookup |
-| Runtime acceptance | Before enabling browser icons in the shipped extension | Integrate with authoritative session invalidation and run the verification checklist below | Browser-level network evidence for cache hits/misses and offline operation; lock/vault-switch cleanup; working fallback |
+| Stage                             | When to implement                                                      | Owner and deliverable                                                                                                                                     | Completion evidence                                                                                                     |
+| --------------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Presentation                      | Next entries-component library work, before assembling entries screens | Entries-owned `SiteIcon`, reusing shared `Avatar`; extend P11 with bundled synthetic examples                                                             | Loaded, loading, unavailable and failed states; visible website label; fixed layout and contrast in both themes         |
+| Browser capability and preference | When connecting the entries screens and device-local settings          | Browser integration under `extension/browser/`; extension-level `SetSiteIconPreferenceUseCase`; inject narrow capabilities from popup/options composition | Permission grant, denial and revocation; preference persistence and cross-context updates; validated origin-only lookup |
+| Runtime acceptance                | Before enabling browser icons in the shipped extension                 | Integrate with authoritative session invalidation and run the verification checklist below                                                                | Browser-level network evidence for cache hits/misses and offline operation; lock/vault-switch cleanup; working fallback |
 
-- [ ] Add the P11 `SiteIcon` presentation and gallery fixtures.
+- [x] Add the P11 `SiteIcon` presentation and gallery fixtures.
 - [ ] Implement the extension browser capability and preference workflow at entries/settings integration.
 - [ ] Complete real-extension privacy and lifecycle verification before shipping.
 
@@ -61,14 +71,14 @@ so an image `onError` callback alone cannot detect every cache miss.
 
 ## Options and exposure
 
-| Approach | What it exposes or requires | Decision |
-| --- | --- | --- |
-| Bundled globe or initials | No icon network request or new permission | Always available, including locked/unavailable states |
-| Chrome `/_favicon/` endpoint | Favicon permission; browser-managed cached data and generic fallback | Preferred candidate, verify in the real extension |
-| Current tab `favIconUrl` | Temporary `activeTab` access after invocation can expose the URL; assigning that remote URL to an image can make a new request | Reading metadata is not equivalent to safely reusing cached image bytes |
-| Site `/favicon.ico` | Site sees the requesting connection and timing; location may be wrong or redirect elsewhere | Exclude automatic fetching from the initial design |
-| Fetch page and parse `<link rel="icon">` | More requests, arbitrary icon origins, HTML parsing and redirect handling | Unnecessary for the initial design |
-| Google, DuckDuckGo or another icon proxy | Provider receives the requested domain and the client's connection metadata; can correlate a list of saved services | Exclude from the initial design |
+| Approach                                 | What it exposes or requires                                                                                                    | Decision                                                                |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| Bundled globe or initials                | No icon network request or new permission                                                                                      | Always available, including locked/unavailable states                   |
+| Chrome `/_favicon/` endpoint             | Favicon permission; browser-managed cached data and generic fallback                                                           | Preferred candidate, verify in the real extension                       |
+| Current tab `favIconUrl`                 | Temporary `activeTab` access after invocation can expose the URL; assigning that remote URL to an image can make a new request | Reading metadata is not equivalent to safely reusing cached image bytes |
+| Site `/favicon.ico`                      | Site sees the requesting connection and timing; location may be wrong or redirect elsewhere                                    | Exclude automatic fetching from the initial design                      |
+| Fetch page and parse `<link rel="icon">` | More requests, arbitrary icon origins, HTML parsing and redirect handling                                                      | Unnecessary for the initial design                                      |
+| Google, DuckDuckGo or another icon proxy | Provider receives the requested domain and the client's connection metadata; can correlate a list of saved services            | Exclude from the initial design                                         |
 
 The exposure assessment is a threat-model inference from the requested URL and
 who receives the request. It does not allege that a particular provider sells
@@ -80,7 +90,7 @@ firewall. Our current CSP has no `img-src` or `default-src` restriction.
 [Chrome tab permissions](https://developer.chrome.com/docs/extensions/reference/api/tabs),
 [Chrome cross-origin requests](https://developer.chrome.com/docs/extensions/develop/concepts/network-requests).
 
-## Repository-specific constraints
+## Repository-specific constraints at the original review
 
 - `apps/extension/config/manifest.json`: no favicon permission, host permissions,
   content scripts or web-accessible resources. Keep the favicon endpoint private
@@ -144,6 +154,6 @@ or web-accessible resources preemptively.
 5. Verify origin labels, fallback initials, fixed layout and contrast in both
    themes. A failed icon lookup must never prevent opening an entry.
 
-No fetching, permission changes or favicon integration tests were performed in
-this review. The findings above identify requirements for a new feature, not an
-existing favicon exfiltration vulnerability.
+The original review performed no browser acceptance tests. Record fresh results
+here when the browser capability is integrated, including permission-dialog
+coverage and the limits of network and cache evidence.

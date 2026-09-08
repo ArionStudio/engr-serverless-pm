@@ -11,3 +11,6 @@ export { VaultSyncGuardService } from "./sync/vault-sync-guard.service";
 export { RandomVaultDisplayNameService } from "./vault/random-vault-display-name.service";
 
 export { SecretClipboardCopyService } from "./clipboard/secret-clipboard-copy.service";
+export { DeviceEnrollmentApprovalService } from "./trust/device-enrollment-approval.service";
+export { VaultTrustService } from "./trust/vault-trust.service";
+export { VaultMutationService } from "./vault/vault-mutation.service";

@@ -4,6 +4,7 @@ export const catalog = [
   { id: "S02", name: "OptionsView" },
   { id: "S03", name: "SyncPage" },
   { id: "S04", name: "S3SetupGuide" },
+  { id: "S05", name: "OrganizationManagementView" },
   {
     id: "B01",
     name: "Button",
@@ -103,6 +104,8 @@ export const catalog = [
   { id: "B37", name: "Kbd" },
   { id: "B38", name: "Avatar" },
   { id: "P29", name: "GuidancePanel" },
+  { id: "P30", name: "Tag visuals" },
+  { id: "P31", name: "Folder controls" },
   {
     id: "P01",
     name: "StepNavigation",

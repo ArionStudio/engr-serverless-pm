@@ -3,21 +3,30 @@ import {
   type DeletedDeviceProfile,
   type DeletedPasswordEntry,
   type DeletedTag,
+  type DeletedFolder,
   type DeviceKeySlot,
   type DevicePublicSignKey,
   type DeviceVaultPublicKey,
   type JsonValue,
   type LocalVaultTrustAnchor,
   type PasswordEntry,
+  type Folder,
   type RandomBytes,
   type Tag,
+  type TagGroup,
   type Vault,
   type VaultSnapshot,
   type VaultSnapshotDescriptor,
   type VaultSnapshotIdentity,
   type VaultTrustCertificate,
 } from "@lfspm/core";
-import { passwordEntryInputSchema, tagSchema } from "@lfspm/core";
+import {
+  folderSchema,
+  passwordEntryInputSchema,
+  tagGroupSchema,
+  tagSchema,
+  UNCATEGORIZED_FOLDER_ID,
+} from "@lfspm/core";
 import {
   StaticArtifactError,
   canonicalDigest,
@@ -408,12 +417,13 @@ function decodePasswordEntry(value: unknown): PasswordEntry {
     "login",
     "tags",
     "sanitizedUrl",
+    "folderId",
     "versionVector",
   ]);
   if (!Array.isArray(record.tags)) {
     throw new Error("tags");
   }
-  const tags = record.tags.map((tag) => safeInteger(tag));
+  const tags = record.tags.map((tag) => nonBlankString(tag));
   if (new Set(tags).size !== tags.length) {
     throw new Error("duplicate");
   }
@@ -422,12 +432,61 @@ function decodePasswordEntry(value: unknown): PasswordEntry {
     login: record.login,
     tags,
     sanitizedUrl: record.sanitizedUrl,
+    folderId: record.folderId,
   });
   return {
     id: nonBlankString(record.id),
     ...input,
     versionVector: decodeVersionVector(record.versionVector),
   };
+}
+
+function decodeFolder(value: unknown): Folder {
+  const record = exactRecord(
+    value,
+    ["id", "name", "icon", "parentId", "createdAt", "versionVector"],
+    ["description"],
+  );
+  const input = folderSchema.parse({
+    id: record.id,
+    name: record.name,
+    icon: record.icon,
+    ...(record.description === undefined
+      ? {}
+      : { description: record.description }),
+    parentId: record.parentId,
+    createdAt: record.createdAt,
+  });
+  return {
+    ...input,
+    versionVector: decodeVersionVector(record.versionVector),
+  };
+}
+
+function decodeDeletedFolder(value: unknown): DeletedFolder {
+  const record = exactRecord(value, ["id", "versionVector", "deletedAt"]);
+  return {
+    id: folderSchema.shape.id.parse(record.id),
+    versionVector: decodeVersionVector(record.versionVector),
+    deletedAt: safeInteger(record.deletedAt),
+  };
+}
+
+function decodeTagGroup(value: unknown): TagGroup {
+  const record = exactRecord(
+    value,
+    ["id", "name", "icon", "baseColor"],
+    ["description"],
+  );
+  return tagGroupSchema.parse({
+    id: record.id,
+    name: record.name,
+    icon: record.icon,
+    baseColor: record.baseColor,
+    ...(record.description === undefined
+      ? {}
+      : { description: record.description }),
+  });
 }
 
 function decodeDeletedPasswordEntry(value: unknown): DeletedPasswordEntry {
@@ -440,8 +499,23 @@ function decodeDeletedPasswordEntry(value: unknown): DeletedPasswordEntry {
 }
 
 function decodeTag(value: unknown): Tag {
-  const record = exactRecord(value, ["id", "name", "versionVector"]);
-  const input = tagSchema.parse({ id: record.id, name: record.name });
+  const record = exactRecord(value, [
+    "id",
+    "name",
+    "groupId",
+    "color",
+    "shade",
+    "createdAt",
+    "versionVector",
+  ]);
+  const input = tagSchema.parse({
+    id: record.id,
+    name: record.name,
+    groupId: record.groupId,
+    color: record.color,
+    shade: record.shade,
+    createdAt: record.createdAt,
+  });
   return {
     ...input,
     versionVector: decodeVersionVector(record.versionVector),
@@ -451,7 +525,7 @@ function decodeTag(value: unknown): Tag {
 function decodeDeletedTag(value: unknown): DeletedTag {
   const record = exactRecord(value, ["id", "versionVector", "deletedAt"]);
   return {
-    id: safeInteger(record.id),
+    id: tagSchema.shape.id.parse(record.id),
     versionVector: decodeVersionVector(record.versionVector),
     deletedAt: safeInteger(record.deletedAt),
   };
@@ -491,6 +565,18 @@ function requireUniqueAcross(
   }
 }
 
+function normalizedOrganizationName(name: string): string {
+  return name.trim().normalize("NFKC").toLowerCase();
+}
+
+function requireUniqueOrganizationNames(
+  items: readonly { readonly name: string }[],
+): void {
+  const names = items.map(({ name }) => normalizedOrganizationName(name));
+  if (new Set(names).size !== names.length)
+    throw new Error("duplicate organization name");
+}
+
 export function decodeVault(value: unknown): Vault {
   try {
     const record = exactRecord(
@@ -503,6 +589,9 @@ export function decodeVault(value: unknown): Vault {
         "deletedDeviceProfiles",
         "tags",
         "deletedTags",
+        "tagGroups",
+        "folders",
+        "deletedFolders",
       ],
       [
         "syncTarget",
@@ -516,7 +605,10 @@ export function decodeVault(value: unknown): Vault {
       !Array.isArray(record.deviceProfiles) ||
       !Array.isArray(record.deletedDeviceProfiles) ||
       !Array.isArray(record.tags) ||
-      !Array.isArray(record.deletedTags)
+      !Array.isArray(record.deletedTags) ||
+      !Array.isArray(record.tagGroups) ||
+      !Array.isArray(record.folders) ||
+      !Array.isArray(record.deletedFolders)
     ) {
       throw new Error("collections");
     }
@@ -530,9 +622,60 @@ export function decodeVault(value: unknown): Vault {
     );
     const tags = record.tags.map(decodeTag);
     const deletedTags = record.deletedTags.map(decodeDeletedTag);
+    const tagGroups = record.tagGroups.map(decodeTagGroup);
+    const folders = record.folders.map(decodeFolder);
+    const deletedFolders = record.deletedFolders.map(decodeDeletedFolder);
     requireUniqueAcross(entries, deletedEntries);
     requireUniqueAcross(deviceProfiles, deletedDeviceProfiles);
     requireUniqueAcross(tags, deletedTags);
+    requireUniqueAcross(folders, deletedFolders);
+    if (new Set(tagGroups.map(({ id }) => id)).size !== tagGroups.length)
+      throw new Error("duplicate tag group");
+    requireUniqueOrganizationNames(tags);
+    requireUniqueOrganizationNames(tagGroups);
+    const siblings = new Map<string | null, Folder[]>();
+    for (const folder of folders) {
+      const group = siblings.get(folder.parentId) ?? [];
+      group.push(folder);
+      siblings.set(folder.parentId, group);
+    }
+    for (const group of siblings.values())
+      requireUniqueOrganizationNames(group);
+    const activeTagIds = new Set(tags.map((tag) => tag.id));
+    const activeTagGroupIds = new Set(tagGroups.map((group) => group.id));
+    const activeFolderIds = new Set(folders.map((folder) => folder.id));
+    if (
+      entries.some((entry) =>
+        entry.tags.some((tagId) => !activeTagIds.has(tagId)),
+      )
+    ) {
+      throw new Error("missing tag reference");
+    }
+    if (tags.some((tag) => !activeTagGroupIds.has(tag.groupId)))
+      throw new Error("missing tag group reference");
+    if (
+      folders.some(
+        (folder) =>
+          folder.parentId !== null && !activeFolderIds.has(folder.parentId),
+      ) ||
+      entries.some(
+        (entry) =>
+          entry.folderId !== UNCATEGORIZED_FOLDER_ID &&
+          !activeFolderIds.has(entry.folderId),
+      )
+    )
+      throw new Error("missing folder reference");
+    for (const folder of folders) {
+      const visited = new Set<string>([folder.id]);
+      let parentId = folder.parentId;
+      while (parentId !== null) {
+        if (visited.has(parentId)) throw new Error("folder cycle");
+        visited.add(parentId);
+        parentId =
+          folders.find((candidate) => candidate.id === parentId)?.parentId ??
+          null;
+      }
+    }
 
     const result: Vault = {
       versionVector: decodeVersionVector(record.versionVector),
@@ -542,6 +685,9 @@ export function decodeVault(value: unknown): Vault {
       deletedDeviceProfiles,
       tags,
       deletedTags,
+      tagGroups,
+      folders,
+      deletedFolders,
     };
     if (record.syncTarget !== undefined) {
       const target = exactRecord(record.syncTarget, [
@@ -638,6 +784,15 @@ export function encodeVault(vault: Vault): unknown {
     deletedTags: vault.deletedTags.map((tag) => ({
       ...tag,
       versionVector: encodeVersionVector(tag.versionVector),
+    })),
+    tagGroups: vault.tagGroups.map((group) => ({ ...group })),
+    folders: vault.folders.map((folder) => ({
+      ...folder,
+      versionVector: encodeVersionVector(folder.versionVector),
+    })),
+    deletedFolders: vault.deletedFolders.map((folder) => ({
+      ...folder,
+      versionVector: encodeVersionVector(folder.versionVector),
     })),
   };
 }

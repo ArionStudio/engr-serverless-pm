@@ -17,6 +17,7 @@ import { toVaultSnapshotDescriptor } from "../../domain/snapshot";
 import {
   DeviceEnrollmentRollbackIncompleteError,
   DeviceEnrollmentIntegrityError,
+  DeviceEnrollmentSyncCredentialsRequiredError,
   DeviceEnrollmentRemoteSnapshotChangedError,
   PendingDeviceEnrollmentMismatchError,
 } from "../../errors/device-enrollment.errors";
@@ -25,6 +26,7 @@ import { RecoveryMnemonicEncodingError } from "../../errors/recovery.errors";
 import { DeviceAccessMaterialChangedError } from "../../errors/vault-device.errors";
 import {
   RemoteVaultSnapshotChangedError,
+  SyncNotConfiguredError,
   SyncRemovalPendingError,
 } from "../../errors/sync.errors";
 import { LocalVaultAlreadyInitializedError } from "../../errors/vault-lifecycle.errors";
@@ -35,11 +37,14 @@ import type { SyncUploadOutcome } from "../../ports/sync/sync-provider.port";
 import { ClipboardClearService } from "../../services/clipboard/clipboard-clear.service";
 import { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
 import { VaultLifecycleCleanupService } from "../../services/session/vault-lifecycle-cleanup.service";
+import { DeviceEnrollmentApprovalService } from "../../services/trust/device-enrollment-approval.service";
+import { VaultTrustService } from "../../services/trust/vault-trust.service";
 import { ChangeMasterPasswordUseCase } from "../vault-lifecycle/change-master-password";
 import { LockVaultUseCase } from "../vault-lifecycle/lock-vault";
+import { ReadDeviceEnrollmentApprovalUseCase } from "./read-device-enrollment-approval";
 import { PerformDeviceEnrollmentUseCase } from "./perform-device-enrollment";
 
-function createContext(synced = false) {
+function createContext(synced = true) {
   const values = createCoreTestValues();
   const ports = createCoreTestPorts(values);
   const targetIdentity = {
@@ -147,6 +152,11 @@ function createContext(synced = false) {
     ports.vaultLockTasks,
     ports.sessionServices.unlockedVaultSession,
   );
+  const enrollmentApproval = new DeviceEnrollmentApprovalService(
+    ports.crypto,
+    ports.vaultLocalRepository,
+    new VaultTrustService(ports.crypto),
+  );
   const useCase = new PerformDeviceEnrollmentUseCase(
     ports.clock,
     ports.crypto,
@@ -160,6 +170,7 @@ function createContext(synced = false) {
     ports.scheduledTasks,
     ports.vaultLockTasks,
     clipboardOperations,
+    enrollmentApproval,
   );
 
   vi.mocked(ports.ids.generateId).mockReset();
@@ -177,6 +188,7 @@ function createContext(synced = false) {
     clipboardClearTasks,
     clipboardOperations,
     lifecycleCleanup,
+    enrollmentApproval,
     useCase,
   };
 }
@@ -246,11 +258,90 @@ async function expectEnrollmentOwnedBuffersWiped(
 }
 
 describe("PerformDeviceEnrollmentUseCase", () => {
+  it("reads only the verified sync target without enrolling and wipes the decrypted secrets", async () => {
+    const { ports, values, response, enrollmentApproval } = createContext();
+    const read = new ReadDeviceEnrollmentApprovalUseCase(enrollmentApproval);
+    const target = structuredClone(values.syncAccess.target);
+    const result = await read.execute({
+      enrollmentResponse: response,
+      masterPassword: values.masterPassword,
+    });
+    expect(result).toEqual({
+      vaultId: response.vaultId,
+      requestId: response.requestId,
+      target,
+    });
+    expect(
+      ports.vaultLocalRepository.saveInitializedLocalVault,
+    ).not.toHaveBeenCalled();
+    expect(ports.syncProvider.setup).not.toHaveBeenCalled();
+    const privateState = await vi.mocked(
+      ports.crypto.unwrapDeviceEnrollmentPrivateState,
+    ).mock.results[0].value;
+    for (const buffer of [
+      privateState.devicePrivateSignKey,
+      privateState.devicePrivateVaultKey,
+      privateState.deviceLocalProtectionKey,
+    ])
+      expect(new Uint8Array(buffer).every((byte) => byte === 0)).toBe(true);
+  });
+
+  it("does not expose a storage target when the approval's trust anchor differs from the request", async () => {
+    const { ports, values, response, enrollmentApproval } = createContext();
+    const read = new ReadDeviceEnrollmentApprovalUseCase(enrollmentApproval);
+    await expect(
+      read.execute({
+        enrollmentResponse: {
+          ...response,
+          vaultTrustAnchor: {
+            ...response.vaultTrustAnchor,
+            genesisCertificateDigest: "untrusted",
+          },
+        },
+        masterPassword: values.masterPassword,
+      }),
+    ).rejects.toThrow(DeviceEnrollmentIntegrityError);
+    expect(ports.crypto.decryptVaultSnapshotContent).not.toHaveBeenCalled();
+    expect(ports.syncProvider.setup).not.toHaveBeenCalled();
+  });
+
+  it("requires the new device's S3 credentials before local initialization", async () => {
+    const ctx = createContext();
+    await expect(
+      ctx.useCase.execute({
+        enrollmentResponse: ctx.response,
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "New device",
+        lockAfterMs: 600_000,
+      }),
+    ).rejects.toBeInstanceOf(DeviceEnrollmentSyncCredentialsRequiredError);
+    expect(ctx.ports.saved.localVaultDescriptor).toBeUndefined();
+    expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
+  });
+
+  it("rejects an approval for a vault without sync before initializing this device", async () => {
+    const ctx = createContext(false);
+    await expect(
+      ctx.useCase.execute({
+        enrollmentResponse: ctx.response,
+        masterPassword: ctx.values.masterPassword,
+        deviceName: "New device",
+        lockAfterMs: 600_000,
+        syncConfig: ctx.values.syncConfigInput,
+      }),
+    ).rejects.toBeInstanceOf(SyncNotConfiguredError);
+    expect(ctx.ports.saved.localVaultDescriptor).toBeUndefined();
+    expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
+    expect(ctx.ports.syncProvider.setup).not.toHaveBeenCalled();
+    expect(ctx.ports.syncProvider.uploadVaultSnapshot).not.toHaveBeenCalled();
+  });
+
   it("rejects a password below maximum strength before reading pending enrollment", async () => {
     const ctx = createContext();
 
     await expect(
       ctx.useCase.execute({
+        syncConfig: ctx.values.syncConfigInput,
         enrollmentResponse: ctx.response,
         masterPassword: "correcthorsebatterystaple" as RawMasterPassword,
         deviceName: "New laptop",
@@ -273,6 +364,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
 
     await expect(
       ctx.useCase.execute({
+        syncConfig: ctx.values.syncConfigInput,
         enrollmentResponse: ctx.response,
         masterPassword: ctx.values.masterPassword,
         deviceName: "New laptop",
@@ -310,6 +402,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
 
     await expect(
       ctx.useCase.execute({
+        syncConfig: ctx.values.syncConfigInput,
         enrollmentResponse: ctx.response,
         masterPassword: ctx.values.masterPassword,
         deviceName: "New laptop",
@@ -355,6 +448,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
 
     await expect(
       ctx.useCase.execute({
+        syncConfig: ctx.values.syncConfigInput,
         enrollmentResponse: ctx.response,
         masterPassword: ctx.values.masterPassword,
         deviceName: "New laptop",
@@ -395,6 +489,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
 
     await expect(
       ctx.useCase.execute({
+        syncConfig: ctx.values.syncConfigInput,
         enrollmentResponse: ctx.response,
         masterPassword: ctx.values.masterPassword,
         deviceName: "New laptop",
@@ -422,6 +517,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     const masterPassword = "vN7#qL2!xP9@rT4$zK6&" as RawMasterPassword;
 
     await ctx.useCase.execute({
+      syncConfig: ctx.values.syncConfigInput,
       enrollmentResponse: ctx.response,
       masterPassword,
       deviceName: "New laptop",
@@ -441,6 +537,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
 
     await expect(
       ctx.useCase.execute({
+        syncConfig: ctx.values.syncConfigInput,
         enrollmentResponse: ctx.response,
         masterPassword: ctx.values.masterPassword,
         deviceName: "New laptop",
@@ -477,6 +574,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     const ctx = createContext();
 
     const result = await ctx.useCase.execute({
+      syncConfig: ctx.values.syncConfigInput,
       enrollmentResponse: ctx.response,
       masterPassword: ctx.values.masterPassword,
       deviceName: "New laptop",
@@ -511,6 +609,8 @@ describe("PerformDeviceEnrollmentUseCase", () => {
       login: singlePasswordEntry.login,
       tags: singlePasswordEntry.tags,
       sanitizedUrl: singlePasswordEntry.sanitizedUrl,
+      folderId: "uncategorized",
+      hasPassword: true,
     });
     expect(result.vault.entries[0]).not.toHaveProperty("password");
     expect(result.vault).not.toHaveProperty("syncTarget");
@@ -548,6 +648,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
 
     await expect(
       ctx.useCase.execute({
+        syncConfig: ctx.values.syncConfigInput,
         enrollmentResponse: ctx.response,
         masterPassword: ctx.values.masterPassword,
         deviceName: "New laptop",
@@ -569,6 +670,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
 
     await expect(
       ctx.useCase.execute({
+        syncConfig: ctx.values.syncConfigInput,
         enrollmentResponse: ctx.response,
         masterPassword: ctx.values.masterPassword,
         deviceName: "New laptop",
@@ -623,6 +725,10 @@ describe("PerformDeviceEnrollmentUseCase", () => {
         },
       ),
     ).resolves.toEqual({ currentCredentials: ctx.values.syncCredentials });
+    expect(result.displayName).toBe(
+      ctx.ports.saved.localVaultDescriptor?.displayName,
+    );
+    expect(result.displayName).toBe(ctx.values.vaultDisplayName);
     expect(result).not.toHaveProperty("credentials");
     expect(result).not.toHaveProperty("syncConfig");
     expect(result.vault).not.toHaveProperty("syncTarget");
@@ -664,6 +770,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
 
     await expect(
       ctx.useCase.execute({
+        syncConfig: ctx.values.syncConfigInput,
         enrollmentResponse: ctx.response,
         masterPassword: ctx.values.masterPassword,
         deviceName: "New laptop",
@@ -693,6 +800,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
 
     await expect(
       ctx.useCase.execute({
+        syncConfig: ctx.values.syncConfigInput,
         enrollmentResponse: {
           ...ctx.response,
           vaultTrustAnchor: {
@@ -719,6 +827,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
 
     await expect(
       ctx.useCase.execute({
+        syncConfig: ctx.values.syncConfigInput,
         enrollmentResponse: ctx.response,
         masterPassword: ctx.values.masterPassword,
         deviceName: "New laptop",
@@ -737,7 +846,8 @@ describe("PerformDeviceEnrollmentUseCase", () => {
         expectedDeviceAccessRecoveryBackup: expect.any(Object),
         expectedSnapshotDigest: ctx.values.vaultSnapshotDigest,
         expectedCheckpoint: expect.any(Object),
-        expectedSyncCredentialState: null,
+        expectedSyncCredentialState:
+          ctx.values.encryptedDeviceSyncCredentialState,
       }),
     );
     expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
@@ -768,6 +878,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
 
     await expect(
       ctx.useCase.execute({
+        syncConfig: ctx.values.syncConfigInput,
         enrollmentResponse: ctx.response,
         masterPassword: ctx.values.masterPassword,
         deviceName: "New laptop",
@@ -779,6 +890,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
 
     await expect(
       ctx.useCase.execute({
+        syncConfig: ctx.values.syncConfigInput,
         enrollmentResponse: ctx.response,
         masterPassword: ctx.values.masterPassword,
         deviceName: "New laptop",
@@ -1188,6 +1300,51 @@ describe("PerformDeviceEnrollmentUseCase", () => {
     expect(ctx.ports.saved.pendingDeviceEnrollment).toBeDefined();
   });
 
+  it.each(["locked", "replaced"] as const)(
+    "withholds recovery words if the enrolling session is %s during upload",
+    async (state) => {
+      const ctx = createContext(true);
+      vi.mocked(
+        ctx.ports.syncProvider.uploadVaultSnapshot,
+      ).mockImplementationOnce(async () => {
+        if (state === "locked") {
+          await ctx.ports.sessionServices.unlockedVaultSession.remove();
+        } else {
+          const session =
+            await ctx.ports.sessionServices.unlockedVaultSession.get();
+          if (session === null)
+            throw new Error("Expected active enrollment session");
+          // A valid replacement session for this vault still cannot receive the original operation's words.
+          ctx.ports.saved.unlockedVaultSession = {
+            ...session,
+            sessionId: "replacement-session",
+          };
+        }
+        return { status: "outcome_unknown" };
+      });
+      await expect(
+        ctx.useCase.execute({
+          enrollmentResponse: ctx.response,
+          masterPassword: ctx.values.masterPassword,
+          deviceName: "New laptop",
+          lockAfterMs: 60_000,
+          syncConfig: ctx.values.syncConfigInput,
+        }),
+      ).rejects.toMatchObject({
+        name:
+          state === "locked"
+            ? "VaultMustBeUnlockedError"
+            : "UnlockedVaultSessionExpiredError",
+      });
+      expect(ctx.ports.saved.localVaultDescriptor).toBeDefined();
+      expect(ctx.ports.saved.vaultSnapshot).toBeDefined();
+      expect(ctx.ports.saved.deviceSyncCredentialState).toBeDefined();
+      expect(
+        ctx.ports.vaultLocalRepository.removePersistedLocalVault,
+      ).not.toHaveBeenCalled();
+    },
+  );
+
   it("returns recoverable local enrollment after an outcome-unknown upload", async () => {
     const ctx = createContext(true);
     vi.mocked(ctx.ports.syncProvider.uploadVaultSnapshot).mockResolvedValueOnce(
@@ -1396,6 +1553,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
 
     await expect(
       ctx.useCase.execute({
+        syncConfig: ctx.values.syncConfigInput,
         enrollmentResponse: ctx.response,
         masterPassword: ctx.values.masterPassword,
         deviceName: "New laptop",
@@ -1435,6 +1593,7 @@ describe("PerformDeviceEnrollmentUseCase", () => {
 
     await expect(
       ctx.useCase.execute({
+        syncConfig: ctx.values.syncConfigInput,
         enrollmentResponse: ctx.response,
         masterPassword: ctx.values.masterPassword,
         deviceName: "New laptop",

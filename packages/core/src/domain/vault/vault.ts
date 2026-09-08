@@ -11,6 +11,8 @@ import type { VaultSnapshotIdentity } from "../snapshot/vault-snapshot-descripto
 import type { VaultSnapshot } from "../snapshot/vault-snapshot";
 import type { VersionVector } from "../versioning/version-vector.type";
 import type { DeletedTag, Tag } from "../entry/tag.type";
+import type { DeletedFolder, Folder } from "../organization/folder.type";
+import type { TagGroup } from "../organization/tag-group.type";
 
 export interface Vault {
   versionVector: VersionVector;
@@ -29,4 +31,7 @@ export interface Vault {
   };
   tags: Tag[];
   deletedTags: DeletedTag[];
+  tagGroups: TagGroup[];
+  folders: Folder[];
+  deletedFolders: DeletedFolder[];
 }

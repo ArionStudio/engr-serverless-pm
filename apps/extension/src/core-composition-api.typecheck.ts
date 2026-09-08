@@ -22,12 +22,14 @@ import type {
 } from "@lfspm/core";
 import {
   ClipboardClearService,
+  DeviceEnrollmentApprovalService,
   RandomSamplerService,
   RandomVaultDisplayNameService,
   UnlockedVaultSessionService,
   VaultLifecycleCleanupService,
   VaultSnapshotService,
   VaultSyncGuardService,
+  VaultTrustService,
 } from "@lfspm/core/services";
 import { ScureBip39Adapter } from "./adapters/crypto";
 import { SystemClockAdapter, WebCryptoIdAdapter } from "./adapters/system";
@@ -70,6 +72,12 @@ export function composeCoreApi(ports: CoreCompositionPorts) {
     unlockedVaultSession,
     ports.crypto,
     ports.vaults,
+  );
+  const vaultTrust = new VaultTrustService(ports.crypto);
+  const deviceEnrollmentApproval = new DeviceEnrollmentApprovalService(
+    ports.crypto,
+    ports.vaults,
+    vaultTrust,
   );
   const clipboardClear = new ClipboardClearService(
     ports.clipboard,
@@ -117,6 +125,7 @@ export function composeCoreApi(ports: CoreCompositionPorts) {
       ports.scheduledTasks,
       ports.vaultLockTasks,
       ports.clipboardOperations,
+      deviceEnrollmentApproval,
     ),
     vaultEntry: new AddEntryUseCase(
       ids,

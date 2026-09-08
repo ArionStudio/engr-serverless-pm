@@ -6,6 +6,8 @@ import { findChangedEntries } from "../../domain/sync/entry-review.utils";
 import type { SyncSetupInput } from "../../domain/sync";
 import type { TagReviewItem } from "../../domain/sync/tag-review.type";
 import { findChangedTags } from "../../domain/sync/tag-review.utils";
+import type { FolderReviewItem } from "../../domain/sync/folder-review.type";
+import { findChangedFolders } from "../../domain/sync/folder-review.utils";
 import {
   toVaultSnapshotIdentity,
   type ReviewedVaultSnapshotIdentities,
@@ -31,6 +33,7 @@ export type PrepareDeviceRevocationConsumptionResult = {
   readonly review: {
     readonly entryReviews: readonly VisibleEntryReviewItem[];
     readonly tagReviews: readonly TagReviewItem[];
+    readonly folderReviews: readonly FolderReviewItem[];
     readonly deviceProfileReviews: readonly DeviceProfileReviewItem[];
   };
 };
@@ -98,6 +101,10 @@ export class PrepareDeviceRevocationConsumptionUseCase {
             candidate.remoteVault,
           ).map(toVisibleEntryReviewItem),
           tagReviews: findChangedTags(
+            candidate.trustTransitionBaseline,
+            candidate.remoteVault,
+          ),
+          folderReviews: findChangedFolders(
             candidate.trustTransitionBaseline,
             candidate.remoteVault,
           ),

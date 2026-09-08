@@ -145,6 +145,7 @@ export function FormExamples() {
           url: "",
           password: "",
           tagIds: [],
+          folderId: "uncategorized",
           allowWeakPassword: false,
         }}
         errors={{

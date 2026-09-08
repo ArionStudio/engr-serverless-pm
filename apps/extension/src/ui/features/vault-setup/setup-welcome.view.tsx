@@ -28,6 +28,7 @@ const setupOptions = [
     icon: ComputerIcon,
     requirements: [
       "A trusted device where you can unlock the vault and approve access.",
+      "S3 sync configured for that vault and access keys for this device.",
       "A way to transfer the access request and approval between devices.",
       "A strong password for this device.",
     ],

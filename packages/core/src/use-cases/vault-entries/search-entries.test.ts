@@ -48,9 +48,11 @@ describe("SearchEntriesUseCase", () => {
     expect(result.entries).toEqual([
       {
         id: secondPasswordEntry.id,
+        hasPassword: true,
         login: secondPasswordEntry.login,
         tags: secondPasswordEntry.tags,
         sanitizedUrl: secondPasswordEntry.sanitizedUrl,
+        folderId: "uncategorized",
       },
     ]);
     expect(result.entries[0]).not.toHaveProperty("password");
@@ -86,9 +88,11 @@ describe("SearchEntriesUseCase", () => {
     expect(result.entries).toEqual([
       {
         id: secondPasswordEntry.id,
+        hasPassword: true,
         login: secondPasswordEntry.login,
         tags: secondPasswordEntry.tags,
         sanitizedUrl: secondPasswordEntry.sanitizedUrl,
+        folderId: "uncategorized",
       },
     ]);
   });
@@ -103,7 +107,7 @@ describe("SearchEntriesUseCase", () => {
           mode: "fields",
           login: "",
           url: "",
-          tag: ["personal"],
+          tag: [1],
         } as unknown as SearchEntryQuery,
       }),
     ).rejects.toBeInstanceOf(InvalidSearchEntryQueryError);

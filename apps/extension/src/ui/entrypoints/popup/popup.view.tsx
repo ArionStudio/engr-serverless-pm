@@ -33,7 +33,7 @@ export function PopupView({
   }
   const existing = availability === "existing";
   return (
-    <main className="w-[400px] max-w-full bg-background text-foreground">
+    <main className="w-[var(--extension-popup-width)] min-w-[var(--extension-popup-width)] bg-background text-foreground">
       <header className="flex items-center justify-between gap-3 border-b px-5 py-4">
         <span className="flex items-center gap-2 text-sm font-semibold">
           <HugeiconsIcon

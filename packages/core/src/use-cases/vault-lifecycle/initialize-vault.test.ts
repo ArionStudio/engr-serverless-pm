@@ -1,3 +1,4 @@
+import type { InitializeVaultOrganizationInput } from "./initialize-vault";
 import { describe, expect, it, vi } from "vitest";
 import { createInitializeVaultTestContext } from "../../__tests__/fixtures/initialize-vault";
 import type { RawMasterPassword } from "../../domain/master-password";
@@ -47,6 +48,113 @@ describe("InitializeVaultUseCase", () => {
       ctx.values.masterPasswordSalt,
     );
   });
+
+  it("creates a selected organization in the initial encrypted snapshot", async () => {
+    const ctx = createInitializeVaultTestContext();
+
+    await ctx.useCase.execute({
+      masterPassword: ctx.values.masterPassword,
+      deviceName: "Laptop",
+      lockAfterMs: 60_000,
+      organization: {
+        folders: [
+          {
+            id: "work",
+            name: "Work",
+            icon: "briefcase",
+            parentId: null,
+          },
+        ],
+        tags: [
+          {
+            id: "mfa",
+            name: "MFA",
+            groupId: "status",
+            color: "orange",
+            shade: 500,
+          },
+        ],
+      },
+    });
+
+    expect(ctx.ports.crypto.encryptVaultSnapshotContent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        folders: [
+          expect.objectContaining({
+            id: "work",
+            createdAt: ctx.values.timestamp,
+            versionVector: { [ctx.values.deviceId]: 1 },
+          }),
+        ],
+        tags: [
+          expect.objectContaining({
+            id: "mfa",
+            createdAt: ctx.values.timestamp,
+            versionVector: { [ctx.values.deviceId]: 1 },
+          }),
+        ],
+      }),
+      ctx.values.vaultMasterKey,
+    );
+  });
+
+  it.each<{ label: string; organization: InitializeVaultOrganizationInput }>([
+    {
+      label: "missing parent",
+      organization: {
+        folders: [
+          { id: "child", name: "Child", icon: "folder", parentId: "absent" },
+        ],
+        tags: [],
+      },
+    },
+    {
+      label: "normalized duplicate sibling names",
+      organization: {
+        folders: [
+          { id: "one", name: "Work", icon: "folder", parentId: null },
+          { id: "two", name: "ｗｏｒｋ", icon: "folder", parentId: null },
+        ],
+        tags: [],
+      },
+    },
+    {
+      label: "invalid tag input",
+      organization: {
+        folders: [],
+        tags: [
+          { id: "tag", name: "", groupId: "topic", color: "blue", shade: 500 },
+        ],
+      },
+    },
+  ])(
+    "rejects $label before identifiers, authorization or cryptography",
+    async ({ organization }) => {
+      const ctx = createInitializeVaultTestContext();
+      const authorize = vi.spyOn(
+        ctx.ports.sessionServices.unlockedVaultSession,
+        "requireVaultCanBeActivated",
+      );
+      await expect(
+        ctx.useCase.execute({
+          masterPassword: ctx.values.masterPassword,
+          deviceName: "Laptop",
+          lockAfterMs: 60_000,
+          organization,
+        }),
+      ).rejects.toThrow();
+      expect(ctx.ports.ids.generateId).not.toHaveBeenCalled();
+      expect(authorize).not.toHaveBeenCalled();
+      expect(ctx.ports.crypto.generateVaultMasterKey).not.toHaveBeenCalled();
+      expect(ctx.ports.crypto.deriveLocalRootKey).not.toHaveBeenCalled();
+      expect(
+        ctx.ports.vaultDisplayName.generateVaultDisplayName,
+      ).not.toHaveBeenCalled();
+      expect(
+        ctx.ports.vaultLocalRepository.saveInitializedLocalVault,
+      ).not.toHaveBeenCalled();
+    },
+  );
 
   it("rejects an invalid freshly generated access generation", async () => {
     const ctx = createInitializeVaultTestContext();

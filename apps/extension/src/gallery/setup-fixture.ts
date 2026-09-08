@@ -4,6 +4,8 @@ import type {
   SetupVault,
 } from "@/ui/features/vault-setup/setup.type";
 import { demoWords } from "./fixtures";
+import { globalLibrarySchema } from "@lfspm/core";
+import organizationLibrary from "@/assets/data/global-library.json";
 export const setupVault: SetupVault = {
   vaultId: "gallery-vault",
   name: "Personal vault",
@@ -18,7 +20,13 @@ export const setupRecovery: SetupRecovery = {
   positions: [3, 11, 19],
 };
 export function gallerySetup(
-  mode: "empty" | "multiple" | "existing" | "loading" | "error" = "empty",
+  mode:
+    | "empty"
+    | "multiple"
+    | "existing"
+    | "ready"
+    | "loading"
+    | "error" = "empty",
 ): SetupCapabilities {
   const multiple = mode === "multiple";
   const choices = multiple
@@ -33,14 +41,28 @@ export function gallerySetup(
       ]
     : [];
   let vault: SetupVault | null =
-    mode === "existing" ? { ...setupVault, unlocked: false } : null;
+    mode === "ready"
+      ? { ...setupVault, complete: true }
+      : mode === "existing"
+        ? { ...setupVault, unlocked: false }
+        : null;
   return {
+    readOrganizationLibrary: async () =>
+      globalLibrarySchema.parse(organizationLibrary),
     inspect: async (selectedId) => {
       if (mode === "loading") return new Promise(() => {});
       if (mode === "error") throw new Error("Inspection unavailable");
       if (multiple && !vault?.unlocked)
         vault = choices.find((choice) => choice.vaultId === selectedId) ?? null;
       return { vault, vaults: multiple ? choices : vault ? [vault] : [] };
+    },
+    enroll: async (params) => {
+      vault = {
+        ...setupVault,
+        deviceName: params.deviceName,
+        duration: params.duration,
+      };
+      return { ...setupRecovery, vault };
     },
     create: async (params) => {
       vault = {
@@ -58,7 +80,11 @@ export function gallerySetup(
       vault = { ...(vault ?? setupVault), unlocked: true, complete: false };
       return { ...setupRecovery, vault, purpose: "password-recovery" };
     },
-    replace: async () => ({ ...setupRecovery, vault: vault ?? setupVault }),
+    replace: async (_, purpose) => ({
+      ...setupRecovery,
+      purpose,
+      vault: vault ?? setupVault,
+    }),
     verify: async (answers) => {
       const valid = setupRecovery.positions.every(
         (position) => answers[position]?.trim() === demoWords[position - 1],

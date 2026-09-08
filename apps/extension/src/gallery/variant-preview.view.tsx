@@ -51,6 +51,7 @@ export function VariantPreview({
         align: "center",
         collapsible: "icon",
         mode: "add",
+        presentation: "default",
       };
       return [
         axis,

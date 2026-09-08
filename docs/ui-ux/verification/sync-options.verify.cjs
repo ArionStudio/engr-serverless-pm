@@ -38,6 +38,7 @@ const os = require("node:os");
     const requests = [];
     let remote;
     let writes = 0;
+    let rejectRead = false;
     let redirecting = false;
     let redirectResponses = 0;
     const redirectDestination =
@@ -77,6 +78,14 @@ const os = require("node:os");
           return route.fulfill({ status: 200, headers });
         }
         assert.equal(method, "GET");
+        if (rejectRead) {
+          rejectRead = false;
+          return route.fulfill({
+            status: 403,
+            contentType: "application/xml",
+            body: "<Error><Code>AccessDenied</Code></Error>",
+          });
+        }
         return remote
           ? route.fulfill({
               status: 200,
@@ -94,10 +103,11 @@ const os = require("node:os");
     );
     page.on("pageerror", (error) => errors.push(error.message));
     page.on("console", (message) => {
-      // The controlled missing object deliberately produces HTTP 404.
+      // Controlled missing-object and read-denial responses produce 404/403.
       if (
         ["warning", "error"].includes(message.type()) &&
         !message.text().includes("404") &&
+        !message.text().includes("403") &&
         !(
           message.text().includes("net::ERR_FAILED") &&
           redirectResponses > 0 &&
@@ -118,6 +128,7 @@ const os = require("node:os");
       if (
         ["warning", "error"].includes(entry.level) &&
         !entry.text.includes("404") &&
+        !entry.text.includes("403") &&
         !(
           entry.text.includes("net::ERR_FAILED") &&
           redirectResponses > 0 &&
@@ -137,8 +148,9 @@ const os = require("node:os");
     await page.getByLabel("Confirm password", { exact: true }).fill(password);
     await page.getByText("Strong", { exact: true }).waitFor();
     await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
     await page
-      .getByRole("button", { name: "Create vault", exact: true })
+      .getByRole("button", { name: "Continue to recovery", exact: true })
       .click();
     await page
       .getByRole("button", { name: "Reveal recovery words", exact: true })
@@ -187,9 +199,29 @@ const os = require("node:os");
     );
     await page.getByRole("tab", { name: "AWS Console" }).click();
     await page
-      .getByLabel("S3 bucket name", { exact: true })
+      .getByRole("textbox", { name: "S3 bucket name", exact: true })
       .fill("personal-vault");
-    await page.getByLabel("S3 region", { exact: true }).fill("eu-central-1");
+    await page
+      .getByRole("textbox", { name: "S3 region", exact: true })
+      .fill("eu-central-1");
+    assert.equal(
+      await page.getByLabel("Secret access key", { exact: true }).count(),
+      0,
+    );
+    await page
+      .getByRole("button", { name: "Allow storage access", exact: true })
+      .click();
+    await page
+      .getByRole("note", {
+        name: "Information: Browser access allowed",
+        exact: true,
+      })
+      .waitFor();
+    assert.equal(
+      requests.length,
+      0,
+      "Browser permission must be granted before any S3 request",
+    );
     await page
       .getByRole("button", {
         name: "I created this private bucket",
@@ -200,11 +232,15 @@ const os = require("node:os");
       .getByRole("button", { name: "I already have storage", exact: true })
       .click();
     assert.equal(
-      await page.getByLabel("Bucket", { exact: true }).inputValue(),
+      await page
+        .getByRole("textbox", { name: "S3 bucket name", exact: true })
+        .inputValue(),
       "personal-vault",
     );
     assert.equal(
-      await page.getByLabel("Region", { exact: true }).inputValue(),
+      await page
+        .getByRole("textbox", { name: "S3 region", exact: true })
+        .inputValue(),
       "eu-central-1",
     );
     await page
@@ -254,6 +290,17 @@ const os = require("node:os");
       .click();
     await page.getByText(/Read access confirmed/).waitFor();
     assert.equal(writes, 0);
+    rejectRead = true;
+    await page
+      .getByRole("button", { name: "Enable sync", exact: true })
+      .click();
+    await page
+      .getByText(
+        "AWS denied read access. Allow s3:GetObject for this bucket and object prefix.",
+        { exact: true },
+      )
+      .waitFor();
+    assert.equal(writes, 0, "A rejected setup read must not upload the vault");
     await page
       .getByRole("button", { name: "Enable sync", exact: true })
       .click();
@@ -352,7 +399,11 @@ const os = require("node:os");
     // A same-host redirect isolates fetch redirect policy from host grants/CORS.
     redirecting = true;
     await page.getByRole("button", { name: "Check sync", exact: true }).click();
-    await page.getByText(/Could not reach or authenticate with S3/).waitFor();
+    await page
+      .getByText("The sync review could not be prepared. Reopen Sync and try again.", {
+        exact: true,
+      })
+      .waitFor();
     assert(redirectResponses > 0);
     assert.equal(
       redirectAttempts,
@@ -482,6 +533,159 @@ const os = require("node:os");
     await page.getByRole("button", { name: "Unlock", exact: true }).click();
     await page.getByRole("heading", { name: "Entries", exact: true }).waitFor();
     await page.getByText("recovery@example.test", { exact: true }).waitFor();
+    // Exercise the remaining application navigation with the real core graph.
+    await page
+      .getByRole("button", { name: "Password tools", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Generate password", exact: true })
+      .click();
+    const generated = await page
+      .getByLabel("Generated password", { exact: true })
+      .inputValue();
+    assert.equal(
+      await page
+        .getByLabel("Generated password", { exact: true })
+        .getAttribute("type"),
+      "password",
+    );
+    await page
+      .getByRole("button", { name: "Use in new entry", exact: true })
+      .click();
+    assert.equal(
+      await page.getByLabel("Password", { exact: true }).inputValue(),
+      generated,
+    );
+    await page.getByLabel("Login", { exact: true }).fill("tools@example.test");
+    await page
+      .getByLabel("Website", { exact: true })
+      .fill("https://tools.example.test");
+    await page.getByText("Strong", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Add entry", exact: true }).click();
+    await page.getByText("tools@example.test", { exact: true }).waitFor();
+    assert.equal(
+      writes,
+      2,
+      "Generated entry is encrypted and uploaded through the normal workspace",
+    );
+    await page
+      .getByRole("button", { name: "Password tools", exact: true })
+      .click();
+    await page.getByRole("tab", { name: "Username", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Generate username", exact: true })
+      .click();
+    const generatedUsername = await page
+      .getByLabel("Generated username", { exact: true })
+      .inputValue();
+    await page
+      .getByRole("button", { name: "Use in new entry", exact: true })
+      .click();
+    assert.equal(
+      await page.getByLabel("Login", { exact: true }).inputValue(),
+      generatedUsername,
+    );
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Edit device settings", exact: true })
+      .click();
+    await page
+      .getByLabel("Device name", { exact: true })
+      .fill("Review browser");
+    await page
+      .getByLabel("Lock duration on this device", { exact: true })
+      .selectOption("1800000");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByText("Review browser", { exact: true }).waitFor();
+    await page
+      .getByRole("heading", { name: "Vault settings", exact: true })
+      .waitFor();
+    await page.getByRole("button", { name: "Devices", exact: true }).click();
+    await page
+      .getByRole("heading", { name: "Review browser", exact: true })
+      .waitFor();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Change password", exact: true })
+      .click();
+    const settingsPassword = "glacier basket compass willow orchard";
+    await page
+      .getByLabel("Current password", { exact: true })
+      .fill(newPassword);
+    await page
+      .getByLabel("New password", { exact: true })
+      .fill(settingsPassword);
+    await page
+      .getByLabel("Confirm new password", { exact: true })
+      .fill(settingsPassword);
+    await page.getByText("Strong", { exact: true }).waitFor();
+    await page
+      .getByRole("button", { name: "Change password", exact: true })
+      .click();
+    await page
+      .getByText("Password changed for this browser.", { exact: true })
+      .waitFor();
+    await page.getByRole("button", { name: "Lock vault", exact: true }).click();
+    await page.getByLabel("Vault password", { exact: true }).fill(newPassword);
+    await page.getByRole("button", { name: "Unlock", exact: true }).click();
+    await page.getByText(/Could not unlock this vault/).waitFor();
+    await page
+      .getByLabel("Vault password", { exact: true })
+      .fill(settingsPassword);
+    await page.getByRole("button", { name: "Unlock", exact: true }).click();
+    await page.getByText("tools@example.test", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Replace recovery words", exact: true })
+      .click();
+    await page
+      .getByRole("checkbox", {
+        name: "I can save a private copy of the replacement words now.",
+      })
+      .check();
+    await page
+      .getByRole("alertdialog")
+      .getByRole("button", { name: "Replace recovery words", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Reveal recovery words", exact: true })
+      .click();
+    const settingsWords = await page
+      .locator('section[aria-label="Recovery words"] li')
+      .evaluateAll((nodes) =>
+        nodes.map((node) => node.lastElementChild.textContent),
+      );
+    assert.notDeepEqual(settingsWords, replacementWords);
+    await page.getByRole("button", { name: "I saved all 24 words" }).click();
+    const settingsPositions = (await page.locator("label").allTextContents())
+      .filter((text) => /^Word \d+$/.test(text))
+      .map((text) => Number(text.split(" ")[1]));
+    for (const position of settingsPositions)
+      await page
+        .getByLabel(`Word ${position}`, { exact: true })
+        .fill(settingsWords[position - 1]);
+    await page
+      .getByRole("button", { name: "Check words", exact: true })
+      .click();
+    await page.getByText("tools@example.test", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Remove local vault", exact: true })
+      .click();
+    await page
+      .getByRole("checkbox", {
+        name: "I understand that recovery words alone cannot restore deleted browser data.",
+      })
+      .check();
+    await page
+      .getByRole("alertdialog")
+      .getByRole("button", { name: "Remove local vault", exact: true })
+      .click();
+    await page
+      .getByRole("heading", { name: "Set up vault", exact: true })
+      .waitFor();
+    assert.equal(writes, 2, "Local removal must not change remote vault data");
     await page.waitForTimeout(6500);
     assert.deepEqual(errors, []);
     console.info(
@@ -507,6 +711,11 @@ const os = require("node:os");
           "three-word recovery verification",
           "entry and sync credential preservation",
           "old password rejected, new password unlocks",
+          "password and username tools handoff to entries",
+          "device preferences preserve settings navigation",
+          "settings password change rejects old password",
+          "settings recovery replacement and verification",
+          "local deletion preserves remote vault and returns to setup choices",
         ],
         errors,
       }),

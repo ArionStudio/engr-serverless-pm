@@ -12,6 +12,7 @@ import {
   cloneVaultSyncResolution,
 } from "../../domain/sync/sync-resolution.utils";
 import { findChangedTags } from "../../domain/sync/tag-review.utils";
+import { findChangedFolders } from "../../domain/sync/folder-review.utils";
 import {
   areVaultSnapshotIdentitiesEqual,
   areVaultSnapshotDescriptorsEqual,
@@ -46,6 +47,7 @@ import type { VaultSyncGuardService } from "../../services/sync";
 export type {
   DeviceProfileReviewResolution,
   EntryReviewResolution,
+  FolderReviewResolution,
   TagReviewResolution,
   VaultSyncResolution,
 } from "../../domain/sync/sync-resolution.type";
@@ -291,6 +293,7 @@ export class ApplySyncResolutionUseCase {
 
     const entryReviews = findChangedEntries(unlockedVault.vault, remoteVault);
     const tagReviews = findChangedTags(unlockedVault.vault, remoteVault);
+    const folderReviews = findChangedFolders(unlockedVault.vault, remoteVault);
     const deviceProfileReviews = findChangedDeviceProfiles(
       unlockedVault.vault,
       remoteVault,
@@ -299,6 +302,7 @@ export class ApplySyncResolutionUseCase {
     if (
       entryReviews.length !== resolution.entryResolutions.length ||
       tagReviews.length !== resolution.tagResolutions.length ||
+      folderReviews.length !== resolution.folderResolutions.length ||
       deviceProfileReviews.length !== resolution.deviceProfileResolutions.length
     ) {
       throw new SyncResolutionIncompleteError(params.vaultId);
@@ -310,7 +314,7 @@ export class ApplySyncResolutionUseCase {
       resolvedVault = applyVaultSyncResolution(
         unlockedVault.vault,
         remoteVault,
-        { entryReviews, tagReviews, deviceProfileReviews },
+        { entryReviews, tagReviews, folderReviews, deviceProfileReviews },
         resolution,
         unlockedVault.deviceId,
       );
@@ -327,6 +331,7 @@ export class ApplySyncResolutionUseCase {
     const acceptsRemoteState = [
       ...resolution.entryResolutions,
       ...resolution.tagResolutions,
+      ...resolution.folderResolutions,
       ...resolution.deviceProfileResolutions,
     ].every((choice) => choice.action === "use_remote");
 

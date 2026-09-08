@@ -23,6 +23,10 @@ Acceptance:
 - Read access testing makes no remote write or local configuration change.
 - Enable sync explicitly uploads the encrypted vault and distinguishes complete
   from uncertain upload. Existing remote data must not be overwritten by setup.
+- When S3 contains a strictly newer authenticated copy of the same vault, show
+  that result beside the credentials and require a separate **Use newer vault
+  from S3** action. Recheck the exact reviewed local and remote identities before
+  replacing the older local copy; never upload in this reconnect path.
 - Reopening shows persisted configuration without revealing saved credentials.
 - Check/retry, remote review and same-target credential replacement call actual
   workflows and report their results without raw provider errors.
@@ -55,6 +59,14 @@ location; access tests are read-only. The screen connects upload, review and
 explicit resolution choices to the composed core workflows. Session changes and
 navigation clear secrets and ignore late responses. Returning from the AWS
 console preserves an unfinished draft while the session remains valid.
+
+Initial setup also connects a device whose selected S3 namespace already holds a
+newer signed copy of that same vault. Discovery does not configure sync. The
+screen keeps the entered credentials in memory, presents the existing-vault
+state at readable status-panel scale and waits for the explicit reconnect
+action. Core then repeats descriptor, signature, trust, key-slot, device-profile,
+target and identity checks before atomically adopting the remote snapshot with
+encrypted local credentials. Unsupported or changed remote state stays blocked.
 
 The user's additional focus request is included: page-navigation targets have no
 outline; controls use a 1px keyboard border with a 1px offset. Outline geometry

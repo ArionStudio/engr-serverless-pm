@@ -55,6 +55,17 @@ export function useThemeInternal(): UseThemeReturn {
     return () => mq.removeEventListener("change", handler);
   }, []);
 
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== STORAGE_KEY) return;
+      const value = event.newValue;
+      if (value === "light" || value === "dark" || value === "system")
+        setPreference(value);
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
   const setTheme = useCallback((next: ThemePreference) => {
     setPreference(next);
     try {

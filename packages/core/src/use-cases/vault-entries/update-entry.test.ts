@@ -14,6 +14,7 @@ import {
   saveUnlockedVaultWithEntries,
   secondPasswordEntry,
   standardPasswordEntries,
+  standardVaultTags,
 } from "../../__tests__/fixtures/vault-entries";
 import { toVaultSnapshotDescriptor } from "../../domain/snapshot";
 import {
@@ -39,7 +40,12 @@ function createContext() {
     ports.crypto,
     ports.vaultLocalRepository,
   );
-  saveUnlockedVaultWithEntries(ports, values, standardPasswordEntries);
+  saveUnlockedVaultWithEntries(
+    ports,
+    values,
+    standardPasswordEntries,
+    standardVaultTags,
+  );
 
   return {
     values,
@@ -66,7 +72,7 @@ describe("UpdateEntryUseCase", () => {
       entry: {
         password: maximumStrengthPassword,
         login: "updated@example.com",
-        tags: [1, 2],
+        tags: ["work-tag", "personal-tag"],
         url: "https://example.com/updated?token=secret#field",
       },
     });
@@ -86,8 +92,9 @@ describe("UpdateEntryUseCase", () => {
           id: firstPasswordEntry.id,
           password: maximumStrengthPassword,
           login: "updated@example.com",
-          tags: [1, 2],
+          tags: ["work-tag", "personal-tag"],
           sanitizedUrl: "https://example.com/updated",
+          folderId: "uncategorized",
           versionVector: {
             [ctx.values.deviceId]: 2,
           },

@@ -13,6 +13,7 @@ import "@testing-library/jest-dom/vitest";
 import * as tableLibrary from "@tanstack/react-table";
 vi.mock("@tanstack/react-table", { spy: true });
 import { EntryTable, TagSelection } from "@/ui/features/entries";
+import { getTagGroupPresentation } from "@/ui/features/tags";
 import { SecretField } from "@/ui/components/feedback/action-feedback.view";
 import { RecoveryPhraseGrid } from "@/ui/features/recovery";
 import { FormExamples } from "./form-examples.view";
@@ -81,6 +82,7 @@ describe("product presentations", () => {
     expect(open).toHaveBeenCalledWith("demo-3");
     expect(screen.getByRole("status")).toHaveTextContent("0 selected");
     await user.clear(screen.getByLabelText("Search entries"));
+    await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "Next" }));
     expect(screen.getByRole("status")).toHaveTextContent("Page 2");
   });
@@ -115,7 +117,7 @@ describe("product presentations", () => {
       "1 entry · 0 selected · Page 1",
     );
     await user.click(screen.getByRole("button", { name: "Clear filters" }));
-    await user.selectOptions(screen.getByLabelText("Tag"), "3");
+    await user.selectOptions(screen.getByLabelText("Tag"), "tag-travel");
     expect(screen.queryByText("adrian@example.test")).not.toBeInTheDocument();
     expect(screen.getByText("travel@example.test")).toBeInTheDocument();
   });
@@ -343,16 +345,18 @@ describe("secret and search review states", () => {
     const search = within(
       screen.getByRole("heading", { name: "SearchField" }).closest("section")!,
     );
-    expect(search.getByLabelText("Search entries")).toHaveValue("");
-    expect(search.getByRole("button", { name: "Clear search" })).toBeDisabled();
+    expect(search.getAllByLabelText("Search entries")[0]).toHaveValue("");
+    expect(
+      search.queryByRole("button", { name: "Clear search" }),
+    ).not.toBeInTheDocument();
     await user.selectOptions(
       search.getByLabelText("Search field state"),
       "filled",
     );
-    expect(search.getByLabelText("Search entries")).toHaveValue("adrian");
+    expect(search.getAllByLabelText("Search entries")[0]).toHaveValue("adrian");
     await user.click(search.getByRole("button", { name: "Clear search" }));
-    expect(search.getByLabelText("Search entries")).toHaveValue("");
-    expect(search.getByLabelText("Search entries")).toHaveFocus();
+    expect(search.getAllByLabelText("Search entries")[0]).toHaveValue("");
+    expect(search.getAllByLabelText("Search entries")[0]).toHaveFocus();
     await user.selectOptions(
       search.getByLabelText("Search field state"),
       "searching",
@@ -454,8 +458,16 @@ describe("pending and unavailable control examples", () => {
     const onChange = vi.fn();
     render(
       <TagSelection
-        options={[{ id: 1, label: "Work" }]}
-        value={[1]}
+        options={[
+          {
+            id: "tag-work",
+            label: "Work",
+            group: getTagGroupPresentation("other"),
+            color: "purple",
+            shade: 500,
+          },
+        ]}
+        value={["tag-work"]}
         onChange={onChange}
         loading
       />,

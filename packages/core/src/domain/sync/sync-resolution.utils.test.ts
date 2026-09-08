@@ -10,6 +10,10 @@ import { findChangedEntries } from "./entry-review.utils";
 import type { VaultSyncResolution } from "./sync-resolution.type";
 import { applyVaultSyncResolution } from "./sync-resolution.utils";
 import type { TagReviewItem } from "./tag-review.type";
+import type { FolderReviewItem } from "./folder-review.type";
+import { createDefaultTagGroups } from "../organization/tag-group.defaults";
+import type { Folder } from "../organization/folder.type";
+import { findChangedFolders } from "./folder-review.utils";
 
 const resolvingDeviceId = "resolving-device";
 
@@ -22,6 +26,9 @@ function createVault(overrides: Partial<Vault> = {}): Vault {
     deletedDeviceProfiles: [],
     tags: [],
     deletedTags: [],
+    tagGroups: createDefaultTagGroups(),
+    folders: [],
+    deletedFolders: [],
     ...overrides,
   };
 }
@@ -31,6 +38,7 @@ function applyResolution(
   remoteVault: Vault,
   review: {
     readonly entryReviews: readonly EntryReviewItem[];
+    readonly folderReviews: readonly FolderReviewItem[];
     readonly tagReviews: readonly TagReviewItem[];
     readonly deviceProfileReviews: readonly DeviceProfileReviewItem[];
   },
@@ -53,6 +61,7 @@ describe("applyVaultSyncResolution", () => {
       login: "user@example.com",
       tags: [],
       sanitizedUrl: "https://example.com",
+      folderId: "uncategorized",
       versionVector: { "remote-device": 1 },
     } satisfies PasswordEntry;
     const localVault = createVault();
@@ -64,11 +73,13 @@ describe("applyVaultSyncResolution", () => {
         remoteVault,
         {
           entryReviews: findChangedEntries(localVault, remoteVault),
+          folderReviews: [],
           tagReviews: [],
           deviceProfileReviews: [],
         },
         {
           entryResolutions: [{ entryId: remoteEntry.id, action: "use_local" }],
+          folderResolutions: [],
           tagResolutions: [],
           deviceProfileResolutions: [],
         },
@@ -83,6 +94,7 @@ describe("applyVaultSyncResolution", () => {
       login: "user@example.com",
       tags: [],
       sanitizedUrl: "https://example.com",
+      folderId: "uncategorized",
       versionVector: { "remote-device": 1 },
     } satisfies PasswordEntry;
     const remoteEntry = {
@@ -97,9 +109,15 @@ describe("applyVaultSyncResolution", () => {
     const resolvedVault = applyResolution(
       localVault,
       remoteVault,
-      { entryReviews, tagReviews: [], deviceProfileReviews: [] },
+      {
+        entryReviews,
+        tagReviews: [],
+        folderReviews: [],
+        deviceProfileReviews: [],
+      },
       {
         entryResolutions: [{ entryId: remoteEntry.id, action: "use_remote" }],
+        folderResolutions: [],
         tagResolutions: [],
         deviceProfileResolutions: [],
       },
@@ -110,8 +128,12 @@ describe("applyVaultSyncResolution", () => {
 
   it("rejects local absence for a remote-only tag", () => {
     const remoteTag = {
-      id: 1,
+      id: "remote-tag",
       name: "Remote",
+      groupId: "other",
+      color: "gray",
+      shade: 500,
+      createdAt: 1,
       versionVector: { "remote-device": 1 },
     } satisfies Tag;
     const localVault = createVault();
@@ -123,6 +145,7 @@ describe("applyVaultSyncResolution", () => {
         remoteVault,
         {
           entryReviews: [],
+          folderReviews: [],
           tagReviews: [
             {
               tagId: remoteTag.id,
@@ -136,7 +159,66 @@ describe("applyVaultSyncResolution", () => {
         },
         {
           entryResolutions: [],
+          folderResolutions: [],
           tagResolutions: [{ tagId: remoteTag.id, action: "use_local" }],
+          deviceProfileResolutions: [],
+        },
+      ),
+    ).toThrow(InvalidVaultSyncResolutionError);
+  });
+
+  it("rejects a resolution that would leave an entry referencing a deleted tag", () => {
+    const tag = {
+      id: "work-tag",
+      name: "Work",
+      groupId: "topic",
+      color: "blue",
+      shade: 500,
+      createdAt: 1,
+      versionVector: { "remote-device": 1 },
+    } satisfies Tag;
+    const entry = {
+      id: "entry-id",
+      password: "password",
+      login: "user@example.com",
+      tags: [tag.id],
+      sanitizedUrl: "https://example.com",
+      folderId: "uncategorized",
+      versionVector: { "remote-device": 1 },
+    } satisfies PasswordEntry;
+    const deletedTag = {
+      id: tag.id,
+      versionVector: { "remote-device": 2 },
+      deletedAt: 2,
+    };
+    const localVault = createVault({ entries: [entry], tags: [tag] });
+    const remoteVault = createVault({
+      entries: [entry],
+      deletedTags: [deletedTag],
+    });
+
+    expect(() =>
+      applyResolution(
+        localVault,
+        remoteVault,
+        {
+          entryReviews: [],
+          folderReviews: [],
+          tagReviews: [
+            {
+              tagId: tag.id,
+              relation: "remote_ahead",
+              preselectedAction: "use_remote",
+              localTag: { state: "tag", tag },
+              remoteTag: { state: "deleted", deletedTag },
+            },
+          ],
+          deviceProfileReviews: [],
+        },
+        {
+          entryResolutions: [],
+          folderResolutions: [],
+          tagResolutions: [{ tagId: tag.id, action: "use_remote" }],
           deviceProfileResolutions: [],
         },
       ),
@@ -161,6 +243,7 @@ describe("applyVaultSyncResolution", () => {
         remoteVault,
         {
           entryReviews: [],
+          folderReviews: [],
           tagReviews: [],
           deviceProfileReviews: [
             {
@@ -177,6 +260,7 @@ describe("applyVaultSyncResolution", () => {
         },
         {
           entryResolutions: [],
+          folderResolutions: [],
           tagResolutions: [],
           deviceProfileResolutions: [
             { deviceId: remoteDeviceProfile.id, action: "use_local" },
@@ -184,5 +268,45 @@ describe("applyVaultSyncResolution", () => {
         },
       ),
     ).toThrow(InvalidVaultSyncResolutionError);
+  });
+
+  it("adopts a remote-only folder through an explicit folder resolution", () => {
+    const remoteFolder = {
+      id: "work",
+      name: "Work",
+      icon: "briefcase",
+      parentId: null,
+      createdAt: 1,
+      versionVector: { "remote-device": 1 },
+    } satisfies Folder;
+    const localVault = createVault();
+    const remoteVault = createVault({ folders: [remoteFolder] });
+
+    const resolved = applyResolution(
+      localVault,
+      remoteVault,
+      {
+        entryReviews: [],
+        tagReviews: [],
+        folderReviews: findChangedFolders(localVault, remoteVault),
+        deviceProfileReviews: [],
+      },
+      {
+        entryResolutions: [],
+        tagResolutions: [],
+        folderResolutions: [{ folderId: "work", action: "use_remote" }],
+        deviceProfileResolutions: [],
+      },
+    );
+
+    expect(resolved.folders).toEqual([
+      {
+        ...remoteFolder,
+        versionVector: {
+          "remote-device": 1,
+          [resolvingDeviceId]: 1,
+        },
+      },
+    ]);
   });
 });

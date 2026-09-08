@@ -1,3 +1,4 @@
+import { GuidancePanel } from "@/ui/components/feedback/guidance-panel.view";
 import { useState } from "react";
 import {
   RecoveryPhraseGrid,
@@ -58,21 +59,31 @@ export function SetupRecoveryView({
           }
         }}
         steps={[
-          {
-            id: "password",
-            label:
-              recovery.purpose === "password-recovery"
-                ? "Recover access"
-                : "Password",
-            state: "complete",
-            allowed: false,
-          },
-          ...(recovery.purpose === "password-recovery"
+          ...(recovery.purpose === "recovery-replacement"
+            ? []
+            : [
+                {
+                  id: "password",
+                  label:
+                    recovery.purpose === "password-recovery"
+                      ? "Recover access"
+                      : "Password",
+                  state: "complete" as const,
+                  allowed: false,
+                },
+              ]),
+          ...(recovery.purpose
             ? []
             : [
                 {
                   id: "device",
                   label: "Device",
+                  state: "complete" as const,
+                  allowed: false,
+                },
+                {
+                  id: "organization",
+                  label: "Organization",
                   state: "complete" as const,
                   allowed: false,
                 },
@@ -94,10 +105,18 @@ export function SetupRecoveryView({
       <h1 className="text-2xl font-semibold tracking-tight">
         {verifying
           ? "Verify recovery words"
-          : recovery.purpose === "password-recovery"
+          : recovery.purpose
             ? "Save replacement recovery words"
             : "Save recovery words"}
       </h1>
+      {recovery.syncUpload === "pending" ? (
+        <GuidancePanel variant="warning" title="Device upload pending">
+          <p>
+            Device connected locally. Finish saving recovery words, then retry
+            the pending upload in Sync.
+          </p>
+        </GuidancePanel>
+      ) : null}
       {error ? (
         <p role="alert" className="text-sm text-destructive">
           {error}
@@ -123,9 +142,13 @@ export function SetupRecoveryView({
           <p className="font-medium">
             {recovery.vault.name} · {recovery.vault.deviceName}
           </p>
-          {recovery.purpose === "password-recovery" ? (
+          {recovery.purpose ? (
             <SafetyHelp
-              title="Your password has changed"
+              title={
+                recovery.purpose === "password-recovery"
+                  ? "Your password has changed"
+                  : "Your recovery words have changed"
+              }
               essential="Save these new words. Your previous words no longer match this browser's current recovery data. Older saved recovery-data copies can still work with their original words."
             />
           ) : null}

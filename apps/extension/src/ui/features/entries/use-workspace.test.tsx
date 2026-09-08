@@ -1,3 +1,4 @@
+import { emptyEntryDraft } from "./entry-draft";
 // @vitest-environment jsdom
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -60,7 +61,7 @@ describe("workspace lifecycle and writes", () => {
     capabilities.read = read;
     const invalidate = vi.fn();
     const { result } = renderHook(() =>
-      useWorkspace("vault", capabilities, invalidate),
+      useWorkspace("vault", capabilities, undefined, invalidate),
     );
     await waitFor(() => expect(result.current.data).toBeDefined());
     act(() => result.current.edit("entry-review"));
@@ -84,6 +85,159 @@ describe("workspace lifecycle and writes", () => {
     expect(result.current.data).toBeDefined();
     expect(result.current.view.kind).toBe("list");
   });
+  it("drops a late active-page lookup when the session changes", async () => {
+    const { capabilities, signal } = fixture();
+    let resolve!: (url: string) => void;
+    capabilities.readActivePageUrl = () =>
+      new Promise((done) => {
+        resolve = done;
+      });
+    const { result } = renderHook(() =>
+      useWorkspace("vault", capabilities, {
+        ...emptyEntryDraft,
+        password: "Generated-password-9!",
+      }),
+    );
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    act(() => signal("session"));
+    await act(async () => resolve("https://example.com/sign-in"));
+    expect(result.current.view.kind).toBe("list");
+  });
+  it("opens the draft when active-tab URL lookup fails without treating it as session loss", async () => {
+    const { capabilities } = fixture();
+    capabilities.readActivePageUrl = () => {
+      throw new Error("Tabs permission unavailable");
+    };
+    const sessionLost = vi.fn();
+    const { result } = renderHook(() =>
+      useWorkspace(
+        "vault",
+        capabilities,
+        {
+          ...emptyEntryDraft,
+          password: "Generated-password-9!",
+        },
+        undefined,
+        sessionLost,
+      ),
+    );
+    await waitFor(() => {
+      expect(result.current.view.kind).toBe("editor");
+      expect(result.current.data).toBeDefined();
+    });
+    expect(result.current.error).toBeUndefined();
+    expect(sessionLost).not.toHaveBeenCalled();
+  });
+  it("keeps a detected URL instead of replacing it with the current tab", async () => {
+    const capabilities = galleryWorkspace();
+    const active = vi.fn(async () => "https://different.example.test");
+    capabilities.readActivePageUrl = active;
+    const { result } = renderHook(() => useWorkspace("vault", capabilities));
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    act(() =>
+      result.current.edit(undefined, {
+        login: "alex",
+        password: "captured",
+        url: "https://captured.example.test/sign-in",
+      }),
+    );
+    await waitFor(() => expect(result.current.view.kind).toBe("editor"));
+    expect(active).not.toHaveBeenCalled();
+    if (result.current.view.kind === "editor")
+      expect(result.current.view.initial.url).toBe(
+        "https://captured.example.test/sign-in",
+      );
+  });
+
+  it.each(["tag", "folder"] as const)(
+    "keeps the entry draft open and reports an inline %s pending upload",
+    async (kind) => {
+      const capabilities = galleryWorkspace("workspace-pending-upload");
+      const { result } = renderHook(() => useWorkspace("vault", capabilities));
+      await waitFor(() => expect(result.current.data).toBeDefined());
+      act(() => result.current.edit());
+      await waitFor(() => expect(result.current.view.kind).toBe("editor"));
+      const editor = result.current.view;
+      await act(async () => {
+        if (kind === "tag")
+          await result.current.createTag({
+            name: "Finance",
+            groupId: "other",
+            color: "gray",
+            shade: 500,
+          });
+        else
+          await result.current.createFolder({
+            name: "Finance",
+            icon: "banknote",
+            parentId: null,
+          });
+      });
+      expect(result.current.view).toEqual(editor);
+      expect(result.current.uploadPending).toBe(true);
+      expect(result.current.feedback).toContain(
+        `${kind === "tag" ? "Tag" : "Folder"} saved on this device`,
+      );
+      expect(result.current.feedback).toContain(
+        "Upload has not been confirmed",
+      );
+    },
+  );
+  it.each(["tag", "folder"] as const)(
+    "uses the inline %s receipt when the workspace reload fails",
+    async (kind) => {
+      const capabilities = galleryWorkspace();
+      const read = capabilities.read;
+      const createTag = capabilities.createTag;
+      const createFolder = capabilities.createFolder;
+      capabilities.createTag = async (params) => {
+        const result = await createTag(params);
+        capabilities.read = vi
+          .fn()
+          .mockRejectedValueOnce(new Error("Local read failed"))
+          .mockImplementation(read);
+        return { ...result, syncUpload: "complete", syncConfigured: true };
+      };
+      capabilities.createFolder = async (params) => {
+        const result = await createFolder(params);
+        capabilities.read = vi
+          .fn()
+          .mockRejectedValueOnce(new Error("Local read failed"))
+          .mockImplementation(read);
+        return { ...result, syncUpload: "complete", syncConfigured: true };
+      };
+      const { result } = renderHook(() => useWorkspace("vault", capabilities));
+      await waitFor(() => expect(result.current.data).toBeDefined());
+      act(() => result.current.edit());
+      await waitFor(() => expect(result.current.view.kind).toBe("editor"));
+      const editor = result.current.view;
+      await act(async () => {
+        if (kind === "tag")
+          await result.current.createTag({
+            name: "Finance",
+            groupId: "other",
+            color: "gray",
+            shade: 500,
+          });
+        else
+          await result.current.createFolder({
+            name: "Finance",
+            icon: "banknote",
+            parentId: null,
+          });
+      });
+      expect(result.current.feedback).toBe(
+        `${kind === "tag" ? "Tag" : "Folder"} saved and uploaded.`,
+      );
+      expect(result.current.error).toBeUndefined();
+      const items =
+        kind === "tag"
+          ? result.current.data?.tags
+          : result.current.data?.folders;
+      expect(items?.some((item) => item.name === "Finance")).toBe(true);
+      expect(result.current.view).toBe(editor);
+    },
+  );
   it("drops a late editor read when the vault session changes", async () => {
     const { capabilities, signal } = fixture();
     let resolve!: (value: ReadEntryForEditingResult) => void;
@@ -320,7 +474,7 @@ describe("workspace lifecycle and writes", () => {
       capabilities.read = read;
       const invalidated = vi.fn();
       const { result } = renderHook(() =>
-        useWorkspace("vault", capabilities, invalidated),
+        useWorkspace("vault", capabilities, undefined, invalidated),
       );
       await waitFor(() => expect(result.current.data).toBeDefined());
       act(() => result.current.edit("entry-review"));
@@ -374,6 +528,7 @@ describe("workspace lifecycle and writes", () => {
           url: "https://example.test",
           password: "private draft",
           tagIds: [],
+          folderId: "uncategorized",
           allowWeakPassword: true,
         }),
       );
@@ -411,6 +566,7 @@ describe("workspace lifecycle and writes", () => {
         url: "https://example.test",
         password: "password",
         tagIds: [],
+        folderId: "uncategorized",
         allowWeakPassword: true,
       }),
     );
@@ -419,4 +575,31 @@ describe("workspace lifecycle and writes", () => {
     expect(result.current.uploadPending).toBe(true);
     expect(result.current.feedback).toContain("not been confirmed");
   });
+});
+
+it("reviews a captured password update without replacing organization or saving automatically", async () => {
+  const { capabilities } = fixture();
+  const original = await capabilities.edit("vault", "entry-review");
+  capabilities.update = vi.fn(capabilities.update);
+  const { result } = renderHook(() => useWorkspace("vault", capabilities));
+  await waitFor(() => expect(result.current.data).toBeDefined());
+  act(() =>
+    result.current.edit("entry-review", {
+      login: "captured-user",
+      password: "captured-new-password",
+      url: "https://example.com/different",
+    }),
+  );
+  await waitFor(() => expect(result.current.view.kind).toBe("editor"));
+  const view = result.current.view;
+  if (view.kind !== "editor") throw new Error("Expected review editor");
+  expect(view.initial).toMatchObject({
+    login: original.entry.login,
+    url: original.entry.sanitizedUrl,
+    password: "captured-new-password",
+    folderId: original.entry.folderId,
+    tagIds: original.entry.tags,
+  });
+  expect(view.version).toEqual(original.entry.versionVector);
+  expect(capabilities.update).not.toHaveBeenCalled();
 });

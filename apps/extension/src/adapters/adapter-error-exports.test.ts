@@ -19,6 +19,9 @@ import {
 import {
   InvalidRemoteVaultSnapshotRecordError,
   InvalidSyncProviderResponseError,
+  S3BucketOrRegionRejectedError,
+  S3ReadCredentialsOrSignatureRejectedError,
+  S3ReadPermissionRejectedError,
 } from "./sync";
 
 describe("adapter error exports", () => {
@@ -36,6 +39,9 @@ describe("adapter error exports", () => {
       InvalidRemoteVaultSnapshotRecordError,
       InvalidSyncCredentialRecordError,
       InvalidSyncProviderResponseError,
+      S3BucketOrRegionRejectedError,
+      S3ReadCredentialsOrSignatureRejectedError,
+      S3ReadPermissionRejectedError,
       InvalidUnlockedVaultSessionMaterialError,
       InvalidUnlockedVaultSessionPayloadError,
       InvalidUnlockedVaultSessionPayloadRecordError,

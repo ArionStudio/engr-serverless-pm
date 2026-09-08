@@ -1,14 +1,19 @@
-import {
-  AVAILABLE_VAULT_LOCK_DELAYS_MS,
-  type RawMasterPassword,
-} from "@lfspm/core";
+import { completeDeviceEnrollment } from "./device-management.capabilities";
+import type { RawMasterPassword } from "@lfspm/core";
 import type {
   SetupCapabilities,
   SetupInspection,
   SetupRecovery,
   SetupVault,
 } from "@/ui/features/vault-setup/setup.type";
+import {
+  preferenceKey,
+  preference,
+  writePreference,
+  durationValue,
+} from "./vault-preferences";
 import { getApplication } from "./first-launch.capabilities";
+import { IndexedDbGlobalLibraryRepository } from "@/adapters/organization";
 
 function recordString(value: unknown, field: string): string | undefined {
   if (typeof value !== "object" || value === null || !(field in value))
@@ -17,56 +22,10 @@ function recordString(value: unknown, field: string): string | undefined {
   return typeof fieldValue === "string" ? fieldValue : undefined;
 }
 
-const preferenceKey = (vaultId: string) => `vault-setup:${vaultId}`;
-type Preference = {
-  duration: number;
-  deviceName: string;
-  complete: boolean;
-  token: string;
-};
-const supportedDuration = (value: number) =>
-  AVAILABLE_VAULT_LOCK_DELAYS_MS.find((option) => option === value);
-function durationValue(value: number) {
-  const duration = supportedDuration(value);
-  if (duration === undefined) throw new Error("Invalid lock duration");
-  return duration;
-}
-async function preference(vaultId: string): Promise<Preference> {
-  const value: unknown = (
-    await chrome.storage.local.get(preferenceKey(vaultId))
-  )[preferenceKey(vaultId)];
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    "duration" in value &&
-    typeof value.duration === "number" &&
-    "deviceName" in value &&
-    typeof value.deviceName === "string" &&
-    "complete" in value &&
-    typeof value.complete === "boolean" &&
-    "token" in value &&
-    typeof value.token === "string"
-  ) {
-    return {
-      duration: supportedDuration(value.duration) ?? 600_000,
-      deviceName: value.deviceName,
-      complete: value.complete,
-      token: value.token,
-    };
-  }
-  return {
-    duration: 600_000,
-    deviceName: "This browser",
-    complete: false,
-    token: "",
-  };
-}
-const writePreference = (vaultId: string, value: Preference) =>
-  chrome.storage.local.set({ [preferenceKey(vaultId)]: value });
-
 // One controller per Options document. Only non-secret preferences and completion
 // receipts are persisted. Web Locks serialize first-launch creation across tabs.
 export function composeVaultSetup(): SetupCapabilities {
+  const organizationLibrary = new IndexedDbGlobalLibraryRepository();
   let recovery: SetupRecovery | undefined;
   let token = "";
   let initializing = false;
@@ -137,8 +96,52 @@ export function composeVaultSetup(): SetupCapabilities {
     return current;
   }
   return {
+    readOrganizationLibrary: () => organizationLibrary.read(),
     inspect,
     clear,
+    enroll: async (params) =>
+      navigator.locks.request("lfspm:first-vault-setup", async () => {
+        const duration = durationValue(params.duration);
+        const deviceName = params.deviceName.trim();
+        if (!deviceName || deviceName.length > 80)
+          throw new Error("Enter a device name");
+        initializing = true;
+        try {
+          const receipt = crypto.randomUUID();
+          token = receipt;
+          const result = await completeDeviceEnrollment(
+            {
+              ...params,
+              deviceName,
+              duration,
+            },
+            async (vaultId) => {
+              // Re-enrollment can encounter a preference left after local data
+              // removal. Stage a new unfinished receipt before activation.
+              await writePreference(vaultId, {
+                duration,
+                deviceName,
+                complete: false,
+                token: receipt,
+              });
+            },
+          );
+          const vault: SetupVault = {
+            vaultId: result.vaultId,
+            name: result.name,
+            deviceName,
+            duration,
+            complete: false,
+            unlocked: true,
+          };
+          return {
+            ...remember(vault, result.words, receipt),
+            syncUpload: result.syncUpload,
+          };
+        } finally {
+          initializing = false;
+        }
+      }),
     create: async (params) =>
       await navigator.locks.request("lfspm:first-vault-setup", async () => {
         if ((await inspect()).vaults.length)
@@ -154,6 +157,7 @@ export function composeVaultSetup(): SetupCapabilities {
             masterPassword: params.password as RawMasterPassword,
             deviceName,
             lockAfterMs: duration,
+            organization: params.organization,
           });
           const session = await app.getVaultSessionStatus.execute();
           if (session.status !== "unlocked")
@@ -252,13 +256,13 @@ export function composeVaultSetup(): SetupCapabilities {
           initializing = false;
         }
       }),
-    replace: async (vaultId) =>
+    replace: async (vaultId, purpose) =>
       await navigator.locks.request("lfspm:first-vault-setup", async () => {
         clear();
         const { vault } = await inspect(vaultId);
         if (!vault?.unlocked || vault.vaultId !== vaultId)
           throw new Error("Unlock this vault first");
-        if (vault.complete)
+        if (vault.complete && purpose !== "recovery-replacement")
           throw new Error("Recovery setup is already complete");
         const receipt = crypto.randomUUID();
         const settings = await preference(vaultId);
@@ -268,14 +272,26 @@ export function composeVaultSetup(): SetupCapabilities {
           complete: false,
           token: receipt,
         });
-        const result = await (
-          await getApplication()
-        ).replaceRecoveryWords.execute({ vaultId });
-        return remember(
-          { ...vault, complete: false },
-          result.recoveryMnemonicKey.words,
-          receipt,
-        );
+        const result = await (async () => {
+          try {
+            return await (
+              await getApplication()
+            ).replaceRecoveryWords.execute({ vaultId });
+          } catch (cause) {
+            // Rejection leaves the atomic access records unchanged.
+            token = settings.token;
+            await writePreference(vaultId, settings);
+            throw cause;
+          }
+        })();
+        return {
+          ...remember(
+            { ...vault, complete: false },
+            result.recoveryMnemonicKey.words,
+            receipt,
+          ),
+          purpose,
+        };
       }),
     verify: async (answers) =>
       await navigator.locks.request("lfspm:first-vault-setup", async () => {
@@ -421,8 +437,16 @@ export function composeVaultSetup(): SetupCapabilities {
               recordString(value.newValue, "token") !== token,
           )
         ) {
+          const receiptChanged =
+            !!recovery ||
+            Object.entries(changes).some(
+              ([key, value]) =>
+                key.startsWith("vault-setup:") &&
+                recordString(value.oldValue, "token") !==
+                  recordString(value.newValue, "token"),
+            );
           clear();
-          listener();
+          listener(receiptChanged);
         } else {
           void check();
         }
@@ -433,16 +457,21 @@ export function composeVaultSetup(): SetupCapabilities {
       };
       const onHide = () => {
         clear();
-        listener();
+        listener("pagehide");
+      };
+      const onShow = (event: PageTransitionEvent) => {
+        if (event.persisted) listener();
       };
       chrome.storage.onChanged.addListener(onStorage);
       window.addEventListener("pagehide", onHide);
+      window.addEventListener("pageshow", onShow);
       window.addEventListener("focus", onFocus);
       return () => {
         disposed = true;
         clearInterval(timer);
         chrome.storage.onChanged.removeListener(onStorage);
         window.removeEventListener("pagehide", onHide);
+        window.removeEventListener("pageshow", onShow);
         window.removeEventListener("focus", onFocus);
         clear();
       };

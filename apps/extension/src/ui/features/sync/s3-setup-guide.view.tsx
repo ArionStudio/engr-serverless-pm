@@ -23,7 +23,8 @@ import {
   AccordionContent,
 } from "@/ui/components/primitives/accordion";
 import type { OperationState } from "@/ui/components/forms/form-state.type";
-import type { SyncLocation } from "./sync.type";
+import type { SyncCapabilities, SyncLocation } from "./sync.type";
+import { useStorageAccess } from "./use-storage-access";
 import { SetupChecklist, SetupStage } from "./setup-checklist.view";
 import { s3SetupDocuments } from "./s3-setup-documents";
 
@@ -102,37 +103,98 @@ export function S3SetupGuide({
   location,
   onLocationChange,
   onCopy,
+  access,
   connection,
   busy = false,
 }: {
   location: SyncLocation;
   onLocationChange: (location: SyncLocation) => void;
   onCopy: (value: string) => Promise<void>;
+  access: Pick<SyncCapabilities, "hasAccess" | "requestAccess" | "subscribe">;
   connection: (onEditLocation?: () => void) => ReactNode;
   busy?: boolean;
 }) {
   const [existingStorage, setExistingStorage] = useState(false);
+  const [connectedLocation, setConnectedLocation] = useState<string>();
   const [method, setMethod] = useState("template");
   const { documents: docs, error: documentField } = s3SetupDocuments(location);
   const locationKey = JSON.stringify(location);
   const validRegion = /^[a-z]{2}(?:-[a-z]+)+-\d+$/.test(location.region);
   const locationErrors: Partial<Record<keyof SyncLocation, string>> = {
     bucket:
-      documentField === "bucket"
+      !existingStorage && documentField === "bucket"
         ? "Enter 3–63 lowercase letters, numbers, dots or hyphens. Start and end with a letter or number. Avoid consecutive dots, IP addresses and AWS-reserved prefixes or suffixes."
         : undefined,
     region: validRegion
       ? undefined
       : "Enter an AWS region code, for example eu-central-1.",
     prefix:
-      documentField === "prefix"
+      !existingStorage && documentField === "prefix"
         ? "Enter up to 128 letters, numbers, /, _ or -. Start with a letter or number, end with / and use single / separators."
         : undefined,
   };
-  const validLocation = !!docs && validRegion;
-  const documentError = documentField
-    ? locationErrors[documentField]
-    : undefined;
+  const validLocation =
+    (existingStorage ? location.bucket.trim().length >= 3 : !!docs) &&
+    validRegion;
+  const documentError =
+    !existingStorage && documentField
+      ? locationErrors[documentField]
+      : undefined;
+  const storageAccess = useStorageAccess(location, validLocation, access);
+  const allowed = validLocation && storageAccess.state === "allowed";
+  const accessPending = storageAccess.state === "requesting";
+  const permission = (
+    <div className="space-y-4 rounded-lg border bg-muted/20 p-5">
+      <h4 className="text-lg font-semibold">Browser storage access</h4>
+      <p className="text-base leading-7">
+        Allow this extension to connect to your S3 bucket.
+      </p>
+      {allowed ? (
+        <div role="status">
+          <GuidancePanel title="Browser access allowed">
+            <p>
+              This browser can connect to <strong>{location.bucket}</strong>.
+              Your AWS keys must also permit reading and uploading vault data.
+            </p>
+          </GuidancePanel>
+        </div>
+      ) : (
+        <>
+          {storageAccess.state === "invalid" ? (
+            <p role="alert" className="text-destructive">
+              Check the bucket name, region and object prefix. Use the location
+              allowed by your IAM policy.
+            </p>
+          ) : null}
+          {storageAccess.state === "error" ? (
+            <div role="alert">
+              <GuidancePanel
+                variant="warning"
+                title="Browser access not allowed"
+              >
+                <p>
+                  Check the bucket and region, then try again and approve the
+                  browser's permission request.
+                </p>
+              </GuidancePanel>
+            </div>
+          ) : null}
+          <Button
+            disabled={
+              !validLocation ||
+              busy ||
+              accessPending ||
+              storageAccess.state === "invalid" ||
+              storageAccess.state === "checking"
+            }
+            onClick={() => void storageAccess.allow()}
+          >
+            {accessPending ? "Requesting access…" : "Allow storage access"}
+          </Button>
+        </>
+      )}
+    </div>
+  );
   const [stackStatus, setStackStatus] = useState("waiting");
   const statusId = useId();
   return (
@@ -144,14 +206,36 @@ export function S3SetupGuide({
         <h2 className="text-xl font-semibold">Set up S3 storage</h2>
         <Button
           variant="ghost"
-          disabled={busy}
+          disabled={busy || accessPending}
           onClick={() => setExistingStorage(!existingStorage)}
         >
           {existingStorage ? "Back to setup guide" : "I already have storage"}
         </Button>
       </div>
       {existingStorage ? (
-        <div className="mx-auto max-w-3xl">{connection()}</div>
+        <div className="mx-auto max-w-3xl space-y-6">
+          {allowed && connectedLocation === locationKey ? (
+            connection(() => setConnectedLocation(undefined))
+          ) : (
+            <>
+              <SetupLocation
+                location={location}
+                onChange={onLocationChange}
+                errors={locationErrors}
+                existing
+              />
+              {permission}
+              <div className="flex justify-end">
+                <Button
+                  disabled={!allowed || busy || accessPending}
+                  onClick={() => setConnectedLocation(locationKey)}
+                >
+                  Continue to access keys
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
       ) : null}
       <div hidden={existingStorage} className="space-y-6">
         <details className="border-b pb-4 text-base leading-7">
@@ -184,14 +268,14 @@ export function S3SetupGuide({
         <Tabs
           value={method}
           onValueChange={(value) => {
-            if (!busy) setMethod(String(value));
+            if (!busy && !accessPending) setMethod(String(value));
           }}
         >
           <TabsList aria-label="S3 setup method" className="w-full">
-            <TabsTrigger value="template" disabled={busy}>
+            <TabsTrigger value="template" disabled={busy || accessPending}>
               Use template
             </TabsTrigger>
-            <TabsTrigger value="manual" disabled={busy}>
+            <TabsTrigger value="manual" disabled={busy || accessPending}>
               AWS Console
             </TabsTrigger>
           </TabsList>
@@ -200,7 +284,7 @@ export function S3SetupGuide({
               label="Template setup steps"
               locationKey={locationKey}
               locationStep={4}
-              busy={busy}
+              busy={busy || accessPending}
               renderConnection={
                 !existingStorage && method === "template"
                   ? connection
@@ -381,7 +465,7 @@ export function S3SetupGuide({
               <SetupStage
                 title="Record Outputs"
                 confirmation="I copied the stack Outputs"
-                canContinue={validLocation}
+                canContinue={allowed}
               >
                 <p>
                   Copy <code>BucketNameOut</code>, <code>RegionOut</code> and{" "}
@@ -403,6 +487,7 @@ export function S3SetupGuide({
                 <SetupLink href="https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/outputs-section-structure.html">
                   AWS Outputs instructions
                 </SetupLink>
+                {permission}
               </SetupStage>
               <SetupStage title="Connect vault">
                 <details className="border-b pb-5">
@@ -421,7 +506,7 @@ export function S3SetupGuide({
               label="Manual setup steps"
               locationKey={locationKey}
               locationStep={0}
-              busy={busy}
+              busy={busy || accessPending}
               renderConnection={
                 !existingStorage && method === "manual" ? connection : undefined
               }
@@ -429,7 +514,7 @@ export function S3SetupGuide({
               <SetupStage
                 title="Create a private bucket"
                 confirmation="I created this private bucket"
-                canContinue={validLocation}
+                canContinue={allowed}
               >
                 <SetupLink href="https://console.aws.amazon.com/s3/">
                   Open Amazon S3
@@ -465,6 +550,7 @@ export function S3SetupGuide({
                 <SetupLink href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/create-bucket-overview.html">
                   AWS bucket instructions
                 </SetupLink>
+                {permission}
               </SetupStage>
               <SetupStage
                 title="Require HTTPS"
@@ -645,10 +731,12 @@ function SetupLocation({
   location,
   onChange,
   errors,
+  existing = false,
 }: {
   location: SyncLocation;
   onChange: (location: SyncLocation) => void;
   errors: Partial<Record<keyof SyncLocation, string>>;
+  existing?: boolean;
 }) {
   return (
     <div className="grid gap-4 @lg:grid-cols-2">
@@ -656,7 +744,11 @@ function SetupLocation({
         label="S3 bucket name"
         value={location.bucket}
         onChange={(e) => onChange({ ...location, bucket: e.target.value })}
-        description="3–63 lowercase letters, numbers, dots or hyphens. Avoid consecutive dots and IP addresses."
+        description={
+          existing
+            ? "The name of your existing S3 bucket."
+            : "3–63 lowercase letters, numbers, dots or hyphens. Avoid consecutive dots and IP addresses."
+        }
         error={errors.bucket}
       />
       <TextField
@@ -670,7 +762,11 @@ function SetupLocation({
         label="Vault object prefix"
         value={location.prefix}
         onChange={(e) => onChange({ ...location, prefix: e.target.value })}
-        description="Use letters, numbers, single / separators, _ or -. End with /; do not use wildcards."
+        description={
+          existing
+            ? "The prefix allowed by your IAM policy. Leave empty for the bucket root."
+            : "Use letters, numbers, single / separators, _ or -. End with /; do not use wildcards."
+        }
         error={errors.prefix}
       />
     </div>

@@ -1,5 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type Ref,
+} from "react";
+import type { EntryDraft } from "./entry-form.view";
+import type { GlobalLibrary } from "@lfspm/core";
 import type { WorkspaceCapabilities } from "./workspace.type";
+import type { WorkspaceControls } from "./workspace.type";
 import { useWorkspace } from "./use-workspace";
 import { EntryTable } from "./entry-table.view";
 import { EntryDetails } from "./entry-details.view";
@@ -7,6 +17,10 @@ import { EntryEditor } from "./entry-editor.view";
 import { DestructiveConfirmation } from "@/ui/components/feedback/destructive-confirmation.view";
 import { Button } from "@/ui/components/primitives/button";
 import { Spinner } from "@/ui/components/primitives/spinner";
+import {
+  getTagGroupPresentation,
+  type TagGroupPresentation,
+} from "@/ui/features/tags";
 
 export function EntryWorkspace({
   vaultId,
@@ -14,28 +28,116 @@ export function EntryWorkspace({
   onLock,
   onSessionLost,
   onSync,
+  initialDraft,
+  onDraftConsumed,
+  controlsRef,
 }: {
   vaultId: string;
   capabilities: WorkspaceCapabilities;
-  onLock: () => void | Promise<void>;
+  onLock?: () => void | Promise<void>;
   onSessionLost?: () => void;
   onSync: () => void;
+  initialDraft?: EntryDraft;
+  onDraftConsumed?: () => void;
+  controlsRef?: Ref<WorkspaceControls>;
 }) {
   const [listGeneration, setListGeneration] = useState(0);
   const clearList = useCallback(() => setListGeneration((n) => n + 1), []);
-  const live = useWorkspace(vaultId, capabilities, clearList, onSessionLost);
+  const live = useWorkspace(
+    vaultId,
+    capabilities,
+    initialDraft,
+    clearList,
+    onSessionLost,
+  );
+  const { lock } = live;
+  useImperativeHandle(
+    controlsRef,
+    () => ({
+      lock: () => (onLock ? lock(onLock) : Promise.resolve()),
+    }),
+    [lock, onLock],
+  );
+  const [organizationLibrary, setOrganizationLibrary] =
+    useState<GlobalLibrary>();
+  useEffect(() => {
+    let active = true;
+    void capabilities.readOrganizationLibrary().then(
+      (library) => {
+        if (active) setOrganizationLibrary(library);
+      },
+      () => {
+        if (active) setOrganizationLibrary(undefined);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [capabilities]);
+  useEffect(() => {
+    if (initialDraft) onDraftConsumed?.();
+  }, [initialDraft, onDraftConsumed]);
   const content = useRef<HTMLElement>(null);
+  const alert = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (
+      !live.error ||
+      live.view.kind === "editor" ||
+      live.view.kind === "delete"
+    )
+      return;
+    alert.current?.focus({ preventScroll: true });
+    alert.current?.scrollIntoView?.({ block: "nearest", behavior: "instant" });
+  }, [live.error, live.view.kind]);
   const firstFocus = useRef(true);
   useEffect(() => {
     if (firstFocus.current) {
       firstFocus.current = false;
       return;
     }
+    if (live.error) return;
     content.current?.focus();
-  }, [live.view.kind]);
+  }, [live.error, live.view.kind]);
   const labels = Object.fromEntries(
     (live.data?.tags ?? []).map((tag) => [tag.id, tag.name]),
   );
+  const tagGroups = (live.data?.tagGroups ??
+    []) as readonly TagGroupPresentation[];
+  const tagOptions = Object.fromEntries(
+    (live.data?.tags ?? []).map((tag) => [
+      tag.id,
+      {
+        id: tag.id,
+        label: tag.name,
+        group: getTagGroupPresentation(tag.groupId, tagGroups),
+        color: tag.color,
+        shade: tag.shade,
+      },
+    ]),
+  );
+  const folders = (live.data?.folders ?? []).map((folder) => ({
+    ...folder,
+    entryCount: (live.data?.entries ?? []).filter(
+      (entry) => entry.folderId === folder.id,
+    ).length,
+    childCount: (live.data?.folders ?? []).filter(
+      (candidate) => candidate.parentId === folder.id,
+    ).length,
+  }));
+  const uncategorized = {
+    id: "uncategorized" as const,
+    name: "Uncategorized" as const,
+    entryCount: (live.data?.entries ?? []).filter(
+      (entry) => entry.folderId === "uncategorized",
+    ).length,
+  };
+  const folderPresentations = Object.fromEntries([
+    ...folders.map(
+      (folder) =>
+        [folder.id, { name: folder.name, icon: folder.icon }] as const,
+    ),
+    [uncategorized.id, { name: uncategorized.name, icon: "folder" }] as const,
+  ]);
   const { view } = live;
   return (
     <section
@@ -48,9 +150,11 @@ export function EntryWorkspace({
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Entries</h1>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => live.lock(onLock)}>
-            Lock vault
-          </Button>
+          {onLock && !controlsRef ? (
+            <Button variant="outline" onClick={() => live.lock(onLock)}>
+              Lock vault
+            </Button>
+          ) : null}
           {view.kind === "list" ? (
             <Button
               disabled={live.pending || !live.data}
@@ -72,7 +176,13 @@ export function EntryWorkspace({
         </div>
       ) : null}
       {live.error && view.kind !== "editor" && view.kind !== "delete" ? (
-        <div role="alert" className="space-y-3 text-sm text-destructive">
+        <div
+          ref={alert}
+          role="alert"
+          tabIndex={-1}
+          data-focus-target
+          className="space-y-3 text-sm text-destructive"
+        >
           <p>{live.error}</p>
           <Button variant="outline" onClick={() => void live.refresh()}>
             Reload entries
@@ -91,7 +201,23 @@ export function EntryWorkspace({
             tags={(live.data?.tags ?? []).map((tag) => ({
               id: tag.id,
               label: tag.name,
+              group: getTagGroupPresentation(tag.groupId, tagGroups),
+              color: tag.color,
+              shade: tag.shade,
             }))}
+            tagGroups={tagGroups}
+            tagSuggestions={organizationLibrary?.tags}
+            folderSuggestions={organizationLibrary?.folders}
+            folders={folders}
+            uncategorized={uncategorized}
+            onCreateTag={async (tag) => {
+              const result = await live.createTag(tag);
+              return { id: result.tagId };
+            }}
+            onCreateFolder={async (folder) => {
+              const result = await live.createFolder(folder);
+              return { id: result.folderId };
+            }}
             tools={capabilities.tools}
             pending={live.pending}
             error={live.error}
@@ -112,6 +238,8 @@ export function EntryWorkspace({
         <EntryDetails
           entry={view.record.entry}
           tagLabels={labels}
+          tagOptions={tagOptions}
+          folders={folderPresentations}
           password={live.password}
           revealing={live.revealing}
           disabled={live.pending}
@@ -139,6 +267,8 @@ export function EntryWorkspace({
               key={listGeneration}
               entries={live.data?.entries ?? []}
               tagLabels={labels}
+              tagOptions={tagOptions}
+              folders={folderPresentations}
               state={
                 live.loading && !live.data
                   ? "loading"

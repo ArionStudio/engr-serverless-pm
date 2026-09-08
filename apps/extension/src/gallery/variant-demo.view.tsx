@@ -1,6 +1,15 @@
+import { BrowserLoginsPanel } from "@/ui/features/entries/browser-logins.view";
+import { galleryBrowserLogins } from "./browser-login-fixture";
 import { GuidancePanel } from "@/ui/components/feedback/guidance-panel.view";
 import { emptyEntryDraft } from "@/ui/features/entries/entry-draft";
 import { EntryEditor } from "@/ui/features/entries/entry-editor.view";
+import {
+  EntryList,
+  EntryRow,
+  EntrySelection,
+} from "@/ui/features/entries/entries.view";
+import { SearchField } from "@/ui/features/entries/search-field.view";
+import { PasswordToolsPage } from "@/ui/features/password-tools/password-tools-page.view";
 import { entryToolsFixture } from "./entry-tools-fixture";
 import { CredentialForm } from "@/ui/features/sync/credential-form.view";
 import { emptyCredentials } from "@/ui/features/sync/sync.type";
@@ -41,7 +50,9 @@ import * as Resize from "@/ui/components/primitives/resizable";
 import * as Avatar from "@/ui/components/primitives/avatar";
 import { Input } from "@/ui/components/primitives/input";
 import { EntryForm, type EntryDraft } from "@/ui/features/entries";
-import { demoTags } from "./fixtures";
+import { demoEntries, demoTagLabels, demoTags } from "./fixtures";
+import { TagPill, getTagGroupPresentation } from "@/ui/features/tags";
+import { FolderEditor } from "@/ui/features/folders";
 
 const localImage = new URL("./sample-icon.svg", import.meta.url).href;
 function Mark() {
@@ -54,6 +65,7 @@ export function VariantDemo({
   id: string;
   propsFor: PreviewProps;
 }) {
+  const [browserLogins] = useState(() => galleryBrowserLogins("save"));
   const [credentials, setCredentials] = useState({
     ...emptyCredentials,
     bucket: "personal-vault",
@@ -65,11 +77,63 @@ export function VariantDemo({
     url: "https://example.test",
     password: "",
     tagIds: [],
+    folderId: "uncategorized",
     allowWeakPassword: false,
   });
+  const [query, setQuery] = useState("");
   const iconButton = (name: string, iconSize?: string) =>
     iconSize?.startsWith("icon") ? <Mark /> : name;
   switch (id) {
+    case "S01":
+      return (
+        <BrowserLoginsPanel
+          {...p(BrowserLoginsPanel, "BrowserLoginsPanel")}
+          vaultId="gallery-vault"
+          capabilities={browserLogins}
+          onReview={() => {}}
+        />
+      );
+    case "S02":
+      return (
+        <PasswordToolsPage
+          {...p(PasswordToolsPage, "PasswordToolsPage")}
+          tools={entryToolsFixture}
+          onUse={() => {}}
+        />
+      );
+    case "P10":
+      return (
+        <SearchField
+          {...p(SearchField, "SearchField")}
+          value={query}
+          onChange={setQuery}
+          onSubmit={() => {}}
+          summary="3 entries"
+        />
+      );
+    case "P11":
+      return (
+        <div className="grid gap-5 lg:grid-cols-2">
+          <EntryRow
+            {...p(EntryRow, "EntryRow")}
+            entry={demoEntries[0]}
+            tagLabels={demoTagLabels}
+            onOpen={() => {}}
+          />
+          <EntryList
+            {...p(EntryList, "EntryList")}
+            entries={demoEntries.slice(1, 3)}
+            tagLabels={demoTagLabels}
+            onOpen={() => {}}
+          />
+          <EntrySelection
+            {...p(EntrySelection, "EntrySelection")}
+            entries={demoEntries.slice(3, 5)}
+            tagLabels={demoTagLabels}
+            onOpen={() => {}}
+          />
+        </div>
+      );
     case "P29":
       return (
         <GuidancePanel
@@ -81,6 +145,24 @@ export function VariantDemo({
             them in screenshots or support messages.
           </p>
         </GuidancePanel>
+      );
+    case "P30":
+      return (
+        <TagPill
+          {...p(TagPill, "TagPill")}
+          name="MFA"
+          group={getTagGroupPresentation("status")}
+          color="orange"
+          shade={500}
+        />
+      );
+    case "P31":
+      return (
+        <FolderEditor
+          {...p(FolderEditor, "FolderEditor")}
+          onSubmit={() => {}}
+          onCancel={() => {}}
+        />
       );
     case "F05":
       return (

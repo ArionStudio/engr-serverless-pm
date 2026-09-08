@@ -8,7 +8,12 @@ import { defineConfig, globalIgnores } from "eslint/config";
 
 const eslintConfig = defineConfig([
   // Global ignores
-  globalIgnores(["node_modules/*", "dist/**/*", "dist-gallery/**/*"]),
+  globalIgnores([
+    "node_modules/*",
+    "dist/**/*",
+    "dist-firefox/**/*",
+    "dist-gallery/**/*",
+  ]),
 
   // Base configs
   {
@@ -24,6 +29,11 @@ const eslintConfig = defineConfig([
     files: ["scripts/*.cjs"],
     languageOptions: { globals: globals.node },
     rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
+
+  {
+    files: ["scripts/*.mjs"],
+    languageOptions: { globals: globals.node },
   },
 
   // Base ignores

@@ -882,6 +882,7 @@ describe("WebCryptoAdapter", () => {
           login: "login",
           tags: [],
           sanitizedUrl: "https://example.test",
+          folderId: "uncategorized",
           versionVector: { "device-id": 1 },
         },
       ],
@@ -1006,6 +1007,9 @@ function createVault(): Vault {
     deletedDeviceProfiles: [],
     tags: [],
     deletedTags: [],
+    tagGroups: [],
+    folders: [],
+    deletedFolders: [],
   };
 }
 

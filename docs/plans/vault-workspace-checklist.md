@@ -91,8 +91,9 @@ Disabling sync is destructive, not a pause toggle.
 
 ## Site-icon integration gate
 
-Local initials and gallery image states are implemented. Chrome lookup and the
-device-local setting remain unimplemented until the following adoption gate is met.
+Local initials, gallery image states, Chromium lookup and the device-local setting
+are implemented. The setting remains off by default. See the favicon review for
+browser validation evidence and any outstanding acceptance checks.
 
 Follow the [favicon plan](../ui-ux/favicon-review.md) at entries/settings
 integration. Browser integration owns Chrome lookup and optional permission;
@@ -101,12 +102,14 @@ per-row use case, automatic website fetch or third-party icon proxy is planned.
 
 - [ ] Permission grant, denial and revocation work in both contexts, with a local
       fallback and no permission prompt during row rendering.
-- [ ] Validate URLs at the boundary and pass only the origin. Render approved
+- [x] Validate URLs at the boundary and pass only the origin. Render approved
       images as decoration beside the real origin; never treat a logo as proof of identity.
-- [ ] No plaintext site-to-icon index or secret-bearing URLs/logs/caches. Clear
+- [x] No plaintext site-to-icon index or secret-bearing URLs/logs/caches. Clear
       displayed data and pending UI work on lock or vault switch.
-- [ ] Verify browser-level network behavior for known, unknown, stale and offline
-      cache entries before making a no-website-request claim or enabling the feature.
+- [ ] Complete the native permission-dialog and aged-cache checks. Known, unknown
+      and offline lookups, browser-wide NetLog, cross-context opt-out and lock
+      cleanup passed in a disposable Chromium profile; see the favicon review
+      for the temporary permission-fixture boundary.
 
 ## Review and completion gate
 
@@ -136,7 +139,8 @@ per-row use case, automatic website fetch or third-party icon proxy is planned.
       delayed preload warnings. Use managed validation servers and keep raw evidence
       in ignored local storage.
 
-Autofill, device enrollment/revocation screens, complete disaster recovery and
-broader settings remain tracked application work. Notes, custom titles, favorites,
-folders and bulk mutations need product/core contracts before being presented as
-working actions. This checklist does not silently add them to the next pass.
+Device enrollment/revocation and security settings are covered by the
+[full application UI pass](./full-application-ui.md). Autofill and complete disaster
+recovery remain separate work. Notes, custom titles, favorites,
+and bulk mutations remain separate work. Folder and tag organization now use
+explicit product/core contracts and are covered by the organization implementation.

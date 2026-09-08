@@ -1,18 +1,6 @@
 # Review inventory and ownership
 
-Updated 2026-09-08. Every family in the generated
-[catalog](../../apps/extension/src/gallery/catalog.ts) has a rendered gallery
-example, including the four current screen families. Catalog IDs describe review
-scope, not file count. Status for every row is **implemented for review**. Full
-visual/accessibility acceptance remains pending. New-vault setup, recovery
-saving/verification, interrupted-setup continuation and local lock settings are
-connected in the production extension; Options entry and sync screens and popup
-entry quick access are also connected. Existing-vault enrollment remains
-follow-up work.
-
-Numeric catalog, component and variant totals in the dated validation sections
-below record those historical runs. Use the generated catalog and
-`component-api.generated.ts` for the current inventory.
+Updated 2026-09-08. The gallery tracks shared controls, presentation families, forms and application screens. Use the generated catalog and component API inventory for current component and variant totals. Numeric totals in dated validation sections record those historical runs. Catalog IDs describe review scope, not file count. Full visual/accessibility acceptance remains pending. Vault setup and recovery, entries, organization, password tools, device enrollment and management, sync and settings are connected in the production extension. The screen gallery exposes these implementations and their behavior states; see [full application review pages](#full-application-review-pages) below.
 
 Use the gallery collection navigation or **Find a component or widget**. Theme, canvas width and **Reset examples** apply to every collection. State selectors expose synthetic outcomes; buttons call local drivers. The gallery uses no connected vault, network operation, clipboard write, real download, print job or trust verification.
 
@@ -110,6 +98,9 @@ All paths below are relative to `apps/extension/src/ui`. Feature links point to 
 | P26 | ActionFeedback                                                  | [components/feedback/action-feedback.view.tsx](../../apps/extension/src/ui/components/feedback/action-feedback.view.tsx)                   |
 | P27 | TagSelection                                                    | [features/entries/index.ts](../../apps/extension/src/ui/features/entries/index.ts)                                                         |
 | P28 | AppNavigation and VaultToolbar                                  | [entrypoints/components/app-navigation.view.tsx](../../apps/extension/src/ui/entrypoints/components/app-navigation.view.tsx)               |
+| P29 | GuidancePanel                                                   | [components/feedback/guidance-panel.view.tsx](../../apps/extension/src/ui/components/feedback/guidance-panel.view.tsx)                     |
+| P30 | TagMarker, TagPill, TagGroupHeading and TagVisualPicker         | [features/tags/index.ts](../../apps/extension/src/ui/features/tags/index.ts)                                                               |
+| P31 | FolderTree, FolderPicker, FolderEditor and MoveFolderDialog     | [features/folders/index.ts](../../apps/extension/src/ui/features/folders/index.ts)                                                         |
 
 Label and Toggle are generated dependencies, demonstrated within their parent families. P08 reuses the existing ThemeToggle. P11 includes both list and interactive table presentations. P17 includes the printable guide. These are deliberate consolidations, not missing catalog IDs.
 
@@ -363,8 +354,8 @@ Removed synthetic, sample, demonstration and preview notices from product screen
 and gallery content at the user's request. Component usage notes and behavior
 selectors remain available. The device-step action is now Cancel setup, matching
 its form-reset behavior. It does not report vault creation or persistence.
-Vault creation and enrollment are still not connected; this remains an
-implementation boundary documented here rather than a product banner.
+At this review stage, vault creation and enrollment were not connected. Both
+have since been integrated; see the full application review pages below.
 
 S01/S02 render the updated screen implementations; P17 uses the recovery record
 without a demonstration banner. The gallery API inventory was regenerated.
@@ -480,3 +471,22 @@ repeats that explanation in a footer.
 Setup and gallery controls share labels derived from the core
 `AVAILABLE_VAULT_LOCK_DELAYS_MS` list. Drafts use milliseconds and default to 600000. All five supported durations appear in P07, UnlockForm,
 DeviceSettingsForm and the setup device screen.
+
+## Full application review pages
+
+The screen gallery now has direct navigation for Application, Password tools,
+Devices, Vault settings and Device sync, alongside the existing entries, S3,
+recovery and setup pages. These import the shipped implementations, with injected
+fixtures kept outside the extension build.
+
+| Implementation                                   | Gallery family  | Review location                                                                   |
+| ------------------------------------------------ | --------------- | --------------------------------------------------------------------------------- |
+| VaultApplication                                 | S02             | Application, full navigation and generated-entry handoff                          |
+| PasswordToolsPage                                | S02/P20         | Password tools, ready/pending/error after Generate                                |
+| DeviceManagementView and SetupConnection         | S02/P23/P24     | Devices and Connect a vault, including request review and revocation              |
+| SetupOrganization and OrganizationManagementView | S02/S05/P30/P31 | Editable onboarding archetypes; grouped tag and folder-tree management            |
+| VaultSettingsView                                | S02/F04/F07     | Vault settings, save/failure/deletion and recovery replacement                    |
+| SyncManagement and SyncTrustReview               | S03/P22         | Sync and Device sync, interrupted shutdown, provider-key cleanup and trust review |
+
+See [use-case coverage and validation](../plans/full-application-ui.md) for the
+application boundary and the Mobbin screens reviewed for this pass.

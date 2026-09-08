@@ -1,3 +1,4 @@
+import { SearchField } from "./search-field.view";
 import { SiteIcon } from "./site-icon.view";
 import { useId, useMemo, useState } from "react";
 import type { VisiblePasswordEntryFields } from "@lfspm/core";
@@ -29,7 +30,6 @@ import {
   TableRow,
 } from "@/ui/components/primitives/table";
 import { Button } from "@/ui/components/primitives/button";
-import { Badge } from "@/ui/components/primitives/badge";
 import { Checkbox } from "@/ui/components/primitives/checkbox";
 import { FieldLabel } from "@/ui/components/primitives/field";
 import { Skeleton } from "@/ui/components/primitives/skeleton";
@@ -44,9 +44,12 @@ import {
   DropdownMenuItem,
   DropdownMenuCheckboxItem,
 } from "@/ui/components/primitives/dropdown-menu";
-import { TextField } from "@/ui/components/forms/fields.view";
 import { EmptyState } from "@/ui/components/layout/sections.view";
 import "./entry-table.css";
+import { TagPill } from "@/ui/features/tags";
+import { getFolderIcon } from "@/ui/features/folders";
+import type { TagOption } from "./tag-selection.view";
+import type { EntryFolderPresentation } from "./entries.view";
 const features = tableFeatures({
   columnVisibilityFeature,
   rowPaginationFeature,
@@ -56,7 +59,9 @@ const features = tableFeatures({
   sortedRowModel: createSortedRowModel(),
   sortFns: { text: sortFn_text },
 });
-const emptyTagLabels: Readonly<Record<number, string>> = {};
+const emptyTagLabels: Readonly<Record<string, string>> = {};
+const emptyTagOptions: Readonly<Record<string, TagOption>> = {};
+const emptyFolders: Readonly<Record<string, EntryFolderPresentation>> = {};
 const helper = createColumnHelper<
   typeof features,
   VisiblePasswordEntryFields
@@ -86,7 +91,9 @@ function SelectionCheckbox({
   );
 }
 function createColumns(
-  tagLabels: Readonly<Record<number, string>>,
+  tagLabels: Readonly<Record<string, string>>,
+  tagOptions: Readonly<Record<string, TagOption>>,
+  folders: Readonly<Record<string, EntryFolderPresentation>>,
   multiple: boolean,
 ) {
   return helper.columns([
@@ -135,6 +142,25 @@ function createColumns(
         </span>
       ),
     }),
+    helper.accessor((row) => folders[row.folderId]?.name ?? "Uncategorized", {
+      id: "folder",
+      header: "Folder",
+      sortFn: "text",
+      cell: ({ row }) => {
+        const folder = folders[row.original.folderId];
+        return (
+          <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
+            <HugeiconsIcon
+              icon={getFolderIcon(folder?.icon ?? "folder")}
+              size={16}
+              className="shrink-0"
+              aria-hidden="true"
+            />
+            <span className="truncate">{folder?.name ?? "Uncategorized"}</span>
+          </span>
+        );
+      },
+    }),
     helper.accessor(
       (row) => row.tags.map((id) => tagLabels[id] ?? "Unknown tag").join(", "),
       {
@@ -144,11 +170,26 @@ function createColumns(
         cell: ({ row }) => (
           <div className="flex flex-wrap gap-1">
             {row.original.tags.length ? (
-              row.original.tags.map((tag) => (
-                <Badge key={tag} variant="outline">
-                  {tagLabels[tag] ?? "Unknown tag"}
-                </Badge>
-              ))
+              row.original.tags.map((tag) => {
+                const option = tagOptions[tag];
+                return option ? (
+                  <TagPill
+                    key={tag}
+                    name={option.label}
+                    group={option.group}
+                    color={option.color}
+                    shade={option.shade}
+                    size="sm"
+                  />
+                ) : (
+                  <span
+                    key={tag}
+                    className="rounded-md border bg-muted/45 px-2 py-0.5 text-xs"
+                  >
+                    {tagLabels[tag] ?? "Unknown tag"}
+                  </span>
+                );
+              })
             ) : (
               <span className="text-muted-foreground">No tags</span>
             )}
@@ -167,10 +208,14 @@ export function EntryTable({
   onRetry,
   onCreate,
   tagLabels = emptyTagLabels,
+  tagOptions = emptyTagOptions,
+  folders = emptyFolders,
   state = "ready",
 }: {
   entries: readonly VisiblePasswordEntryFields[];
-  tagLabels?: Readonly<Record<number, string>>;
+  tagLabels?: Readonly<Record<string, string>>;
+  tagOptions?: Readonly<Record<string, TagOption>>;
+  folders?: Readonly<Record<string, EntryFolderPresentation>>;
   onOpen: (id: string) => void;
   onEdit?: (id: string) => void;
   onRemove?: (id: string) => void;
@@ -186,36 +231,38 @@ export function EntryTable({
   // Copy approved fields before search or table state can retain row objects.
   const displayData = useMemo(
     () =>
-      entries.map(({ id, login, sanitizedUrl, tags }) => ({
-        id,
-        login,
-        sanitizedUrl,
-        tags: [...tags],
-      })),
+      entries.map(
+        ({ id, login, sanitizedUrl, tags, folderId, hasPassword }) => ({
+          id,
+          hasPassword,
+          login,
+          sanitizedUrl,
+          tags: [...tags],
+          folderId,
+        }),
+      ),
     [entries],
   );
+  const normalized = query.trim().toLowerCase();
   const data = useMemo(
     () =>
       available
         ? displayData.filter(
             (entry) =>
-              (!tag || entry.tags.includes(Number(tag))) &&
+              (!tag || entry.tags.includes(tag)) &&
               [
                 entry.login,
                 entry.sanitizedUrl,
-                ...entry.tags.map((id) => tagLabels[id] ?? "Unknown tag"),
-              ].some((value) =>
-                value
-                  .toLocaleLowerCase()
-                  .includes(query.trim().toLocaleLowerCase()),
-              ),
+                folders[entry.folderId]?.name ?? "Uncategorized",
+                ...entry.tags.map((id) => tagLabels[id] ?? ""),
+              ].some((value) => value.toLowerCase().includes(normalized)),
           )
         : [],
-    [displayData, query, tag, tagLabels, available],
+    [displayData, normalized, tag, tagLabels, folders, available],
   );
   const columns = useMemo(
-    () => createColumns(tagLabels, !!onReviewSelection),
-    [tagLabels, onReviewSelection],
+    () => createColumns(tagLabels, tagOptions, folders, !!onReviewSelection),
+    [tagLabels, tagOptions, folders, onReviewSelection],
   );
   const table = useTable({
     features,
@@ -235,8 +282,8 @@ export function EntryTable({
     table.resetRowSelection();
     table.setPageIndex(0);
   }
-  const tagOptions = Object.entries(tagLabels).filter(([id]) =>
-    displayData.some((entry) => entry.tags.includes(Number(id))),
+  const availableTagOptions = Object.entries(tagLabels).filter(([id]) =>
+    displayData.some((entry) => entry.tags.includes(id)),
   );
   return (
     <section
@@ -246,12 +293,11 @@ export function EntryTable({
     >
       <div className="entry-table-toolbar flex flex-wrap items-end gap-3">
         <div className="min-w-0 flex-1 basis-56">
-          <TextField
-            label="Search entries"
-            placeholder="Login, website or tag…"
+          <SearchField
+            onSubmit={() => {}}
             value={query}
             disabled={!available}
-            onChange={(e) => changeFilters(e.target.value, tag)}
+            onChange={(value) => changeFilters(value, tag)}
           />
         </div>
         <label
@@ -266,7 +312,7 @@ export function EntryTable({
             onChange={(e) => changeFilters(query, e.target.value)}
           >
             <NativeSelectOption value="">All tags</NativeSelectOption>
-            {tagOptions.map(([id, label]) => (
+            {availableTagOptions.map(([id, label]) => (
               <NativeSelectOption key={id} value={id}>
                 {label}
               </NativeSelectOption>
@@ -289,7 +335,11 @@ export function EntryTable({
                   checked={column.getIsVisible()}
                   onCheckedChange={(value) => column.toggleVisibility(value)}
                 >
-                  {column.id === "tags" ? "Tags" : "Website"}
+                  {column.id === "tags"
+                    ? "Tags"
+                    : column.id === "folder"
+                      ? "Folder"
+                      : "Website"}
                 </DropdownMenuCheckboxItem>
               ))}
           </DropdownMenuContent>

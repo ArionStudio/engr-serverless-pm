@@ -41,7 +41,12 @@ describe("sync configuration reads and access tests", () => {
   it("returns detached non-secret configuration and makes no provider request", async () => {
     const ctx = context();
     const result = await ctx.read.execute({ vaultId: ctx.values.vaultId });
-    expect(result).toEqual({ target: ctx.values.syncTarget });
+    expect(result).toEqual({
+      target: ctx.values.syncTarget,
+      snapshotVersionVector: ctx.vaultSnapshot.metadata.snapshotVersionVector,
+      providerCredentialRevocationPending: false,
+      syncRemovalPending: false,
+    });
     expect(result.target).not.toBe(ctx.values.syncTarget);
     expect(result.target?.targetConfig).not.toBe(
       ctx.values.syncTarget.targetConfig,
@@ -52,7 +57,41 @@ describe("sync configuration reads and access tests", () => {
     const ctx = context(false);
     await expect(
       ctx.read.execute({ vaultId: ctx.values.vaultId }),
-    ).resolves.toEqual({ target: null });
+    ).resolves.toEqual({
+      target: null,
+      snapshotVersionVector: ctx.vaultSnapshot.metadata.snapshotVersionVector,
+      providerCredentialRevocationPending: false,
+      syncRemovalPending: false,
+    });
+  });
+  it("reports unfinished management without returning credential or rollback material", async () => {
+    const ctx = context();
+    const session = ctx.saved.unlockedVaultSession!;
+    ctx.saved.unlockedVaultSession = {
+      ...session,
+      unlockedVault: {
+        ...session.unlockedVault,
+        vault: {
+          ...session.unlockedVault.vault,
+          providerCredentialRevocationPending: {
+            revokedDeviceIds: ["old-device"],
+            vaultKeyGeneration: 2,
+          },
+          syncRemovalPending: {
+            expectedRemoteSnapshotIdentity: null,
+            rollbackSnapshot: ctx.vaultSnapshot,
+          },
+        },
+      },
+    };
+    await expect(
+      ctx.read.execute({ vaultId: ctx.values.vaultId }),
+    ).resolves.toEqual({
+      target: ctx.values.syncTarget,
+      snapshotVersionVector: ctx.vaultSnapshot.metadata.snapshotVersionVector,
+      providerCredentialRevocationPending: true,
+      syncRemovalPending: true,
+    });
   });
   it("tests access without changing local or remote state", async () => {
     const ctx = context(false);

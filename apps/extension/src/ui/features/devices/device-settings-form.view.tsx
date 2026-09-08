@@ -4,7 +4,6 @@ import {
   TextField,
   LockDurationField,
 } from "@/ui/components/forms/fields.view";
-import { SafetyHelp } from "@/ui/components/layout/sections.view";
 export type DeviceSettingsDraft = { name: string; lockDuration: number };
 export function DeviceSettingsForm({
   value,
@@ -17,10 +16,6 @@ export function DeviceSettingsForm({
 }) {
   return (
     <FormFrame {...form}>
-      <SafetyHelp
-        title="Settings for this device"
-        essential="The name and lock duration are stored locally. You can edit them later in settings."
-      />
       <TextField
         label="Device name"
         value={value.name}

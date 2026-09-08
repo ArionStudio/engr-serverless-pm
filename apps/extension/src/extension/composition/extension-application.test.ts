@@ -9,10 +9,12 @@ import type {
 import {
   areVaultSnapshotIdentitiesEqual,
   PasswordEntryChangedError,
+  SyncNotConfiguredError,
   toVaultSnapshotDescriptor,
   toVaultSnapshotIdentity,
 } from "@lfspm/core";
 import { AwsS3SyncProviderAdapter } from "../../adapters/sync/aws-s3-sync-provider.adapter";
+import { JsonTextDeviceEnrollmentTransport } from "../../adapters/device/json-text-device-enrollment.transport";
 import { WebCryptoAdapter } from "../../adapters/crypto/web-crypto.adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createChromeStorageArea } from "../../__tests__/fixtures/chrome-storage-area";
@@ -99,6 +101,163 @@ afterEach(async () => {
 });
 
 describe("production extension composition", () => {
+  it("rejects authorizing a second browser until the source vault has sync", async () => {
+    installBrowser();
+    const trusted = composeExtensionApplication(database);
+    await trusted.initializeVault.execute({
+      masterPassword,
+      deviceName: "Trusted laptop",
+      lockAfterMs: 600_000,
+    });
+    const status = await trusted.getVaultSessionStatus.execute();
+    if (status.status !== "unlocked")
+      throw new Error("Expected unlocked vault");
+    const identity = await trusted.readDeviceManagement.execute({
+      vaultId: status.vaultId,
+    });
+    const targetDb = createVaultManagerDb(`enrolled-${crypto.randomUUID()}`);
+    try {
+      installBrowser();
+      const target = composeExtensionApplication(targetDb);
+      const targetPassword =
+        "Orchid!Satellite-42-River-Moon" as RawMasterPassword;
+      const transport = new JsonTextDeviceEnrollmentTransport();
+      const request = await target.createDeviceEnrollmentRequest.execute({
+        vaultId: status.vaultId,
+        expectedGenesisCertificateDigest: identity.genesisCertificateDigest,
+        masterPassword: targetPassword,
+      });
+      const requestText = transport.serializeDeviceEnrollmentRequest(request);
+      const importedRequest =
+        await transport.parseDeviceEnrollmentRequest(requestText);
+      expect(
+        await transport.fingerprintDeviceEnrollmentRequest(importedRequest),
+      ).toBe(await transport.fingerprintDeviceEnrollmentRequest(request));
+      await expect(
+        trusted.initializeDeviceEnrollment.execute({
+          vaultId: status.vaultId,
+          request: importedRequest,
+        }),
+      ).rejects.toBeInstanceOf(SyncNotConfiguredError);
+      expect((await target.listLocalVaults.execute()).vaults).toHaveLength(0);
+      expect(
+        (
+          await trusted.readDeviceManagement.execute({
+            vaultId: status.vaultId,
+          })
+        ).devices,
+      ).toHaveLength(1);
+    } finally {
+      await targetDb.delete();
+    }
+  });
+
+  it("requires the device password to reveal S3 keys and clears copied keys across lock and timeout", async () => {
+    const browser = installBrowser();
+    vi.spyOn(
+      AwsS3SyncProviderAdapter.prototype,
+      "getLatestVaultSnapshotDescriptor",
+    ).mockResolvedValue(null);
+    vi.spyOn(
+      AwsS3SyncProviderAdapter.prototype,
+      "checkVaultAccess",
+    ).mockResolvedValue("accessible");
+    const upload = vi
+      .spyOn(AwsS3SyncProviderAdapter.prototype, "prepareVaultSnapshotUpload")
+      .mockResolvedValue({
+        status: "ready",
+        start: () => ({ outcome: Promise.resolve({ status: "committed" }) }),
+      });
+    const app = composeExtensionApplication(database);
+    await app.initializeVault.execute({
+      masterPassword,
+      deviceName: "Key reveal test",
+      lockAfterMs: 600_000,
+    });
+    const status = await app.getVaultSessionStatus.execute();
+    if (status.status !== "unlocked")
+      throw new Error("Expected unlocked vault");
+    const { vaultId } = status;
+    const credentials = {
+      accessKeyId: "test-reveal-key",
+      secretAccessKey: "test-reveal-secret",
+    };
+    await app.setupSync.execute({
+      vaultId,
+      syncConfig: {
+        provider: "aws-s3-v1",
+        providerConfig: {
+          target: {
+            bucket: "test-reveal-bucket",
+            region: "eu-central-1",
+            prefix: "vault/",
+          },
+          credentials,
+        },
+      },
+    });
+    const before = await app.getVaultSessionStatus.execute();
+    upload.mockClear();
+    await expect(
+      app.revealSyncCredentials.execute({
+        vaultId,
+        masterPassword: "incorrect" as RawMasterPassword,
+      }),
+    ).rejects.toThrow();
+    expect(browser.clipboard()).toBe("unrelated clipboard");
+    const revealed = await app.revealSyncCredentials.execute({
+      vaultId,
+      masterPassword,
+    });
+    expect(revealed.credentials.credentialsConfig).toEqual(credentials);
+    expect(await app.getVaultSessionStatus.execute()).toEqual(before);
+    expect(upload).not.toHaveBeenCalled();
+    await app.copyRevealedSecret.execute({
+      vaultId,
+      sessionId: revealed.sessionId,
+      value: credentials.secretAccessKey,
+    });
+    expect(browser.clipboard()).toBe(credentials.secretAccessKey);
+    const clearAlarm = [...browser.alarms.entries()].find(
+      ([name]) => parseScheduledTask(name)?.name === "clearClipboard",
+    );
+    if (!clearAlarm) throw new Error("Missing clipboard clear alarm");
+    const now = vi.spyOn(Date, "now").mockReturnValue(clearAlarm[1].when + 1);
+    await composeScheduledTaskAlarmHandler(database)({ name: clearAlarm[0] });
+    expect(browser.clipboard()).toBe("");
+    now.mockRestore();
+    await app.copyRevealedSecret.execute({
+      vaultId,
+      sessionId: revealed.sessionId,
+      value: credentials.accessKeyId,
+    });
+    await app.lockVault.execute();
+    expect(browser.clipboard()).toBe("");
+    await expect(
+      app.revealSyncCredentials.execute({ vaultId, masterPassword }),
+    ).rejects.toThrow();
+    await expect(
+      app.copyRevealedSecret.execute({
+        vaultId,
+        sessionId: revealed.sessionId,
+        value: credentials.secretAccessKey,
+      }),
+    ).rejects.toThrow();
+    await app.unlockVault.execute({
+      vaultId,
+      masterPassword,
+      lockAfterMs: 600_000,
+    });
+    await expect(
+      app.copyRevealedSecret.execute({
+        vaultId,
+        sessionId: revealed.sessionId,
+        value: credentials.secretAccessKey,
+      }),
+    ).rejects.toThrow();
+    expect(browser.clipboard()).toBe("");
+  }, 15_000);
+
   it("constructs without opening storage, starting workflows, or accessing the clipboard/network", () => {
     const browser = installBrowser();
     composeExtensionApplication(database);
@@ -468,6 +627,10 @@ describe("production extension composition", () => {
           })),
           tagResolutions: actionable.tagReviews.map((item) => ({
             tagId: item.tagId,
+            action: "use_remote",
+          })),
+          folderResolutions: actionable.folderReviews.map((item) => ({
+            folderId: item.folderId,
             action: "use_remote",
           })),
           deviceProfileResolutions: actionable.deviceProfileReviews.map(

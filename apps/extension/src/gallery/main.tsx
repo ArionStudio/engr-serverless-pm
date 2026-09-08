@@ -1,3 +1,4 @@
+import { ThemeProvider } from "@/ui/features/theme";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { Gallery } from "./gallery.view";
@@ -8,6 +9,8 @@ if (!root) throw new Error("Component gallery root is missing");
 
 createRoot(root).render(
   <StrictMode>
-    <Gallery />
+    <ThemeProvider>
+      <Gallery />
+    </ThemeProvider>
   </StrictMode>,
 );

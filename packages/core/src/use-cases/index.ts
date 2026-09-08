@@ -4,4 +4,7 @@ export * from "./password-tools";
 export * from "./sync";
 export * from "./vault-entries";
 export * from "./vault-lifecycle";
+export * from "./vault-tags";
+export * from "./vault-folders";
+export * from "./tag-groups";
 export * from "./session";

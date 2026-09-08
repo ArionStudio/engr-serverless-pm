@@ -14,6 +14,79 @@ const screens: readonly {
   states: readonly { id: OptionsScenario; label: string }[];
 }[] = [
   {
+    id: "application",
+    name: "Application",
+    states: [{ id: "application", label: "Full navigation" }],
+  },
+  {
+    id: "tools",
+    name: "Password tools",
+    states: [
+      { id: "tools", label: "Ready" },
+      { id: "tools-pending", label: "Generation pending" },
+      { id: "tools-error", label: "Generation error" },
+    ],
+  },
+  {
+    id: "devices",
+    name: "Devices",
+    states: [
+      { id: "devices-sync-required", label: "Devices: sync required" },
+      { id: "devices", label: "Manage and approve" },
+      { id: "devices-error", label: "Read error" },
+      {
+        id: "devices-permission-denied",
+        label: "Approval needs storage permission",
+      },
+      {
+        id: "devices-revocation-error",
+        label: "Revocation: reused access keys",
+      },
+      {
+        id: "devices-refresh-error",
+        label: "Read retry after approval or revocation",
+      },
+      { id: "devices-authorization-lost", label: "Authorization lost" },
+    ],
+  },
+  {
+    id: "tags",
+    name: "Tags",
+    states: [
+      { id: "tags", label: "Manage tags" },
+      { id: "tags-empty", label: "Empty vault" },
+      { id: "tags-loading", label: "Loading" },
+      { id: "tags-error", label: "Read error" },
+      { id: "tags-live-groups", label: "Saved group details" },
+      { id: "tags-mutation-error", label: "Cancel after save error" },
+      { id: "tags-read-retry", label: "Recovered read" },
+      { id: "tags-authorization-lost", label: "Authorization lost" },
+    ],
+  },
+  {
+    id: "vault-settings",
+    name: "Vault settings",
+    states: [
+      { id: "settings-ready", label: "Ready" },
+      { id: "settings-save-pending", label: "Save pending" },
+      { id: "settings-save-error", label: "Save error" },
+      { id: "settings-deletion-error", label: "Deletion error" },
+      { id: "settings-authorization-lost", label: "Authorization lost" },
+    ],
+  },
+  {
+    id: "trust",
+    name: "Device sync",
+    states: [
+      { id: "trust-enrollment", label: "Check added device" },
+      { id: "trust-revocation", label: "Replacement keys" },
+      { id: "trust-review-enrollment", label: "Review added device" },
+      { id: "trust-review-revocation", label: "Review removed device" },
+      { id: "trust-applying", label: "Applying" },
+      { id: "trust-error", label: "Error" },
+    ],
+  },
+  {
     id: "workspace",
     name: "Entries",
     states: [
@@ -21,6 +94,11 @@ const screens: readonly {
       { id: "workspace-empty", label: "Empty vault" },
       { id: "workspace-loading", label: "Loading" },
       { id: "workspace-error", label: "Read error" },
+      { id: "workspace-reveal-error", label: "Reveal error" },
+      {
+        id: "workspace-inline-refresh-error",
+        label: "Inline save, reload failed",
+      },
       { id: "workspace-stale", label: "Stale edit" },
       { id: "workspace-uploaded", label: "Saved and uploaded" },
       { id: "workspace-pending-upload", label: "Pending upload" },
@@ -35,6 +113,10 @@ const screens: readonly {
       { id: "s3-copy-error", label: "Copy error" },
       { id: "s3-invalid-bucket", label: "Invalid bucket" },
       { id: "s3-invalid-prefix", label: "Invalid prefix" },
+      { id: "s3-access-required", label: "Browser access required" },
+      { id: "s3-access-error", label: "Browser access denied" },
+      { id: "s3-access-pending", label: "Browser permission prompt open" },
+      { id: "s3-access-invalid", label: "Invalid storage location" },
     ],
   },
   {
@@ -47,13 +129,26 @@ const screens: readonly {
         id: "sync-saved-refresh-error",
         label: "Saved, configuration refresh failed",
       },
+      { id: "sync-existing", label: "Existing vault found" },
       { id: "sync-configured", label: "Configured" },
+      { id: "sync-copy-session-lost", label: "Session ends before key copy" },
+      { id: "sync-revocation-pending", label: "Old keys need removal" },
+      { id: "sync-revocation-denied", label: "Old key deletion unconfirmed" },
+      { id: "sync-removal-pending", label: "Shutdown interrupted" },
+      {
+        id: "sync-refresh-error",
+        label: "Refresh fails after upload or shutdown",
+      },
       { id: "sync-permission", label: "Storage permission missing" },
       { id: "sync-permission-error", label: "Storage permission check failed" },
       { id: "sync-pending", label: "Pending upload" },
       { id: "sync-error", label: "Connection error" },
       { id: "sync-session-expired", label: "Session expired" },
       { id: "sync-review", label: "Remote changes" },
+      {
+        id: "sync-organization-review",
+        label: "Organization field changes",
+      },
       { id: "sync-revision", label: "Newer revision, unchanged content" },
       { id: "sync-repair-error", label: "Key repair failure" },
       { id: "sync-loading", label: "Loading" },
@@ -99,6 +194,16 @@ const screens: readonly {
     ],
   },
   {
+    id: "organization",
+    name: "Organization template",
+    states: [
+      { id: "organization", label: "Default" },
+      { id: "organization-pending", label: "Creating" },
+      { id: "organization-error", label: "Error" },
+      { id: "organization-name-conflicts", label: "Name conflicts" },
+    ],
+  },
+  {
     id: "recover-access",
     name: "Recover access",
     states: [
@@ -112,6 +217,7 @@ const screens: readonly {
     name: "Save recovery words",
     states: [
       { id: "recovery", label: "First setup" },
+      { id: "recovery-upload-pending", label: "Enrollment upload pending" },
       { id: "recovered-words", label: "After password recovery" },
       { id: "export-error", label: "Export error" },
     ],
@@ -129,7 +235,7 @@ const screens: readonly {
   {
     id: "connect",
     name: "Connect a vault",
-    states: [{ id: "connect", label: "Default" }],
+    states: [{ id: "connect", label: "Request, verify approval and connect" }],
   },
   {
     id: "unlock",
@@ -332,7 +438,7 @@ export function ScreenGallery() {
             style={{
               width:
                 screen.id === "popup"
-                  ? "400px"
+                  ? "var(--extension-popup-width)"
                   : width === "fluid"
                     ? "100%"
                     : `${width}px`,
@@ -341,13 +447,34 @@ export function ScreenGallery() {
             <div
               key={`${screen.id}:${state}:${reset}`}
               className={
-                ["popup", "welcome", "password", "device", "connect"].includes(
-                  screen.id,
-                ) && !["creation-pending", "creation-error"].includes(state)
+                [
+                  "application",
+                  "popup",
+                  "welcome",
+                  "password",
+                  "device",
+                  "organization",
+                  "connect",
+                ].includes(screen.id) &&
+                ![
+                  "creation-pending",
+                  "creation-error",
+                  "organization-pending",
+                  "organization-error",
+                  "organization-name-conflicts",
+                ].includes(state)
                   ? ""
                   : screen.id === "workspace"
                     ? "mx-auto max-w-6xl px-5 py-8"
-                    : ["s3-setup", "sync"].includes(screen.id)
+                    : [
+                          "s3-setup",
+                          "sync",
+                          "devices",
+                          "tags",
+                          "tools",
+                          "trust",
+                          "vault-settings",
+                        ].includes(screen.id)
                       ? "mx-auto max-w-6xl px-5 py-8 @lg:py-12"
                       : "mx-auto max-w-xl px-5 py-8 @lg:py-12"
               }

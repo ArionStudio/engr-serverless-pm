@@ -29,9 +29,12 @@ The repository has implementations for every current core port.
 [`composeExtensionApplication`](../../apps/extension/src/extension/composition/extension-application.ts)
 constructs all current core use cases with production adapters and shared
 services. The background alarm root reuses its session and cleanup construction.
-Options and popup use feature capabilities composed from the application factory.
-Options exposes vault setup, entries and sync; the popup provides entry quick
-access and hands setup and sync configuration off to Options.
+The popup and options roots inject capabilities backed by that factory into
+their feature views. Setup, recovery, entries, organization, password tools,
+devices, sync and vault settings have production UI integration. Website-login
+views accept optional capabilities for gallery review; this build does not
+activate browser capture or Fill. See the
+[application coverage map](../plans/full-application-ui.md).
 
 The concrete implementations follow `BOUNDARY-013`: core contracts use `*Port`
 in `.port.ts` files, and extension implementations use `*Adapter` in

@@ -26,6 +26,11 @@ export function workspaceError(
     case "DuplicateVaultEntryError":
       return "Could not create a unique entry identifier. Try again.";
     default:
-      return syncError(cause, "Could not complete this action. Try again.");
+      return syncError(
+        cause,
+        undefined,
+        undefined,
+        "Could not complete this action. Try again.",
+      );
   }
 }

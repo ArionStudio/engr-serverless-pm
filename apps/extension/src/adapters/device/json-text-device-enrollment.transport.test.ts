@@ -18,6 +18,26 @@ type EnrollmentArtifacts = {
 };
 
 describe("JsonTextDeviceEnrollmentTransport", () => {
+  it("binds the displayed request fingerprint to the full request, including device public keys", async () => {
+    const { request } = await createEnrollmentArtifacts();
+    const transport = new JsonTextDeviceEnrollmentTransport();
+    const fingerprint =
+      await transport.fingerprintDeviceEnrollmentRequest(request);
+    const parsed = await transport.parseDeviceEnrollmentRequest(
+      transport.serializeDeviceEnrollmentRequest(request),
+    );
+    expect(await transport.fingerprintDeviceEnrollmentRequest(parsed)).toBe(
+      fingerprint,
+    );
+    const keys = await new WebCryptoAdapter().generateDeviceSignKeyPair();
+    expect(
+      await transport.fingerprintDeviceEnrollmentRequest({
+        ...request,
+        payload: { ...request.payload, publicSignKey: keys.publicKey },
+      }),
+    ).not.toBe(fingerprint);
+  });
+
   it("round-trips exact request and response JSON with the default key validator", async () => {
     const artifacts = await createEnrollmentArtifacts();
     const transport = new JsonTextDeviceEnrollmentTransport();
@@ -347,6 +367,9 @@ function createEmptyVault(deviceId: string): Vault {
     deletedDeviceProfiles: [],
     tags: [],
     deletedTags: [],
+    tagGroups: [],
+    folders: [],
+    deletedFolders: [],
   };
 }
 

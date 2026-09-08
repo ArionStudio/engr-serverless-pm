@@ -17,5 +17,5 @@ export type DeletedPasswordEntry = {
 
 export type VisiblePasswordEntryFields = Pick<
   PasswordEntry,
-  "id" | "login" | "tags" | "sanitizedUrl"
->;
+  "id" | "login" | "tags" | "sanitizedUrl" | "folderId"
+> & { readonly hasPassword: boolean };

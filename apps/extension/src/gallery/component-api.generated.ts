@@ -377,6 +377,18 @@ export const componentApi = [
     }
   },
   {
+    "name": "BrowserLoginsPanel",
+    "source": "features/entries/browser-logins.view.tsx",
+    "family": "S01",
+    "exported": true,
+    "axes": {
+      "mode": [
+        "detected",
+        "matches"
+      ]
+    }
+  },
+  {
     "name": "Button",
     "source": "components/primitives/button.tsx",
     "family": "B01",
@@ -646,6 +658,7 @@ export const componentApi = [
     "exported": true,
     "axes": {
       "mode": [
+        "connect-existing",
         "repair",
         "setup"
       ]
@@ -662,6 +675,13 @@ export const componentApi = [
     "name": "DetailField",
     "source": "components/layout/sections.view.tsx",
     "family": "P12",
+    "exported": true,
+    "axes": {}
+  },
+  {
+    "name": "DeviceManagementView",
+    "source": "features/devices/device-management.view.tsx",
+    "family": "S02",
     "exported": true,
     "axes": {}
   },
@@ -992,21 +1012,36 @@ export const componentApi = [
     "source": "features/entries/entries.view.tsx",
     "family": "P11",
     "exported": true,
-    "axes": {}
+    "axes": {
+      "presentation": [
+        "default",
+        "popup"
+      ]
+    }
   },
   {
     "name": "EntryRow",
     "source": "features/entries/entries.view.tsx",
     "family": "P11",
     "exported": true,
-    "axes": {}
+    "axes": {
+      "presentation": [
+        "default",
+        "popup"
+      ]
+    }
   },
   {
     "name": "EntrySelection",
     "source": "features/entries/entries.view.tsx",
     "family": "P11",
     "exported": true,
-    "axes": {}
+    "axes": {
+      "presentation": [
+        "default",
+        "popup"
+      ]
+    }
   },
   {
     "name": "EntryTable",
@@ -1100,6 +1135,53 @@ export const componentApi = [
     "name": "FieldTitle",
     "source": "components/primitives/field.tsx",
     "family": "B02",
+    "exported": true,
+    "axes": {}
+  },
+  {
+    "name": "FolderCount",
+    "source": "features/folders/folder-tree.view.tsx",
+    "family": "P31",
+    "exported": false,
+    "axes": {}
+  },
+  {
+    "name": "FolderEditor",
+    "source": "features/folders/folder-editor.view.tsx",
+    "family": "P31",
+    "exported": true,
+    "axes": {
+      "mode": [
+        "add",
+        "edit"
+      ]
+    }
+  },
+  {
+    "name": "FolderManagementContent",
+    "source": "features/folders/folder-management.view.tsx",
+    "family": "S05",
+    "exported": false,
+    "axes": {}
+  },
+  {
+    "name": "FolderManagementView",
+    "source": "features/folders/folder-management.view.tsx",
+    "family": "S05",
+    "exported": true,
+    "axes": {}
+  },
+  {
+    "name": "FolderPicker",
+    "source": "features/folders/folder-tree.view.tsx",
+    "family": "P31",
+    "exported": true,
+    "axes": {}
+  },
+  {
+    "name": "FolderTree",
+    "source": "features/folders/folder-tree.view.tsx",
+    "family": "P31",
     "exported": true,
     "axes": {}
   },
@@ -1349,6 +1431,13 @@ export const componentApi = [
     "axes": {}
   },
   {
+    "name": "MoveFolderDialog",
+    "source": "features/folders/move-folder-dialog.view.tsx",
+    "family": "P31",
+    "exported": true,
+    "axes": {}
+  },
+  {
     "name": "NativeSelect",
     "source": "components/primitives/native-select.tsx",
     "family": "B06",
@@ -1356,6 +1445,7 @@ export const componentApi = [
     "axes": {
       "size": [
         "default",
+        "lg",
         "sm"
       ]
     }
@@ -1378,6 +1468,13 @@ export const componentApi = [
     "name": "OptionsView",
     "source": "entrypoints/options/options.view.tsx",
     "family": "S02",
+    "exported": true,
+    "axes": {}
+  },
+  {
+    "name": "OrganizationManagementView",
+    "source": "features/organization/organization-management.view.tsx",
+    "family": "S05",
     "exported": true,
     "axes": {}
   },
@@ -1492,6 +1589,18 @@ export const componentApi = [
     "axes": {}
   },
   {
+    "name": "PasswordToolsPage",
+    "source": "features/password-tools/password-tools-page.view.tsx",
+    "family": "S02",
+    "exported": true,
+    "axes": {
+      "presentation": [
+        "page",
+        "popup"
+      ]
+    }
+  },
+  {
     "name": "Popover",
     "source": "components/primitives/popover.tsx",
     "family": "B32",
@@ -1550,6 +1659,27 @@ export const componentApi = [
   {
     "name": "PopupEntries",
     "source": "entrypoints/popup/popup-entries.view.tsx",
+    "family": "S01",
+    "exported": true,
+    "axes": {}
+  },
+  {
+    "name": "PopupSettings",
+    "source": "entrypoints/popup/popup-settings.view.tsx",
+    "family": "S01",
+    "exported": true,
+    "axes": {}
+  },
+  {
+    "name": "PopupSync",
+    "source": "entrypoints/popup/popup-sync.view.tsx",
+    "family": "S01",
+    "exported": true,
+    "axes": {}
+  },
+  {
+    "name": "PopupVaultAccess",
+    "source": "entrypoints/popup/popup-vault-access.view.tsx",
     "family": "S01",
     "exported": true,
     "axes": {}
@@ -1715,10 +1845,15 @@ export const componentApi = [
   },
   {
     "name": "SearchField",
-    "source": "features/entries/entries.view.tsx",
+    "source": "features/entries/search-field.view.tsx",
     "family": "P10",
     "exported": true,
-    "axes": {}
+    "axes": {
+      "presentation": [
+        "default",
+        "popup"
+      ]
+    }
   },
   {
     "name": "SecretField",
@@ -1800,6 +1935,13 @@ export const componentApi = [
     "source": "features/sync/s3-setup-guide.view.tsx",
     "family": "S04",
     "exported": false,
+    "axes": {}
+  },
+  {
+    "name": "SetupOrganization",
+    "source": "features/vault-setup/setup-organization.view.tsx",
+    "family": "S02",
+    "exported": true,
     "axes": {}
   },
   {
@@ -2189,6 +2331,20 @@ export const componentApi = [
     }
   },
   {
+    "name": "SyncAccessKeys",
+    "source": "features/sync/sync-access-keys.view.tsx",
+    "family": "S03",
+    "exported": true,
+    "axes": {}
+  },
+  {
+    "name": "SyncManagement",
+    "source": "features/sync/sync-management.view.tsx",
+    "family": "S03",
+    "exported": true,
+    "axes": {}
+  },
+  {
     "name": "SyncPage",
     "source": "features/sync/sync-page.view.tsx",
     "family": "S03",
@@ -2206,6 +2362,13 @@ export const componentApi = [
     "name": "SyncStatus",
     "source": "features/sync/sync-review.view.tsx",
     "family": "P21",
+    "exported": true,
+    "axes": {}
+  },
+  {
+    "name": "SyncTrustReview",
+    "source": "features/sync/sync-trust-review.view.tsx",
+    "family": "S03",
     "exported": true,
     "axes": {}
   },
@@ -2304,9 +2467,56 @@ export const componentApi = [
     "axes": {}
   },
   {
+    "name": "TagEditor",
+    "source": "features/tags/tag-management.view.tsx",
+    "family": "S05",
+    "exported": false,
+    "axes": {}
+  },
+  {
+    "name": "TagGroupHeading",
+    "source": "features/tags/tag-visuals.view.tsx",
+    "family": "P30",
+    "exported": true,
+    "axes": {}
+  },
+  {
+    "name": "TagManagementView",
+    "source": "features/tags/tag-management.view.tsx",
+    "family": "S05",
+    "exported": true,
+    "axes": {}
+  },
+  {
+    "name": "TagMarker",
+    "source": "features/tags/tag-visuals.view.tsx",
+    "family": "P30",
+    "exported": true,
+    "axes": {}
+  },
+  {
+    "name": "TagPill",
+    "source": "features/tags/tag-visuals.view.tsx",
+    "family": "P30",
+    "exported": true,
+    "axes": {
+      "size": [
+        "default",
+        "sm"
+      ]
+    }
+  },
+  {
     "name": "TagSelection",
-    "source": "features/entries/entries.view.tsx",
+    "source": "features/entries/tag-selection.view.tsx",
     "family": "P27",
+    "exported": true,
+    "axes": {}
+  },
+  {
+    "name": "TagVisualPicker",
+    "source": "features/tags/tag-visuals.view.tsx",
+    "family": "P30",
     "exported": true,
     "axes": {}
   },
@@ -2548,6 +2758,13 @@ export const componentApi = [
     "axes": {}
   },
   {
+    "name": "VaultApplication",
+    "source": "entrypoints/options/vault-application.view.tsx",
+    "family": "S02",
+    "exported": true,
+    "axes": {}
+  },
+  {
     "name": "VaultLockSettings",
     "source": "features/settings/vault-lock-settings.view.tsx",
     "family": "S02",
@@ -2558,6 +2775,13 @@ export const componentApi = [
     "name": "VaultPicker",
     "source": "features/vault-access/vault-picker.view.tsx",
     "family": "P09",
+    "exported": true,
+    "axes": {}
+  },
+  {
+    "name": "VaultSettingsView",
+    "source": "features/settings/vault-settings.view.tsx",
+    "family": "S02",
     "exported": true,
     "axes": {}
   },

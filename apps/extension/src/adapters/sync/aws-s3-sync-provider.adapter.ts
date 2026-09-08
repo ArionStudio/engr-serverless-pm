@@ -103,6 +103,19 @@ const DEFINITIVE_CREDENTIAL_REJECTION_CODES = new Set([
   "UnrecognizedClientException",
 ]);
 
+const READ_PERMISSION_REJECTION_CODES = new Set(["AccessDenied"]);
+const READ_CREDENTIAL_OR_SIGNATURE_REJECTION_CODES = new Set([
+  ...DEFINITIVE_CREDENTIAL_REJECTION_CODES,
+  "SignatureDoesNotMatch",
+]);
+const READ_BUCKET_OR_REGION_REJECTION_CODES = new Set([
+  "AuthorizationHeaderMalformed",
+  "IllegalLocationConstraintException",
+  "InvalidBucketName",
+  "NoSuchBucket",
+  "PermanentRedirect",
+]);
+
 const NOT_FOUND_ERROR_CODES = new Set(["NoSuchKey", "NotFound"]);
 const CONDITIONAL_CONFLICT_ERROR_CODES = new Set([
   "ConditionalRequestConflict",
@@ -124,6 +137,30 @@ export class InvalidSyncProviderResponseError extends Error {
 
   constructor() {
     super("Sync provider response is malformed.");
+  }
+}
+
+export class S3ReadPermissionRejectedError extends Error {
+  override readonly name = "S3ReadPermissionRejectedError";
+
+  constructor() {
+    super("S3 rejected read access.");
+  }
+}
+
+export class S3ReadCredentialsOrSignatureRejectedError extends Error {
+  override readonly name = "S3ReadCredentialsOrSignatureRejectedError";
+
+  constructor() {
+    super("S3 rejected the credentials or request signature.");
+  }
+}
+
+export class S3BucketOrRegionRejectedError extends Error {
+  override readonly name = "S3BucketOrRegionRejectedError";
+
+  constructor() {
+    super("S3 rejected the bucket or region.");
   }
 }
 
@@ -326,12 +363,14 @@ export class AwsS3SyncProviderAdapter implements SyncProviderPort {
       await response.Body?.transformToString();
       return "accessible";
     } catch (error) {
-      if (isNotFound(error)) {
-        return "accessible";
-      }
-
       if (isDefinitiveCredentialRejection(error)) {
         return "authentication_rejected";
+      }
+
+      throwKnownS3ReadRejection(error);
+
+      if (isNotFound(error)) {
+        return "accessible";
       }
 
       throw error;
@@ -594,6 +633,8 @@ async function getRemoteVaultSnapshotObject(
   try {
     response = await client.getObject(location);
   } catch (error) {
+    throwKnownS3ReadRejection(error);
+
     if (isNotFound(error)) {
       return null;
     }
@@ -742,6 +783,22 @@ function isConditionalConflict(error: unknown): boolean {
 
 function isDefinitiveCredentialRejection(error: unknown): boolean {
   return DEFINITIVE_CREDENTIAL_REJECTION_CODES.has(getErrorCode(error) ?? "");
+}
+
+function throwKnownS3ReadRejection(error: unknown): void {
+  const code = getErrorCode(error);
+
+  if (READ_PERMISSION_REJECTION_CODES.has(code ?? "")) {
+    throw new S3ReadPermissionRejectedError();
+  }
+
+  if (READ_CREDENTIAL_OR_SIGNATURE_REJECTION_CODES.has(code ?? "")) {
+    throw new S3ReadCredentialsOrSignatureRejectedError();
+  }
+
+  if (READ_BUCKET_OR_REGION_REJECTION_CODES.has(code ?? "")) {
+    throw new S3BucketOrRegionRejectedError();
+  }
 }
 
 function getHttpStatusCode(error: unknown): number | undefined {

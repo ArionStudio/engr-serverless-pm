@@ -29,9 +29,11 @@ private displays and invalidate late results. Clipboard clearing remains owned
 by the composed workflow. Every rendered addition and named variant is registered
 in the gallery; appearance is reviewed in-browser, not through pixel audits.
 
-Device enrollment, autofill, provider additions and disaster recovery remain
-separate tasks. The workspace reuses supported entry fields rather than adding
-notes, folders, favorites or bulk deletion without domain contracts.
+Device enrollment was separate from these workspace batches and is now
+implemented in the [full application](./full-application-ui.md). Browser capture
+and Fill, provider additions and complete disaster recovery remain separate work. Later application work also
+added folder and tag-group contracts; notes, favorites and bulk deletion remain
+outside the entry contract.
 
 ## Implemented scope and limits
 

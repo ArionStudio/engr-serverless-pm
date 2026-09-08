@@ -123,6 +123,8 @@ describe("PrepareSyncReviewUseCase", () => {
           login: singlePasswordEntry.login,
           tags: singlePasswordEntry.tags,
           sanitizedUrl: singlePasswordEntry.sanitizedUrl,
+          folderId: "uncategorized",
+          hasPassword: true,
         },
       },
       remoteEntry: {
@@ -132,6 +134,8 @@ describe("PrepareSyncReviewUseCase", () => {
           login: singlePasswordEntry.login,
           tags: singlePasswordEntry.tags,
           sanitizedUrl: singlePasswordEntry.sanitizedUrl,
+          folderId: "uncategorized",
+          hasPassword: true,
         },
       },
     });
@@ -158,6 +162,7 @@ describe("PrepareSyncReviewUseCase", () => {
       review: {
         actionable: {
           entryReviews: [],
+          folderReviews: [],
           tagReviews: [],
           deviceProfileReviews: [],
         },
@@ -462,6 +467,7 @@ describe("PrepareSyncReviewUseCase", () => {
       review: {
         actionable: {
           entryReviews: [],
+          folderReviews: [],
           tagReviews: [],
           deviceProfileReviews: [],
         },

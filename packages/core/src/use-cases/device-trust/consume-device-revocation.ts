@@ -16,6 +16,7 @@ import {
   cloneVaultSyncResolution,
 } from "../../domain/sync/sync-resolution.utils";
 import { findChangedTags } from "../../domain/sync/tag-review.utils";
+import { findChangedFolders } from "../../domain/sync/folder-review.utils";
 import type {
   ReviewedVaultSnapshotIdentities,
   VaultMasterKey,
@@ -136,6 +137,10 @@ export class ConsumeDeviceRevocationUseCase {
         candidate.trustTransitionBaseline,
         candidate.remoteVault,
       );
+      const folderReviews = findChangedFolders(
+        candidate.trustTransitionBaseline,
+        candidate.remoteVault,
+      );
       const deviceProfileReviews = findChangedDeviceProfiles(
         candidate.trustTransitionBaseline,
         candidate.remoteVault,
@@ -144,6 +149,7 @@ export class ConsumeDeviceRevocationUseCase {
       if (
         entryReviews.length !== resolution.entryResolutions.length ||
         tagReviews.length !== resolution.tagResolutions.length ||
+        folderReviews.length !== resolution.folderResolutions.length ||
         deviceProfileReviews.length !==
           resolution.deviceProfileResolutions.length
       ) {
@@ -173,6 +179,7 @@ export class ConsumeDeviceRevocationUseCase {
       const hasContentChanges =
         entryReviews.length > 0 ||
         tagReviews.length > 0 ||
+        folderReviews.length > 0 ||
         deviceProfileReviews.length > 0;
       let syncUpload: SyncUploadStatus = "complete";
 
@@ -195,7 +202,7 @@ export class ConsumeDeviceRevocationUseCase {
           resolvedVault = applyVaultSyncResolution(
             candidate.trustTransitionBaseline,
             candidate.remoteVault,
-            { entryReviews, tagReviews, deviceProfileReviews },
+            { entryReviews, tagReviews, folderReviews, deviceProfileReviews },
             resolution,
             unlockedVault.deviceId,
           );

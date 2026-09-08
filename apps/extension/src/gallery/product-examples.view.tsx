@@ -1,3 +1,4 @@
+import { PASSWORD_ENTRY_TAG_LIMIT } from "@lfspm/core";
 import setupScreenshot from "./s3-setup-outputs.png";
 import { GuidancePanel } from "@/ui/components/feedback/guidance-panel.view";
 import { EntryDetailsExample, SiteIconExample } from "./entry-widgets.example";
@@ -609,7 +610,7 @@ function EntriesExample() {
   return (
     <Scenario
       label="Entries"
-      options={["list", "table", "loading", "error", "empty"]}
+      options={["list", "compact", "table", "loading", "error", "empty"]}
     >
       {(state) => (
         <div className="space-y-4">
@@ -624,6 +625,7 @@ function EntriesExample() {
               onOpen={setOpened}
               state={state === "loading" || state === "error" ? state : "ready"}
               onRetry={() => setOpened("Retry requested")}
+              presentation={state === "compact" ? "popup" : "default"}
             />
           )}
           <p role="status" className="text-xs text-muted-foreground">
@@ -1004,7 +1006,13 @@ function DestructiveExample() {
     </Scenario>
   );
 }
-function SearchExample({ state }: { state: "empty" | "filled" | "searching" }) {
+function SearchExample({
+  state,
+  presentation,
+}: {
+  state: "empty" | "filled" | "searching";
+  presentation: "default" | "popup";
+}) {
   const [query, setQuery] = useState(state === "empty" ? "" : "adrian");
   const [notice, setNotice] = useState("");
   return (
@@ -1014,10 +1022,11 @@ function SearchExample({ state }: { state: "empty" | "filled" | "searching" }) {
         onChange={setQuery}
         onSubmit={() => setNotice("Search submitted.")}
         searching={state === "searching"}
+        presentation={presentation}
         summary={
           state === "searching"
             ? "Searching entries…"
-            : `${demoEntries.filter((e) => e.login.includes(query)).length} example results`
+            : `${demoEntries.filter((entry) => entry.login.includes(query)).length} example results`
         }
       />
       {notice ? <p role="status">{notice}</p> : null}
@@ -1027,14 +1036,28 @@ function SearchExample({ state }: { state: "empty" | "filled" | "searching" }) {
 function TagExample({
   state,
 }: {
-  state: "selected" | "none" | "loading" | "unavailable" | "error";
+  state: "selected" | "none" | "loading" | "unavailable" | "error" | "limit";
 }) {
-  const [tags, setTags] = useState<number[]>(state === "none" ? [] : [1]);
+  const options =
+    state === "limit"
+      ? Array.from({ length: PASSWORD_ENTRY_TAG_LIMIT + 1 }, (_, index) => ({
+          ...demoTags[0],
+          id: `limit-${index}`,
+          label: `Tag ${index + 1}`,
+        }))
+      : demoTags;
+  const [tags, setTags] = useState<string[]>(
+    state === "none"
+      ? []
+      : state === "limit"
+        ? options.slice(0, PASSWORD_ENTRY_TAG_LIMIT).map(({ id }) => id)
+        : ["tag-personal"],
+  );
   return (
     <TagSelection
       value={tags}
       onChange={setTags}
-      options={demoTags}
+      options={options}
       disabled={state === "unavailable"}
       loading={state === "loading"}
       error={
@@ -1058,10 +1081,23 @@ export function FeatureExamples() {
       </Specimen>
       <Specimen id="P10" name="SearchField" owner="Feature control · entries">
         <Scenario
-          label="Search field"
-          options={["empty", "filled", "searching"]}
+          label="Search field presentation"
+          options={["default", "popup"]}
         >
-          {(state) => <SearchExample key={state} state={state} />}
+          {(presentation) => (
+            <Scenario
+              label="Search field"
+              options={["empty", "filled", "searching"]}
+            >
+              {(state) => (
+                <SearchExample
+                  key={`${presentation}:${state}`}
+                  state={state}
+                  presentation={presentation}
+                />
+              )}
+            </Scenario>
+          )}
         </Scenario>
       </Specimen>
       <Specimen
@@ -1120,6 +1156,8 @@ export function FeatureExamples() {
             "uploading",
             "complete",
             "pending",
+            "existing-vault",
+            "target-occupied",
             "review-required",
             "failed",
           ]}
@@ -1140,15 +1178,27 @@ export function FeatureExamples() {
                   uploading: "Uploading encrypted changes.",
                   complete: "The example upload is complete.",
                   pending: "Local changes are still waiting for confirmation.",
+                  "existing-vault":
+                    "S3 contains a newer signed copy of this vault. Review the reconnect action before replacing the older local copy.",
+                  "target-occupied":
+                    "An object already exists at the S3 key “vault/vault.enc”, but it is not a valid LFSPM vault. Choose another object prefix to keep the existing S3 object.",
                   "review-required": "Review remote changes before continuing.",
                   failed: "The example request failed.",
                 }[state]
               }
-              action={state === "failed" ? "Retry" : undefined}
+              action={
+                state === "target-occupied"
+                  ? "Change object prefix"
+                  : state === "failed"
+                    ? "Retry"
+                    : undefined
+              }
               onAction={
-                state === "failed"
-                  ? () => setNotice("Retry requested.")
-                  : undefined
+                state === "target-occupied"
+                  ? () => setNotice("Object-prefix edit requested.")
+                  : state === "failed"
+                    ? () => setNotice("Retry requested.")
+                    : undefined
               }
             />
           )}
@@ -1205,7 +1255,14 @@ export function FeatureExamples() {
       <Specimen id="P27" name="TagSelection" owner="Feature control · entries">
         <Scenario
           label="Tag selection"
-          options={["selected", "none", "loading", "unavailable", "error"]}
+          options={[
+            "selected",
+            "none",
+            "loading",
+            "unavailable",
+            "error",
+            "limit",
+          ]}
         >
           {(state) => <TagExample key={state} state={state} />}
         </Scenario>

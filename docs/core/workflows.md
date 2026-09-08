@@ -2,7 +2,7 @@
 
 Status: current implementation
 
-The root `@lfspm/core` entry point exports 40 use-case classes. Each class has one
+The root `@lfspm/core` entry point exports use-case classes. Each class has one
 `execute` method and represents an application workflow. Runtime code constructs
 the classes with shared services and port implementations.
 
@@ -44,6 +44,27 @@ silently retry with a refreshed vector. Snapshot CAS still protects changes
 occurring after the entry comparison. Changes to other entries do not invalidate
 the retained entry version.
 
+## Organization
+
+| Use case               | Behavior                                                           |
+| ---------------------- | ------------------------------------------------------------------ |
+| `ReadTagGroupsUseCase` | Reads the available tag-group definitions                          |
+| `ReadTagsUseCase`      | Reads the unlocked vault's tags                                    |
+| `AddTagUseCase`        | Validates and creates a tag, persists the change and attempts sync |
+| `UpdateTagUseCase`     | Updates the reviewed tag version and attempts sync                 |
+| `RemoveTagUseCase`     | Rejects referenced tags; otherwise records a deletion tombstone                |
+| `ReadFoldersUseCase`   | Reads the unlocked vault's folder hierarchy                        |
+| `AddFolderUseCase`     | Creates a folder within the validated hierarchy                    |
+| `UpdateFolderUseCase`  | Renames a reviewed folder                                          |
+| `MoveFolderUseCase`    | Moves a reviewed folder while enforcing hierarchy rules            |
+| `RemoveFolderUseCase`  | Rejects folders with entries or children; otherwise records a deletion tombstone         |
+
+Successful tag and folder removal leaves entries unchanged.
+
+Entry, tag and folder mutations return `syncConfigured` from the state used for
+that mutation alongside upload status, so the UI can report the saved outcome
+without relying on an older workspace read.
+
 ## Password tools
 
 | Use case                       | Behavior                                                                                                           |
@@ -61,6 +82,9 @@ the retained entry version.
 | `CopyRecoveryWordsUseCase`     | Validates words against current paired recovery data and recovered device keys, then uses shared clipboard ownership and scheduled cleanup |
 | `ClearClipboardTaskUseCase`    | Clears only the clipboard value still owned by the expected action and reports why a stale or changed value was preserved                  |
 
+`CopyRevealedSecretUseCase` uses the existing owned clipboard cleanup for an
+explicitly revealed value after verifying its vault session.
+
 ## Sync
 
 | Use case                                      | Behavior                                                                                                                                                                            |
@@ -75,19 +99,29 @@ the retained entry version.
 | `DisableSyncUseCase`                          | Removes expected remote and local sync state; when other devices exist, it also revokes them, removes their profiles, rotates the vault key, and rebuilds the surviving device slot |
 | `CompleteProviderCredentialRevocationUseCase` | Checks old provider access when credentials remain, leaves state pending unless deletion is proven, and reports revocation plus upload status for retry or reconciliation           |
 
+Existing-device reconnection is split into `PrepareExistingSyncConnectionUseCase`
+and `ConnectExistingSyncUseCase`. The first verifies the S3 candidate for review;
+the second checks that the reviewed identities still match before adopting it.
+`RevealSyncCredentialsUseCase` requires password confirmation and returns the
+current device's access keys for an explicit copy action.
+
 ## Device trust
 
-| Use case                                    | Behavior                                                                                                                                              |
-| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `CreateDeviceEnrollmentRequestUseCase`      | Creates a target device identity and signed enrollment request and protects the pending private state with the target's master password               |
-| `InitializeDeviceEnrollmentUseCase`         | Verifies a request on a trusted device, extends the trust chain, adds a device key envelope, and returns the response artifact                        |
-| `PerformDeviceEnrollmentUseCase`            | Opens the target's pending state, verifies the response and trust chain, persists local access and recovery records, and activates the enrolled vault |
-| `PrepareDeviceEnrollmentConsumptionUseCase` | Loads and verifies an enrollment transition received through sync and prepares item-level review data                                                 |
-| `ConsumeDeviceEnrollmentUseCase`            | Applies the reviewed enrollment transition to local state and continues synchronized operation                                                        |
-| `RevokeDeviceUseCase`                       | Removes a device from trust, rotates vault-key state, records provider-credential cleanup, and creates a snapshot for surviving devices               |
-| `PrepareDeviceRevocationConsumptionUseCase` | Verifies a remote revocation transition, uses the supplied replacement sync configuration to validate access, and prepares local review data          |
-| `ConsumeDeviceRevocationUseCase`            | Applies the reviewed revocation, replaces local provider credentials, and continues with the rotated vault state                                      |
-| `RecoverDeviceAccessUseCase`                | Restores access to the same trusted device identity from the current local recovery backup and replaces local password and recovery protection        |
+| Use case                                    | Behavior                                                                                                                                                                                                      |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CreateDeviceEnrollmentRequestUseCase`      | Creates a target device identity and signed enrollment request and protects the pending private state with the target's master password                                                                       |
+| `InitializeDeviceEnrollmentUseCase`         | Verifies a request on a trusted device, extends the trust chain, adds a device key envelope, and returns the response artifact                                                                                |
+| `PerformDeviceEnrollmentUseCase`            | Opens the target's pending state, verifies the response and trust chain, persists local access and recovery records, activates the enrolled vault, and returns recovery words with the persisted display name |
+| `PrepareDeviceEnrollmentConsumptionUseCase` | Loads and verifies an enrollment transition received through sync and prepares item-level review data                                                                                                         |
+| `ConsumeDeviceEnrollmentUseCase`            | Applies the reviewed enrollment transition to local state and continues synchronized operation                                                                                                                |
+| `RevokeDeviceUseCase`                       | Removes a device from trust, rotates vault-key state, records provider-credential cleanup, and creates a snapshot for surviving devices                                                                       |
+| `PrepareDeviceRevocationConsumptionUseCase` | Verifies a remote revocation transition, uses the supplied replacement sync configuration to validate access, and prepares local review data                                                                  |
+| `ConsumeDeviceRevocationUseCase`            | Applies the reviewed revocation, replaces local provider credentials, and continues with the rotated vault state                                                                                              |
+| `RecoverDeviceAccessUseCase`                | Restores access to the same trusted device identity from the current local recovery backup and replaces local password and recovery protection                                                                |
+
+`ReadDeviceManagementUseCase` returns the unlocked device-management projection.
+`ReadDeviceEnrollmentApprovalUseCase` opens the protected approval for the target
+device and returns the details needed to complete enrollment.
 
 Recovery replaces the current local backup. It cannot invalidate recovery words
 for copies of an older backup retained by an attacker or restored through local
@@ -96,7 +130,7 @@ storage rollback.
 ## Diagrams
 
 The [V1 use-case diagrams](../v1/use-case/README.md) provide activity diagrams
-for 27 of the 40 workflows, plus sequence and state-machine views. The thirteen
+for a subset of these workflows, plus sequence and state-machine views. The
 use cases without a dedicated activity diagram are:
 
 - `ReplaceRecoveryWordsUseCase`
@@ -112,6 +146,23 @@ use cases without a dedicated activity diagram are:
 - `ConsumeDeviceEnrollmentUseCase`
 - `PrepareDeviceRevocationConsumptionUseCase`
 - `ConsumeDeviceRevocationUseCase`
+
+- `CopyRevealedSecretUseCase`
+- `ReadDeviceManagementUseCase`
+- `ReadDeviceEnrollmentApprovalUseCase`
+- `PrepareExistingSyncConnectionUseCase`
+- `ConnectExistingSyncUseCase`
+- `RevealSyncCredentialsUseCase`
+- `ReadTagGroupsUseCase`
+- `ReadFoldersUseCase`
+- `AddFolderUseCase`
+- `UpdateFolderUseCase`
+- `MoveFolderUseCase`
+- `RemoveFolderUseCase`
+- `ReadTagsUseCase`
+- `AddTagUseCase`
+- `UpdateTagUseCase`
+- `RemoveTagUseCase`
 
 This is a documentation coverage gap, not an absent core implementation. Use
 the TypeScript files and tests when a diagram is missing or disagrees with the

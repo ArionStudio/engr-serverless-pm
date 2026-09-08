@@ -66,6 +66,8 @@ compare-and-swap boundary. Every synchronized snapshot transition also compares
 the exact encrypted credential state, even when retaining that artifact
 byte-for-byte.
 
+The snapshot version vector and the vault-content version vector have separate owners. Persisting a trust-only change advances the snapshot vector while content can stay unchanged. Enrollment and reconnection must preserve both values; they must not require the two vectors to be equal.
+
 ## Device trust
 
 Each trusted device has a stable device ID, a public signing key, and a public

@@ -16,6 +16,8 @@ export function SetupVaultAccess({
   onDismissError,
   assessPassword,
   onOpenRecovery,
+  initiallyRecovering = false,
+  onExitRecovery,
 }: {
   vault: SetupVault;
   pending: boolean;
@@ -23,6 +25,8 @@ export function SetupVaultAccess({
   onUnlock: (password: string) => void;
   onReplace: () => void;
   onLock: () => void;
+  initiallyRecovering?: boolean;
+  onExitRecovery?: () => void;
 } & (
   | {
       onRecover: (words: readonly string[], password: string) => void;
@@ -37,7 +41,7 @@ export function SetupVaultAccess({
       assessPassword?: never;
     }
 )) {
-  const [recovering, setRecovering] = useState(false);
+  const [recovering, setRecovering] = useState(initiallyRecovering);
   const [revealed, setRevealed] = useState(false);
   const [password, setPassword] = useState("");
   if (recovering && !vault.unlocked && onRecover && assessPassword)
@@ -52,6 +56,7 @@ export function SetupVaultAccess({
           if (!pending) {
             setRecovering(false);
             onDismissError?.();
+            onExitRecovery?.();
           }
         }}
       />

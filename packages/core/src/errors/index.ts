@@ -17,4 +17,6 @@ export * from "./vault-entry.errors";
 export * from "./vault-lifecycle.errors";
 export * from "./vault-session.errors";
 export * from "./vault-snapshot.errors";
+export * from "./vault-tag.errors";
+export * from "./vault-organization.errors";
 export * from "./vault-trust.errors";

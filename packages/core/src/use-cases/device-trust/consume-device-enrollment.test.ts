@@ -290,6 +290,7 @@ function createCommand(ctx: ReturnType<typeof createContext>) {
     },
     resolution: {
       entryResolutions: [],
+      folderResolutions: [],
       tagResolutions: [],
       deviceProfileResolutions: [],
     },
@@ -403,6 +404,7 @@ describe("device enrollment consumption", () => {
         ...createCommand(ctx),
         resolution: {
           entryResolutions: [],
+          folderResolutions: [],
           tagResolutions: [],
           deviceProfileResolutions: [
             {
@@ -573,8 +575,12 @@ describe("device enrollment consumption", () => {
       versionVector: { [ctx.values.deviceId]: 3 },
       tags: [
         {
-          id: 1,
+          id: "remote-tag",
           name: "Remote tag",
+          groupId: "other" as const,
+          color: "purple" as const,
+          shade: 500 as const,
+          createdAt: ctx.values.timestamp,
           versionVector: { [ctx.values.deviceId]: 3 },
         },
       ],
@@ -583,7 +589,10 @@ describe("device enrollment consumption", () => {
       ...createCommand(ctx),
       resolution: {
         entryResolutions: [],
-        tagResolutions: [{ tagId: 1, action: "use_remote" as const }],
+        folderResolutions: [],
+        tagResolutions: [
+          { tagId: "remote-tag", action: "use_remote" as const },
+        ],
         deviceProfileResolutions: [],
       },
     };
@@ -613,7 +622,9 @@ describe("device enrollment consumption", () => {
     );
     expect(
       ctx.ports.saved.unlockedVaultSession?.unlockedVault.vault.tags,
-    ).toEqual([expect.objectContaining({ id: 1, name: "Remote tag" })]);
+    ).toEqual([
+      expect.objectContaining({ id: "remote-tag", name: "Remote tag" }),
+    ]);
   });
 
   it("does not re-upload a stale provider marker with resolved enrollment content", async () => {
@@ -642,8 +653,12 @@ describe("device enrollment consumption", () => {
       versionVector: { [ctx.values.deviceId]: 3 },
       tags: [
         {
-          id: 1,
+          id: "remote-tag",
           name: "Remote tag",
+          groupId: "other" as const,
+          color: "purple" as const,
+          shade: 500 as const,
+          createdAt: ctx.values.timestamp,
           versionVector: { [ctx.values.deviceId]: 3 },
         },
       ],
@@ -653,7 +668,8 @@ describe("device enrollment consumption", () => {
       ...createCommand(ctx),
       resolution: {
         entryResolutions: [],
-        tagResolutions: [{ tagId: 1, action: "use_remote" }],
+        folderResolutions: [],
+        tagResolutions: [{ tagId: "remote-tag", action: "use_remote" }],
         deviceProfileResolutions: [],
       },
     });
@@ -831,8 +847,12 @@ describe("device enrollment consumption", () => {
       versionVector: { [ctx.values.deviceId]: 3 },
       tags: [
         {
-          id: 1,
+          id: "remote-tag",
           name: "Remote tag",
+          groupId: "other" as const,
+          color: "purple" as const,
+          shade: 500 as const,
+          createdAt: ctx.values.timestamp,
           versionVector: { [ctx.values.deviceId]: 3 },
         },
       ],
@@ -852,7 +872,8 @@ describe("device enrollment consumption", () => {
         ...createCommand(ctx),
         resolution: {
           entryResolutions: [],
-          tagResolutions: [{ tagId: 1, action: "use_remote" }],
+          folderResolutions: [],
+          tagResolutions: [{ tagId: "remote-tag", action: "use_remote" }],
           deviceProfileResolutions: [],
         },
       }),
@@ -871,8 +892,12 @@ describe("device enrollment consumption", () => {
       versionVector: { [ctx.values.deviceId]: 3 },
       tags: [
         {
-          id: 1,
+          id: "remote-tag",
           name: "Remote tag",
+          groupId: "other" as const,
+          color: "purple" as const,
+          shade: 500 as const,
+          createdAt: ctx.values.timestamp,
           versionVector: { [ctx.values.deviceId]: 3 },
         },
       ],
@@ -890,7 +915,8 @@ describe("device enrollment consumption", () => {
       ...createCommand(ctx),
       resolution: {
         entryResolutions: [],
-        tagResolutions: [{ tagId: 1, action: "use_remote" }],
+        folderResolutions: [],
+        tagResolutions: [{ tagId: "remote-tag", action: "use_remote" }],
         deviceProfileResolutions: [],
       },
     });
@@ -899,7 +925,9 @@ describe("device enrollment consumption", () => {
     expect(ctx.ports.saved.vaultSnapshot).not.toBe(ctx.localSnapshot);
     expect(
       ctx.ports.saved.unlockedVaultSession?.unlockedVault.vault.tags,
-    ).toEqual([expect.objectContaining({ id: 1, name: "Remote tag" })]);
+    ).toEqual([
+      expect.objectContaining({ id: "remote-tag", name: "Remote tag" }),
+    ]);
     expect(
       ctx.ports.sessionServices.unlockedVaultSession
         .commitPersistedSnapshotIfSessionIsActive,

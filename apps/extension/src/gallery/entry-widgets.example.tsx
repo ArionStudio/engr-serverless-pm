@@ -6,6 +6,10 @@ import { EntryEditor } from "@/ui/features/entries/entry-editor.view";
 import { SiteIcon } from "@/ui/features/entries/site-icon.view";
 import { Scenario } from "./specimen.view";
 import { demoTags } from "./fixtures";
+import { tagGroupPresentations } from "@/ui/features/tags";
+import { globalLibrarySchema, PASSWORD_ENTRY_TAG_LIMIT } from "@lfspm/core";
+import organizationLibrary from "@/assets/data/global-library.json";
+import type { FolderChoice } from "@/ui/features/folders";
 import iconUrl from "../../assets/icon.svg?url&no-inline";
 export function EntryDetailsExample() {
   const [password, setPassword] = useState<string>();
@@ -14,13 +18,24 @@ export function EntryDetailsExample() {
     <Scenario
       label="Entry details behavior"
       options={
-        ["ready", "revealing", "copying", "copy-error", "pending"] as const
+        [
+          "ready",
+          "email-link",
+          "revealing",
+          "copying",
+          "copy-error",
+          "pending",
+        ] as const
       }
     >
       {(state) => (
         <EntryDetails
-          entry={exampleEntry}
-          tagLabels={{ 1: "Personal" }}
+          entry={{
+            ...exampleEntry,
+            folderId: "uncategorized",
+            hasPassword: state !== "email-link",
+          }}
+          tagLabels={{ "tag-personal": "Personal" }}
           password={password}
           revealing={state === "revealing"}
           disabled={
@@ -69,26 +84,110 @@ export function SiteIconExample() {
   );
 }
 export function EntryEditorExample() {
+  const [folders, setFolders] = useState<FolderChoice[]>([
+    {
+      id: "gallery-work",
+      name: "Work",
+      icon: "briefcase",
+      parentId: null,
+      createdAt: 1,
+      entryCount: 0,
+      childCount: 1,
+    },
+    {
+      id: "gallery-projects",
+      name: "Projects",
+      icon: "folder",
+      parentId: "gallery-work",
+      createdAt: 1,
+      entryCount: 0,
+      childCount: 0,
+    },
+  ]);
   return (
     <Scenario
       label="Entry editor behavior"
-      options={["add", "edit", "pending", "save-error", "tool-error"] as const}
+      options={
+        [
+          "add",
+          "email-link",
+          "edit",
+          "pending",
+          "save-error",
+          "tool-error",
+          "tag-limit",
+          "folder-suggestions",
+        ] as const
+      }
     >
       {(state) => (
         <EntryEditor
           key={state}
           initial={
-            state === "edit"
+            state === "tag-limit"
               ? {
                   ...emptyEntryDraft,
-                  login: exampleEntry.login,
-                  url: exampleEntry.sanitizedUrl,
-                  password: "Gallery-River-8!Pine-Sky",
+                  tagIds: Array.from(
+                    { length: PASSWORD_ENTRY_TAG_LIMIT },
+                    (_, index) => `limit-${index}`,
+                  ),
                 }
-              : emptyEntryDraft
+              : state === "edit"
+                ? {
+                    ...emptyEntryDraft,
+                    login: exampleEntry.login,
+                    url: exampleEntry.sanitizedUrl,
+                    password: "Gallery-River-8!Pine-Sky",
+                  }
+                : state === "email-link"
+                  ? {
+                      ...emptyEntryDraft,
+                      login: "alex@example.com",
+                      url: "https://example.com",
+                      withoutPassword: true,
+                    }
+                  : emptyEntryDraft
           }
           mode={state === "edit" ? "edit" : "add"}
-          tags={demoTags}
+          tags={
+            state === "tag-limit"
+              ? Array.from(
+                  { length: PASSWORD_ENTRY_TAG_LIMIT + 1 },
+                  (_, index) => ({
+                    ...demoTags[0],
+                    id: `limit-${index}`,
+                    label: `Tag ${index + 1}`,
+                  }),
+                )
+              : demoTags
+          }
+          tagGroups={tagGroupPresentations}
+          folderSuggestions={globalLibrarySchema
+            .parse(organizationLibrary)
+            .folders.map((folder) =>
+              state === "folder-suggestions" && folder.name === "Clients"
+                ? { ...folder, parent: "ｗｏｒｋ" }
+                : folder,
+            )}
+          folders={state === "folder-suggestions" ? folders : []}
+          onCreateFolder={
+            state === "folder-suggestions"
+              ? async (folder) => {
+                  const id = `gallery-created-folder-${folders.length}`;
+                  setFolders((current) => [
+                    ...current,
+                    {
+                      ...folder,
+                      id,
+                      createdAt: 1,
+                      entryCount: 0,
+                      childCount: 0,
+                    },
+                  ]);
+                  return { id };
+                }
+              : undefined
+          }
           tools={
             state === "tool-error"
               ? {

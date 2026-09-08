@@ -1,13 +1,14 @@
-# SPM Chrome Extension
+# LFSPM browser extension
 
-A Chrome extension built with Vite, React, TypeScript, React Router v7, Shadcn, and Tailwind CSS.
+A Chromium extension built with Vite, React, TypeScript, Base UI,
+Hugeicons and Tailwind CSS.
 
 ## Features
 
-- Modern Chrome extension development
+- Chromium Manifest V3 build
 - React with TypeScript
 - React Router v7 for navigation
-- Shadcn UI components
+- Base UI components
 - Tailwind CSS for styling
 - **Hot reload development** - Live updates during development
 - **Critical testing** - Vitest for essential functionality
@@ -20,14 +21,14 @@ A Chrome extension built with Vite, React, TypeScript, React Router v7, Shadcn, 
 - **UI Components**: Shadcn
 - **Styling**: Tailwind CSS
 - **Testing**: Vitest, Testing Library
-- **Extension**: Chrome Extension Manifest v3
+- **Extension**: Chromium Manifest V3
 
 ## Setup
 
 1. Clone the repository
 2. Install dependencies: `pnpm install`
 3. Start development server: `pnpm dev`
-4. Build extension: `pnpm build`
+4. Build Chromium: `pnpm build`
 
 ## Development
 
@@ -50,6 +51,8 @@ A Chrome extension built with Vite, React, TypeScript, React Router v7, Shadcn, 
 
 1. Build the extension: `pnpm build`
 2. Reload the extension in Chrome extensions page
+
+Firefox packaging is planned separately.
 
 ### Testing
 
@@ -94,7 +97,7 @@ app/
 ## Build
 
 - `pnpm dev` - Development with hot reload
-- `pnpm build` - Build Chrome extension
+- `pnpm build` - Build Chromium extension into `dist/`
 - `pnpm test` - Run tests
 - `pnpm lint` - Run ESLint
 

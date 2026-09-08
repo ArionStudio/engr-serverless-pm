@@ -1,14 +1,6 @@
 import { SiteIcon } from "./site-icon.view";
-import { useId, useRef } from "react";
 import type { VisiblePasswordEntryFields } from "@lfspm/core";
 import { Button } from "@/ui/components/primitives/button";
-import { Badge } from "@/ui/components/primitives/badge";
-import {
-  InputGroup,
-  InputGroupInput,
-  InputGroupAddon,
-  InputGroupButton,
-} from "@/ui/components/primitives/input-group";
 import {
   Item,
   ItemContent,
@@ -17,116 +9,110 @@ import {
   ItemActions,
   ItemGroup,
 } from "@/ui/components/primitives/item";
-import {
-  Field,
-  FieldLabel,
-  FieldError,
-} from "@/ui/components/primitives/field";
-import {
-  Combobox,
-  ComboboxChips,
-  ComboboxChip,
-  ComboboxChipsInput,
-  ComboboxValue,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxList,
-  ComboboxItem,
-  useComboboxAnchor,
-} from "@/ui/components/primitives/combobox";
 import { EmptyState } from "@/ui/components/layout/sections.view";
-import { Spinner } from "@/ui/components/primitives/spinner";
 import { Skeleton } from "@/ui/components/primitives/skeleton";
-export function SearchField({
-  value,
-  onChange,
-  onSubmit,
-  searching = false,
-  summary,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  onSubmit: () => void;
-  searching?: boolean;
-  summary: string;
-}) {
-  const id = useId();
-  const input = useRef<HTMLInputElement>(null);
-  return (
-    <Field>
-      <FieldLabel htmlFor={id}>Search entries</FieldLabel>
-      <InputGroup>
-        <InputGroupInput
-          ref={input}
-          id={id}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              onSubmit();
-            }
-          }}
-          placeholder="Search logins, websites or tags…"
-        />
-        <InputGroupAddon
-          align="inline-end"
-          className="data-[align=inline-end]:mr-0"
-        >
-          {searching ? <Spinner /> : null}
-          <InputGroupButton
-            aria-label="Clear search"
-            disabled={!value}
-            onClick={() => {
-              onChange("");
-              input.current?.focus();
-            }}
-          >
-            Clear
-          </InputGroupButton>
-        </InputGroupAddon>
-      </InputGroup>
-      <p role="status" className="text-xs text-muted-foreground">
-        {summary}
-      </p>
-    </Field>
-  );
-}
+import { HugeiconsIcon } from "@hugeicons/react";
+import { TagPill } from "@/ui/features/tags";
+import { getFolderIcon } from "@/ui/features/folders";
+import type { TagOption } from "./tag-selection.view";
+
+export type EntryFolderPresentation = {
+  readonly name: string;
+  readonly icon: string;
+};
 export function EntryRow({
   entry,
   selected,
   onOpen,
   onSelect,
   tagLabels = {},
+  tagOptions = {},
+  folders = {},
+  presentation = "default",
 }: {
   entry: VisiblePasswordEntryFields;
-  tagLabels?: Readonly<Record<number, string>>;
+  tagLabels?: Readonly<Record<string, string>>;
+  tagOptions?: Readonly<Record<string, TagOption>>;
+  folders?: Readonly<Record<string, EntryFolderPresentation>>;
   selected?: boolean;
   onOpen: (id: string) => void;
   onSelect?: (id: string) => void;
+  presentation?: "default" | "popup";
 }) {
+  const popup = presentation === "popup" && !onSelect;
+  const folder = folders[entry.folderId];
   return (
-    <Item variant="outline">
+    <Item
+      render={
+        popup ? (
+          <button
+            type="button"
+            className="cursor-pointer text-left"
+            onClick={() => onOpen(entry.id)}
+          />
+        ) : undefined
+      }
+      variant={presentation === "popup" ? "muted" : "outline"}
+      size={presentation === "popup" ? "xs" : "default"}
+    >
       <SiteIcon url={entry.sanitizedUrl} />
       <ItemContent>
         <ItemTitle>
-          <Button
-            variant="link"
-            className="h-auto min-w-0 justify-start px-0 text-left whitespace-normal break-all"
-            onClick={() => onOpen(entry.id)}
-          >
-            {entry.login || "Unnamed login"}
-          </Button>
+          {popup ? (
+            <span className="min-w-0 text-sm whitespace-normal break-all text-foreground">
+              {entry.login || "Unnamed login"}
+            </span>
+          ) : (
+            <Button
+              variant="link"
+              className="h-auto min-w-0 justify-start px-0 text-left whitespace-normal break-all"
+              onClick={() => onOpen(entry.id)}
+            >
+              {entry.login || "Unnamed login"}
+            </Button>
+          )}
         </ItemTitle>
         <ItemDescription className="break-all">
           {entry.sanitizedUrl}
         </ItemDescription>
-        <div className="mt-2 flex flex-wrap gap-1">
-          {entry.tags.map((tag) => (
-            <Badge key={tag} variant="outline">
-              {tagLabels[tag] ?? "Unknown tag"}
-            </Badge>
-          ))}
+        {folder ? (
+          <span className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <HugeiconsIcon
+              icon={getFolderIcon(folder.icon)}
+              size={14}
+              className="shrink-0"
+              aria-hidden="true"
+            />
+            <span className="truncate">{folder.name}</span>
+          </span>
+        ) : null}
+        <div
+          className={
+            presentation === "popup"
+              ? "mt-1 flex flex-wrap gap-1"
+              : "mt-2 flex flex-wrap gap-1"
+          }
+        >
+          {entry.tags.map((tag) => {
+            const option = tagOptions[tag];
+            return option ? (
+              <TagPill
+                key={tag}
+                name={option.label}
+                group={option.group}
+                color={option.color}
+                shade={option.shade}
+                size="sm"
+              />
+            ) : (
+              <span
+                key={tag}
+                className="rounded-md border bg-muted/45 px-2 py-0.5 text-xs"
+              >
+                {tagLabels[tag] ?? "Unknown tag"}
+              </span>
+            );
+          })}
         </div>
       </ItemContent>
       {onSelect ? (
@@ -151,14 +137,20 @@ export function EntryList({
   state = "ready",
   onRetry,
   tagLabels,
+  tagOptions,
+  folders,
+  presentation = "default",
 }: {
   entries: readonly VisiblePasswordEntryFields[];
-  tagLabels?: Readonly<Record<number, string>>;
+  tagLabels?: Readonly<Record<string, string>>;
+  tagOptions?: Readonly<Record<string, TagOption>>;
+  folders?: Readonly<Record<string, EntryFolderPresentation>>;
   selectedId?: string;
   onOpen: (id: string) => void;
   onSelect?: (id: string) => void;
   state?: "ready" | "loading" | "error";
   onRetry?: () => void;
+  presentation?: "default" | "popup";
 }) {
   if (state === "loading")
     return (
@@ -186,15 +178,18 @@ export function EntryList({
       />
     );
   return (
-    <ItemGroup className="gap-3">
+    <ItemGroup className={presentation === "popup" ? "gap-2" : "gap-3"}>
       {entries.map((entry) => (
         <EntryRow
           key={entry.id}
           entry={entry}
           tagLabels={tagLabels}
+          tagOptions={tagOptions}
+          folders={folders}
           selected={entry.id === selectedId}
           onOpen={onOpen}
           onSelect={onSelect}
+          presentation={presentation}
         />
       ))}
     </ItemGroup>
@@ -205,71 +200,5 @@ export function EntrySelection(props: Parameters<typeof EntryList>[0]) {
     <section aria-label="Choose an entry">
       <EntryList {...props} />
     </section>
-  );
-}
-export type TagOption = { id: number; label: string };
-export function TagSelection({
-  options,
-  value,
-  onChange,
-  error,
-  disabled = false,
-  loading = false,
-}: {
-  options: readonly TagOption[];
-  value: readonly number[];
-  onChange: (ids: number[]) => void;
-  error?: string;
-  disabled?: boolean;
-  loading?: boolean;
-}) {
-  const id = useId();
-  const anchor = useComboboxAnchor();
-  return (
-    <Field>
-      <div className="flex items-center gap-2">
-        <FieldLabel htmlFor={id}>Tags</FieldLabel>
-        {loading ? <Spinner aria-label="Loading tags" /> : null}
-      </div>
-      <Combobox
-        multiple
-        items={options}
-        value={options.filter((o) => value.includes(o.id))}
-        itemToStringLabel={(o) => o.label}
-        onValueChange={(values) => onChange(values.map((v) => v.id))}
-        disabled={disabled || loading}
-      >
-        <ComboboxChips ref={anchor}>
-          <ComboboxValue>
-            {(values: TagOption[]) => (
-              <>
-                {values.map((v) => (
-                  <ComboboxChip key={v.id} removeLabel={`Remove ${v.label}`}>
-                    {v.label}
-                  </ComboboxChip>
-                ))}
-                <ComboboxChipsInput
-                  id={id}
-                  placeholder="Add tags…"
-                  aria-invalid={!!error}
-                  aria-describedby={error ? `${id}-error` : undefined}
-                />
-              </>
-            )}
-          </ComboboxValue>
-        </ComboboxChips>
-        <ComboboxContent anchor={anchor}>
-          <ComboboxEmpty>No matching tags.</ComboboxEmpty>
-          <ComboboxList>
-            {(v: TagOption) => (
-              <ComboboxItem key={v.id} value={v}>
-                {v.label}
-              </ComboboxItem>
-            )}
-          </ComboboxList>
-        </ComboboxContent>
-      </Combobox>
-      {error ? <FieldError id={`${id}-error`}>{error}</FieldError> : null}
-    </Field>
   );
 }
