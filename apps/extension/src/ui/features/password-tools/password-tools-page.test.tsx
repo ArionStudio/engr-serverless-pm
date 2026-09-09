@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -32,9 +33,9 @@ describe("Password tools", () => {
       screen.queryByLabelText("Generated password"),
     ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Generate password" }));
-    expect(
-      await screen.findByLabelText("Generated password"),
-    ).toHaveTextContent("Concealed");
+    expect(await screen.findByText("Concealed")).toBeVisible();
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(screen.getByRole("status")).toHaveTextContent("Strong");
     expect(
       screen.queryByDisplayValue("River-Sky-84!Gallery"),
     ).not.toBeInTheDocument();
@@ -103,6 +104,9 @@ describe("Password tools", () => {
       });
     render(<PasswordToolsPage tools={tools} onUse={() => {}} />);
     fireEvent.click(screen.getByRole("button", { name: "Generate password" }));
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Generating password",
+    );
     fireEvent.click(screen.getByRole("tab", { name: "Username" }));
     finish({ password: "Late-Secret-84!Value" });
     fireEvent.click(screen.getByRole("button", { name: "Generate username" }));
@@ -160,5 +164,51 @@ describe("Password tools", () => {
     expect(
       screen.queryByLabelText("Generated password"),
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps the generated result active until secure copying finishes", async () => {
+    const tools = capabilities();
+    let finishCopy!: () => void;
+    tools.copy = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishCopy = resolve;
+        }),
+    );
+    const onPendingChange = vi.fn();
+    render(
+      <PasswordToolsPage
+        tools={tools}
+        onUse={() => {}}
+        onPendingChange={onPendingChange}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Generate password" }));
+    await screen.findByRole("region", { name: "Generated value" });
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+
+    expect(screen.getByRole("button", { name: /Copying…/ })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Generate password" }),
+    ).toBeDisabled();
+    expect(screen.getByRole("tab", { name: "Username" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(
+      screen.getByRole("button", { name: "Use in new entry" }),
+    ).toBeDisabled();
+    expect(onPendingChange).toHaveBeenLastCalledWith(true);
+
+    await act(async () => finishCopy());
+    expect(await screen.findByRole("button", { name: "Copied" })).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Generate password" }),
+    ).toBeEnabled();
+    expect(screen.getByRole("tab", { name: "Username" })).not.toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(onPendingChange).toHaveBeenLastCalledWith(false);
   });
 });

@@ -67,7 +67,9 @@ describe("product presentations", () => {
       "FORBIDDEN",
     );
     await user.click(
-      screen.getByRole("checkbox", { name: "Select adrian@example.test" }),
+      screen.getByRole("checkbox", {
+        name: "Select adrian@example.test at https://mail.example.test",
+      }),
     );
     expect(screen.getByRole("status")).toHaveTextContent("1 selected");
     await user.click(screen.getByRole("button", { name: /Login/ }));
@@ -77,7 +79,9 @@ describe("product presentations", () => {
     );
     expect(screen.getAllByRole("row")).toHaveLength(2);
     await user.click(
-      screen.getByRole("button", { name: "Open work@example.test" }),
+      screen.getByRole("button", {
+        name: "Open work@example.test at https://work.example.test",
+      }),
     );
     expect(open).toHaveBeenCalledWith("demo-3");
     expect(screen.getByRole("status")).toHaveTextContent("0 selected");

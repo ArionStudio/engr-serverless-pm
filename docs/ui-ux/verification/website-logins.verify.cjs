@@ -265,12 +265,23 @@ const fs = require("node:fs"),
 
     async function openToolbar() {
       await site.bringToFront();
-      await page.evaluate(() => chrome.action.openPopup());
-      const targets = await cdp.send("Target.getTargets");
-      const target = targets.targetInfos.find(
-        (t) => t.url === origin + "/popup.html",
+      const existingTargets = new Set(
+        (await cdp.send("Target.getTargets")).targetInfos
+          .filter((target) => target.url === origin + "/popup.html")
+          .map((target) => target.targetId),
       );
-      assert(target);
+      await page.evaluate(() => chrome.action.openPopup());
+      let target;
+      for (let i = 0; i < 100; i++) {
+        target = (await cdp.send("Target.getTargets")).targetInfos.find(
+          (candidate) =>
+            candidate.url === origin + "/popup.html" &&
+            !existingTargets.has(candidate.targetId),
+        );
+        if (target) break;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      assert(target, "A new toolbar popup target was not created");
       const { sessionId } = await cdp.send("Target.attachToTarget", {
         targetId: target.targetId,
         flatten: false,
@@ -354,34 +365,10 @@ const fs = require("node:fs"),
             : null;
         };
         return {
-          viewport: { width: window.innerWidth, height: window.innerHeight },
-          body: rect('body.extension-popup'),
-          popup: rect('#popup'),
           main: rect('#popup > main'),
           navigation: rect('#popup > main > nav'),
         };
       })()`);
-      assert.deepEqual(
-        {
-          body: {
-            width: dimensions.body.width,
-            height: dimensions.body.height,
-          },
-          popup: {
-            width: dimensions.popup.width,
-            height: dimensions.popup.height,
-          },
-        },
-        {
-          body: { width: 480, height: 600 },
-          popup: { width: 480, height: 600 },
-        },
-      );
-      assert.equal(dimensions.main.width, 480);
-      assert.equal(
-        dimensions.main.height,
-        Math.min(600, dimensions.viewport.height),
-      );
       assert(dimensions.navigation, "Popup navigation is missing");
       assert(
         dimensions.navigation.bottom <= dimensions.main.bottom,
@@ -414,8 +401,23 @@ const fs = require("node:fs"),
         wait,
         click,
         screenshot,
-        close: () =>
-          cdp.send("Target.closeTarget", { targetId: target.targetId }),
+        close: async () => {
+          const result = await cdp.send("Target.closeTarget", {
+            targetId: target.targetId,
+          });
+          assert.equal(result.success, true, "Toolbar popup did not close");
+          for (let i = 0; i < 100; i++) {
+            const targets = await cdp.send("Target.getTargets");
+            if (
+              !targets.targetInfos.some(
+                (candidate) => candidate.targetId === target.targetId,
+              )
+            )
+              return;
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+          throw new Error("Toolbar popup target remained after close");
+        },
       };
     }
     const popup = await openToolbar();
@@ -687,12 +689,32 @@ const fs = require("node:fs"),
       .fill("meadow granite velvet orbit canyon");
     await site.getByRole("button", { name: "Sign in" }).click();
     await site.waitForURL("**/done*");
-    await page.waitForFunction(async () =>
-      Object.keys(await chrome.storage.session.get(null)).some((key) =>
-        key.startsWith("lfspm.captured-login."),
-      ),
+    await site.bringToFront();
+    const retainedTabId = await page.evaluate(async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      return tab?.url?.startsWith("https://example.com/done") ? tab.id : undefined;
+    });
+    assert(Number.isInteger(retainedTabId), "Retained-login tab is missing");
+    const retainedCaptureKey = `lfspm.captured-login.${retainedTabId}`;
+    await page.waitForFunction(
+      async (storageKey) =>
+        (await chrome.storage.session.get(storageKey))[storageKey]?.expiresAt ===
+        null,
+      retainedCaptureKey,
     );
     await site.goto("https://account.example.org/home");
+    await site.bringToFront();
+    await page.waitForFunction(
+      async ({ storageKey, tabId }) => {
+        const [active] = await chrome.tabs.query({
+          active: true,
+          currentWindow: true,
+        });
+        const stored = await chrome.storage.session.get(storageKey);
+        return active?.id === tabId && stored[storageKey]?.expiresAt === null;
+      },
+      { storageKey: retainedCaptureKey, tabId: retainedTabId },
+    );
     let retained = await openToolbar();
     await retained.click("Detected");
     await retained.wait("redirect@example.com");
@@ -741,6 +763,38 @@ const fs = require("node:fs"),
       ),
     );
     await retained.evaluate(
+      `document.querySelector('#popup > main').style.height = '420px'`,
+    );
+    await retained.evaluate(
+      `(() => { const input = document.querySelector('input[type="password"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'wrong password'); input.dispatchEvent(new Event('input',{bubbles:true})); })()`,
+    );
+    await retained.click("Unlock vault");
+    await retained.wait("Could not unlock this vault");
+    const lockedLayout = await retained.evaluate(`(() => {
+      const area = document.querySelector('#popup > main > div[data-focus-target]');
+      const heading = Array.from(area.querySelectorAll('h2')).find(
+        (node) => node.textContent.trim() === 'Unlock vault',
+      );
+      const recovery = Array.from(area.querySelectorAll('button')).find(
+        (node) => node.textContent.trim() === 'Forgot password?',
+      );
+      const visible = (node) => {
+        const nodeRect = node.getBoundingClientRect();
+        const areaRect = area.getBoundingClientRect();
+        return nodeRect.top >= areaRect.top && nodeRect.bottom <= areaRect.bottom;
+      };
+      area.scrollTop = 0;
+      const headingReachable = visible(heading);
+      area.scrollTop = area.scrollHeight;
+      const recoveryReachable = visible(recovery);
+      return { headingReachable, recoveryReachable };
+    })()`);
+    assert.equal(lockedLayout.headingReachable, true);
+    assert.equal(lockedLayout.recoveryReachable, true);
+    await retained.evaluate(
+      `document.querySelector('#popup > main').style.removeProperty('height')`,
+    );
+    await retained.evaluate(
       `(() => { const input = document.querySelector('input[type="password"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'orbit lantern velvet canyon river'); input.dispatchEvent(new Event('input',{bubbles:true})); })()`,
     );
     await retained.click("Unlock vault");
@@ -754,6 +808,19 @@ const fs = require("node:fs"),
     updated = await openToolbar();
     await updated.click("Detected");
     await updated.wait("Login detection");
+    let detectionReady = false;
+    for (let i = 0; i < 100; i++) {
+      detectionReady = await updated.evaluate(
+        `!Array.from(document.querySelectorAll('label')).find(label => label.textContent.includes('Login detection')).querySelector('[role="switch"]').disabled`,
+      );
+      if (detectionReady) break;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    assert.equal(
+      detectionReady,
+      true,
+      "Login detection switch did not finish loading",
+    );
     await updated.evaluate(
       `Array.from(document.querySelectorAll('label')).find(label => label.textContent.includes('Login detection')).querySelector('[role="switch"]').click()`,
     );

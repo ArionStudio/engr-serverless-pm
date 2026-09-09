@@ -88,18 +88,21 @@ export function GeneratorControls({
   onChange,
   onGenerate,
   pending = false,
+  disabled = false,
   error,
 }: {
   value: PasswordSettings;
   onChange: (value: PasswordSettings) => void;
   onGenerate: () => void;
   pending?: boolean;
+  disabled?: boolean;
   error?: string;
 }) {
   const id = useId();
+  const unavailable = pending || disabled;
   const validationError = error ?? passwordSettingsError(value);
   return (
-    <fieldset disabled={pending} className="space-y-5">
+    <fieldset disabled={unavailable} className="space-y-5">
       <BoundedIntegerField
         key={value.length}
         label="Password length"
@@ -113,7 +116,7 @@ export function GeneratorControls({
         min={PASSWORD_LENGTH_MIN}
         max={PASSWORD_LENGTH_MAX}
         value={[value.length]}
-        disabled={pending}
+        disabled={unavailable}
         onValueChange={(v) => {
           const next = Array.isArray(v) ? v[0] : v;
           onChange({
@@ -139,7 +142,7 @@ export function GeneratorControls({
             <Checkbox
               aria-labelledby={`${id}-${key}`}
               checked={value[key]}
-              disabled={pending}
+              disabled={unavailable}
               onCheckedChange={(checked) =>
                 onChange({
                   ...value,
@@ -184,7 +187,7 @@ export function GeneratorControls({
           {validationError}
         </p>
       ) : null}
-      <Button disabled={pending || !!validationError} onClick={onGenerate}>
+      <Button disabled={unavailable || !!validationError} onClick={onGenerate}>
         {pending ? "Generating…" : "Generate password"}
       </Button>
     </fieldset>
@@ -227,6 +230,7 @@ export function GeneratedValue({
   onUse,
   onCopy,
   onCopyError,
+  onCopyPendingChange,
   label = "Generated value",
   conceal = true,
   useLabel = "Use this value",
@@ -238,6 +242,7 @@ export function GeneratedValue({
   onUse: () => void;
   onCopy?: () => Promise<void> | void;
   onCopyError?: (cause: unknown) => void;
+  onCopyPendingChange?: (pending: boolean) => void;
   label?: string;
   conceal?: boolean;
   useLabel?: string;
@@ -249,12 +254,15 @@ export function GeneratedValue({
   async function copy() {
     if (!value || !onCopy || copyState === "pending") return;
     setCopyState("pending");
+    onCopyPendingChange?.(true);
     try {
       await onCopy();
       setCopyState("success");
     } catch (cause) {
       onCopyError?.(cause);
       setCopyState("error");
+    } finally {
+      onCopyPendingChange?.(false);
     }
   }
 
@@ -267,7 +275,6 @@ export function GeneratedValue({
             <div className="flex flex-wrap gap-2">
               {conceal && !revealed ? (
                 <span
-                  aria-label={label}
                   className="flex h-10 min-w-48 flex-1 items-center rounded-md border border-input bg-input-surface/20 px-3 font-mono text-sm text-muted-foreground"
                 >
                   Concealed
@@ -285,6 +292,7 @@ export function GeneratedValue({
                 <Button
                   type="button"
                   variant="outline"
+                  disabled={copyState === "pending"}
                   onClick={() => onRevealChange(!revealed)}
                 >
                   {revealed ? "Hide" : "Show"}
@@ -317,7 +325,9 @@ export function GeneratedValue({
             </p>
           ) : null}
           {children}
-          <Button onClick={onUse}>{useLabel}</Button>
+          <Button disabled={copyState === "pending"} onClick={onUse}>
+            {useLabel}
+          </Button>
         </>
       ) : (
         <p className="text-sm text-muted-foreground">

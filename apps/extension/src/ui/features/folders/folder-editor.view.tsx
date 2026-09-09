@@ -66,7 +66,7 @@ export function FolderEditor({
   }
   return (
     <form
-      className="max-w-2xl space-y-5 rounded-lg border bg-card p-5"
+      className="@container max-w-2xl space-y-5 rounded-lg border bg-card p-5"
       onSubmit={(event) => {
         event.preventDefault();
         submit();

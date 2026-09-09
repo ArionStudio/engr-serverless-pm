@@ -89,6 +89,7 @@ export function PasswordChangeForm({
         onChange={(currentPassword) => onChange({ ...value, currentPassword })}
         error={errors?.currentPassword}
         autoComplete="current-password"
+        disabled={pending}
       />
       <FormPassword
         label="New password"

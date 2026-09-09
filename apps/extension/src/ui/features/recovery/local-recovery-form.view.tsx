@@ -34,6 +34,7 @@ export function LocalRecoveryForm({
   generatePassword: GenerateVaultPassword;
 }) {
   const [generationPending, setGenerationPending] = useState(false);
+  const mutationPending = form.state === "pending";
   const pending = form.state === "pending" || generationPending;
   const canSubmit = localDataAvailable && strengthState === "ready";
   return (
@@ -48,8 +49,8 @@ export function LocalRecoveryForm({
       actions={
         <div className="flex flex-wrap gap-3 border-t pt-5">
           <Button type="submit" disabled={pending || !canSubmit}>
-            {pending ? <Spinner /> : null}
-            {pending ? "Setting new password…" : "Set new password"}
+            {mutationPending ? <Spinner /> : null}
+            {mutationPending ? "Setting new password…" : "Set new password"}
           </Button>
           <Button
             type="button"
@@ -71,7 +72,10 @@ export function LocalRecoveryForm({
         }
       />
       {vaultSelector}
-      <fieldset disabled={!localDataAvailable} className="min-w-0 space-y-5">
+      <fieldset
+        disabled={!localDataAvailable || pending}
+        className="min-w-0 space-y-5"
+      >
         <RecoveryWordInput
           value={value.phrase}
           onChange={(phrase) => onChange({ ...value, phrase })}

@@ -861,7 +861,11 @@ function GeneratorExample() {
         revealed={revealed}
         onRevealChange={setRevealed}
         onUse={() => setNotice("Personal vault accepted.")}
-        onCopy={() => setNotice("Copy callback received. Clipboard unchanged.")}
+        onCopy={async () => {
+          setNotice("Copy operation pending.");
+          await new Promise((resolve) => window.setTimeout(resolve, 1_500));
+          setNotice("Copy callback received. Clipboard unchanged.");
+        }}
       />
       <p role="status" className="text-xs text-muted-foreground">
         {notice ||

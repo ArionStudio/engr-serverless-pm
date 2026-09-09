@@ -29,7 +29,7 @@ export function PopupVaultAccess({
   const selectedVaultId = selectedVault?.vaultId ?? null;
 
   return (
-    <section className="mx-auto flex min-h-full w-full max-w-sm flex-col justify-center px-4 py-8">
+    <section className="mx-auto flex min-h-full w-full max-w-sm flex-col justify-center-safe px-4 py-8">
       <div className="mb-7 flex flex-col items-center gap-4 text-center">
         <span className="grid size-12 place-items-center rounded-xl bg-primary/12 text-primary">
           <HugeiconsIcon

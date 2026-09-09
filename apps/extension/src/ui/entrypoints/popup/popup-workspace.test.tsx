@@ -188,6 +188,84 @@ it.each(["popup", "options"])(
 );
 
 it.each(["popup", "options"])(
+  "identifies the selected duplicate login by website before deletion in %s",
+  async (surface) => {
+    const user = userEvent.setup();
+    const capabilities = galleryWorkspace();
+    const data = await capabilities.read("vault");
+    const original = data.entries[0];
+    const selected = {
+      ...original,
+      id: "entry-work",
+      sanitizedUrl: "https://work.example.test/login",
+    };
+    capabilities.read = async () => ({
+      ...data,
+      entries: [original, selected],
+    });
+    capabilities.details = async (_, entryId) => ({
+      entry: entryId === selected.id ? selected : original,
+      entryVersionVector: { gallery: 1 },
+    });
+    capabilities.remove = vi.fn(capabilities.remove);
+
+    render(
+      surface === "popup" ? (
+        <PopupEntries
+          vaultId="vault"
+          capabilities={capabilities}
+          onDraftConsumed={() => {}}
+          onStateChange={() => {}}
+          onOpenSync={() => {}}
+          onLock={() => {}}
+        />
+      ) : (
+        <EntryWorkspace
+          vaultId="vault"
+          capabilities={capabilities}
+          onDraftConsumed={() => {}}
+          onLock={() => {}}
+          onSync={() => {}}
+        />
+      ),
+    );
+
+    const originalActionName = `Open ${original.login} at ${original.sanitizedUrl}`;
+    const selectedActionName = `Open ${selected.login} at ${selected.sanitizedUrl}`;
+    expect(
+      await screen.findByRole("button", { name: originalActionName }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: selectedActionName }),
+    ).toBeVisible();
+    await user.type(
+      screen.getByRole("combobox", { name: "Search entries" }),
+      "work.example.test",
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: selectedActionName,
+      }),
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "Delete entry" }),
+    );
+
+    expect(
+      screen.getByRole("alertdialog", {
+        name: `Delete entry: ${selected.login} at ${selected.sanitizedUrl}`,
+      }),
+    ).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Delete entry" }));
+    await waitFor(() =>
+      expect(capabilities.remove).toHaveBeenCalledWith(
+        expect.objectContaining({ entryId: selected.id }),
+      ),
+    );
+  },
+);
+
+it.each(["popup", "options"])(
   "reports revealing separately from copying in %s",
   async (surface) => {
     const user = userEvent.setup();
@@ -221,10 +299,7 @@ it.each(["popup", "options"])(
     );
     await user.click(
       await screen.findByRole("button", {
-        name:
-          surface === "popup"
-            ? /adrian@example\.test/
-            : "Open adrian@example.test",
+        name: "Open adrian@example.test at https://mail.example.test/login",
       }),
     );
     await user.click(await screen.findByRole("button", { name: "Reveal" }));
@@ -323,14 +398,21 @@ it("keeps entry creation and generators in the popup and reserves Options for co
   const vault = { ...setupVault, complete: true, unlocked: true };
   setup.inspect = async () => ({ vault, vaults: [vault] });
   const open = vi.fn(async () => {});
+  const workspace = galleryWorkspace();
+  let finishCopy!: () => void;
+  workspace.tools.copy = vi.fn(
+    () =>
+      new Promise<void>((resolve) => {
+        finishCopy = resolve;
+      }),
+  );
   const user = userEvent.setup();
   render(
-    <PopupWorkspace
-      setup={setup}
-      workspace={galleryWorkspace()}
-      onOpenOptions={open}
-    />,
+    <PopupWorkspace setup={setup} workspace={workspace} onOpenOptions={open} />,
   );
+  const navigation = await screen.findByRole("navigation", {
+    name: "Popup navigation",
+  });
   await user.click(await screen.findByRole("button", { name: "New" }));
   expect(screen.getByRole("heading", { name: "Add entry" })).toBeVisible();
   expect(screen.getByRole("textbox", { name: "Website" })).toHaveValue(
@@ -341,7 +423,18 @@ it("keeps entry creation and generators in the popup and reserves Options for co
   await user.click(screen.getByRole("button", { name: "Generator" }));
   expect(screen.getByRole("tab", { name: "Password" })).toBeVisible();
   await user.click(screen.getByRole("button", { name: "Generate password" }));
-  expect(await screen.findByLabelText("Generated password")).toBeVisible();
+  expect(await screen.findByText("Concealed")).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "Copy" }));
+  expect(
+    within(navigation).getByRole("button", { name: "Vault" }),
+  ).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Open Options" })).toBeDisabled();
+  await act(async () => finishCopy());
+  await waitFor(() =>
+    expect(
+      within(navigation).getByRole("button", { name: "Vault" }),
+    ).toBeEnabled(),
+  );
   await user.click(screen.getByRole("button", { name: "Use in new entry" }));
   expect(screen.getByRole("heading", { name: "Add entry" })).toBeVisible();
   expect(open).not.toHaveBeenCalled();
@@ -655,10 +748,7 @@ it.each(["popup", "options"])(
     );
     await user.click(
       await screen.findByRole("button", {
-        name:
-          surface === "popup"
-            ? /adrian@example\.test/
-            : "Open adrian@example.test",
+        name: "Open adrian@example.test at https://mail.example.test/login",
       }),
     );
     await user.click(await screen.findByRole("button", { name: "Reveal" }));

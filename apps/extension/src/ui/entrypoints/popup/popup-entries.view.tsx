@@ -31,7 +31,7 @@ import {
   getTagGroupPresentation,
   type TagGroupPresentation,
 } from "@/ui/features/tags";
-import { getEntryAccessibleName } from "@/ui/features/entries/entry-label";
+import { getEntryDestructiveIdentity } from "@/ui/features/entries/entry-label";
 
 type PopupEntryView = "list" | "details" | "editor" | "delete";
 
@@ -348,7 +348,7 @@ export function PopupEntries({
             if (!open) live.back();
           }}
           action="Delete entry"
-          identity={getEntryAccessibleName(view.record.entry)}
+          identity={getEntryDestructiveIdentity(view.record.entry)}
           consequences={
             live.data?.syncConfigured
               ? "This deletes the entry from this vault and attempts to upload the change. If the upload remains pending, retry it in Sync. Other browsers receive the deletion after it uploads and they sync."

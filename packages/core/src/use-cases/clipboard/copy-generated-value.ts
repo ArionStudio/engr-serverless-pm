@@ -1,10 +1,7 @@
 import type { ClipboardOperationCoordinatorPort } from "../../ports/clipboard/clipboard-operation-coordinator.port";
 import type { SecretClipboardCopyService } from "../../services/clipboard/secret-clipboard-copy.service";
 import type { UnlockedVaultSessionService } from "../../services/session/unlocked-vault-session.service";
-import {
-  ActiveVaultMustBeUnlockedError,
-  VaultMustBeUnlockedError,
-} from "../../errors/vault-session.errors";
+import { ActiveVaultMustBeUnlockedError } from "../../errors/vault-session.errors";
 
 export class CopyGeneratedValueUseCase {
   private readonly session: UnlockedVaultSessionService;
@@ -25,19 +22,14 @@ export class CopyGeneratedValueUseCase {
     const operation = "copy a generated value";
 
     return this.coordinator.runExclusive(async (lease) => {
-      const activeSession = await this.session.get(lease);
-      if (activeSession === null)
+      const activeVaultId = await this.session.getActiveVaultId(lease);
+      if (activeVaultId === null)
         throw new ActiveVaultMustBeUnlockedError(operation);
 
       await this.session.runWithUnlockedVaultContext(
-        activeSession.unlockedVault.vaultId,
+        activeVaultId,
         operation,
-        async (session) => {
-          if (session.sessionId !== activeSession.sessionId)
-            throw new VaultMustBeUnlockedError(
-              activeSession.unlockedVault.vaultId,
-              operation,
-            );
+        async () => {
           await this.copy.copy(params.value, 30_000);
         },
         lease,

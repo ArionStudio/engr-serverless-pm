@@ -439,6 +439,44 @@ describe("forgotten vault password", () => {
       ).toBeEnabled(),
     );
   }
+  it("preserves the recovery phrase while a generated password is pending", async () => {
+    const user = userEvent.setup();
+    const setup = gallerySetup("existing");
+    let finishGeneration: (value: { password: string }) => void = () => {};
+    setup.generatePassword = () =>
+      new Promise((resolve) => {
+        finishGeneration = resolve;
+      });
+    mount(setup);
+    await user.click(
+      await screen.findByRole("button", { name: "Forgot password?" }),
+    );
+    const recoveryPhrase = screen.getByLabelText("Recovery phrase", {
+      exact: true,
+    });
+    await user.type(recoveryPhrase, phrase);
+    await user.click(
+      screen.getByRole("button", { name: "Generate strong password" }),
+    );
+
+    expect(recoveryPhrase).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /Generating…/ }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Set new password" }),
+    ).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: "Setting new password…" }),
+    ).not.toBeInTheDocument();
+    await user.type(recoveryPhrase, " overwritten");
+    expect(recoveryPhrase).toHaveValue(phrase);
+    await act(async () =>
+      finishGeneration({ password: "Generated-river-8!Pine-sky" }),
+    );
+    await waitFor(() => expect(recoveryPhrase).toBeEnabled());
+    expect(recoveryPhrase).toHaveValue(phrase);
+  });
   it("recovers the selected vault and requires replacement-word verification before entries", async () => {
     const user = userEvent.setup();
     const setup = gallerySetup("existing");

@@ -39,14 +39,15 @@ export function PasswordToolsPage({
   const [revealed, setRevealed] = useState(false);
   const [score, setScore] = useState<0 | 1 | 2 | 3 | 4>();
   const [pending, setPending] = useState(false);
+  const [copyPending, setCopyPending] = useState(false);
   const [error, setError] = useState<string>();
   const epoch = useRef(0);
   const busy = useRef(false);
   const result = useRef<HTMLElement>(null);
   useEffect(() => {
-    onPendingChange?.(pending);
+    onPendingChange?.(pending || copyPending);
     return () => onPendingChange?.(false);
-  }, [onPendingChange, pending]);
+  }, [copyPending, onPendingChange, pending]);
   useEffect(() => {
     if (value && presentation === "popup") result.current?.focus();
   }, [presentation, value]);
@@ -62,6 +63,7 @@ export function PasswordToolsPage({
     };
   }, []);
   function changeKind(next: string) {
+    if (copyPending) return;
     ++epoch.current;
     busy.current = false;
     setPending(false);
@@ -72,7 +74,7 @@ export function PasswordToolsPage({
     setError(undefined);
   }
   async function generate() {
-    if (busy.current) return;
+    if (busy.current || copyPending) return;
     busy.current = true;
     const owner = ++epoch.current;
     setPending(true);
@@ -119,8 +121,12 @@ export function PasswordToolsPage({
           aria-label="Generator"
           className={presentation === "popup" ? "grid w-full grid-cols-2" : ""}
         >
-          <TabsTrigger value="password">Password</TabsTrigger>
-          <TabsTrigger value="username">Username</TabsTrigger>
+          <TabsTrigger value="password" disabled={copyPending}>
+            Password
+          </TabsTrigger>
+          <TabsTrigger value="username" disabled={copyPending}>
+            Username
+          </TabsTrigger>
         </TabsList>
         <div
           className={cn(
@@ -143,11 +149,12 @@ export function PasswordToolsPage({
                 value={settings}
                 onChange={setSettings}
                 pending={pending}
+                disabled={copyPending}
                 onGenerate={() => void generate()}
               />
             </TabsContent>
             <TabsContent value="username" className="mt-0">
-              <fieldset disabled={pending}>
+              <fieldset disabled={pending || copyPending}>
                 <UsernameControls
                   {...username}
                   onChange={setUsername}
@@ -157,6 +164,15 @@ export function PasswordToolsPage({
             </TabsContent>
           </div>
           <div className={presentation === "popup" ? "space-y-4" : "space-y-5"}>
+            {pending || (value && kind === "username") ? (
+              <p role="status" className="sr-only">
+                {pending
+                  ? kind === "password"
+                    ? "Generating password…"
+                    : "Generating username…"
+                  : "Username generated"}
+              </p>
+            ) : null}
             {error ? (
               <p role="alert" className="text-destructive">
                 {error}
@@ -175,11 +191,6 @@ export function PasswordToolsPage({
                 )}
                 aria-label="Generated value"
               >
-                <p role="status" className="sr-only">
-                  {kind === "password"
-                    ? "Password generated"
-                    : "Username generated"}
-                </p>
                 <GeneratedValue
                   key={epoch.current}
                   value={value}
@@ -200,8 +211,10 @@ export function PasswordToolsPage({
                     setRevealed(false);
                     onSessionLost?.();
                   }}
+                  onCopyPendingChange={setCopyPending}
                   useLabel="Use in new entry"
                   onUse={() => {
+                    if (copyPending) return;
                     onUse(
                       kind === "password"
                         ? { password: value }

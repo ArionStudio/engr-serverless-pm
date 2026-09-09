@@ -78,6 +78,7 @@ export function VaultApplication({
   const [destination, setDestination] = useState(initialDestination);
   const [draft, setDraft] = useState<EntryDraft | undefined>(initialEntryDraft);
   const [entryVisit, setEntryVisit] = useState(0);
+  const [passwordToolsPending, setPasswordToolsPending] = useState(false);
   const content = useRef<HTMLDivElement>(null);
   const entryControls = useRef<WorkspaceControls>(null);
   const firstFocus = useRef(true);
@@ -91,7 +92,11 @@ export function VaultApplication({
   }, [destination, entryVisit]);
   function navigate(next: string) {
     const destination = destinations.find((item) => item.id === next)?.id;
-    if (!destination) return;
+    if (
+      !destination ||
+      (passwordToolsPending && destination !== "tools")
+    )
+      return;
     setDraft(undefined);
     setDestination(destination);
   }
@@ -111,7 +116,12 @@ export function VaultApplication({
           </Button>
         </div>
         <AppNavigation
-          items={destinations}
+          items={destinations.map((item) => ({
+            ...item,
+            available:
+              item.available &&
+              (!passwordToolsPending || item.id === "tools"),
+          }))}
           current={destination}
           onNavigate={navigate}
         />
@@ -138,6 +148,7 @@ export function VaultApplication({
           <PasswordToolsPage
             tools={workspace.tools}
             onSessionLost={onSessionLost}
+            onPendingChange={setPasswordToolsPending}
             onUse={(value) => {
               setDraft({ ...emptyEntryDraft, ...value, tagIds: [] });
               setEntryVisit((visit) => visit + 1);

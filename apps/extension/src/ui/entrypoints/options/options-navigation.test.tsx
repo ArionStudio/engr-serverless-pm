@@ -88,21 +88,45 @@ describe("Options navigation and session refresh", () => {
     const setup = gallerySetup();
     const unlocked = { ...setupVault, complete: true, unlocked: true };
     setup.inspect = async () => ({ vault: unlocked, vaults: [unlocked] });
+    const workspace = galleryWorkspace();
+    let finishCopy!: () => void;
+    workspace.tools.copy = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishCopy = resolve;
+        }),
+    );
     const props = {
       preference: "dark" as const,
       onThemeChange: () => {},
       assessPassword: async () => ({ score: 4 as const }),
       setup,
-      workspace: galleryWorkspace(),
+      workspace,
       sync: gallerySync(),
       devices: galleryDevices(),
       vaultSettings: galleryVaultSettings(),
       tagManagement: galleryTagManagement(),
       folderManagement: galleryFolderManagement(),
     };
+    const user = userEvent.setup();
     const tools = render(<OptionsView {...props} initialDestination="tools" />);
     expect(
       await screen.findByRole("heading", { name: "Password tools" }),
+    ).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Generate password" }));
+    await screen.findByRole("region", { name: "Generated value" });
+    await user.click(screen.getByRole("button", { name: "Copy" }));
+    const entries = screen.getByRole("button", { name: "Entries" });
+    expect(entries).toBeDisabled();
+    await user.click(entries);
+    expect(
+      screen.getByRole("heading", { name: "Password tools" }),
+    ).toBeVisible();
+    await act(async () => finishCopy());
+    await waitFor(() => expect(entries).toBeEnabled());
+    await user.click(entries);
+    expect(
+      await screen.findByRole("heading", { name: "Entries" }),
     ).toBeVisible();
     tools.rerender(
       <OptionsView
