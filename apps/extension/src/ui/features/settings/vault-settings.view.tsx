@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SiteIconSettings } from "@/ui/features/site-icons/site-icon-settings.view";
 import { Button } from "@/ui/components/primitives/button";
-import { GuidancePanel } from "@/ui/components/feedback/guidance-panel.view";
 import { DestructiveConfirmation } from "@/ui/components/feedback/destructive-confirmation.view";
 import { ActionFeedback } from "@/ui/components/feedback/action-feedback.view";
 import {
@@ -13,7 +12,11 @@ import {
   type DeviceSettingsDraft,
 } from "../devices/device-settings-form.view";
 import { usePasswordAssessment } from "../vault-setup/use-password-assessment";
-import type { AssessPassword, SetupVault } from "../vault-setup/setup.type";
+import type {
+  AssessPassword,
+  GenerateVaultPassword,
+  SetupVault,
+} from "../vault-setup/setup.type";
 import { vaultLockOptions } from "@/ui/lib/vault-lock-options";
 import type { VaultSettingsCapabilities } from "./settings.type";
 import { vaultAuthorizationWasLost } from "@/ui/lib/vault-authorization";
@@ -28,6 +31,7 @@ export function VaultSettingsView({
   vault,
   capabilities,
   assessPassword,
+  generatePassword,
   onReplaceRecovery,
   onDeleted,
   onSaved,
@@ -36,6 +40,7 @@ export function VaultSettingsView({
   vault: SetupVault;
   capabilities: VaultSettingsCapabilities;
   assessPassword: AssessPassword;
+  generatePassword: GenerateVaultPassword;
   onReplaceRecovery: () => void;
   onDeleted: () => void;
   onSaved: () => void;
@@ -142,7 +147,7 @@ export function VaultSettingsView({
     setConfirmation(value);
   }
   return (
-    <section className="mx-auto w-full max-w-4xl space-y-6">
+    <section className="mx-auto w-full space-y-6">
       <h1 className="text-2xl font-semibold tracking-tight">Vault settings</h1>
       {!editing && !confirmation ? (
         <ActionFeedback
@@ -251,6 +256,7 @@ export function VaultSettingsView({
             score={score}
             strengthState={strengthState}
             onRetryStrength={retry}
+            generatePassword={generatePassword}
             state={pending ? "pending" : error ? "error" : "idle"}
             message={error}
             onCancel={reset}
@@ -301,16 +307,11 @@ export function VaultSettingsView({
         <h2 className="text-lg font-semibold">
           Remove vault from this browser
         </h2>
-        <GuidancePanel
-          variant="warning"
-          title="Local vault data will be removed"
-        >
-          <p>
-            This removes entries, access keys and recovery data stored by this
-            browser. Recovery words alone cannot restore them. Synced storage
-            and other enrolled devices are not deleted.
-          </p>
-        </GuidancePanel>
+        <p className="max-w-prose text-base leading-7 text-muted-foreground">
+          This removes entries, access keys and recovery data stored by this
+          browser. Recovery words alone cannot restore them. Synced storage and
+          other enrolled browsers are not deleted.
+        </p>
         <Button
           variant="destructive"
           disabled={pending}
@@ -335,7 +336,7 @@ export function VaultSettingsView({
         identity={vault.name}
         consequences={
           confirmation === "remove"
-            ? "This permanently removes this browser's vault and recovery data. Check that another enrolled device has your latest entries before removing it. S3 data and device trust are unchanged."
+            ? "This permanently removes this browser's vault and recovery data. Check that another enrolled browser has your latest entries before removing it. S3 data and the vault's trusted-browser list are unchanged."
             : "You must save and verify 24 new words. Your previous words will no longer match this browser's current recovery data. Older saved recovery-data copies can still work with their original words."
         }
         acknowledgment={

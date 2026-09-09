@@ -57,6 +57,11 @@ function setup() {
 }
 
 describe("popup settings", () => {
+  it("names the wrapping theme control for assistive technology", () => {
+    setup();
+    expect(screen.getByRole("group", { name: "Color theme" })).toBeVisible();
+  });
+
   it("keeps the device-name draft when a normal save failure remains authorized", async () => {
     const { capabilities, onSessionLost } = setup();
     capabilities.saveDevice.mockRejectedValue(new Error("write failed"));
@@ -64,7 +69,7 @@ describe("popup settings", () => {
       target: { value: "Private draft" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await screen.findByText("Could not save device settings. Try again.");
+    await screen.findByText("Could not save browser settings. Try again.");
     expect(screen.getByLabelText("Device name")).toHaveValue("Private draft");
     expect(capabilities.inspectAuthorization).toHaveBeenCalledWith("vault");
     expect(onSessionLost).not.toHaveBeenCalled();
@@ -81,7 +86,7 @@ describe("popup settings", () => {
     await waitFor(() => expect(onSessionLost).toHaveBeenCalledOnce());
     expect(screen.getByLabelText("Device name")).toHaveValue("Laptop");
     expect(
-      screen.queryByText("Could not save device settings. Try again."),
+      screen.queryByText("Could not save browser settings. Try again."),
     ).toBeNull();
   });
 

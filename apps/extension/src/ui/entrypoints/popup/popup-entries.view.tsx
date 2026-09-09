@@ -31,6 +31,7 @@ import {
   getTagGroupPresentation,
   type TagGroupPresentation,
 } from "@/ui/features/tags";
+import { getEntryDestructiveIdentity } from "@/ui/features/entries/entry-label";
 
 type PopupEntryView = "list" | "details" | "editor" | "delete";
 
@@ -300,7 +301,7 @@ export function PopupEntries({
                 </span>
               </div>
               {!live.loading && live.data?.entries.length === 0 ? (
-                <div className="flex min-h-28 flex-col items-center justify-center gap-3 py-5 text-center">
+                <div className="flex min-h-36 flex-col items-center justify-center gap-3 rounded-lg border border-dashed px-4 py-5 text-center">
                   <span className="grid size-9 place-items-center rounded-md bg-muted text-muted-foreground">
                     <HugeiconsIcon
                       icon={VaultIcon}
@@ -309,6 +310,12 @@ export function PopupEntries({
                     />
                   </span>
                   <h2 className="text-sm font-medium">No entries yet</h2>
+                  <p className="max-w-64 text-sm text-muted-foreground">
+                    Add a login for this website or another account.
+                  </p>
+                  <Button size="sm" onClick={() => live.edit()}>
+                    Add entry
+                  </Button>
                 </div>
               ) : live.error && !live.data ? null : (
                 <fieldset className="min-w-0" disabled={live.pending}>
@@ -341,10 +348,10 @@ export function PopupEntries({
             if (!open) live.back();
           }}
           action="Delete entry"
-          identity={`${view.record.entry.login} · ${view.record.entry.sanitizedUrl}`}
+          identity={getEntryDestructiveIdentity(view.record.entry)}
           consequences={
             live.data?.syncConfigured
-              ? "This deletes the entry from this vault and attempts to upload the change. If the upload remains pending, retry it in Sync. Other devices receive the deletion after it uploads and they sync."
+              ? "This deletes the entry from this vault and attempts to upload the change. If the upload remains pending, retry it in Sync. Other browsers receive the deletion after it uploads and they sync."
               : "This permanently deletes the entry from this vault."
           }
           onConfirm={live.remove}

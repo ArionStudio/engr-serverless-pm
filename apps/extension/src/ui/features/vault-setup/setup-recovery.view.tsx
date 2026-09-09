@@ -11,6 +11,7 @@ import {
 } from "@/ui/components/layout/sections.view";
 import { Button } from "@/ui/components/primitives/button";
 import type { RecoverySaveMethod, SetupRecovery } from "./setup.type";
+import { useOperationErrorFocus } from "./use-operation-error-focus";
 
 export function SetupRecoveryView({
   recovery,
@@ -33,6 +34,7 @@ export function SetupRecoveryView({
   onReview: () => void;
   onLock: () => void;
 }) {
+  const errorRef = useOperationErrorFocus(error);
   const [revealed, setRevealed] = useState(false);
   const [answers, setAnswers] = useState<Readonly<Record<number, string>>>({});
   const [saveState, setSaveState] = useState<
@@ -118,7 +120,13 @@ export function SetupRecoveryView({
         </GuidancePanel>
       ) : null}
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p
+          ref={errorRef}
+          role="alert"
+          tabIndex={-1}
+          data-focus-target
+          className="text-sm text-destructive outline-none"
+        >
           {error}
         </p>
       ) : null}
@@ -173,6 +181,7 @@ export function SetupRecoveryView({
                 description:
                   "Unencrypted words and recovery instructions. Store the file somewhere private.",
                 state: saveState.text,
+                actionLabel: "Download",
               },
               {
                 id: "print",
@@ -180,6 +189,7 @@ export function SetupRecoveryView({
                 description:
                   "Choose a trusted printer or Save as PDF in the print dialog. Both contain unencrypted words.",
                 state: saveState.print,
+                actionLabel: "Print",
               },
               {
                 id: "copy",
@@ -187,6 +197,7 @@ export function SetupRecoveryView({
                 description:
                   "The active clipboard is cleared after 30 seconds when it still contains these words. Clipboard history and synced copies may remain.",
                 state: saveState.copy,
+                actionLabel: "Copy",
               },
             ]}
             onRequest={(id) => {

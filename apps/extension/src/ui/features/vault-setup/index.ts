@@ -7,4 +7,12 @@ export { SetupOrganization } from "./setup-organization.view";
 export { createOrganizationSetupDraft } from "./setup-organization";
 export type { OrganizationSetupDraft } from "./setup-organization";
 export { SetupConnection } from "./setup-connection.view";
-export type { SetupStep, AssessPassword } from "./setup.type";
+export type {
+  SetupConnectionRequest,
+  SetupConnectionStep,
+} from "./setup-connection.view";
+export type {
+  SetupStep,
+  AssessPassword,
+  GenerateVaultPassword,
+} from "./setup.type";

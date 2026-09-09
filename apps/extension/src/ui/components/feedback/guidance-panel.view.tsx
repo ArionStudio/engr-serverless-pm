@@ -10,8 +10,7 @@ const guidanceVariants = cva(
     variants: {
       variant: {
         info: "border-info-border bg-info text-info-foreground",
-        warning:
-          "border-warning-border border-s-4 bg-warning text-warning-foreground",
+        warning: "border-warning-border bg-warning text-warning-foreground",
       },
     },
     defaultVariants: { variant: "info" },

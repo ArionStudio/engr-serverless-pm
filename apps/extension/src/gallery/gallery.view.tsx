@@ -4,7 +4,7 @@ import { ScreenExamples } from "./screen-examples.view";
 import { GallerySelection } from "./selection";
 import { componentApi } from "./component-api.generated";
 import { Specimen } from "./specimen.view";
-import { useEffect, useState, type CSSProperties } from "react";
+import { Fragment, useEffect, useState, type CSSProperties } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   SecurityCheckIcon,
@@ -46,17 +46,17 @@ import { FormExamples } from "./form-examples.view";
 import "./review.css";
 
 const navigation = [
-  { id: "screens", name: "Screen components", icon: File01Icon },
-  { id: "expanded", name: "Tables & controls", icon: GridViewIcon },
-  { id: "base", name: "Basic controls", icon: Layers01Icon },
+  { id: "screens", name: "Application screens", icon: File01Icon },
+  { id: "forms", name: "Complete forms", icon: ArrowRight01Icon },
+  { id: "features", name: "Feature components", icon: Search01Icon },
+  { id: "shared", name: "Shared patterns", icon: File01Icon },
+  { id: "expanded", name: "Advanced controls", icon: GridViewIcon },
   {
     id: "additions",
-    name: "Containers & selection",
+    name: "Composed controls",
     icon: Folder01Icon,
   },
-  { id: "shared", name: "Shared presentations", icon: File01Icon },
-  { id: "features", name: "Feature widgets", icon: Search01Icon },
-  { id: "forms", name: "Forms", icon: ArrowRight01Icon },
+  { id: "base", name: "Foundational controls", icon: Layers01Icon },
 ].map((item) => ({
   ...item,
   count: catalog.filter((c) => collectionFor(c.id) === item.id).length,
@@ -150,7 +150,7 @@ function ReviewNavigation({
 export function Gallery() {
   const { preference: theme, setTheme } = useTheme();
   const [width, setWidth] = useState("fluid");
-  const [tab, setTab] = useState("expanded");
+  const [tab, setTab] = useState("screens");
   const [active, setActive] = useState("");
   const [reset, setReset] = useState(0);
   useEffect(() => {
@@ -212,6 +212,9 @@ export function Gallery() {
                   <NativeSelectOption value="480">
                     Popup · 480px
                   </NativeSelectOption>
+                  <NativeSelectOption value="400">
+                    Narrow · 400px
+                  </NativeSelectOption>
                   <NativeSelectOption value="768">
                     Options · 768px
                   </NativeSelectOption>
@@ -234,9 +237,9 @@ export function Gallery() {
             <div className="mb-8 flex flex-wrap items-start justify-between gap-5">
               <div>
                 <div className="mb-3 flex items-center gap-2">
-                  <Badge variant="outline">Ready for discussion</Badge>
+                  <Badge variant="outline">Live components</Badge>
                   <span className="text-xs text-muted-foreground">
-                    Base UI · shadcn
+                    Inventory checked during every build
                   </span>
                 </div>
                 <h1 className="text-3xl font-semibold tracking-tight">
@@ -303,25 +306,30 @@ export function Gallery() {
                 <NativeSelectOption value="">
                   Choose from {catalog.length} families
                 </NativeSelectOption>
-                {catalog.map((entry) => (
-                  <optgroup
-                    key={entry.id}
-                    label={`${entry.id} · ${entry.name}`}
-                  >
-                    <NativeSelectOption value={entry.id}>
-                      {entry.id} · {entry.name}
-                    </NativeSelectOption>
-                    {componentApi
-                      .filter(
-                        (c) => c.family === entry.id && c.name !== entry.name,
-                      )
-                      .map((c) => (
-                        <NativeSelectOption
-                          key={c.name}
-                          value={`${entry.id}:${c.name}`}
-                        >
-                          {c.name}
-                        </NativeSelectOption>
+                {navigation.map((section) => (
+                  <optgroup key={section.id} label={section.name}>
+                    {catalog
+                      .filter((entry) => collectionFor(entry.id) === section.id)
+                      .map((entry) => (
+                        <Fragment key={entry.id}>
+                          <NativeSelectOption value={entry.id}>
+                            {entry.id} · {entry.name}
+                          </NativeSelectOption>
+                          {componentApi
+                            .filter(
+                              (component) =>
+                                component.family === entry.id &&
+                                component.name !== entry.name,
+                            )
+                            .map((component) => (
+                              <NativeSelectOption
+                                key={`${entry.id}:${component.name}`}
+                                value={`${entry.id}:${component.name}`}
+                              >
+                                ↳ {component.name}
+                              </NativeSelectOption>
+                            ))}
+                        </Fragment>
                       ))}
                   </optgroup>
                 ))}

@@ -5,13 +5,15 @@ import {
 } from "../recovery/local-recovery-form.view";
 import { parseRecoveryPhrase } from "../recovery/parse-recovery-phrase";
 import { usePasswordAssessment } from "./use-password-assessment";
-import type { AssessPassword } from "./setup.type";
+import type { AssessPassword, GenerateVaultPassword } from "./setup.type";
+import { useOperationErrorFocus } from "./use-operation-error-focus";
 
 export function RecoverVaultAccess({
   vaultName,
   pending,
   error,
   assessPassword,
+  generatePassword,
   onRecover,
   onBack,
 }: {
@@ -19,6 +21,7 @@ export function RecoverVaultAccess({
   pending: boolean;
   error?: string;
   assessPassword: AssessPassword;
+  generatePassword: GenerateVaultPassword;
   onRecover: (words: readonly string[], password: string) => void;
   onBack: () => void;
 }) {
@@ -29,6 +32,7 @@ export function RecoverVaultAccess({
     confirmation: "",
   });
   const [submitted, setSubmitted] = useState(false);
+  const errorRef = useOperationErrorFocus(error);
   const { score, strengthState, invalidate, retry } = usePasswordAssessment(
     value.password,
     assessPassword,
@@ -74,6 +78,17 @@ export function RecoverVaultAccess({
       <h1 className="text-2xl font-semibold tracking-tight">
         Recover vault access
       </h1>
+      {error ? (
+        <p
+          ref={errorRef}
+          role="alert"
+          tabIndex={-1}
+          data-focus-target
+          className="rounded-lg border border-destructive/40 bg-destructive/10 p-5 text-destructive outline-none"
+        >
+          {error}
+        </p>
+      ) : null}
       <LocalRecoveryForm
         value={value}
         onChange={(next) => {
@@ -83,11 +98,11 @@ export function RecoverVaultAccess({
         errors={submitted ? errors : undefined}
         vaultSelector={<p className="font-medium">{vaultName}</p>}
         localDataAvailable
-        state={pending ? "pending" : error ? "error" : "idle"}
-        message={error}
+        state={pending ? "pending" : "idle"}
         score={score}
         strengthState={strengthState}
         onRetryStrength={retry}
+        generatePassword={generatePassword}
         onSubmit={submit}
         onCancel={onBack}
       />

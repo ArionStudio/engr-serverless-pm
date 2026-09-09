@@ -5,6 +5,13 @@ export class VaultMustBeUnlockedError extends Error {
   }
 }
 
+export class ActiveVaultMustBeUnlockedError extends Error {
+  constructor(operation: string) {
+    super(`A vault must be unlocked before ${operation}.`);
+    this.name = "ActiveVaultMustBeUnlockedError";
+  }
+}
+
 export class InvalidVaultLockDelayError extends Error {
   constructor(cause: unknown) {
     super("Vault lock delay is invalid.", { cause });

@@ -3,11 +3,15 @@ import { Checkbox } from "@/ui/components/primitives/checkbox";
 import { Button } from "@/ui/components/primitives/button";
 import { TextField, PasswordField } from "@/ui/components/forms/fields.view";
 import { GuidancePanel } from "@/ui/components/feedback/guidance-panel.view";
+import { ActionFeedback } from "@/ui/components/feedback/action-feedback.view";
 import { DeviceSummary, TransferInput, TransferOutput } from "./devices.view";
 import type { DeviceCapabilities } from "./device-management.type";
 import type { CredentialDraft } from "../sync/credential-form.view";
 import { syncError } from "../sync/sync-error";
-import { vaultAuthorizationWasLost } from "@/ui/lib/vault-authorization";
+import {
+  isVaultAuthorizationError,
+  vaultAuthorizationWasLost,
+} from "@/ui/lib/vault-authorization";
 
 export function DeviceManagementView({
   vaultId,
@@ -43,6 +47,7 @@ export function DeviceManagementView({
   const [confirmed, setConfirmed] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
+  const [loadError, setLoadError] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const confirmationId = useId();
   const epoch = useRef(0);
@@ -69,6 +74,7 @@ export function DeviceManagementView({
     setConfirmed(false);
     setData(undefined);
     setError(undefined);
+    setLoadError(undefined);
     setNotice(undefined);
   }, []);
   const refresh = useCallback(async () => {
@@ -79,6 +85,7 @@ export function DeviceManagementView({
     ) => {
       if (revision !== epoch.current || request !== inspection.current) return;
       setData(next);
+      setLoadError(undefined);
       if (next.location)
         setCredentials((draft) => ({ ...draft, ...next.location }));
     };
@@ -87,13 +94,25 @@ export function DeviceManagementView({
       applyRead(next);
     } catch (cause) {
       if (revision !== epoch.current || request !== inspection.current) return;
-      const lost = await vaultAuthorizationWasLost(cause, async () => {
-        applyRead(await capabilities.inspect(vaultId));
-      });
-      if (revision !== epoch.current || request !== inspection.current || !lost)
+      if (isVaultAuthorizationError(cause)) {
+        clearPrivateState();
+        onSessionLost?.();
         return;
-      clearPrivateState();
-      onSessionLost?.();
+      }
+      try {
+        applyRead(await capabilities.inspect(vaultId));
+      } catch (retryCause) {
+        if (revision !== epoch.current || request !== inspection.current)
+          return;
+        if (isVaultAuthorizationError(retryCause)) {
+          clearPrivateState();
+          onSessionLost?.();
+          return;
+        }
+        setLoadError(
+          "Could not load the connected devices. Check this browser's vault access, then try again.",
+        );
+      }
     }
   }, [capabilities, clearPrivateState, onSessionLost, vaultId]);
   useEffect(() => {
@@ -124,6 +143,7 @@ export function DeviceManagementView({
     const revision = epoch.current;
     setPending(true);
     setError(undefined);
+    setLoadError(undefined);
     setNotice(undefined);
     try {
       await action();
@@ -178,6 +198,7 @@ export function DeviceManagementView({
   }
   const syncConfigured = data?.syncConfigured ?? false;
   const currentTarget = data?.devices.find((device) => device.id === target);
+  const visibleError = error ?? loadError;
   return (
     <section
       className="@container/devices space-y-7"
@@ -200,14 +221,18 @@ export function DeviceManagementView({
           </Button>
         ) : null}
       </div>
-      {error ? (
-        <p
-          role="alert"
-          className="rounded-lg border border-destructive/40 bg-destructive/10 p-5 text-destructive"
-        >
-          {error}
-        </p>
-      ) : null}
+      <ActionFeedback
+        state={visibleError ? "error" : "idle"}
+        message={visibleError}
+        onRetry={
+          loadError
+            ? () => {
+                setLoadError(undefined);
+                void refresh();
+              }
+            : undefined
+        }
+      />
       {notice ? (
         <div role="status">
           <GuidancePanel title="Device access updated">{notice}</GuidancePanel>
@@ -219,7 +244,7 @@ export function DeviceManagementView({
           <Button onClick={onOpenSync}>Set up sync</Button>
         </GuidancePanel>
       ) : null}
-      {!data && !error ? <p role="status">Loading devices…</p> : null}
+      {!data && !loadError ? <p role="status">Loading devices…</p> : null}
       {data && section === "list" && !target ? (
         <div className="grid gap-4 @2xl/devices:grid-cols-2 @4xl/devices:grid-cols-3">
           {data.devices.map((device) => (
@@ -228,6 +253,7 @@ export function DeviceManagementView({
               name={device.name}
               identifier={device.id}
               state={device.state}
+              headingLevel="h2"
               onRevoke={
                 device.state === "other"
                   ? () => {
@@ -285,6 +311,7 @@ export function DeviceManagementView({
           <h2 className="text-xl font-semibold">Approve a device</h2>
           {output ? (
             <TransferOutput
+              title="Device approval"
               description="Transfer this approval to the browser that created the request. The approval contains an encrypted vault copy; keep it private."
               metadata="Device approval"
               onCopy={() =>
@@ -300,6 +327,8 @@ export function DeviceManagementView({
           ) : (
             <>
               <TransferInput
+                label="Access request"
+                fileLabel="Choose request file"
                 value={text}
                 onChange={(value) => {
                   setText(value);
@@ -426,6 +455,14 @@ export function DeviceManagementView({
                       }[key]
                     }
                     value={credentials[key]}
+                    name={
+                      {
+                        bucket: "replacement-s3-bucket",
+                        region: "replacement-s3-region",
+                        prefix: "replacement-s3-prefix",
+                        accessKeyId: "replacement-s3-access-key-id",
+                      }[key]
+                    }
                     readOnly={key !== "accessKeyId" && !!data?.location}
                     onChange={(event) =>
                       setCredentials((value) => ({
@@ -433,11 +470,15 @@ export function DeviceManagementView({
                         [key]: event.target.value,
                       }))
                     }
+                    autoComplete="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
                   />
                 ),
               )}
               <PasswordField
                 label="New secret access key"
+                name="replacement-s3-secret-access-key"
                 value={credentials.secretAccessKey}
                 onChange={(value) =>
                   setCredentials((current) => ({
@@ -447,6 +488,7 @@ export function DeviceManagementView({
                 }
                 revealed={revealed}
                 onRevealChange={setRevealed}
+                autoComplete="off"
               />
             </fieldset>
           ) : null}

@@ -25,6 +25,7 @@ export function SyncPage({
   const items = sync.review ? comparisons(sync.review) : [];
   const form = sync.target === null || sync.repairing;
   const managing = !form && !sync.trustMode;
+  const accessUnavailable = sync.accessState !== "allowed";
   function connection(onEditLocation?: () => void) {
     const occupiedTarget =
       sync.errorKind === "target-occupied" && sync.error && onEditLocation ? (
@@ -48,6 +49,7 @@ export function SyncPage({
         value={sync.draft}
         onChange={sync.change}
         onEditLocation={onEditLocation}
+        headingLevel={onEditLocation ? "h4" : "h2"}
         feedback={
           occupiedTarget ??
           (sync.feedback ? <SyncStatus {...sync.feedback} /> : undefined)
@@ -67,8 +69,15 @@ export function SyncPage({
     );
   }
   return (
-    <section className="space-y-6" aria-label="Sync">
-      <div className="flex items-center justify-between gap-4">
+    <section
+      className={
+        sync.target === null && !sync.repairing
+          ? "space-y-6"
+          : "max-w-3xl space-y-6"
+      }
+      aria-label="Sync"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold tracking-tight">Sync</h1>
         <Button variant="ghost" disabled={busy} onClick={onBack}>
           Back to vault
@@ -101,15 +110,38 @@ export function SyncPage({
                   }[key]
                 }
               </dt>
-              <dd className="mt-1 break-all">{sync.target?.[key]}</dd>
+              <dd className="mt-1 break-all">
+                {key === "prefix" && !sync.target?.[key]
+                  ? "Bucket root"
+                  : sync.target?.[key]}
+              </dd>
             </div>
           ))}
         </dl>
       ) : null}
-      {sync.accessMissing && managing ? (
+      {sync.accessState === "missing" && managing ? (
         <SyncStatus
           state="permission-required"
           detail="Allow this browser to connect to your S3 storage. Your local vault remains available."
+          action={
+            sync.operation === "permission"
+              ? "Requesting access…"
+              : "Allow storage access"
+          }
+          actionDisabled={busy}
+          onAction={() => void sync.allowAccess()}
+        />
+      ) : sync.accessState === "unknown" && sync.target && managing ? (
+        <SyncStatus
+          state="permission-error"
+          detail="The browser did not report whether this extension can reach your S3 storage. Request access again before checking or uploading the vault."
+          action={
+            sync.operation === "permission"
+              ? "Requesting access…"
+              : "Allow storage access"
+          }
+          actionDisabled={busy}
+          onAction={() => void sync.allowAccess()}
         />
       ) : sync.feedback &&
         !sync.trustMode &&
@@ -159,16 +191,9 @@ export function SyncPage({
         )
       ) : sync.target ? (
         <div className="flex flex-wrap gap-3">
-          {sync.accessMissing ? (
-            <Button disabled={busy} onClick={() => void sync.allowAccess()}>
-              {sync.operation === "permission"
-                ? "Requesting access…"
-                : "Allow storage access"}
-            </Button>
-          ) : null}
           <Button
             disabled={
-              busy || sync.accessMissing || sync.management?.syncRemovalPending
+              busy || accessUnavailable || sync.management?.syncRemovalPending
             }
             onClick={() => void sync.check()}
           >
@@ -177,7 +202,7 @@ export function SyncPage({
           <Button
             variant="outline"
             disabled={
-              busy || sync.accessMissing || sync.management?.syncRemovalPending
+              busy || accessUnavailable || sync.management?.syncRemovalPending
             }
             onClick={() => void sync.upload()}
           >
@@ -235,7 +260,7 @@ export function SyncPage({
           state={sync.management}
           location={`${sync.target.bucket}/${sync.target.prefix}`}
           busy={busy}
-          accessMissing={sync.accessMissing}
+          accessUnavailable={accessUnavailable}
           disabling={sync.operation === "disable"}
           error={sync.error}
           onDisable={() => void sync.disable()}

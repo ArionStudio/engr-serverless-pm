@@ -11,23 +11,16 @@ From the repository root:
 pnpm --filter @lfspm/extension run gallery:build
 ```
 
-For browser review, create the ignored local `.codex/servers.toml` profile:
-
-```toml
-[server.gallery]
-cwd = "apps/extension"
-build = ["pnpm", "run", "gallery:build"]
-start = ["pnpm", "run", "gallery:preview", "--host", "0.0.0.0", "--port", "{port}", "--strictPort"]
-health_path = "/gallery.html"
-```
-
-Run `serverctl start gallery --repo <repository-path>`.
+Use the centrally managed profile reported by
+`serverctl config path --repo <repository-path>`. Run
+`serverctl start gallery --repo <repository-path>`.
 The profile builds first and returns the allocated URL. Open `/gallery.html`.
 Run `serverctl stop gallery --repo <repository-path>` after review.
 
-The gallery now exposes **75 catalog IDs** in seven collections: 20 basic controls,
-8 containers/selection controls, 10 tables/other controls, 14 shared presentations,
-14 feature presentations, 7 forms and 2 current screens. “Find a component or widget” jumps directly
+The gallery exposes **81 catalog families** in seven collections: 5 application
+screens, 7 complete forms, 16 feature components, 15 shared patterns, 10 advanced
+controls, 8 composed controls, and 20 foundational
+controls. “Find a component or widget” jumps directly
 to any entry. The [ownership inventory](../../../../docs/ui-ux/review-inventory.md)
 links every ID to its actual public import or shared source.
 
@@ -64,7 +57,7 @@ gallery through imports; new props/variants still require an explicit fixture
 update. Restart the managed production preview after rebuilding to review changes.
 
 `pnpm --filter @lfspm/extension gallery:check` runs before both the gallery and production extension builds.
-It derives exported components and 72 visual variant axes from TypeScript, checks
+It derives exported components and 83 visual variant axes from TypeScript, checks
 ownership and valid family IDs, compares the generated inventory, and requires preview bindings for
 each component with variants. It follows the gallery import graph to check JSX
 consumers, with an explicit exception for the nonvisual ThemeProvider.
@@ -140,20 +133,11 @@ Spinner adjustment on future CLI regeneration. Do not overwrite it blindly.
 
 ## Validation record
 
-- The extension suite has 469 passing tests in 37 files. Eleven gallery tests
-  cover cancellation focus, checkbox/tab semantics, concealed recovery words,
-  table input projection/filtering/stable selection, retained-input error and
-  reset, missing local recovery data, stable three-word verification retries,
-  variant prop binding and vertical Tabs keyboard navigation.
-- The initial complete-gallery Chrome pass rendered all 73 IDs with no page errors
-  and no document overflow at 1440, 400 or 320 pixels. Real Table filtering was
-  exercised. The final browser matrix is recorded in the UI/UX inventory.
-- The living-gallery follow-up exercises 263 declared choices in light/dark themes
-  at 1440px and 320px, for 1,052 selections. All 75 family layouts pass without
-  overflow or browser errors. Compound-part navigation and Reset examples pass.
-  The variant audit records 117,364 contrast measurements with zero failures;
-  the behavior/hover/focus audit adds 62,462 with zero failures. See the
-  [current contrast evidence](../../../../docs/ui-ux/contrast-review.md).
+- The extension and core suites, type checks, lint, gallery inventory, and both
+  browser builds must pass before release.
+- Browser review covers every direct screen state and component family in light
+  and dark themes at 320, 400, 768, and native popup widths. Review records belong
+  in ignored `.local/` storage instead of this living guide.
 - Build, lint and production-artifact checks are required after source changes.
   These checks do not imply full accessibility conformance or visual approval.
 
@@ -189,6 +173,7 @@ The managed gallery build serves two review pages:
   buttons. It includes setup, recovery, unlocking, completion, and settings.
 
 Use the Components / Screens links in either page header to switch. Screen URLs
-support direct links such as `screens.html#password` or `screens.html#settings`.
+support direct links such as `screens.html#password` or
+`screens.html#vault-settings`.
 The screen list remains visible on narrow layouts. Both pages use gallery-only
 fixtures and stay excluded from the production extension build.

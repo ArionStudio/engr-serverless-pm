@@ -173,7 +173,7 @@ describe("sync UI lifecycle", () => {
     expect(ctx.result.current.draft).toEqual(input);
     expect(ctx.result.current.repairing).toBe(true);
     expect(ctx.result.current.target).toEqual(syncLocation);
-    expect(ctx.result.current.accessMissing).toBe(true);
+    expect(ctx.result.current.accessState).toBe("unknown");
     expect(ctx.result.current.error).toBe(operationError);
     ctx.capabilities.hasAccess = async () => true;
     await act(async () => ctx.notify("focus"));
@@ -376,13 +376,13 @@ describe("sync UI lifecycle", () => {
     expect(ctx.result.current.review).toBe(review);
     ctx.capabilities.hasAccess = async () => false;
     await act(async () => ctx.notify("permissions-removed"));
-    expect(ctx.result.current.accessMissing).toBe(true);
+    expect(ctx.result.current.accessState).toBe("missing");
     expect(ctx.result.current.target).toEqual(syncLocation);
     expect(ctx.result.current.review).toBeUndefined();
     expect(ctx.result.current.feedback).toBeUndefined();
     ctx.capabilities.hasAccess = async () => true;
     await act(() => ctx.result.current.allowAccess());
-    expect(ctx.result.current.accessMissing).toBe(false);
+    expect(ctx.result.current.accessState).toBe("allowed");
   });
   it.each(["check", "upload"] as const)(
     "ignores a late %s result after permission removal and allows a new grant",
@@ -418,7 +418,7 @@ describe("sync UI lifecycle", () => {
       );
       ctx.capabilities.hasAccess = async () => false;
       await act(async () => ctx.notify("permissions-removed"));
-      expect(ctx.result.current.accessMissing).toBe(true);
+      expect(ctx.result.current.accessState).toBe("missing");
       expect(ctx.result.current.operation).toBe(
         operation === "check" ? "review" : "upload",
       );
@@ -436,7 +436,7 @@ describe("sync UI lifecycle", () => {
       ctx.capabilities.review = async () => syncReview;
       await act(() => ctx.result.current.check());
       expect(ctx.result.current.review).toEqual(syncReview);
-      expect(ctx.result.current.accessMissing).toBe(false);
+      expect(ctx.result.current.accessState).toBe("allowed");
     },
   );
   it("does not start an operation if the vault locks while permission is pending", async () => {
@@ -568,16 +568,16 @@ it.each(["save", "reconcile"] as const)(
     };
     await act(() => ctx.result.current.save());
     expect(ctx.result.current.target).toEqual(syncLocation);
-    expect(ctx.result.current.accessMissing).toBe(true);
+    expect(ctx.result.current.accessState).toBe("unknown");
     expect(ctx.result.current.draft.secretAccessKey).toBe("");
     const expectedError =
       mode === "save"
-        ? "Could not check this browser's S3 access. Allow storage access and try again."
+        ? undefined
         : "Sync could not be enabled. Reopen the vault and check its sync status before trying again.";
     expect(ctx.result.current.error).toBe(expectedError);
     ctx.capabilities.hasAccess = async () => true;
     await act(async () => ctx.notify("permissions"));
-    expect(ctx.result.current.accessMissing).toBe(false);
+    expect(ctx.result.current.accessState).toBe("allowed");
     expect(ctx.result.current.error).toBe(
       mode === "save" ? undefined : expectedError,
     );
@@ -652,7 +652,7 @@ it.each(["surviving", "replaced", "read-failed"] as const)(
         );
       } else {
         expect(ctx.result.current.target).toEqual(syncLocation);
-        expect(ctx.result.current.accessMissing).toBe(true);
+        expect(ctx.result.current.accessState).toBe("missing");
       }
       expect(ctx.result.current.draft.secretAccessKey).toBe("");
     }

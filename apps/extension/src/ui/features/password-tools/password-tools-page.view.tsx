@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import type { EntryTools } from "@/ui/features/password-tools/password-tools.type";
-import { Button } from "@/ui/components/primitives/button";
-import { Input } from "@/ui/components/primitives/input";
 import {
   Tabs,
   TabsList,
@@ -9,19 +7,26 @@ import {
   TabsContent,
 } from "@/ui/components/primitives/tabs";
 import { PasswordStrengthFeedback } from "@/ui/components/forms/fields.view";
-import { GeneratorControls, UsernameControls } from "./generator.view";
+import {
+  GeneratedValue,
+  GeneratorControls,
+  UsernameControls,
+} from "./generator.view";
 import { defaultPasswordSettings } from "./generator-settings";
 import { cn } from "cn";
+import { isVaultAuthorizationError } from "@/ui/lib/vault-authorization";
 
 export function PasswordToolsPage({
   tools,
   onUse,
   onPendingChange,
+  onSessionLost,
   presentation = "page",
 }: {
   tools: EntryTools;
   onUse: (value: { password?: string; login?: string }) => void;
   onPendingChange?: (pending: boolean) => void;
+  onSessionLost?: () => void;
   presentation?: "page" | "popup";
 }) {
   const [kind, setKind] = useState("password");
@@ -34,14 +39,15 @@ export function PasswordToolsPage({
   const [revealed, setRevealed] = useState(false);
   const [score, setScore] = useState<0 | 1 | 2 | 3 | 4>();
   const [pending, setPending] = useState(false);
+  const [copyPending, setCopyPending] = useState(false);
   const [error, setError] = useState<string>();
   const epoch = useRef(0);
   const busy = useRef(false);
   const result = useRef<HTMLElement>(null);
   useEffect(() => {
-    onPendingChange?.(pending);
+    onPendingChange?.(pending || copyPending);
     return () => onPendingChange?.(false);
-  }, [onPendingChange, pending]);
+  }, [copyPending, onPendingChange, pending]);
   useEffect(() => {
     if (value && presentation === "popup") result.current?.focus();
   }, [presentation, value]);
@@ -57,6 +63,7 @@ export function PasswordToolsPage({
     };
   }, []);
   function changeKind(next: string) {
+    if (copyPending) return;
     ++epoch.current;
     busy.current = false;
     setPending(false);
@@ -67,7 +74,7 @@ export function PasswordToolsPage({
     setError(undefined);
   }
   async function generate() {
-    if (busy.current) return;
+    if (busy.current || copyPending) return;
     busy.current = true;
     const owner = ++epoch.current;
     setPending(true);
@@ -114,8 +121,12 @@ export function PasswordToolsPage({
           aria-label="Generator"
           className={presentation === "popup" ? "grid w-full grid-cols-2" : ""}
         >
-          <TabsTrigger value="password">Password</TabsTrigger>
-          <TabsTrigger value="username">Username</TabsTrigger>
+          <TabsTrigger value="password" disabled={copyPending}>
+            Password
+          </TabsTrigger>
+          <TabsTrigger value="username" disabled={copyPending}>
+            Username
+          </TabsTrigger>
         </TabsList>
         <div
           className={cn(
@@ -138,11 +149,12 @@ export function PasswordToolsPage({
                 value={settings}
                 onChange={setSettings}
                 pending={pending}
+                disabled={copyPending}
                 onGenerate={() => void generate()}
               />
             </TabsContent>
             <TabsContent value="username" className="mt-0">
-              <fieldset disabled={pending}>
+              <fieldset disabled={pending || copyPending}>
                 <UsernameControls
                   {...username}
                   onChange={setUsername}
@@ -152,12 +164,20 @@ export function PasswordToolsPage({
             </TabsContent>
           </div>
           <div className={presentation === "popup" ? "space-y-4" : "space-y-5"}>
+            {pending || (value && kind === "username") ? (
+              <p role="status" className="sr-only">
+                {pending
+                  ? kind === "password"
+                    ? "Generating password…"
+                    : "Generating username…"
+                  : "Username generated"}
+              </p>
+            ) : null}
             {error ? (
               <p role="alert" className="text-destructive">
                 {error}
               </p>
             ) : null}
-            {pending ? <p role="status">Generating…</p> : null}
             {value ? (
               <section
                 ref={result}
@@ -171,50 +191,30 @@ export function PasswordToolsPage({
                 )}
                 aria-label="Generated value"
               >
-                <p role="status" className="sr-only">
-                  {kind === "password"
-                    ? "Password generated"
-                    : "Username generated"}
-                </p>
-                <h2 className="text-lg font-semibold">
-                  {kind === "password"
-                    ? "Generated password"
-                    : "Generated username"}
-                </h2>
-                <div className="flex gap-2">
-                  <Input
-                    aria-label={
-                      kind === "password"
-                        ? "Generated password"
-                        : "Generated username"
-                    }
-                    readOnly
-                    value={value}
-                    type={
-                      kind === "password" && !revealed ? "password" : "text"
-                    }
-                    className="min-w-0 font-mono"
-                  />
-                  {kind === "password" ? (
-                    <Button
-                      variant="outline"
-                      onClick={() => setRevealed(!revealed)}
-                    >
-                      {revealed ? "Hide" : "Show"}
-                    </Button>
-                  ) : null}
-                </div>
-                {kind === "password" ? (
-                  <PasswordStrengthFeedback score={score} state="ready" />
-                ) : null}
-                {kind === "password" ? (
-                  <p className="text-sm text-muted-foreground">
-                    Save this password in your vault before changing it on the
-                    website.
-                  </p>
-                ) : null}
-                <Button
-                  onClick={() => {
+                <GeneratedValue
+                  key={epoch.current}
+                  value={value}
+                  label={
+                    kind === "password"
+                      ? "Generated password"
+                      : "Generated username"
+                  }
+                  conceal={kind === "password"}
+                  revealed={revealed}
+                  onRevealChange={setRevealed}
+                  onCopy={tools.copy ? () => tools.copy?.(value) : undefined}
+                  onCopyError={(cause) => {
+                    if (!isVaultAuthorizationError(cause)) return;
+                    ++epoch.current;
+                    setValue("");
+                    setScore(undefined);
+                    setRevealed(false);
+                    onSessionLost?.();
+                  }}
+                  onCopyPendingChange={setCopyPending}
+                  useLabel="Use in new entry"
+                  onUse={() => {
+                    if (copyPending) return;
                     onUse(
                       kind === "password"
                         ? { password: value }
@@ -223,8 +223,16 @@ export function PasswordToolsPage({
                     setValue("");
                   }}
                 >
-                  Use in new entry
-                </Button>
+                  {kind === "password" ? (
+                    <>
+                      <PasswordStrengthFeedback score={score} state="ready" />
+                      <p className="text-sm text-muted-foreground">
+                        Save this password in your vault before changing it on
+                        the website.
+                      </p>
+                    </>
+                  ) : null}
+                </GeneratedValue>
               </section>
             ) : null}
           </div>

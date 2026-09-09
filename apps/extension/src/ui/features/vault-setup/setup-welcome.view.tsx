@@ -18,7 +18,7 @@ const setupOptions = [
     title: "New vault",
     icon: SecurityCheckIcon,
     requirements: [
-      "A strong password for this device.",
+      "A strong password for this browser.",
       "A private place to store your recovery words.",
     ],
   },
@@ -30,7 +30,7 @@ const setupOptions = [
       "A trusted device where you can unlock the vault and approve access.",
       "S3 sync configured for that vault and access keys for this device.",
       "A way to transfer the access request and approval between devices.",
-      "A strong password for this device.",
+      "A strong password for this browser.",
     ],
   },
 ] as const;
@@ -114,7 +114,9 @@ export function SetupWelcome({
           size="lg"
           className="min-h-11 gap-3 px-6 text-sm"
         >
-          Continue
+          {selected === "create"
+            ? "Create a new vault"
+            : "Connect an existing vault"}
           <HugeiconsIcon icon={ArrowRight01Icon} size={16} aria-hidden="true" />
         </Button>
       </div>

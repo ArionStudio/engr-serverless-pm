@@ -15,6 +15,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { TagPill } from "@/ui/features/tags";
 import { getFolderIcon } from "@/ui/features/folders";
 import type { TagOption } from "./tag-selection.view";
+import { getEntryAccessibleName } from "./entry-label";
 
 export type EntryFolderPresentation = {
   readonly name: string;
@@ -48,6 +49,7 @@ export function EntryRow({
           <button
             type="button"
             className="cursor-pointer text-left"
+            aria-label={`Open ${getEntryAccessibleName(entry)}`}
             onClick={() => onOpen(entry.id)}
           />
         ) : undefined
@@ -66,6 +68,7 @@ export function EntryRow({
             <Button
               variant="link"
               className="h-auto min-w-0 justify-start px-0 text-left whitespace-normal break-all"
+              aria-label={`Open ${getEntryAccessibleName(entry)}`}
               onClick={() => onOpen(entry.id)}
             >
               {entry.login || "Unnamed login"}

@@ -31,15 +31,23 @@ describe("existing vault connection", () => {
         onBack={() => {}}
         capabilities={capabilities}
         assessPassword={async () => ({ score: 4 })}
+        generatePassword={async () => ({
+          password: "Generated-river-8!Pine-sky",
+        })}
         onEnroll={enroll}
       />,
     );
     fireEvent.click(
       screen.getByRole("button", { name: "I already have an approval" }),
     );
-    const password = screen.getByLabelText("Password chosen for this device");
+    expect(
+      screen
+        .getByRole("button", { name: /4\. Approval.*Current step/ })
+        .getAttribute("aria-current"),
+    ).toBe("step");
+    const password = screen.getByLabelText("Password for this browser");
     fireEvent.change(password, { target: { value: "device-password" } });
-    fireEvent.change(screen.getByLabelText("Enrollment artifact"), {
+    fireEvent.change(screen.getByLabelText("Device approval"), {
       target: { value: "approval" },
     });
     expect(screen.queryByLabelText("Secret access key")).toBeNull();
@@ -56,7 +64,7 @@ describe("existing vault connection", () => {
     });
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Show password chosen for this device",
+        name: "Show password for this browser",
       }),
     );
     expect(password.getAttribute("type")).toBe("text");
@@ -101,16 +109,19 @@ describe("existing vault connection", () => {
         onBack={() => {}}
         capabilities={galleryDevices()}
         assessPassword={async () => ({ score: 4 })}
+        generatePassword={async () => ({
+          password: "Generated-river-8!Pine-sky",
+        })}
         onEnroll={enroll}
       />,
     );
     fireEvent.click(
       screen.getByRole("button", { name: "I already have an approval" }),
     );
-    fireEvent.change(screen.getByLabelText("Password chosen for this device"), {
+    fireEvent.change(screen.getByLabelText("Password for this browser"), {
       target: { value: "password" },
     });
-    fireEvent.change(screen.getByLabelText("Enrollment artifact"), {
+    fireEvent.change(screen.getByLabelText("Device approval"), {
       target: { value: "old approval" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Verify approval" }));
@@ -123,12 +134,11 @@ describe("existing vault connection", () => {
           reject = fail;
         }),
     });
-    fireEvent.change(screen.getByLabelText("Choose artifact file"), {
+    fireEvent.change(screen.getByLabelText("Choose approval file"), {
       target: { files: [file] },
     });
     expect(
-      (screen.getByLabelText("Enrollment artifact") as HTMLTextAreaElement)
-        .value,
+      (screen.getByLabelText("Device approval") as HTMLTextAreaElement).value,
     ).toBe("");
     fireEvent.click(screen.getByRole("button", { name: "Verifying…" }));
     expect(enroll).not.toHaveBeenCalled();
@@ -160,19 +170,21 @@ describe("existing vault connection", () => {
         onBack={() => {}}
         capabilities={capabilities}
         assessPassword={async () => ({ score: 4 })}
+        generatePassword={async () => ({
+          password: "Generated-river-8!Pine-sky",
+        })}
         onEnroll={enroll}
       />,
     );
     fireEvent.click(
       screen.getByRole("button", { name: "I already have an approval" }),
     );
-    fireEvent.change(screen.getByLabelText("Password chosen for this device"), {
+    fireEvent.change(screen.getByLabelText("Password for this browser"), {
       target: { value: "device-password" },
     });
-    fireEvent.change(
-      screen.getByRole("textbox", { name: "Enrollment artifact" }),
-      { target: { value: "approval" } },
-    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Device approval" }), {
+      target: { value: "approval" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Verify approval" }));
     await waitFor(() => expect(resolve).toBeDefined());
     act(invalidate);
@@ -189,7 +201,9 @@ describe("existing vault connection", () => {
     );
     expect(enroll).not.toHaveBeenCalled();
     expect(
-      screen.getByRole("button", { name: "Continue" }).hasAttribute("disabled"),
+      screen
+        .getByRole("button", { name: "Continue to browser password" })
+        .hasAttribute("disabled"),
     ).toBe(false);
     expect(screen.queryByDisplayValue("device-password")).toBeNull();
   });

@@ -4,6 +4,7 @@ import { SetupRecoveryView } from "@/ui/features/vault-setup/setup-recovery.view
 import { Button } from "@/ui/components/primitives/button";
 import { entryToolsFixture } from "./entry-tools-fixture";
 import { setupRecovery, setupVault } from "./setup-fixture";
+import { gallerySetup } from "./setup-fixture";
 import {
   galleryVaultSettings,
   type SettingsScenario,
@@ -82,6 +83,7 @@ export function SettingsExample({
         vault={vault}
         capabilities={capabilities}
         assessPassword={entryToolsFixture.assess}
+        generatePassword={gallerySetup().generatePassword}
         onReplaceRecovery={() => setReplacement(true)}
         onDeleted={() => setRemoved(true)}
         onSaved={() => {}}

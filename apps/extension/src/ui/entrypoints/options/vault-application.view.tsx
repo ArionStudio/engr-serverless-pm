@@ -17,6 +17,7 @@ import { VaultSettingsView } from "@/ui/features/settings/vault-settings.view";
 import type { VaultSettingsCapabilities } from "@/ui/features/settings/settings.type";
 import type {
   AssessPassword,
+  GenerateVaultPassword,
   SetupVault,
 } from "@/ui/features/vault-setup/setup.type";
 import type { VaultDestination } from "./options-route";
@@ -46,6 +47,7 @@ export function VaultApplication({
   devices,
   settings,
   assessPassword,
+  generatePassword,
   appearance,
   onLock,
   onReplaceRecovery,
@@ -63,6 +65,7 @@ export function VaultApplication({
   devices: DeviceCapabilities;
   settings: VaultSettingsCapabilities;
   assessPassword: AssessPassword;
+  generatePassword: GenerateVaultPassword;
   appearance: ReactNode;
   onLock: () => void | Promise<void>;
   onReplaceRecovery: () => void;
@@ -75,6 +78,7 @@ export function VaultApplication({
   const [destination, setDestination] = useState(initialDestination);
   const [draft, setDraft] = useState<EntryDraft | undefined>(initialEntryDraft);
   const [entryVisit, setEntryVisit] = useState(0);
+  const [passwordToolsPending, setPasswordToolsPending] = useState(false);
   const content = useRef<HTMLDivElement>(null);
   const entryControls = useRef<WorkspaceControls>(null);
   const firstFocus = useRef(true);
@@ -88,7 +92,11 @@ export function VaultApplication({
   }, [destination, entryVisit]);
   function navigate(next: string) {
     const destination = destinations.find((item) => item.id === next)?.id;
-    if (!destination) return;
+    if (
+      !destination ||
+      (passwordToolsPending && destination !== "tools")
+    )
+      return;
     setDraft(undefined);
     setDestination(destination);
   }
@@ -108,7 +116,12 @@ export function VaultApplication({
           </Button>
         </div>
         <AppNavigation
-          items={destinations}
+          items={destinations.map((item) => ({
+            ...item,
+            available:
+              item.available &&
+              (!passwordToolsPending || item.id === "tools"),
+          }))}
           current={destination}
           onNavigate={navigate}
         />
@@ -134,6 +147,8 @@ export function VaultApplication({
         ) : destination === "tools" ? (
           <PasswordToolsPage
             tools={workspace.tools}
+            onSessionLost={onSessionLost}
+            onPendingChange={setPasswordToolsPending}
             onUse={(value) => {
               setDraft({ ...emptyEntryDraft, ...value, tagIds: [] });
               setEntryVisit((visit) => visit + 1);
@@ -168,6 +183,7 @@ export function VaultApplication({
               capabilities={settings}
               onSessionLost={onSessionLost}
               assessPassword={assessPassword}
+              generatePassword={generatePassword}
               onReplaceRecovery={onReplaceRecovery}
               onDeleted={onDeleted}
               onSaved={() => onRefresh(false)}

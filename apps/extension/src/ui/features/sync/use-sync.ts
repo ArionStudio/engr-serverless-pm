@@ -24,13 +24,11 @@ import {
   resolutionFromReview,
 } from "./sync-review.mapper";
 
-const permissionLookupError =
-  "Could not check this browser's S3 access. Allow storage access and try again.";
+export type StorageAccessState = "allowed" | "missing" | "unknown";
 
 type SyncInspection = {
   target: SyncLocation | null;
-  accessMissing: boolean;
-  permissionError: string | undefined;
+  accessState: StorageAccessState;
 };
 
 async function inspectConfiguration(
@@ -39,18 +37,16 @@ async function inspectConfiguration(
 ): Promise<SyncInspection> {
   // Failure of the authorized session read must still reach the caller's cleanup.
   const target = await capabilities.inspect(vaultId);
+  if (!target) return { target, accessState: "allowed" };
   try {
     return {
       target,
-      accessMissing: target !== null && !(await capabilities.hasAccess(target)),
-      permissionError: undefined,
+      accessState: (await capabilities.hasAccess(target))
+        ? "allowed"
+        : "missing",
     };
   } catch {
-    return {
-      target,
-      accessMissing: target !== null,
-      permissionError: permissionLookupError,
-    };
+    return { target, accessState: "unknown" };
   }
 }
 
@@ -68,7 +64,7 @@ export function useSync(
   const [management, setManagement] = useState<SyncManagementState>();
   const [trustMode, setTrustMode] = useState<"enrollment" | "revocation">();
   const [trustReview, setTrustReview] = useState<TrustReview>();
-  const [accessMissing, setAccessMissing] = useState(false);
+  const [accessState, setAccessState] = useState<StorageAccessState>("unknown");
   const [operation, setOperation] = useState<Operation>();
   const [error, setError] = useState<string>();
   const [errorKind, setErrorKind] = useState<"target-occupied">();
@@ -81,8 +77,8 @@ export function useSync(
   const [choices, setChoices] = useState<Record<string, Resolution>>({});
   const setConfiguration = useCallback((configuration: SyncInspection) => {
     setTarget(configuration.target);
-    setAccessMissing(configuration.accessMissing);
-    setRefreshError(configuration.permissionError);
+    setAccessState(configuration.accessState);
+    setRefreshError(undefined);
   }, []);
   const [generation, setGeneration] = useState(0);
   const epoch = useRef(0);
@@ -115,6 +111,7 @@ export function useSync(
     setError(undefined);
     setErrorKind(undefined);
     setRefreshError(undefined);
+    setAccessState("unknown");
     clearSecrets();
     setTarget(undefined);
     setManagement(undefined);
@@ -156,7 +153,7 @@ export function useSync(
         if (owner === epoch.current && inspection === inspectEpoch.current) {
           setConfiguration(configuration);
           setManagement(nextManagement);
-          if (configuration.accessMissing) {
+          if (configuration.accessState !== "allowed") {
             setTrustReview(undefined);
             setFeedback(undefined);
             setReview(undefined);
@@ -182,7 +179,7 @@ export function useSync(
         return;
       if (reason === "permissions-removed") {
         ++epoch.current;
-        setAccessMissing(true);
+        setAccessState("missing");
       }
       if (reason === "permissions" || reason === "permissions-removed") {
         setTrustReview(undefined);
@@ -228,7 +225,7 @@ export function useSync(
           prefix: location.prefix,
         });
         if (current !== epoch.current) return;
-        setAccessMissing(false);
+        setAccessState("allowed");
       }
       await task();
       if (current === epoch.current) {
@@ -347,7 +344,7 @@ export function useSync(
     draft,
     repairing,
     existingConnection,
-    accessMissing,
+    accessState,
     operation,
     error: error ?? refreshError,
     errorKind,

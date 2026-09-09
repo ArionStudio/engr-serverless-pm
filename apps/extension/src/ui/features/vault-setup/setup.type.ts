@@ -13,6 +13,7 @@ export type SetupStep =
 export type AssessPassword = (
   password: string,
 ) => Promise<{ score: 0 | 1 | 2 | 3 | 4 }>;
+export type GenerateVaultPassword = () => Promise<{ password: string }>;
 
 export type SetupVault = {
   vaultId: string;
@@ -36,6 +37,7 @@ export type SetupRecovery = {
 export type RecoverySaveMethod = "text" | "print" | "copy";
 export type SetupCapabilities = {
   readOrganizationLibrary: () => Promise<GlobalLibrary>;
+  generatePassword: GenerateVaultPassword;
   enroll: (params: EnrollmentSetupInput) => Promise<SetupRecovery>;
   inspect: (selectedVaultId?: string) => Promise<SetupInspection>;
   create: (params: {

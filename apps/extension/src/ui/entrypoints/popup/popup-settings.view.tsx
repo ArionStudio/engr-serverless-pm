@@ -74,7 +74,9 @@ export function PopupSettings({
       const next = { ...draft, name: draft.name.trim() };
       setSaved(next);
       setDraft(next);
-      setMessage("Saved. The lock duration applies from the next unlock.");
+      setMessage(
+        "Browser settings saved. The lock duration applies from the next unlock.",
+      );
       onSaved();
     } catch (cause) {
       if (!active.current || request !== epoch.current) return;
@@ -93,7 +95,7 @@ export function PopupSettings({
         onSessionLost?.();
         return;
       }
-      setError("Could not save device settings. Try again.");
+      setError("Could not save browser settings. Try again.");
     } finally {
       if (active.current && request === epoch.current) {
         busy.current = false;

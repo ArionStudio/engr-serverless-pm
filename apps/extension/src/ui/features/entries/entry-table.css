@@ -45,6 +45,7 @@
     grid-row: 1;
   }
   .entry-table [data-column="sanitizedUrl"],
+  .entry-table [data-column="folder"],
   .entry-table [data-column="tags"] {
     grid-column: 2 / -1;
   }

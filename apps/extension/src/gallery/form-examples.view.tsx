@@ -215,6 +215,9 @@ export function FormExamples() {
             </label>
             <PasswordCreationForm
               {...props}
+              generatePassword={async () => ({
+                password: "Gallery-river-8!Pine-sky",
+              })}
               score={props.value.password ? 4 : undefined}
               strengthState={strengthState}
               onRetryStrength={() => setStrengthState("ready")}
@@ -231,7 +234,14 @@ export function FormExamples() {
           currentPassword: "The current password was rejected.",
         }}
       >
-        {(props) => <PasswordChangeForm {...props} />}
+        {(props) => (
+          <PasswordChangeForm
+            {...props}
+            generatePassword={async () => ({
+              password: "Gallery-river-8!Pine-sky",
+            })}
+          />
+        )}
       </FormExample>
       <FormExample<CredentialDraft>
         id="F05"
@@ -324,6 +334,9 @@ export function FormExamples() {
             </label>
             <LocalRecoveryForm
               {...props}
+              generatePassword={async () => ({
+                password: "Gallery-river-8!Pine-sky",
+              })}
               score={4}
               strengthState={recoveryStrength}
               onRetryStrength={() => setRecoveryStrength("ready")}

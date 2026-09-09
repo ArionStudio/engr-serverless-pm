@@ -66,6 +66,7 @@ export type ExportMethod = {
   id: string;
   label: string;
   description: string;
+  actionLabel?: string;
   state?: "idle" | "pending" | "requested" | "error";
 };
 export function RecoveryExportChoices({
@@ -95,12 +96,16 @@ export function RecoveryExportChoices({
           <ItemActions>
             <Button
               variant="outline"
-              aria-label={m.label}
+              aria-label={
+                m.actionLabel ? `${m.actionLabel}: ${m.label}` : m.label
+              }
               disabled={m.state === "pending"}
               onClick={() => onRequest(m.id)}
             >
               {m.state === "pending" ? <Spinner /> : null}
-              {m.state === "pending" ? "Preparing…" : "Choose"}
+              {m.state === "pending"
+                ? "Preparing…"
+                : (m.actionLabel ?? "Choose")}
             </Button>
           </ItemActions>
         </Item>
@@ -277,7 +282,12 @@ export function RecoveryVerification({
         <Button type="submit" disabled={pending || complete}>
           {pending ? "Checking…" : "Check words"}
         </Button>
-        <Button type="button" variant="outline" onClick={onReview}>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={pending}
+          onClick={onReview}
+        >
           Review recovery words
         </Button>
       </div>

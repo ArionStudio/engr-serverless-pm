@@ -1,4 +1,3 @@
-import { Button } from "@/ui/components/primitives/button";
 import { SetupOrganizationExample } from "./setup-organization.example";
 import { PopupSettingsExample } from "./popup-settings.example";
 import {
@@ -25,7 +24,10 @@ import {
 import { PasswordToolsPage } from "@/ui/features/password-tools/password-tools-page.view";
 import { DeviceManagementView } from "@/ui/features/devices/device-management.view";
 import { OrganizationManagementView } from "@/ui/features/organization";
-import { PopupWorkspaceExample } from "./popup-workspace.example";
+import {
+  PopupWorkspaceExample,
+  type PopupWorkspaceScenario,
+} from "./popup-workspace.example";
 import { WorkspaceExample } from "./workspace.example";
 import { galleryWorkspace, type WorkspaceScenario } from "./workspace-fixture";
 import { S3SetupGuide } from "@/ui/features/sync/s3-setup-guide.view";
@@ -35,7 +37,6 @@ import { CredentialForm } from "@/ui/features/sync/credential-form.view";
 import { emptyCredentials } from "@/ui/features/sync/sync.type";
 import { gallerySync, type SyncScenario } from "./sync-fixture";
 import { ThemeToggle } from "@/ui/features/theme";
-import { VaultLockSettings } from "@/ui/features/settings/vault-lock-settings.view";
 import { SetupDevice } from "@/ui/features/vault-setup/setup-device.view";
 import { SetupRecoveryView } from "@/ui/features/vault-setup/setup-recovery.view";
 import { RecoverVaultAccess } from "@/ui/features/vault-setup/recover-vault-access.view";
@@ -62,12 +63,8 @@ export type OptionsScenario =
   | "devices-refresh-error"
   | "devices-authorization-lost"
   | TagManagementScenario
-  | "popup-ready"
-  | "popup-empty"
-  | "popup-locked"
-  | "popup-multiple"
-  | "popup-incomplete"
-  | "popup-error"
+  | `popup-${PopupWorkspaceScenario}`
+  | "launch-open-error"
   | WorkspaceScenario
   | "s3-guide"
   | "s3-copy-error"
@@ -79,9 +76,6 @@ export type OptionsScenario =
   | "s3-access-invalid"
   | SyncScenario
   | "appearance"
-  | "lock-settings"
-  | "lock-settings-pending"
-  | "lock-settings-error"
   | "recover-access"
   | "recover-access-pending"
   | "recover-access-error"
@@ -111,6 +105,11 @@ export type OptionsScenario =
   | "organization-error"
   | "organization-name-conflicts"
   | "connect"
+  | "connect-password"
+  | "connect-request"
+  | "connect-approval"
+  | "connect-request-error"
+  | "connect-approval-error"
   | "multiple-vaults"
   | "existing"
   | "loading"
@@ -124,7 +123,6 @@ export function OptionsExample({
   preference: "light" | "dark" | "system";
   onThemeChange: (preference: "light" | "dark" | "system") => void;
 }) {
-  const [routeRequestId, setRouteRequestId] = useState(0);
   const [devices] = useState(() => {
     const capabilities = galleryDevices(
       state === "devices-error",
@@ -184,7 +182,6 @@ export function OptionsExample({
           ? "../"
           : "vault/",
   });
-  const [savedDuration, setSavedDuration] = useState(600_000);
   const failed = useRef(false);
   const [setup] = useState(() =>
     gallerySetup(
@@ -237,6 +234,9 @@ export function OptionsExample({
         onOpenSync={() => {
           window.location.hash = "sync";
         }}
+        onSessionLost={() => {
+          window.location.hash = "unlock";
+        }}
       />
     );
   if (state.startsWith("tags"))
@@ -272,6 +272,7 @@ export function OptionsExample({
             : notice || undefined
         }
         assessPassword={assessPassword}
+        generatePassword={setup.generatePassword}
         onRecover={() => setNotice("Recovery requested")}
         onBack={() => setNotice("Back to unlock requested")}
       />
@@ -280,15 +281,7 @@ export function OptionsExample({
     return (
       <PopupWorkspaceExample
         key={state}
-        state={
-          state.slice(6) as
-            | "ready"
-            | "empty"
-            | "locked"
-            | "multiple"
-            | "incomplete"
-            | "error"
-        }
+        state={state.slice(6) as PopupWorkspaceScenario}
       />
     );
   if (state.startsWith("workspace") || state === "complete")
@@ -363,20 +356,6 @@ export function OptionsExample({
         <h1 className="text-2xl font-semibold tracking-tight">Appearance</h1>
         <ThemeToggle preference={preference} onThemeChange={onThemeChange} />
       </section>
-    );
-  if (state.startsWith("lock-settings"))
-    return (
-      <VaultLockSettings
-        key={savedDuration}
-        duration={savedDuration}
-        pending={state === "lock-settings-pending"}
-        error={
-          state === "lock-settings-error"
-            ? "Could not save the lock setting. Try again."
-            : undefined
-        }
-        onSave={setSavedDuration}
-      />
     );
   if (state === "creation-pending" || state === "creation-error")
     return (
@@ -454,6 +433,7 @@ export function OptionsExample({
         pending={state === "unlock-pending" || state === "replacement-pending"}
         error={notice || undefined}
         assessPassword={assessPassword}
+        generatePassword={setup.generatePassword}
         onRecover={() => setNotice("Recovery requested")}
         onDismissError={() => setNotice("")}
         onUnlock={() => setNotice("Unlock requested")}
@@ -473,40 +453,63 @@ export function OptionsExample({
       />
     );
   return (
-    <>
-      {state === "application" ? (
-        <Button
-          variant="outline"
-          onClick={() => setRouteRequestId((id) => id + 1)}
-        >
-          Open Entries shortcut
-        </Button>
-      ) : null}
-      <OptionsView
-        routeRequestId={routeRequestId}
-        devices={devices}
-        vaultSettings={vaultSettings}
-        workspace={workspace}
-        tagManagement={tagManagement}
-        folderManagement={folderManagement}
-        setup={setup}
-        sync={sync}
-        preference={preference}
-        onThemeChange={onThemeChange}
-        initialStep={
-          state === "password-pending" || state === "password-unavailable"
-            ? "password"
-            : state === "welcome" ||
-                state === "password" ||
-                state === "device" ||
-                state === "organization" ||
-                state === "connect"
-              ? state
+    <OptionsView
+      devices={devices}
+      vaultSettings={vaultSettings}
+      workspace={workspace}
+      tagManagement={tagManagement}
+      folderManagement={folderManagement}
+      setup={setup}
+      sync={sync}
+      preference={preference}
+      onThemeChange={onThemeChange}
+      initialStep={
+        state === "password-pending" || state === "password-unavailable"
+          ? "password"
+          : state === "welcome" ||
+              state === "password" ||
+              state === "device" ||
+              state === "organization"
+            ? state
+            : state === "connect" ||
+                state === "connect-password" ||
+                state === "connect-request" ||
+                state === "connect-approval" ||
+                state === "connect-request-error" ||
+                state === "connect-approval-error"
+              ? "connect"
               : "welcome"
-        }
-        assessPassword={assessPassword}
-      />
-    </>
+      }
+      initialConnectionStep={
+        state === "connect-password"
+          ? "password"
+          : state === "connect-request" || state === "connect-request-error"
+            ? "request"
+            : state === "connect-approval" || state === "connect-approval-error"
+              ? "approval"
+              : undefined
+      }
+      initialConnectionRequest={
+        state === "connect-request" ||
+        state === "connect-approval" ||
+        state === "connect-approval-error"
+          ? {
+              text: "lfspm-enrollment-request-example",
+              requestId: "request-example",
+              deviceId: "browser-example",
+              fingerprint: "7d9f 8b3a 2c61 4e05",
+            }
+          : undefined
+      }
+      initialConnectionError={
+        state === "connect-request-error"
+          ? "Could not create an access request. Check this browser's local storage and try again."
+          : state === "connect-approval-error"
+            ? "Could not verify this approval or connect to S3. Check that the approval matches this browser and that the storage credentials are correct."
+            : undefined
+      }
+      assessPassword={assessPassword}
+    />
   );
 }
 export function ScreenExamples() {
@@ -691,6 +694,9 @@ export function ScreenExamples() {
               "incomplete",
               "error",
               "reveal-error",
+              "generator",
+              "detected",
+              "settings",
               "sync-current",
               "sync-changed-during-check",
               "sync-review-read-error",
@@ -718,6 +724,7 @@ export function ScreenExamples() {
           {(state) => (
             <PopupView
               availability={state === "open-error" ? "empty" : state}
+              initialOpenFailed={state === "open-error"}
               onRetry={() => setAction("Retry requested")}
               onOpenOptions={async () => {
                 if (state === "open-error")
@@ -774,6 +781,11 @@ export function ScreenExamples() {
               "organization-error",
               "organization-name-conflicts",
               "connect",
+              "connect-password",
+              "connect-request",
+              "connect-approval",
+              "connect-request-error",
+              "connect-approval-error",
               "recover-access",
               "recover-access-pending",
               "recover-access-error",
@@ -803,9 +815,6 @@ export function ScreenExamples() {
               "workspace-saved-refresh-error",
               "backup-incomplete",
               "appearance",
-              "lock-settings",
-              "lock-settings-pending",
-              "lock-settings-error",
               "existing",
               "multiple-vaults",
               "loading",

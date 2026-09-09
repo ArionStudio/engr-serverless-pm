@@ -8,7 +8,7 @@ export function SyncManagement({
   state,
   location,
   busy = false,
-  accessMissing = false,
+  accessUnavailable = false,
   disabling = false,
   error,
   onDisable,
@@ -19,7 +19,7 @@ export function SyncManagement({
   state: SyncManagementState;
   location: string;
   busy?: boolean;
-  accessMissing?: boolean;
+  accessUnavailable?: boolean;
   disabling?: boolean;
   error?: string;
   onDisable: () => void;
@@ -47,16 +47,21 @@ export function SyncManagement({
             still holds the previous keys.
           </p>
           <div className="flex flex-wrap gap-3">
-            <a
-              href="https://console.aws.amazon.com/iam/home#/users"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex min-h-10 items-center rounded-md border border-current px-4"
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={
+                <a
+                  href="https://console.aws.amazon.com/iam/home#/users"
+                  target="_blank"
+                  rel="noreferrer"
+                />
+              }
             >
               Open IAM users
-            </a>
+            </Button>
             <Button
-              disabled={busy || accessMissing}
+              disabled={busy || accessUnavailable}
               onClick={onCompleteRevocation}
             >
               Verify old keys are revoked
@@ -66,7 +71,7 @@ export function SyncManagement({
       ) : null}
       {!state.providerCredentialRevocationPending &&
       !state.syncRemovalPending ? (
-        <details className="rounded-lg border p-5">
+        <details className="border-t pt-5">
           <summary className="cursor-pointer font-medium">
             Previous access keys
           </summary>
@@ -77,7 +82,7 @@ export function SyncManagement({
             </p>
             <Button
               variant="outline"
-              disabled={busy || accessMissing}
+              disabled={busy || accessUnavailable}
               onClick={onCompleteRevocation}
             >
               Verify previous key removal
@@ -94,7 +99,7 @@ export function SyncManagement({
         </GuidancePanel>
       ) : (
         <section
-          className="space-y-4 rounded-lg border p-5"
+          className="space-y-4 border-t pt-5"
           aria-label="Device access changes"
         >
           <h2 className="text-lg font-semibold">Device access changes</h2>
@@ -105,14 +110,14 @@ export function SyncManagement({
           <div className="flex flex-wrap gap-3">
             <Button
               variant="outline"
-              disabled={busy || accessMissing}
+              disabled={busy || accessUnavailable}
               onClick={onReviewEnrollment}
             >
               Review added devices
             </Button>
             <Button
               variant="outline"
-              disabled={busy || accessMissing}
+              disabled={busy || accessUnavailable}
               onClick={onReviewRevocation}
             >
               Review removed devices
@@ -121,7 +126,7 @@ export function SyncManagement({
         </section>
       )}
       <section
-        className="space-y-4 rounded-lg border border-destructive/30 p-5"
+        className="space-y-4 border-t border-destructive/30 pt-5"
         aria-label="Disable sync"
       >
         <h2 className="text-lg font-semibold">Disable sync</h2>
@@ -132,7 +137,9 @@ export function SyncManagement({
         <Button
           variant="destructive"
           disabled={
-            busy || accessMissing || state.providerCredentialRevocationPending
+            busy ||
+            accessUnavailable ||
+            state.providerCredentialRevocationPending
           }
           onClick={() => {
             setAcknowledged(false);

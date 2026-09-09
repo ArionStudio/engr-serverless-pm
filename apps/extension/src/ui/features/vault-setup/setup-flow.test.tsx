@@ -49,7 +49,9 @@ function mount(
   );
 }
 async function createFromDevice(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByRole("button", { name: "Continue" }));
+  await user.click(
+    await screen.findByRole("button", { name: "Continue to organization" }),
+  );
   expect(
     await screen.findByRole("heading", { name: "Organize your vault" }),
   ).toBeVisible();
@@ -156,7 +158,7 @@ describe("live setup UI", () => {
         });
       mount(setup);
       await user.type(
-        await screen.findByLabelText("Vault password"),
+        await screen.findByLabelText("Password for this browser"),
         "private password",
       );
       await user.click(screen.getByRole("button", { name: "Unlock" }));
@@ -211,6 +213,9 @@ describe("live setup UI", () => {
       await screen.findByRole("button", { name: "I saved all 24 words" }),
     );
     await user.click(screen.getByRole("button", { name: "Check words" }));
+    expect(
+      screen.getByRole("button", { name: "Review recovery words" }),
+    ).toBeDisabled();
     setup.inspect = async () => ({
       vault: { ...setupVault, unlocked: false },
       vaults: [setupVault],
@@ -234,10 +239,10 @@ describe("live setup UI", () => {
     expect(
       await screen.findByRole("heading", { name: "Choose a vault" }),
     ).toBeVisible();
-    await user.click(screen.getByRole("combobox", { name: "Vault" }));
+    await user.click(screen.getByRole("button", { name: "Show options" }));
     await user.click(await screen.findByRole("option", { name: /Work vault/ }));
     await user.type(
-      await screen.findByLabelText("Vault password"),
+      await screen.findByLabelText("Password for this browser"),
       "private password",
     );
     await user.click(screen.getByRole("button", { name: "Unlock" }));
@@ -261,21 +266,38 @@ describe("live setup UI", () => {
       "A-long-private-password",
     );
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Continue" })).toBeEnabled(),
+      expect(
+        screen.getByRole("button", { name: "Continue to device settings" }),
+      ).toBeEnabled(),
     );
-    await user.click(screen.getByRole("button", { name: "Continue" }));
-    await user.click(await screen.findByRole("button", { name: "Continue" }));
+    await user.click(
+      screen.getByRole("button", { name: "Continue to device settings" }),
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "Continue to organization" }),
+    );
     await screen.findByRole("heading", { name: "Organize your vault" });
     await user.click(screen.getByRole("button", { name: /2\. Device/ }));
     expect(
       screen.getByRole("heading", { name: "Device settings" }),
     ).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "Continue" }));
+    await user.click(
+      screen.getByRole("button", { name: "Continue to organization" }),
+    );
     await user.dblClick(
       screen.getByRole("button", { name: "Continue to recovery" }),
     );
     expect(
       await screen.findByRole("heading", { name: "Save recovery words" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Download: Download text file" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Print: Print or save as PDF" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Copy: Copy recovery words" }),
     ).toBeVisible();
     expect(
       screen.getByRole("button", {
@@ -417,6 +439,44 @@ describe("forgotten vault password", () => {
       ).toBeEnabled(),
     );
   }
+  it("preserves the recovery phrase while a generated password is pending", async () => {
+    const user = userEvent.setup();
+    const setup = gallerySetup("existing");
+    let finishGeneration: (value: { password: string }) => void = () => {};
+    setup.generatePassword = () =>
+      new Promise((resolve) => {
+        finishGeneration = resolve;
+      });
+    mount(setup);
+    await user.click(
+      await screen.findByRole("button", { name: "Forgot password?" }),
+    );
+    const recoveryPhrase = screen.getByLabelText("Recovery phrase", {
+      exact: true,
+    });
+    await user.type(recoveryPhrase, phrase);
+    await user.click(
+      screen.getByRole("button", { name: "Generate strong password" }),
+    );
+
+    expect(recoveryPhrase).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /Generating…/ }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Set new password" }),
+    ).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: "Setting new password…" }),
+    ).not.toBeInTheDocument();
+    await user.type(recoveryPhrase, " overwritten");
+    expect(recoveryPhrase).toHaveValue(phrase);
+    await act(async () =>
+      finishGeneration({ password: "Generated-river-8!Pine-sky" }),
+    );
+    await waitFor(() => expect(recoveryPhrase).toBeEnabled());
+    expect(recoveryPhrase).toHaveValue(phrase);
+  });
   it("recovers the selected vault and requires replacement-word verification before entries", async () => {
     const user = userEvent.setup();
     const setup = gallerySetup("existing");
@@ -530,9 +590,9 @@ describe("forgotten vault password", () => {
     mount(setup);
     await enter(user);
     await user.click(screen.getByRole("button", { name: "Set new password" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Check all 24 words",
-    );
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Check all 24 words");
+    expect(alert).toHaveFocus();
     expect(
       screen.getByLabelText("Recovery phrase", { exact: true }),
     ).toHaveValue(phrase.toUpperCase());
@@ -562,6 +622,9 @@ describe("forgotten vault password", () => {
     mount(setup);
     await enter(user);
     await user.click(screen.getByRole("button", { name: "Set new password" }));
+    expect(
+      screen.getByRole("button", { name: /Setting new password…/ }),
+    ).toBeDisabled();
     expect(
       screen.getByLabelText("Recovery phrase", { exact: true }),
     ).toBeDisabled();
@@ -602,7 +665,7 @@ describe("forgotten vault password", () => {
     );
     expect(screen.queryByLabelText("Recovery phrase")).not.toBeInTheDocument();
     expect(
-      screen.getByLabelText("Vault password", { exact: true }),
+      screen.getByLabelText("Password for this browser", { exact: true }),
     ).toHaveValue("");
     await user.click(screen.getByRole("button", { name: "Forgot password?" }));
     expect(

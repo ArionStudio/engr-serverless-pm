@@ -23,6 +23,8 @@ import {
   type AssessPassword,
   type PasswordCreationDraft,
   type OrganizationSetupDraft,
+  type SetupConnectionRequest,
+  type SetupConnectionStep,
 } from "@/ui/features/vault-setup";
 import type { GlobalLibrary } from "@lfspm/core";
 import { Button } from "@/ui/components/primitives/button";
@@ -50,6 +52,9 @@ export function OptionsView({
   routeRequestId = 0,
   initialEntryDraft,
   initialRecovery = false,
+  initialConnectionStep,
+  initialConnectionRequest,
+  initialConnectionError,
   onExitRecovery,
 }: {
   preference: "light" | "dark" | "system";
@@ -67,6 +72,9 @@ export function OptionsView({
   routeRequestId?: number;
   initialEntryDraft?: EntryDraft;
   initialRecovery?: boolean;
+  initialConnectionStep?: SetupConnectionStep;
+  initialConnectionRequest?: SetupConnectionRequest;
+  initialConnectionError?: string;
   onExitRecovery?: () => void;
 }) {
   const live = useVaultSetup(setup);
@@ -151,16 +159,9 @@ export function OptionsView({
   const creating =
     step === "password" || step === "device" || step === "organization";
   return (
-    <div className="@container bg-background text-foreground">
+    <div className="@container options-surface bg-background text-foreground">
       <header className="border-b">
-        <div
-          className={cn(
-            "mx-auto flex flex-wrap items-center justify-between gap-3 px-5 py-4",
-            live.vault?.complete && live.vault.unlocked && !settings
-              ? "max-w-6xl"
-              : "max-w-4xl",
-          )}
-        >
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-4">
           <span className="flex items-center gap-2 text-sm font-semibold">
             <HugeiconsIcon
               icon={SecurityCheckIcon}
@@ -197,7 +198,7 @@ export function OptionsView({
                   (!live.vault &&
                     live.vaults.length === 0 &&
                     (step === "welcome" || step === "organization")))
-              ? "max-w-4xl"
+              ? "max-w-6xl"
               : "max-w-2xl",
         )}
       >
@@ -278,6 +279,7 @@ export function OptionsView({
                 devices={devices}
                 settings={vaultSettings}
                 assessPassword={assessPassword}
+                generatePassword={setup.generatePassword}
                 initialDestination={initialDestination}
                 initialEntryDraft={initialEntryDraft}
                 appearance={
@@ -309,6 +311,7 @@ export function OptionsView({
               initiallyRecovering={initialRecovery}
               onExitRecovery={onExitRecovery}
               assessPassword={assessPassword}
+              generatePassword={setup.generatePassword}
               onRecover={(words, password) => {
                 void live.recover(words, password);
               }}
@@ -411,10 +414,13 @@ export function OptionsView({
                 <SetupConnection
                   capabilities={devices}
                   assessPassword={assessPassword}
+                  generatePassword={setup.generatePassword}
                   pending={live.pending}
-                  error={live.error}
+                  error={initialConnectionError ?? live.error}
                   onEnroll={live.enroll}
                   onBack={reset}
+                  initialStep={initialConnectionStep}
+                  initialRequest={initialConnectionRequest}
                 />
               ) : step === "password" ? (
                 <>
@@ -424,6 +430,7 @@ export function OptionsView({
                     onContinue={() => setStep("device")}
                     onBack={reset}
                     assessPassword={assessPassword}
+                    generatePassword={setup.generatePassword}
                   />
                 </>
               ) : step === "device" ? (

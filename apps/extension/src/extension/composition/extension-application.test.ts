@@ -9,6 +9,7 @@ import type {
 } from "@lfspm/core";
 import {
   areVaultSnapshotIdentitiesEqual,
+  ActiveVaultMustBeUnlockedError,
   PasswordEntryChangedError,
   SyncNotConfiguredError,
   toVaultSnapshotDescriptor,
@@ -152,6 +153,44 @@ describe("production extension composition", () => {
     } finally {
       await targetDb.delete();
     }
+  });
+
+  it("copies generated values only while a vault session is active and schedules clearing", async () => {
+    const browser = installBrowser();
+    const app = composeExtensionApplication(database);
+    await app.initializeVault.execute({
+      masterPassword,
+      deviceName: "Generated value copy test",
+      lockAfterMs: 600_000,
+    });
+    const { password } = await app.generatePassword.execute();
+
+    await app.copyGeneratedValue.execute({ value: password });
+
+    expect(browser.clipboard()).toBe(password);
+    expect(
+      [...browser.alarms.keys()].some(
+        (name) => parseScheduledTask(name)?.name === "clearClipboard",
+      ),
+    ).toBe(true);
+
+    await app.lockVault.execute();
+
+    expect(browser.clipboard()).toBe("");
+    expect(
+      [...browser.alarms.keys()].some(
+        (name) => parseScheduledTask(name)?.name === "clearClipboard",
+      ),
+    ).toBe(false);
+    await expect(
+      app.copyGeneratedValue.execute({ value: password }),
+    ).rejects.toBeInstanceOf(ActiveVaultMustBeUnlockedError);
+    expect(browser.clipboard()).toBe("");
+    expect(
+      [...browser.alarms.keys()].some(
+        (name) => parseScheduledTask(name)?.name === "clearClipboard",
+      ),
+    ).toBe(false);
   });
 
   it("requires the device password to reveal S3 keys and clears copied keys across lock and timeout", async () => {

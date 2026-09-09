@@ -20,7 +20,7 @@ const assessPassword = (password: string) => strength.execute({ password });
 afterEach(cleanup);
 
 describe("first-launch screens", () => {
-  it("selects setup cards by their label and keyboard without advancing until Continue", async () => {
+  it("selects setup cards by their label and keyboard before starting the chosen path", async () => {
     const user = userEvent.setup();
     const onCreate = vi.fn();
     const onConnect = vi.fn();
@@ -32,12 +32,16 @@ describe("first-launch screens", () => {
     expect(connect).toBeChecked();
     expect(create).not.toBeChecked();
     expect(onConnect).not.toHaveBeenCalled();
-    await user.click(await screen.findByRole("button", { name: "Continue" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Connect an existing vault" }),
+    );
     expect(onConnect).toHaveBeenCalledTimes(1);
     connect.focus();
     await user.keyboard("{ArrowLeft}");
     expect(create).toBeChecked();
-    await user.click(await screen.findByRole("button", { name: "Continue" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Create a new vault" }),
+    );
     expect(onCreate).toHaveBeenCalledTimes(1);
     await user.click(
       screen.getByText(
@@ -91,7 +95,9 @@ describe("first-launch screens", () => {
         assessPassword,
       }),
     );
-    await user.click(await screen.findByRole("button", { name: "Continue" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Create a new vault" }),
+    );
     const password = "orbit lantern velvet canyon river";
     await user.type(
       screen.getByLabelText("New password", { exact: true }),
@@ -102,7 +108,11 @@ describe("first-launch screens", () => {
       screen.getByLabelText("Confirm password", { exact: true }),
       "wrong",
     );
-    await user.click(await screen.findByRole("button", { name: "Continue" }));
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Continue to device settings",
+      }),
+    );
     await waitFor(() =>
       expect(
         screen.getByLabelText("Confirm password", { exact: true }),
@@ -115,7 +125,11 @@ describe("first-launch screens", () => {
       screen.getByLabelText("Confirm password", { exact: true }),
       password,
     );
-    await user.click(await screen.findByRole("button", { name: "Continue" }));
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Continue to device settings",
+      }),
+    );
     expect(
       screen.getByRole("heading", { name: "Device settings" }),
     ).toBeInTheDocument();
@@ -134,7 +148,9 @@ describe("first-launch screens", () => {
       password,
     );
     await user.click(screen.getByRole("button", { name: "Back" }));
-    await user.click(await screen.findByRole("button", { name: "Continue" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Create a new vault" }),
+    );
     expect(screen.getByLabelText("New password", { exact: true })).toHaveValue(
       "",
     );

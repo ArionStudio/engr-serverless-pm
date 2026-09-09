@@ -6,18 +6,24 @@ import { useState } from "react";
 import { PopupWorkspace } from "@/ui/entrypoints/popup/popup-workspace.view";
 import { gallerySetup, setupVault } from "./setup-fixture";
 import { galleryWorkspace } from "./workspace-fixture";
+
+export type PopupWorkspaceScenario =
+  | "ready"
+  | "empty"
+  | "locked"
+  | "multiple"
+  | "incomplete"
+  | "error"
+  | "reveal-error"
+  | "generator"
+  | "detected"
+  | "settings"
+  | PopupSyncScenario;
+
 export function PopupWorkspaceExample({
   state = "ready",
 }: {
-  state?:
-    | "ready"
-    | "empty"
-    | "locked"
-    | "multiple"
-    | "incomplete"
-    | "error"
-    | "reveal-error"
-    | PopupSyncScenario;
+  state?: PopupWorkspaceScenario;
 }) {
   const [sync] = useState(() =>
     galleryPopupSync(
@@ -71,6 +77,11 @@ export function PopupWorkspaceExample({
         workspace={workspace}
         settings={settings}
         browserLogins={browserLogins}
+        initialRoute={
+          state === "generator" || state === "detected" || state === "settings"
+            ? state
+            : "vault"
+        }
         onOpenOptions={async () => setNotice("Options opening requested")}
       />
       {notice ? <p role="status">{notice}</p> : null}

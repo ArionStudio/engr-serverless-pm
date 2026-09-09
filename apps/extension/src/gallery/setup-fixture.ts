@@ -49,6 +49,9 @@ export function gallerySetup(
   return {
     readOrganizationLibrary: async () =>
       globalLibrarySchema.parse(organizationLibrary),
+    generatePassword: async () => ({
+      password: "Gallery-river-8!Pine-sky",
+    }),
     inspect: async (selectedId) => {
       if (mode === "loading") return new Promise(() => {});
       if (mode === "error") throw new Error("Inspection unavailable");

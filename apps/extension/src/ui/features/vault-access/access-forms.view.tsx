@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { FormPresentation } from "@/ui/components/forms/form-state.type";
 import { FormFrame, FormPassword } from "@/ui/components/forms/form-frame.view";
 import { Button } from "@/ui/components/primitives/button";
@@ -7,6 +8,8 @@ import {
 } from "@/ui/components/forms/fields.view";
 import { SafetyHelp } from "@/ui/components/layout/sections.view";
 import { VaultPicker, type VaultOption } from "./vault-picker.view";
+import { GeneratedVaultPasswordAction } from "../vault-setup/generated-vault-password-action.view";
+import type { GenerateVaultPassword } from "../vault-setup/setup.type";
 export type UnlockDraft = {
   vaultId: string | null;
   password: string;
@@ -32,7 +35,7 @@ export function UnlockForm({
         error={errors?.vaultId}
       />
       <FormPassword
-        label="Master password"
+        label="Password for this browser"
         value={value.password}
         onChange={(password) => onChange({ ...value, password })}
         error={errors?.password}
@@ -42,7 +45,7 @@ export function UnlockForm({
         value={value.lockDuration}
         onChange={(lockDuration) => onChange({ ...value, lockDuration })}
         options={lockOptions}
-        description="This setting applies only on this device."
+        description="This setting applies only in this browser."
         error={errors?.lockDuration}
       />
     </FormFrame>
@@ -60,21 +63,25 @@ export function PasswordChangeForm({
   score,
   strengthState = "ready",
   onRetryStrength,
+  generatePassword,
   ...form
 }: FormPresentation<PasswordChangeDraft> & {
   score?: 0 | 1 | 2 | 3 | 4;
   strengthState?: "ready" | "pending" | "unavailable";
   onRetryStrength?: () => void;
+  generatePassword: GenerateVaultPassword;
 }) {
+  const [generationPending, setGenerationPending] = useState(false);
+  const pending = form.state === "pending" || generationPending;
   return (
     <FormFrame
       {...form}
       label="Change password"
-      canSubmit={strengthState === "ready"}
+      canSubmit={strengthState === "ready" && !generationPending}
     >
       <SafetyHelp
-        title="Password on this device"
-        essential="This changes how you unlock this local vault. Other devices keep their own passwords."
+        title="Password for this browser"
+        essential="This changes how you unlock this local vault. Other browsers keep their own passwords."
       />
       <FormPassword
         label="Current password"
@@ -82,12 +89,23 @@ export function PasswordChangeForm({
         onChange={(currentPassword) => onChange({ ...value, currentPassword })}
         error={errors?.currentPassword}
         autoComplete="current-password"
+        disabled={pending}
       />
       <FormPassword
         label="New password"
         value={value.password}
         onChange={(password) => onChange({ ...value, password })}
         error={errors?.password}
+        disabled={pending}
+      />
+      <GeneratedVaultPasswordAction
+        generatePassword={generatePassword}
+        value={value}
+        disabled={pending}
+        onPendingChange={setGenerationPending}
+        onGenerated={(password) =>
+          onChange({ ...value, password, confirmation: password })
+        }
       />
       {value.password ? (
         <div>
@@ -104,6 +122,7 @@ export function PasswordChangeForm({
         value={value.confirmation}
         onChange={(confirmation) => onChange({ ...value, confirmation })}
         error={errors?.confirmation}
+        disabled={pending}
       />
     </FormFrame>
   );

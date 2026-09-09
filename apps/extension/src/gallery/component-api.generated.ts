@@ -377,6 +377,13 @@ export const componentApi = [
     }
   },
   {
+    "name": "BoundedIntegerField",
+    "source": "features/password-tools/generator.view.tsx",
+    "family": "P20",
+    "exported": false,
+    "axes": {}
+  },
+  {
     "name": "BrowserLoginsPanel",
     "source": "features/entries/browser-logins.view.tsx",
     "family": "S01",
@@ -1210,6 +1217,13 @@ export const componentApi = [
     "name": "GeneratedValue",
     "source": "features/password-tools/generator.view.tsx",
     "family": "P20",
+    "exported": true,
+    "axes": {}
+  },
+  {
+    "name": "GeneratedVaultPasswordAction",
+    "source": "features/vault-setup/generated-vault-password-action.view.tsx",
+    "family": "F03",
     "exported": true,
     "axes": {}
   },
@@ -2774,13 +2788,6 @@ export const componentApi = [
   {
     "name": "VaultApplication",
     "source": "entrypoints/options/vault-application.view.tsx",
-    "family": "S02",
-    "exported": true,
-    "axes": {}
-  },
-  {
-    "name": "VaultLockSettings",
-    "source": "features/settings/vault-lock-settings.view.tsx",
     "family": "S02",
     "exported": true,
     "axes": {}

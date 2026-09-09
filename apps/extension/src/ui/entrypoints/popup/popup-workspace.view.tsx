@@ -29,7 +29,7 @@ import {
   VaultIcon,
 } from "@hugeicons/core-free-icons";
 
-type PopupRoute = "vault" | "generator" | "detected" | "settings";
+export type PopupRoute = "vault" | "generator" | "detected" | "settings";
 const popupTabs = [
   { id: "vault", label: "Vault", icon: VaultIcon },
   { id: "generator", label: "Generator", icon: Key01Icon },
@@ -48,7 +48,7 @@ export function PopupWorkspace({
   onOpenOptions,
 }: {
   sync?: PopupSyncCapabilities;
-  initialRoute?: "vault" | "detected";
+  initialRoute?: PopupRoute;
   settings?: Pick<
     VaultSettingsCapabilities,
     "saveDevice" | "inspectAuthorization"
@@ -74,13 +74,17 @@ export function PopupWorkspace({
   const content = useRef<HTMLDivElement>(null);
   const entryControls = useRef<WorkspaceControls>(null);
   function navigate(next: PopupRoute) {
+    if (entryState.view === "details") {
+      setEntryWorkspaceRevision((revision) => revision + 1);
+      setEntryState({ view: "list", pending: false });
+    }
     setRoute(next);
     content.current?.scrollTo?.({ top: 0 });
     content.current?.focus();
   }
   const [generatorPending, setGeneratorPending] = useState(false);
   const [entryDraft, setEntryDraft] = useState<EntryDraft>();
-  const [entryRequest, setEntryRequest] = useState(0);
+  const [entryWorkspaceRevision, setEntryWorkspaceRevision] = useState(0);
   async function open(optionsRoute?: OptionsRoute) {
     if (opening) return;
     setOpening(true);
@@ -100,7 +104,7 @@ export function PopupWorkspace({
         ...initial,
         tagIds: [],
       });
-      setEntryRequest((request) => request + 1);
+      setEntryWorkspaceRevision((revision) => revision + 1);
       setRoute("vault");
       setEntryState({ view: "editor", pending: false });
     },
@@ -132,9 +136,10 @@ export function PopupWorkspace({
     generatorPending ||
     settingsBusy ||
     entryState.pending ||
-    entryState.view !== "list";
+    entryState.view === "editor" ||
+    entryState.view === "delete";
   return (
-    <main className="flex h-[var(--extension-popup-height)] w-[var(--extension-popup-width)] min-w-[var(--extension-popup-width)] flex-col overflow-hidden bg-background text-foreground">
+    <main className="flex h-[var(--extension-popup-height)] max-h-[100svh] w-[var(--extension-popup-width)] max-w-full flex-col overflow-hidden bg-background text-foreground">
       <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b px-3">
         <h1 className="text-xl font-semibold tracking-tight">
           {ready ? popupTabs.find((tab) => tab.id === route)?.label : "Vault"}
@@ -226,6 +231,7 @@ export function PopupWorkspace({
                 presentation="popup"
                 onUse={createEntry}
                 onPendingChange={setGeneratorPending}
+                onSessionLost={handleSessionLost}
               />
             ) : route === "settings" ? (
               <PopupSettings
@@ -241,7 +247,7 @@ export function PopupWorkspace({
               <PopupEntries
                 section={route === "detected" ? "detected" : "vault"}
                 browserLogins={browserLogins}
-                key={`${readyVault.vaultId}:${route}:${live.draftRevision}:${entryRequest}`}
+                key={`${readyVault.vaultId}:${route}:${live.draftRevision}:${entryWorkspaceRevision}`}
                 vaultId={readyVault.vaultId}
                 capabilities={workspace}
                 onSessionLost={live.retry}

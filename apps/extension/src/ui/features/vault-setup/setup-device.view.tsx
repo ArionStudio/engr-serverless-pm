@@ -4,6 +4,7 @@ import {
   TextField,
   LockDurationField,
 } from "@/ui/components/forms/fields.view";
+import { useOperationErrorFocus } from "./use-operation-error-focus";
 
 export function SetupDevice({
   name,
@@ -24,6 +25,7 @@ export function SetupDevice({
   pending?: boolean;
   error?: string;
 }) {
+  const errorRef = useOperationErrorFocus(error);
   return (
     <form
       className="space-y-6"
@@ -34,7 +36,13 @@ export function SetupDevice({
     >
       <h1 className="text-2xl font-semibold tracking-tight">Device settings</h1>
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p
+          ref={errorRef}
+          role="alert"
+          tabIndex={-1}
+          data-focus-target
+          className="text-sm text-destructive outline-none"
+        >
           {error}
         </p>
       ) : null}
@@ -57,7 +65,7 @@ export function SetupDevice({
             Back to password
           </Button>
           <Button type="submit" disabled={pending || !name.trim()}>
-            Continue
+            Continue to organization
           </Button>
         </div>
       </fieldset>

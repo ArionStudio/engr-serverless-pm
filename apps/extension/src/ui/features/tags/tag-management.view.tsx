@@ -254,6 +254,9 @@ export function TagManagementView({
               aria-hidden="true"
             />
             <h2 className="font-semibold">No tags yet</h2>
+            <p className="max-w-sm text-sm text-muted-foreground">
+              Tags group related entries and make them easier to find.
+            </p>
             <Button onClick={() => openEditor("new")}>Create a tag</Button>
           </div>
         </div>

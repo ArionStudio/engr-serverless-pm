@@ -20,6 +20,7 @@ import {
 } from "@/ui/components/primitives/alert";
 export type SyncDisplayState =
   | "permission-required"
+  | "permission-error"
   | "not-checked"
   | "access-confirmed"
   | "unconfigured"
@@ -36,11 +37,13 @@ export function SyncStatus({
   detail,
   onAction,
   action,
+  actionDisabled = false,
 }: {
   state: SyncDisplayState;
   detail: string;
   onAction?: () => void;
   action?: string;
+  actionDisabled?: boolean;
 }) {
   const confirmed = state === "access-confirmed" || state === "complete";
   const working = state === "checking" || state === "uploading";
@@ -52,6 +55,7 @@ export function SyncStatus({
     state === "permission-required";
   const title = {
     "permission-required": "Storage access is needed",
+    "permission-error": "Storage access could not be checked",
     "not-checked": "Sync has not been checked",
     "access-confirmed": "Read access confirmed",
     unconfigured: "Sync is not configured",
@@ -67,11 +71,15 @@ export function SyncStatus({
   return (
     <div
       role={
-        state === "failed" || state === "target-occupied" ? "alert" : "status"
+        state === "failed" ||
+        state === "permission-error" ||
+        state === "target-occupied"
+          ? "alert"
+          : "status"
       }
       className={cn(
         "flex min-w-0 items-start gap-4 rounded-lg border p-5",
-        state === "failed"
+        state === "failed" || state === "permission-error"
           ? "border-destructive/50 bg-destructive/10 text-destructive"
           : warning
             ? "border-warning-border bg-warning text-warning-foreground"
@@ -85,7 +93,7 @@ export function SyncStatus({
           icon={
             confirmed
               ? CheckmarkCircle02Icon
-              : warning || state === "failed"
+              : warning || state === "failed" || state === "permission-error"
                 ? Alert02Icon
                 : InformationCircleIcon
           }
@@ -100,7 +108,12 @@ export function SyncStatus({
           {detail}
         </p>
         {onAction && action ? (
-          <Button className="mt-2" variant="outline" onClick={onAction}>
+          <Button
+            className="mt-2"
+            variant="outline"
+            disabled={actionDisabled}
+            onClick={onAction}
+          >
             {action}
           </Button>
         ) : null}
@@ -121,7 +134,7 @@ export type Comparison = {
 export function ComparisonRow({ item }: { item: Comparison }) {
   return (
     <div className="@container space-y-3">
-      <h4 className="font-medium">{item.label}</h4>
+      <h3 className="font-medium">{item.label}</h3>
       <dl className="grid gap-3 @lg:grid-cols-2">
         <div className="rounded-md bg-muted/30 p-3">
           <dt className="text-xs font-semibold">Local</dt>

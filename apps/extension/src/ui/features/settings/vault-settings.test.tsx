@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -21,7 +22,12 @@ const vault = {
   unlocked: true,
 };
 afterEach(cleanup);
-function setup(onSessionLost = vi.fn()) {
+function setup(
+  onSessionLost = vi.fn(),
+  generatePassword = async () => ({
+    password: "Generated-river-8!Pine-sky",
+  }),
+) {
   const capabilities: VaultSettingsCapabilities = {
     inspectAuthorization: vi.fn(async () => {}),
     changePassword: vi.fn(async () => {}),
@@ -35,6 +41,7 @@ function setup(onSessionLost = vi.fn()) {
       vault={vault}
       capabilities={capabilities}
       assessPassword={async () => ({ score: 4 })}
+      generatePassword={generatePassword}
       onReplaceRecovery={onReplaceRecovery}
       onDeleted={onDeleted}
       onSaved={vi.fn()}
@@ -50,6 +57,33 @@ function setup(onSessionLost = vi.fn()) {
   };
 }
 describe("vault settings", () => {
+  it("preserves the current password while generation is pending", async () => {
+    let finishGeneration: (value: { password: string }) => void = () => {};
+    const { user } = setup(
+      vi.fn(),
+      () =>
+        new Promise((resolve) => {
+          finishGeneration = resolve;
+        }),
+    );
+    await user.click(screen.getByRole("button", { name: "Change password" }));
+    const currentPassword = screen.getByLabelText("Current password", {
+      exact: true,
+    });
+    await user.type(currentPassword, "current password");
+    await user.click(
+      screen.getByRole("button", { name: "Generate strong password" }),
+    );
+
+    expect(currentPassword).toBeDisabled();
+    await user.type(currentPassword, " overwritten");
+    expect(currentPassword).toHaveValue("current password");
+    await act(async () =>
+      finishGeneration({ password: "Generated-river-8!Pine-sky" }),
+    );
+    await waitFor(() => expect(currentPassword).toBeEnabled());
+    expect(currentPassword).toHaveValue("current password");
+  });
   it("hides empty strength feedback and requires current password plus matching confirmation", async () => {
     const { user, capabilities } = setup();
     await user.click(screen.getByRole("button", { name: "Change password" }));

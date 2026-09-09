@@ -13,11 +13,12 @@ export function galleryDevices(
   let refreshFailed = false;
   return {
     inspect: async (vaultId) => {
-      if (
-        failed ||
-        (authorizationLost && changed) ||
-        (refreshFails && changed && !refreshFailed)
-      ) {
+      if (authorizationLost && changed) {
+        const error = new Error("The vault session ended.");
+        error.name = "UnlockedVaultSessionExpiredError";
+        throw error;
+      }
+      if (failed || (refreshFails && changed && !refreshFailed)) {
         refreshFailed = true;
         throw new Error("Unavailable");
       }

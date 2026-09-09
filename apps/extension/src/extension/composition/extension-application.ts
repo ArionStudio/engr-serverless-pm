@@ -2,6 +2,7 @@ import { VaultMutationService } from "@lfspm/core/services";
 import { composeBrowserLoginApplication } from "./browser-login.composition";
 import {
   CopyEntryPasswordUseCase,
+  CopyGeneratedValueUseCase,
   CopyRevealedSecretUseCase,
   RevealSyncCredentialsUseCase,
   CopyRecoveryWordsUseCase,
@@ -148,6 +149,11 @@ export function composeExtensionApplication(database: VaultManagerDb = db) {
       unlockedVaultSession,
     ),
     copyRevealedSecret: new CopyRevealedSecretUseCase(
+      unlockedVaultSession,
+      clipboardOperations,
+      secretCopy,
+    ),
+    copyGeneratedValue: new CopyGeneratedValueUseCase(
       unlockedVaultSession,
       clipboardOperations,
       secretCopy,

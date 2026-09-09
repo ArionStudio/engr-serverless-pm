@@ -21,6 +21,8 @@ let replace: ReturnType<typeof vi.fn>;
 let copy: ReturnType<typeof vi.fn>;
 let recover: ReturnType<typeof vi.fn>;
 let unlock: ReturnType<typeof vi.fn>;
+let generate: ReturnType<typeof vi.fn>;
+let assess: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   fake.enroll.mockReset();
   vaults = [];
@@ -64,6 +66,8 @@ beforeEach(() => {
   unlock = vi.fn(async () => {
     unlocked = true;
   });
+  generate = vi.fn(async () => ({ password: "strong-generated-password" }));
+  assess = vi.fn(async () => ({ score: 4 as const }));
   fake.get.mockResolvedValue({
     listLocalVaults: { execute: async () => ({ vaults }) },
     getVaultSessionStatus: {
@@ -82,6 +86,8 @@ beforeEach(() => {
       },
     },
     copyRecoveryWords: { execute: copy },
+    generatePassword: { execute: generate },
+    checkPasswordStrength: { execute: assess },
   });
 });
 afterEach(() => {
@@ -103,6 +109,33 @@ const answers = (recovery: SetupRecovery) =>
     ]),
   );
 describe("vault setup orchestration", () => {
+  it("returns only a generated password that passes the vault strength requirement", async () => {
+    generate
+      .mockResolvedValueOnce({ password: "weak-candidate" })
+      .mockResolvedValueOnce({ password: "strong-generated-password" });
+    assess
+      .mockResolvedValueOnce({ score: 2 })
+      .mockResolvedValueOnce({ score: 4 });
+
+    await expect(composeVaultSetup().generatePassword()).resolves.toEqual({
+      password: "strong-generated-password",
+    });
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(generate).toHaveBeenCalledWith({
+      length: 24,
+      uppercase: true,
+      lowercase: true,
+      numbers: true,
+      special: true,
+      minNumbers: 1,
+      minSpecial: 1,
+      avoidAmbiguousCharacters: false,
+    });
+    expect(assess).toHaveBeenNthCalledWith(1, {
+      password: "weak-candidate",
+    });
+  });
+
   it("requires explicit replacement of saved words and a new verification receipt", async () => {
     const capabilities = composeVaultSetup();
     const initial = await capabilities.create(createParams);

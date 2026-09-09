@@ -48,6 +48,7 @@ export function galleryWorkspace(
   const syncConfigured =
     state === "workspace-pending-upload" || state === "workspace-uploaded";
   let refreshFailure = false;
+  let initialReadFailed = false;
   function find(id: string) {
     const entry = entries.find((item) => item.id === id);
     if (!entry) {
@@ -81,7 +82,10 @@ export function galleryWorkspace(
         throw new Error("Could not read local session data");
       }
       if (state === "workspace-loading") return new Promise(() => {});
-      if (state === "workspace-error") throw new Error("Unavailable");
+      if (state === "workspace-error" && !initialReadFailed) {
+        initialReadFailed = true;
+        throw new Error("Unavailable");
+      }
       return {
         entries: entries.map(
           ({ id, login, sanitizedUrl, tags, folderId, password }) => ({
