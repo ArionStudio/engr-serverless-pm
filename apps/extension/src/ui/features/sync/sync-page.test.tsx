@@ -15,6 +15,41 @@ import { SyncPage } from "./sync-page.view";
 
 afterEach(cleanup);
 
+it("presents an unknown browser permission as one retryable state", async () => {
+  const capabilities = gallerySync("sync-configured");
+  capabilities.hasAccess = vi.fn(async () => {
+    throw new Error("Browser permission API unavailable");
+  });
+  capabilities.requestAccess = vi.fn(async () => {});
+
+  render(
+    <SyncPage
+      vaultId="gallery-vault"
+      capabilities={capabilities}
+      onBack={() => {}}
+    />,
+  );
+
+  const permissionError = await screen.findByRole("alert");
+  expect(permissionError.textContent).toContain(
+    "Storage access could not be checked",
+  );
+  expect(screen.queryByText("Storage access is needed")).toBeNull();
+  expect(
+    screen.getAllByRole("button", { name: "Allow storage access" }),
+  ).toHaveLength(1);
+
+  fireEvent.click(screen.getByRole("button", { name: "Allow storage access" }));
+  await waitFor(() =>
+    expect(capabilities.requestAccess).toHaveBeenCalledOnce(),
+  );
+  await waitFor(() =>
+    expect(
+      screen.queryByText("Storage access could not be checked"),
+    ).toBeNull(),
+  );
+});
+
 it("keeps the tested location fixed until the access check finishes", async () => {
   const capabilities = gallerySync();
   let finish = () => {};

@@ -10,4 +10,6 @@ export type EntryTools = {
   username: (
     settings: GenerateUsernameCommandParams,
   ) => Promise<{ username: string }>;
+  /** Copies a generated value through the app's timed clipboard-clear path. */
+  copy?: (value: string) => Promise<void>;
 };

@@ -151,3 +151,25 @@ it("uses the successful authorization recheck after a temporary tag read failure
   expect(screen.queryByRole("alert")).toBeNull();
   expect(onSessionLost).not.toHaveBeenCalled();
 });
+
+it("explains how tags help before creating the first one", async () => {
+  const capabilities = galleryTagManagement();
+  capabilities.read = async () => ({
+    tags: [],
+    tagGroups: tagGroupPresentations,
+    softLimit: 50,
+    softLimitReached: false,
+  });
+
+  render(
+    <TagManagementView vaultId="gallery-vault" capabilities={capabilities} />,
+  );
+
+  expect(await screen.findByText("No tags yet")).toBeVisible();
+  expect(
+    screen.getByText(
+      "Tags group related entries and make them easier to find.",
+    ),
+  ).toBeVisible();
+  expect(screen.getByRole("button", { name: "Create a tag" })).toBeEnabled();
+});

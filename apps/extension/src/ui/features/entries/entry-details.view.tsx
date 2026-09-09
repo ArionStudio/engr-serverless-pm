@@ -12,6 +12,7 @@ import { getFolderIcon } from "@/ui/features/folders";
 import { TagPill } from "@/ui/features/tags";
 import type { TagOption } from "./tag-selection.view";
 import type { EntryFolderPresentation } from "./entries.view";
+import { getEntryAccessibleName } from "./entry-label";
 
 export function EntryDetails({
   entry,
@@ -53,7 +54,7 @@ export function EntryDetails({
       <div className="flex items-center gap-3">
         <SiteIcon url={entry.sanitizedUrl} />
         <h2 className="min-w-0 break-all text-xl font-semibold">
-          {entry.login}
+          {entry.login || "Unnamed login"}
         </h2>
       </div>
       <DetailField
@@ -61,7 +62,7 @@ export function EntryDetails({
         value={entry.sanitizedUrl}
         url={entry.sanitizedUrl}
       />
-      <DetailField label="Login" value={entry.login} />
+      <DetailField label="Login" value={entry.login || "Unnamed login"} />
       {folder ? (
         <div className="space-y-1.5">
           <p className="text-xs font-medium text-muted-foreground">Folder</p>
@@ -135,7 +136,11 @@ export function EntryDetails({
         />
       )}
       {onEdit || onDelete ? (
-        <div className="flex flex-wrap gap-3 border-t pt-5">
+        <div
+          role="group"
+          className="flex flex-wrap gap-3 border-t pt-5"
+          aria-label={`Actions for ${getEntryAccessibleName(entry)}`}
+        >
           {onEdit ? (
             <Button disabled={disabled} onClick={onEdit}>
               Edit entry

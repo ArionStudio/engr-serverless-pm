@@ -1,7 +1,10 @@
+import { useState } from "react";
 import type { FormPresentation } from "@/ui/components/forms/form-state.type";
 import { FormFrame, FormPassword } from "@/ui/components/forms/form-frame.view";
 import { PasswordStrengthFeedback } from "@/ui/components/forms/fields.view";
 import { Button } from "@/ui/components/primitives/button";
+import { GeneratedVaultPasswordAction } from "./generated-vault-password-action.view";
+import type { GenerateVaultPassword } from "./setup.type";
 export type PasswordCreationDraft = { password: string; confirmation: string };
 export function PasswordCreationForm({
   value,
@@ -11,15 +14,20 @@ export function PasswordCreationForm({
   strengthState = "ready",
   onConfirmationBlur,
   onRetryStrength,
+  generatePassword,
+  submitLabel = "Continue to device settings",
   ...form
 }: FormPresentation<PasswordCreationDraft> & {
   score?: 0 | 1 | 2 | 3 | 4;
   strengthState?: "ready" | "pending" | "unavailable";
   onConfirmationBlur?: () => void;
   onRetryStrength?: () => void;
+  generatePassword: GenerateVaultPassword;
+  submitLabel?: string;
 }) {
+  const [generationPending, setGenerationPending] = useState(false);
   const canSubmit = strengthState === "ready";
-  const pending = form.state === "pending";
+  const pending = form.state === "pending" || generationPending;
   return (
     <FormFrame
       {...form}
@@ -36,7 +44,7 @@ export function PasswordCreationForm({
             Back
           </Button>
           <Button type="submit" size="lg" disabled={pending || !canSubmit}>
-            Continue
+            {submitLabel}
           </Button>
         </div>
       }
@@ -46,6 +54,16 @@ export function PasswordCreationForm({
         value={value.password}
         onChange={(password) => onChange({ ...value, password })}
         error={errors?.password}
+        disabled={pending}
+      />
+      <GeneratedVaultPasswordAction
+        generatePassword={generatePassword}
+        value={value}
+        disabled={pending}
+        onPendingChange={setGenerationPending}
+        onGenerated={(password) =>
+          onChange({ password, confirmation: password })
+        }
       />
       {value.password ? (
         <div>
@@ -63,6 +81,7 @@ export function PasswordCreationForm({
         onChange={(confirmation) => onChange({ ...value, confirmation })}
         onBlur={onConfirmationBlur}
         error={errors?.confirmation}
+        disabled={pending}
       />
       <p role="status" className="min-h-5 text-sm">
         {value.password && value.password === value.confirmation

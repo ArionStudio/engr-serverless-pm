@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import type { EntryTools } from "@/ui/features/password-tools/password-tools.type";
-import { Button } from "@/ui/components/primitives/button";
-import { Input } from "@/ui/components/primitives/input";
 import {
   Tabs,
   TabsList,
@@ -9,19 +7,26 @@ import {
   TabsContent,
 } from "@/ui/components/primitives/tabs";
 import { PasswordStrengthFeedback } from "@/ui/components/forms/fields.view";
-import { GeneratorControls, UsernameControls } from "./generator.view";
+import {
+  GeneratedValue,
+  GeneratorControls,
+  UsernameControls,
+} from "./generator.view";
 import { defaultPasswordSettings } from "./generator-settings";
 import { cn } from "cn";
+import { isVaultAuthorizationError } from "@/ui/lib/vault-authorization";
 
 export function PasswordToolsPage({
   tools,
   onUse,
   onPendingChange,
+  onSessionLost,
   presentation = "page",
 }: {
   tools: EntryTools;
   onUse: (value: { password?: string; login?: string }) => void;
   onPendingChange?: (pending: boolean) => void;
+  onSessionLost?: () => void;
   presentation?: "page" | "popup";
 }) {
   const [kind, setKind] = useState("password");
@@ -157,7 +162,6 @@ export function PasswordToolsPage({
                 {error}
               </p>
             ) : null}
-            {pending ? <p role="status">Generating…</p> : null}
             {value ? (
               <section
                 ref={result}
@@ -176,45 +180,28 @@ export function PasswordToolsPage({
                     ? "Password generated"
                     : "Username generated"}
                 </p>
-                <h2 className="text-lg font-semibold">
-                  {kind === "password"
-                    ? "Generated password"
-                    : "Generated username"}
-                </h2>
-                <div className="flex gap-2">
-                  <Input
-                    aria-label={
-                      kind === "password"
-                        ? "Generated password"
-                        : "Generated username"
-                    }
-                    readOnly
-                    value={value}
-                    type={
-                      kind === "password" && !revealed ? "password" : "text"
-                    }
-                    className="min-w-0 font-mono"
-                  />
-                  {kind === "password" ? (
-                    <Button
-                      variant="outline"
-                      onClick={() => setRevealed(!revealed)}
-                    >
-                      {revealed ? "Hide" : "Show"}
-                    </Button>
-                  ) : null}
-                </div>
-                {kind === "password" ? (
-                  <PasswordStrengthFeedback score={score} state="ready" />
-                ) : null}
-                {kind === "password" ? (
-                  <p className="text-sm text-muted-foreground">
-                    Save this password in your vault before changing it on the
-                    website.
-                  </p>
-                ) : null}
-                <Button
-                  onClick={() => {
+                <GeneratedValue
+                  key={epoch.current}
+                  value={value}
+                  label={
+                    kind === "password"
+                      ? "Generated password"
+                      : "Generated username"
+                  }
+                  conceal={kind === "password"}
+                  revealed={revealed}
+                  onRevealChange={setRevealed}
+                  onCopy={tools.copy ? () => tools.copy?.(value) : undefined}
+                  onCopyError={(cause) => {
+                    if (!isVaultAuthorizationError(cause)) return;
+                    ++epoch.current;
+                    setValue("");
+                    setScore(undefined);
+                    setRevealed(false);
+                    onSessionLost?.();
+                  }}
+                  useLabel="Use in new entry"
+                  onUse={() => {
                     onUse(
                       kind === "password"
                         ? { password: value }
@@ -223,8 +210,16 @@ export function PasswordToolsPage({
                     setValue("");
                   }}
                 >
-                  Use in new entry
-                </Button>
+                  {kind === "password" ? (
+                    <>
+                      <PasswordStrengthFeedback score={score} state="ready" />
+                      <p className="text-sm text-muted-foreground">
+                        Save this password in your vault before changing it on
+                        the website.
+                      </p>
+                    </>
+                  ) : null}
+                </GeneratedValue>
               </section>
             ) : null}
           </div>

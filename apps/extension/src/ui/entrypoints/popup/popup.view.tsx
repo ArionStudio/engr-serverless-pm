@@ -12,13 +12,15 @@ export function PopupView({
   availability,
   onOpenOptions,
   onRetry,
+  initialOpenFailed = false,
 }: {
   availability: VaultAvailability;
   onOpenOptions: () => Promise<void>;
   onRetry: () => void;
+  initialOpenFailed?: boolean;
 }) {
   const [opening, setOpening] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState(initialOpenFailed);
   async function open() {
     if (opening) return;
     setOpening(true);
@@ -33,7 +35,7 @@ export function PopupView({
   }
   const existing = availability === "existing";
   return (
-    <main className="w-[var(--extension-popup-width)] min-w-[var(--extension-popup-width)] bg-background text-foreground">
+    <main className="h-[var(--extension-popup-height)] max-h-[100svh] w-[var(--extension-popup-width)] max-w-full overflow-hidden bg-background text-foreground">
       <header className="flex items-center justify-between gap-3 border-b px-5 py-4">
         <span className="flex items-center gap-2 text-sm font-semibold">
           <HugeiconsIcon
@@ -85,8 +87,8 @@ export function PopupView({
             </Button>
             {failed ? (
               <p role="alert" className="text-sm text-destructive">
-                Couldn’t open Options. Try again, or open the extension’s
-                options from Chrome.
+                Couldn’t open Options. Try again, or open LFSPM’s extension
+                settings from your browser.
               </p>
             ) : null}
           </>

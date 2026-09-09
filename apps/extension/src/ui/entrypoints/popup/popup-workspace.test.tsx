@@ -124,6 +124,26 @@ it("hands incomplete setup to Options", async () => {
   expect(screen.queryByText("adrian@example.test")).not.toBeInTheDocument();
 });
 
+it("starts a local entry draft from the empty vault action", async () => {
+  const setup = gallerySetup();
+  const vault = { ...setupVault, complete: true, unlocked: true };
+  setup.inspect = async () => ({ vault, vaults: [vault] });
+  const user = userEvent.setup();
+  render(
+    <PopupWorkspace
+      setup={setup}
+      workspace={galleryWorkspace("workspace-empty")}
+      onOpenOptions={async () => {}}
+    />,
+  );
+
+  await user.click(await screen.findByRole("button", { name: "Add entry" }));
+  expect(screen.getByRole("heading", { name: "Add entry" })).toBeVisible();
+  expect(screen.getByRole("textbox", { name: "Website" })).toHaveValue(
+    "https://mail.example.test/sign-in",
+  );
+});
+
 it.each(["popup", "options"])(
   "clears %s search on same-vault session replacement",
   async (surface) => {
@@ -356,6 +376,53 @@ it("discards a cancelled entry draft before switching popup tools", async () => 
   expect(screen.getByText("All entries")).toBeVisible();
 });
 
+it("keeps popup navigation available in entry details and leaves details cleanly", async () => {
+  const setup = gallerySetup();
+  const vault = { ...setupVault, complete: true, unlocked: true };
+  setup.inspect = async () => ({ vault, vaults: [vault] });
+  const user = userEvent.setup();
+  render(
+    <PopupWorkspace
+      setup={setup}
+      workspace={galleryWorkspace()}
+      onOpenOptions={async () => {}}
+    />,
+  );
+
+  await user.click(
+    await screen.findByRole("button", { name: /adrian@example\.test/ }),
+  );
+  expect(
+    await screen.findByRole("region", { name: "Entry details" }),
+  ).toBeVisible();
+  const navigation = screen.getByRole("navigation", {
+    name: "Popup navigation",
+  });
+  for (const name of ["Vault", "Generator", "Settings"]) {
+    expect(within(navigation).getByRole("button", { name })).toBeEnabled();
+  }
+
+  await user.click(within(navigation).getByRole("button", { name: "Vault" }));
+  expect(await screen.findByText("All entries")).toBeVisible();
+  expect(
+    screen.queryByRole("region", { name: "Entry details" }),
+  ).not.toBeInTheDocument();
+
+  await user.click(
+    screen.getByRole("button", { name: /adrian@example\.test/ }),
+  );
+  await screen.findByRole("region", { name: "Entry details" });
+  await user.click(
+    within(navigation).getByRole("button", { name: "Generator" }),
+  );
+  expect(await screen.findByRole("tab", { name: "Password" })).toBeVisible();
+  await user.click(within(navigation).getByRole("button", { name: "Vault" }));
+  expect(await screen.findByText("All entries")).toBeVisible();
+  expect(
+    screen.queryByRole("region", { name: "Entry details" }),
+  ).not.toBeInTheDocument();
+});
+
 it("prevents Options navigation from discarding an entry draft", async () => {
   const setup = gallerySetup();
   const vault = { ...setupVault, complete: true, unlocked: true };
@@ -472,7 +539,7 @@ it("saves popup device settings, keeps failed drafts, and applies appearance loc
     await user.type(name, "Clarke browser");
     expect(within(nav).getByRole("button", { name: "Vault" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "Save" }));
-    await screen.findByText("Could not save device settings. Try again.");
+    await screen.findByText("Could not save browser settings. Try again.");
     expect(name).toHaveValue("Clarke browser");
     let finishInspection: (
       value: Awaited<ReturnType<typeof setup.inspect>>,
@@ -488,7 +555,7 @@ it("saves popup device settings, keeps failed drafts, and applies appearance loc
       expect(within(nav).getByRole("button", { name: "Vault" })).toBeEnabled(),
     );
     await screen.findByText(
-      "Saved. The lock duration applies from the next unlock.",
+      "Browser settings saved. The lock duration applies from the next unlock.",
     );
     expect(screen.getByLabelText("Device name")).toBe(name);
     expect(name).toHaveValue("Clarke browser");

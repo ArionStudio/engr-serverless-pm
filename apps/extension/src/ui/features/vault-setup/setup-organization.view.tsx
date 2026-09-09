@@ -40,6 +40,7 @@ import {
   findOrganizationSetupNameConflicts,
   type OrganizationSetupDraft,
 } from "./setup-organization";
+import { useOperationErrorFocus } from "./use-operation-error-focus";
 
 const templateIcons = {
   archetype_standard_v1: Briefcase03Icon,
@@ -96,6 +97,7 @@ export function SetupOrganization({
   error?: string;
 }) {
   const id = useId();
+  const errorRef = useOperationErrorFocus(error);
   const groups = library.tagGroups as readonly TagGroupPresentation[];
   const groupById = useMemo(
     () => new Map(groups.map((group) => [group.id, group])),
@@ -131,7 +133,13 @@ export function SetupOrganization({
         Organize your vault
       </h1>
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p
+          ref={errorRef}
+          role="alert"
+          tabIndex={-1}
+          data-focus-target
+          className="text-sm text-destructive outline-none"
+        >
           {error}
         </p>
       ) : null}
@@ -225,11 +233,11 @@ export function SetupOrganization({
             defaultValue="folders"
             className="rounded-xl border bg-card p-5"
           >
-            <TabsList className="mb-5 h-10 p-1">
+            <TabsList className="mb-5 h-auto w-full flex-col p-1 @lg:h-10 @lg:flex-row">
               <TabsTrigger
                 value="folders"
                 disabled={pending}
-                className="after:hidden px-4 py-2 text-sm"
+                className="w-full justify-start after:hidden px-4 py-2 text-sm @lg:w-auto @lg:justify-center"
               >
                 Folders ({value.folders.length}
                 {folderNameErrors.size
@@ -240,7 +248,7 @@ export function SetupOrganization({
               <TabsTrigger
                 value="tags"
                 disabled={pending}
-                className="after:hidden px-4 py-2 text-sm"
+                className="w-full justify-start after:hidden px-4 py-2 text-sm @lg:w-auto @lg:justify-center"
               >
                 Tags ({value.tags.length}
                 {tagNameErrors.size

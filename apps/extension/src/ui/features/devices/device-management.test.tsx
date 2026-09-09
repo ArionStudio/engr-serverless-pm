@@ -14,6 +14,29 @@ import { DeviceManagementView } from "./device-management.view";
 
 afterEach(cleanup);
 describe("device access management", () => {
+  it("shows a retryable error when the initial device list cannot be read", async () => {
+    const capabilities = galleryDevices();
+    const healthy = await capabilities.inspect("gallery-vault");
+    capabilities.inspect = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("temporarily unavailable"))
+      .mockRejectedValueOnce(new Error("still unavailable"))
+      .mockResolvedValue(healthy);
+
+    render(
+      <DeviceManagementView
+        vaultId="gallery-vault"
+        capabilities={capabilities}
+        onOpenSync={() => {}}
+      />,
+    );
+
+    await screen.findByText(/Could not load the connected devices/);
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await screen.findByText("Home laptop");
+    expect(capabilities.inspect).toHaveBeenCalledTimes(3);
+  });
+
   it.each([
     [
       "ReplacementSyncCredentialsUnchangedError",
@@ -30,6 +53,11 @@ describe("device access management", () => {
       capabilities.revoke = vi.fn(async () => {
         throw failure;
       });
+      let refresh: Parameters<typeof capabilities.subscribe>[0] = () => {};
+      capabilities.subscribe = (listener) => {
+        refresh = listener;
+        return () => {};
+      };
       const openSync = vi.fn();
       render(
         <DeviceManagementView
@@ -50,6 +78,8 @@ describe("device access management", () => {
       fireEvent.click(screen.getByText("Revoke access for this device."));
       fireEvent.click(screen.getByRole("button", { name: "Revoke device" }));
       await screen.findByText(explanation);
+      await act(async () => refresh(false));
+      expect(screen.getByText(explanation)).toBeTruthy();
       expect(screen.queryByText(/private-provider-response/)).toBeNull();
       expect(
         screen.getByLabelText("New secret access key").getAttribute("type"),
@@ -90,10 +120,9 @@ describe("device access management", () => {
     );
     await screen.findByText("Home laptop");
     fireEvent.click(screen.getByRole("button", { name: "Approve a device" }));
-    fireEvent.change(
-      screen.getByRole("textbox", { name: "Enrollment artifact" }),
-      { target: { value: "request" } },
-    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Access request" }), {
+      target: { value: "request" },
+    });
     fireEvent.click(
       screen.getByRole("button", { name: "Review access request" }),
     );
@@ -117,22 +146,20 @@ describe("device access management", () => {
           reject = fail;
         }),
     });
-    fireEvent.change(screen.getByLabelText("Choose artifact file"), {
+    fireEvent.change(screen.getByLabelText("Choose request file"), {
       target: { files: [file] },
     });
     expect(screen.queryByRole("button", { name: "Approve device" })).toBeNull();
     expect(
-      (screen.getByLabelText("Enrollment artifact") as HTMLTextAreaElement)
-        .value,
+      (screen.getByLabelText("Access request") as HTMLTextAreaElement).value,
     ).toBe("");
     await act(async () => reject(new Error("unreadable")));
     expect(screen.queryByRole("button", { name: "Approve device" })).toBeNull();
     expect(capabilities.approve).not.toHaveBeenCalled();
 
-    fireEvent.change(
-      screen.getByRole("textbox", { name: "Enrollment artifact" }),
-      { target: { value: "changed request" } },
-    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Access request" }), {
+      target: { value: "changed request" },
+    });
     expect(screen.queryByRole("button", { name: "Approve device" })).toBeNull();
     expect(capabilities.approve).not.toHaveBeenCalled();
     fireEvent.click(
@@ -219,7 +246,7 @@ describe("device access management", () => {
       ).toBeNull();
       fireEvent.click(screen.getByRole("button", { name: "Approve a device" }));
       fireEvent.change(
-        screen.getByRole("textbox", { name: "Enrollment artifact" }),
+        screen.getByRole("textbox", { name: "Access request" }),
         { target: { value: "request" } },
       );
       fireEvent.click(
@@ -328,12 +355,9 @@ describe("device access management", () => {
     );
     await screen.findByText("Home laptop");
     fireEvent.click(screen.getByRole("button", { name: "Approve a device" }));
-    fireEvent.change(
-      screen.getByRole("textbox", { name: "Enrollment artifact" }),
-      {
-        target: { value: "private enrollment request" },
-      },
-    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Access request" }), {
+      target: { value: "private enrollment request" },
+    });
     const failure = new Error("expired");
     failure.name = "UnlockedVaultSessionExpiredError";
     capabilities.reviewRequest = vi.fn(async () => {
@@ -345,7 +369,7 @@ describe("device access management", () => {
     await waitFor(() => expect(onSessionLost).toHaveBeenCalledOnce());
     expect(screen.queryByDisplayValue("private enrollment request")).toBeNull();
     expect(
-      screen.queryByRole("textbox", { name: "Enrollment artifact" }),
+      screen.queryByRole("textbox", { name: "Access request" }),
     ).toBeNull();
   });
 });
@@ -369,10 +393,9 @@ it("requests S3 permission before approval and allows retry after a denied grant
   fireEvent.click(
     await screen.findByRole("button", { name: "Approve a device" }),
   );
-  fireEvent.change(
-    screen.getByRole("textbox", { name: "Enrollment artifact" }),
-    { target: { value: "request" } },
-  );
+  fireEvent.change(screen.getByRole("textbox", { name: "Access request" }), {
+    target: { value: "request" },
+  });
   fireEvent.click(
     screen.getByRole("button", { name: "Review access request" }),
   );
@@ -412,10 +435,9 @@ it("requires a readable S3 location before requesting permission or approving", 
   fireEvent.click(
     await screen.findByRole("button", { name: "Approve a device" }),
   );
-  fireEvent.change(
-    screen.getByRole("textbox", { name: "Enrollment artifact" }),
-    { target: { value: "request" } },
-  );
+  fireEvent.change(screen.getByRole("textbox", { name: "Access request" }), {
+    target: { value: "request" },
+  });
   fireEvent.click(
     screen.getByRole("button", { name: "Review access request" }),
   );

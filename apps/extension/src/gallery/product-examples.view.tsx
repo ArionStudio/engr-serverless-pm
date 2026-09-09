@@ -928,6 +928,8 @@ function TransferExample() {
       >
         {(state) => (
           <TransferInput
+            label="Access request"
+            fileLabel="Choose request file"
             value={value}
             onChange={setValue}
             state={state}
@@ -943,8 +945,9 @@ function TransferExample() {
       <Scenario label="Transfer output" options={["ready", "pending"]}>
         {(state) => (
           <TransferOutput
+            title="Device approval"
             pending={state === "pending"}
-            description="Device enrollment request"
+            description="Transfer this approval to the browser that created the request."
             metadata="Awaiting peer verification"
             onCopy={() => setNotice("Copy requested.")}
             onExport={() => setNotice("Download requested.")}

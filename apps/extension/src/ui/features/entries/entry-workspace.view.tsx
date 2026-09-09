@@ -10,6 +10,7 @@ import type { EntryDraft } from "./entry-form.view";
 import type { GlobalLibrary } from "@lfspm/core";
 import type { WorkspaceCapabilities } from "./workspace.type";
 import type { WorkspaceControls } from "./workspace.type";
+import { getEntryAccessibleName } from "./entry-label";
 import { useWorkspace } from "./use-workspace";
 import { EntryTable } from "./entry-table.view";
 import { EntryDetails } from "./entry-details.view";
@@ -292,10 +293,10 @@ export function EntryWorkspace({
             if (!open) live.back();
           }}
           action="Delete entry"
-          identity={`${view.record.entry.login} · ${view.record.entry.sanitizedUrl}`}
+          identity={getEntryAccessibleName(view.record.entry)}
           consequences={
             live.data?.syncConfigured
-              ? "This deletes the entry from this vault and attempts to upload the change. If the upload remains pending, retry it in Sync. Other devices receive the deletion after it uploads and they sync."
+              ? "This deletes the entry from this vault and attempts to upload the change. If the upload remains pending, retry it in Sync. Other browsers receive the deletion after it uploads and they sync."
               : "This permanently deletes the entry from this vault."
           }
           onConfirm={live.remove}

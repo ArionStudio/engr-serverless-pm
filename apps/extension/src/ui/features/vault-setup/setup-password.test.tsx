@@ -12,13 +12,18 @@ import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom/vitest";
 import { SetupPassword } from "./setup-password.view";
 import type { AssessPassword } from "./setup.type";
+import type { GenerateVaultPassword } from "./setup.type";
 
 afterEach(cleanup);
 function Harness({
   assessPassword,
+  generatePassword = async () => ({
+    password: "Generated-river-8!Pine-sky",
+  }),
   onContinue = vi.fn(),
 }: {
   assessPassword: AssessPassword;
+  generatePassword?: GenerateVaultPassword;
   onContinue?: () => void;
 }) {
   const [value, onChange] = useState({ password: "", confirmation: "" });
@@ -27,6 +32,7 @@ function Harness({
       value={value}
       onChange={onChange}
       assessPassword={assessPassword}
+      generatePassword={generatePassword}
       onContinue={onContinue}
       onBack={vi.fn()}
     />
@@ -38,6 +44,86 @@ const confirmationInput = () =>
   screen.getByLabelText("Confirm password", { exact: true });
 
 describe("password setup feedback", () => {
+  it("generates a strong password into both fields and assesses the generated value", async () => {
+    const user = userEvent.setup();
+    const assess = vi.fn<AssessPassword>().mockResolvedValue({ score: 4 });
+    const generate = vi.fn<GenerateVaultPassword>().mockResolvedValue({
+      password: "Generated-river-8!Pine-sky",
+    });
+    render(<Harness assessPassword={assess} generatePassword={generate} />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Generate strong password" }),
+    );
+
+    expect(passwordInput()).toHaveValue("Generated-river-8!Pine-sky");
+    expect(confirmationInput()).toHaveValue("Generated-river-8!Pine-sky");
+    await waitFor(() =>
+      expect(assess).toHaveBeenCalledWith("Generated-river-8!Pine-sky"),
+    );
+    await screen.findByText("Strong", { exact: true });
+    expect(
+      screen.getByRole("button", {
+        name: "Replace with generated password",
+      }),
+    ).toBeEnabled();
+  });
+
+  it("keeps the current password fields when generation fails", async () => {
+    const user = userEvent.setup();
+    render(
+      <Harness
+        assessPassword={async () => ({ score: 4 })}
+        generatePassword={async () => {
+          throw new Error("Random source unavailable");
+        }}
+      />,
+    );
+    await user.type(passwordInput(), "current password");
+    await user.type(confirmationInput(), "current password");
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Replace with generated password",
+      }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Your current password was kept",
+    );
+    expect(passwordInput()).toHaveValue("current password");
+    expect(confirmationInput()).toHaveValue("current password");
+  });
+
+  it("keeps the password draft immutable while generation is pending", async () => {
+    const user = userEvent.setup();
+    let finishGeneration: (value: { password: string }) => void = () => {};
+    render(
+      <Harness
+        assessPassword={async () => ({ score: 4 })}
+        generatePassword={() =>
+          new Promise((resolve) => {
+            finishGeneration = resolve;
+          })
+        }
+      />,
+    );
+    await user.type(passwordInput(), "original password");
+    await user.type(confirmationInput(), "original password");
+    await user.click(
+      screen.getByRole("button", {
+        name: "Replace with generated password",
+      }),
+    );
+    expect(passwordInput()).toBeDisabled();
+    expect(confirmationInput()).toBeDisabled();
+    finishGeneration({ password: "Generated-river-8!Pine-sky" });
+
+    await waitFor(() => expect(passwordInput()).toBeEnabled());
+    expect(passwordInput()).toHaveValue("Generated-river-8!Pine-sky");
+    expect(confirmationInput()).toHaveValue("Generated-river-8!Pine-sky");
+  });
+
   it("requires a fresh assessment after clearing and reentering the same password", async () => {
     const user = userEvent.setup();
     let finish: (result: { score: 1 }) => void = () => {};
@@ -59,7 +145,9 @@ describe("password setup feedback", () => {
     expect(
       screen.queryByText("Strong", { exact: true }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Continue to device settings" }),
+    ).toBeDisabled();
     finish({ score: 1 });
     await screen.findByText("Weak", { exact: true });
   });
@@ -100,7 +188,9 @@ describe("password setup feedback", () => {
     await user.type(passwordInput(), "orbit lantern velvet canyon river");
     await user.type(confirmationInput(), "orbit lantern velvet canyon river");
     await waitFor(() => expect(assess).toHaveBeenCalledTimes(1));
-    expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Continue to device settings" }),
+    ).toBeDisabled();
     expect(passwordInput()).not.toHaveAttribute("aria-invalid", "true");
     rejectAssessment(new Error("Unavailable"));
     await user.click(await screen.findByRole("button", { name: "Try again" }));
@@ -110,7 +200,9 @@ describe("password setup feedback", () => {
       "orbit lantern velvet canyon river",
     );
     expect(next).not.toHaveBeenCalled();
-    await user.click(screen.getByRole("button", { name: "Continue" }));
+    await user.click(
+      screen.getByRole("button", { name: "Continue to device settings" }),
+    );
     expect(next).toHaveBeenCalledTimes(1);
   });
 
@@ -120,7 +212,9 @@ describe("password setup feedback", () => {
     render(<Harness assessPassword={assess} />);
     await user.type(passwordInput(), "weak");
     await screen.findByText("Weak", { exact: true });
-    await user.click(screen.getByRole("button", { name: "Continue" }));
+    await user.click(
+      screen.getByRole("button", { name: "Continue to device settings" }),
+    );
     expect(screen.getByText("Confirm your password.")).toBeInTheDocument();
     await user.type(confirmationInput(), "different");
     expect(passwordInput()).toHaveAttribute("aria-invalid", "true");

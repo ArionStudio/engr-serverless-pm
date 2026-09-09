@@ -120,7 +120,7 @@ export function FolderEditor({
         <RadioGroup
           value={draft.icon}
           disabled={pending}
-          className="grid grid-cols-2 gap-2 sm:grid-cols-4"
+          className="grid grid-cols-2 gap-2 @lg:grid-cols-4"
           onValueChange={(icon) => {
             if (typeof icon === "string") setDraft({ ...draft, icon });
           }}

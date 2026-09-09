@@ -25,6 +25,11 @@ All paths below are relative to `apps/extension/src/ui`. Feature links point to 
 
 | ID  | Review family                                                   | Owner / source                                                                                                                             |
 | --- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| S01 | PopupView                                                       | [entrypoints/popup/index.ts](../../apps/extension/src/ui/entrypoints/popup/index.ts)                                                       |
+| S02 | OptionsView                                                     | [entrypoints/options/index.ts](../../apps/extension/src/ui/entrypoints/options/index.ts)                                                   |
+| S03 | SyncPage                                                        | [features/sync/index.ts](../../apps/extension/src/ui/features/sync/index.ts)                                                               |
+| S04 | S3SetupGuide                                                    | [features/sync/index.ts](../../apps/extension/src/ui/features/sync/index.ts)                                                               |
+| S05 | OrganizationManagementView                                      | [features/organization/index.ts](../../apps/extension/src/ui/features/organization/index.ts)                                               |
 | B01 | Button                                                          | [components/primitives/button.tsx](../../apps/extension/src/ui/components/primitives/button.tsx)                                           |
 | B02 | Field                                                           | [components/primitives/field.tsx](../../apps/extension/src/ui/components/primitives/field.tsx)                                             |
 | B03 | Input                                                           | [components/primitives/input.tsx](../../apps/extension/src/ui/components/primitives/input.tsx)                                             |

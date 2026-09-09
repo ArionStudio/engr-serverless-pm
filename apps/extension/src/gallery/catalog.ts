@@ -103,9 +103,6 @@ export const catalog = [
   { id: "B36", name: "Resizable" },
   { id: "B37", name: "Kbd" },
   { id: "B38", name: "Avatar" },
-  { id: "P29", name: "GuidancePanel" },
-  { id: "P30", name: "Tag visuals" },
-  { id: "P31", name: "Folder controls" },
   {
     id: "P01",
     name: "StepNavigation",
@@ -167,18 +164,6 @@ export const catalog = [
     name: "EmptyState, including EmptyVault",
   },
   {
-    id: "P26",
-    name: "ActionFeedback",
-  },
-  {
-    id: "P27",
-    name: "TagSelection",
-  },
-  {
-    id: "P28",
-    name: "AppNavigation and VaultToolbar",
-  },
-  {
     id: "P16",
     name: "RecoveryPhraseGrid",
   },
@@ -218,6 +203,21 @@ export const catalog = [
     id: "P25",
     name: "DestructiveConfirmation",
   },
+  {
+    id: "P26",
+    name: "ActionFeedback",
+  },
+  {
+    id: "P27",
+    name: "TagSelection",
+  },
+  {
+    id: "P28",
+    name: "AppNavigation and VaultToolbar",
+  },
+  { id: "P29", name: "GuidancePanel" },
+  { id: "P30", name: "Tag visuals" },
+  { id: "P31", name: "Folder controls" },
   {
     id: "F01",
     name: "UnlockForm",

@@ -17,6 +17,7 @@ import { VaultSettingsView } from "@/ui/features/settings/vault-settings.view";
 import type { VaultSettingsCapabilities } from "@/ui/features/settings/settings.type";
 import type {
   AssessPassword,
+  GenerateVaultPassword,
   SetupVault,
 } from "@/ui/features/vault-setup/setup.type";
 import type { VaultDestination } from "./options-route";
@@ -46,6 +47,7 @@ export function VaultApplication({
   devices,
   settings,
   assessPassword,
+  generatePassword,
   appearance,
   onLock,
   onReplaceRecovery,
@@ -63,6 +65,7 @@ export function VaultApplication({
   devices: DeviceCapabilities;
   settings: VaultSettingsCapabilities;
   assessPassword: AssessPassword;
+  generatePassword: GenerateVaultPassword;
   appearance: ReactNode;
   onLock: () => void | Promise<void>;
   onReplaceRecovery: () => void;
@@ -134,6 +137,7 @@ export function VaultApplication({
         ) : destination === "tools" ? (
           <PasswordToolsPage
             tools={workspace.tools}
+            onSessionLost={onSessionLost}
             onUse={(value) => {
               setDraft({ ...emptyEntryDraft, ...value, tagIds: [] });
               setEntryVisit((visit) => visit + 1);
@@ -168,6 +172,7 @@ export function VaultApplication({
               capabilities={settings}
               onSessionLost={onSessionLost}
               assessPassword={assessPassword}
+              generatePassword={generatePassword}
               onReplaceRecovery={onReplaceRecovery}
               onDeleted={onDeleted}
               onSaved={() => onRefresh(false)}

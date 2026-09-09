@@ -16,6 +16,7 @@ export function DeviceSummary({
   onRevoke,
   pending = false,
   error,
+  headingLevel = "h3",
 }: {
   name: string;
   identifier: string;
@@ -23,7 +24,9 @@ export function DeviceSummary({
   onRevoke?: () => void;
   pending?: boolean;
   error?: string;
+  headingLevel?: "h2" | "h3" | "h4";
 }) {
+  const Heading = headingLevel;
   return (
     <article className="space-y-3 rounded-lg border p-4">
       <Badge variant="outline">
@@ -36,7 +39,7 @@ export function DeviceSummary({
           }[state]
         }
       </Badge>
-      <h3 className="break-all font-semibold">{name}</h3>
+      <Heading className="font-semibold wrap-anywhere">{name}</Heading>
       <p className="break-all text-xs text-muted-foreground">{identifier}</p>
       {onRevoke && state === "other" ? (
         <>
@@ -63,20 +66,25 @@ export function TransferInput({
   onFile,
   state = "empty",
   error,
+  label,
+  fileLabel,
 }: {
   value: string;
   onChange: (value: string) => void;
   onFile: (file: File) => void;
   state?: "empty" | "selected" | "validating" | "invalid" | "ready";
   error?: string;
+  label: string;
+  fileLabel: string;
 }) {
   const id = useId();
   return (
     <div className="space-y-4">
       <Field>
-        <FieldLabel htmlFor={id}>Enrollment artifact</FieldLabel>
+        <FieldLabel htmlFor={id}>{label}</FieldLabel>
         <Textarea
           id={id}
+          name="enrollment-artifact"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           disabled={state === "validating"}
@@ -92,7 +100,8 @@ export function TransferInput({
         {error ? <FieldError id={`${id}-error`}>{error}</FieldError> : null}
       </Field>
       <TextField
-        label="Choose artifact file"
+        label={fileLabel}
+        name="enrollment-artifact-file"
         type="file"
         disabled={state === "validating"}
         onChange={(e) => {
@@ -119,16 +128,21 @@ export function TransferOutput({
   onCopy,
   onExport,
   pending = false,
+  title,
+  headingLevel = "h3",
 }: {
   description: string;
   metadata: string;
   onCopy: () => void;
   onExport: () => void;
   pending?: boolean;
+  title: string;
+  headingLevel?: "h2" | "h3" | "h4";
 }) {
+  const Heading = headingLevel;
   return (
     <article className="space-y-4 rounded-lg border p-4">
-      <h3 className="font-semibold">Enrollment artifact</h3>
+      <Heading className="font-semibold">{title}</Heading>
       <p className="text-sm">{description}</p>
       <p className="break-all text-xs text-muted-foreground">{metadata}</p>
       <div className="flex flex-wrap gap-2">

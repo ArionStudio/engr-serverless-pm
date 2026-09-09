@@ -4,7 +4,7 @@ import {
   type PasswordCreationDraft,
 } from "./password-creation-form.view";
 import { usePasswordAssessment } from "./use-password-assessment";
-import type { AssessPassword } from "./setup.type";
+import type { AssessPassword, GenerateVaultPassword } from "./setup.type";
 
 export function SetupPassword({
   value,
@@ -12,12 +12,16 @@ export function SetupPassword({
   onContinue,
   onBack,
   assessPassword,
+  generatePassword,
+  continueLabel,
 }: {
   value: PasswordCreationDraft;
   onChange: (value: PasswordCreationDraft) => void;
   onContinue: () => void;
   onBack: () => void;
   assessPassword: AssessPassword;
+  generatePassword: GenerateVaultPassword;
+  continueLabel?: string;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const [submitted, setSubmitted] = useState(false);
@@ -48,7 +52,9 @@ export function SetupPassword({
   }
   return (
     <div ref={host} className="space-y-6">
-      <h1 className="text-2xl font-semibold tracking-tight">Vault password</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">
+        Password for this browser
+      </h1>
       <PasswordCreationForm
         value={value}
         onChange={(next) => {
@@ -64,8 +70,10 @@ export function SetupPassword({
         }}
         onConfirmationBlur={() => setConfirmationTouched(true)}
         onRetryStrength={retry}
+        generatePassword={generatePassword}
         score={score}
         strengthState={strengthState}
+        submitLabel={continueLabel}
       />
     </div>
   );

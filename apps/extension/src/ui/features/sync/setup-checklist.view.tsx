@@ -16,7 +16,7 @@ type SetupStageProps = {
 
 export function SetupStage({ children }: SetupStageProps) {
   return (
-    <div className="space-y-6 text-base leading-7 [&_a]:no-underline">
+    <div className="space-y-6 text-base leading-7 [&_a]:no-underline [&_dd]:max-w-[70ch] [&_li]:max-w-[70ch] [&_p]:max-w-[70ch]">
       {children}
     </div>
   );
@@ -52,23 +52,18 @@ export function SetupChecklist({
     progress.locationKey !== locationKey ? locationStep : children.length - 1,
     blocked < 0 ? children.length - 1 : blocked,
   );
-  if (progress.locationKey !== locationKey || progress.completed > limit) {
-    setProgress({
-      active: Math.min(progress.active, limit),
-      completed: Math.min(progress.completed, limit),
-      locationKey,
-    });
-  }
+  const active = Math.min(progress.active, limit);
+  const completed = Math.min(progress.completed, limit);
   useEffect(() => {
     if (
-      previousStep.current !== progress.active &&
+      previousStep.current !== active &&
       !heading.current?.closest("[hidden]")
     ) {
       heading.current?.focus();
     }
-    previousStep.current = progress.active;
-  }, [progress.active]);
-  const stage = children[progress.active];
+    previousStep.current = active;
+  }, [active]);
+  const stage = children[active];
   return (
     <div className="grid items-start gap-6 @4xl/s3:grid-cols-[13rem_minmax(0,1fr)] @4xl/s3:gap-10">
       <nav aria-label={label} className="s3-steps min-w-0">
@@ -81,23 +76,25 @@ export function SetupChecklist({
           {children.map((step, index) => (
             <li key={step.props.title} className="min-w-0">
               <Button
-                variant={index === progress.active ? "secondary" : "ghost"}
+                variant={index === active ? "secondary" : "ghost"}
                 className="h-auto min-h-11 w-full justify-center gap-3 @4xl/s3:justify-start whitespace-nowrap px-3 py-2 text-left text-sm @4xl/s3:whitespace-normal"
-                disabled={busy || index > progress.completed}
+                disabled={busy || index > completed}
                 title={step.props.title}
-                aria-current={index === progress.active ? "step" : undefined}
-                onClick={() => setProgress({ ...progress, active: index })}
+                aria-current={index === active ? "step" : undefined}
+                onClick={() =>
+                  setProgress({ active: index, completed, locationKey })
+                }
               >
                 <span
                   aria-hidden="true"
                   className="flex size-6 shrink-0 items-center justify-center rounded-full border text-xs"
                 >
-                  {index < progress.completed ? "✓" : index + 1}
+                  {index < completed ? "✓" : index + 1}
                 </span>
                 <span className="sr-only @4xl/s3:not-sr-only">
                   {step.props.title}
                 </span>
-                {index < progress.completed ? (
+                {index < completed ? (
                   <span className="sr-only">, confirmed</span>
                 ) : null}
               </Button>
@@ -112,21 +109,29 @@ export function SetupChecklist({
           data-focus-target
           className="text-xl font-semibold"
         >
-          {progress.active + 1}. {stage.props.title}
+          {active + 1}. {stage.props.title}
         </h3>
         {stage}
         {!stage.props.confirmation && renderConnection
           ? renderConnection(() =>
-              setProgress({ ...progress, active: locationStep }),
+              setProgress({
+                active: locationStep,
+                completed,
+                locationKey,
+              }),
             )
           : null}
         {stage.props.confirmation ? (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-5">
             <Button
               variant="outline"
-              disabled={busy || progress.active === 0}
+              disabled={busy || active === 0}
               onClick={() =>
-                setProgress({ ...progress, active: progress.active - 1 })
+                setProgress({
+                  active: active - 1,
+                  completed,
+                  locationKey,
+                })
               }
             >
               Previous step
@@ -136,12 +141,9 @@ export function SetupChecklist({
                 disabled={busy || stage.props.canContinue === false}
                 onClick={() =>
                   setProgress({
-                    ...progress,
-                    active: progress.active + 1,
-                    completed: Math.max(
-                      progress.completed,
-                      progress.active + 1,
-                    ),
+                    active: active + 1,
+                    completed: Math.max(completed, active + 1),
+                    locationKey,
                   })
                 }
               >

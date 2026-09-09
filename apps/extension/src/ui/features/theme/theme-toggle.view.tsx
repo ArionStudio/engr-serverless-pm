@@ -31,7 +31,11 @@ export function ThemeToggle({
   className,
 }: ThemeToggleProps) {
   return (
-    <div className={`flex gap-1 ${className ?? ""}`}>
+    <div
+      role="group"
+      aria-label="Color theme"
+      className={`flex flex-wrap gap-1 ${className ?? ""}`}
+    >
       {THEME_OPTIONS.map(({ value, label, icon }) => (
         <Button
           key={value}

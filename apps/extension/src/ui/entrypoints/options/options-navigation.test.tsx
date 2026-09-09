@@ -53,10 +53,10 @@ describe("Options navigation and session refresh", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "I already have an approval" }),
     );
-    fireEvent.change(screen.getByLabelText("Password chosen for this device"), {
+    fireEvent.change(screen.getByLabelText("Password for this browser"), {
       target: { value: "fixture-password" },
     });
-    fireEvent.change(screen.getByLabelText("Enrollment artifact"), {
+    fireEvent.change(screen.getByLabelText("Device approval"), {
       target: { value: "fixture-approval" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Verify approval" }));
@@ -70,7 +70,7 @@ describe("Options navigation and session refresh", () => {
     await act(async () => notify(false));
     expect(screen.getByLabelText("Secret access key")).toBe(secret);
     expect(secret).toHaveValue("fixture-unsaved-secret");
-    expect(screen.getByLabelText("Enrollment artifact")).toHaveValue(
+    expect(screen.getByLabelText("Device approval")).toHaveValue(
       "fixture-approval",
     );
     await act(async () => finish(initial));

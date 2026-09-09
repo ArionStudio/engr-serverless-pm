@@ -59,6 +59,7 @@ export function PasswordField({
   description,
   disabled = false,
   autoComplete = "new-password",
+  name,
   onBlur,
 }: {
   label: string;
@@ -70,6 +71,7 @@ export function PasswordField({
   description?: string;
   disabled?: boolean;
   autoComplete?: string;
+  name?: string;
   onBlur?: () => void;
 }) {
   const id = useId();
@@ -90,6 +92,7 @@ export function PasswordField({
             onBlur?.();
           }}
           autoComplete={autoComplete}
+          name={name}
           spellCheck={false}
           autoCapitalize="none"
           disabled={disabled}

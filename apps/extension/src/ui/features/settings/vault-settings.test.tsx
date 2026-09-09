@@ -35,6 +35,9 @@ function setup(onSessionLost = vi.fn()) {
       vault={vault}
       capabilities={capabilities}
       assessPassword={async () => ({ score: 4 })}
+      generatePassword={async () => ({
+        password: "Generated-river-8!Pine-sky",
+      })}
       onReplaceRecovery={onReplaceRecovery}
       onDeleted={onDeleted}
       onSaved={vi.fn()}

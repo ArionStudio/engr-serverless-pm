@@ -38,7 +38,7 @@ export function SyncTrustReview({
   return (
     <section
       aria-label="Review device access changes"
-      className="mx-auto max-w-3xl space-y-6 rounded-lg border p-6"
+      className="mx-auto max-w-3xl space-y-6"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xl font-semibold">
@@ -73,14 +73,19 @@ export function SyncTrustReview({
               </GuidancePanel>
               <TextField
                 label="Access key ID"
+                name="replacement-s3-access-key-id"
                 value={value.accessKeyId}
                 onChange={(event) =>
                   onChange({ ...value, accessKeyId: event.target.value })
                 }
                 required
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
               />
               <FormPassword
                 label="Secret access key"
+                autoComplete="off"
                 value={value.secretAccessKey}
                 onChange={(secretAccessKey) =>
                   onChange({ ...value, secretAccessKey })

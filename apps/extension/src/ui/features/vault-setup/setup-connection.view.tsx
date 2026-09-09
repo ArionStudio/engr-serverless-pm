@@ -6,6 +6,7 @@ import {
   LockDurationField,
 } from "@/ui/components/forms/fields.view";
 import { GuidancePanel } from "@/ui/components/feedback/guidance-panel.view";
+import { StepNavigation } from "@/ui/components/layout/sections.view";
 import { vaultLockOptions } from "@/ui/lib/vault-lock-options";
 import { TransferInput, TransferOutput } from "../devices/devices.view";
 import type {
@@ -13,38 +14,49 @@ import type {
   EnrollmentSetupInput,
 } from "../devices/device-management.type";
 import type { CredentialDraft } from "../sync/credential-form.view";
-import type { AssessPassword } from "./setup.type";
+import type { AssessPassword, GenerateVaultPassword } from "./setup.type";
 import { SetupPassword } from "./setup-password.view";
+import { useOperationErrorFocus } from "./use-operation-error-focus";
+
+export type SetupConnectionStep =
+  | "identity"
+  | "password"
+  | "request"
+  | "approval";
+export type SetupConnectionRequest = Awaited<
+  ReturnType<DeviceCapabilities["createRequest"]>
+>;
 
 export function SetupConnection({
   onBack,
   capabilities,
   assessPassword,
+  generatePassword,
   onEnroll,
   pending = false,
   error: externalError,
+  initialStep = "identity",
+  initialRequest,
 }: {
   onBack: () => void;
   capabilities: DeviceCapabilities;
   assessPassword: AssessPassword;
+  generatePassword: GenerateVaultPassword;
   onEnroll: (input: EnrollmentSetupInput) => Promise<void>;
   pending?: boolean;
   error?: string;
+  initialStep?: SetupConnectionStep;
+  initialRequest?: SetupConnectionRequest;
 }) {
-  const [step, setStep] = useState<
-    "identity" | "password" | "request" | "approval"
-  >("identity");
+  const [step, setStep] = useState<SetupConnectionStep>(initialStep);
   const [vaultId, setVaultId] = useState("");
   const [fingerprint, setFingerprint] = useState("");
   const [password, setPassword] = useState({ password: "", confirmation: "" });
   const [deviceName, setDeviceName] = useState("This browser");
   const [duration, setDuration] = useState(600_000);
-  const [request, setRequest] = useState<{
-    text: string;
-    requestId: string;
-    deviceId: string;
-    fingerprint: string;
-  }>();
+  const [request, setRequest] = useState<SetupConnectionRequest | undefined>(
+    initialRequest,
+  );
   const [approvalVerified, setApprovalVerified] = useState(false);
   const [approval, setApproval] = useState("");
   const [unlockPassword, setUnlockPassword] = useState("");
@@ -60,6 +72,8 @@ export function SetupConnection({
   const [localPending, setLocalPending] = useState(false);
   const [error, setError] = useState<string>();
   const [copied, setCopied] = useState(false);
+  const visibleError = error ?? externalError;
+  const errorRef = useOperationErrorFocus(visibleError);
   const storageSection = useRef<HTMLElement>(null);
   useEffect(() => {
     if (approvalVerified) storageSection.current?.focus();
@@ -121,6 +135,25 @@ export function SetupConnection({
       secretAccessKey: "",
     });
   }
+  function navigate(target: string) {
+    if (working || target === step) return;
+    setError(undefined);
+    if (target === "identity" && !request) {
+      setApproval("");
+      invalidateApproval();
+      setStep("identity");
+    } else if (
+      target === "password" &&
+      !request &&
+      (step === "password" || step === "request")
+    ) {
+      setStep("password");
+    } else if (target === "request" && request) {
+      setApproval("");
+      invalidateApproval();
+      setStep("request");
+    }
+  }
   async function file(value: File) {
     if (busy.current || pending) return;
     setApproval("");
@@ -137,21 +170,75 @@ export function SetupConnection({
   }
   const title = {
     identity: "Connect a vault",
-    password: "Password",
+    password: "Password for this browser",
     request: "Request access",
     approval: "Import device approval",
   }[step];
   return (
     <section className="max-w-3xl space-y-7" aria-label="Connect a vault">
+      <StepNavigation
+        currentId={step}
+        onNavigate={navigate}
+        steps={[
+          {
+            id: "identity",
+            label: "Vault",
+            state:
+              step === "identity" && visibleError
+                ? ("error" as const)
+                : step === "identity"
+                  ? ("upcoming" as const)
+                  : ("complete" as const),
+            allowed: !working && !request,
+          },
+          {
+            id: "password",
+            label: "Browser password",
+            state:
+              step === "password" && visibleError
+                ? ("error" as const)
+                : request || step === "approval"
+                  ? ("complete" as const)
+                  : ("upcoming" as const),
+            allowed:
+              !working &&
+              !request &&
+              (step === "password" || step === "request"),
+          },
+          {
+            id: "request",
+            label: "Access request",
+            state:
+              step === "request" && visibleError
+                ? ("error" as const)
+                : step === "approval"
+                  ? ("complete" as const)
+                  : ("upcoming" as const),
+            allowed: !working && (step === "request" || !!request),
+          },
+          {
+            id: "approval",
+            label: "Approval",
+            state:
+              step === "approval" && visibleError
+                ? ("error" as const)
+                : ("upcoming" as const),
+            allowed: !working && step === "approval",
+          },
+        ]}
+      />
       {step !== "password" ? (
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
       ) : null}
-      {error || externalError ? (
+      {visibleError ? (
         <p
+          ref={errorRef}
           role="alert"
-          className="rounded-lg border border-destructive/40 bg-destructive/10 p-5 text-destructive"
+          tabIndex={-1}
+          data-focus-target
+          className="rounded-lg border border-destructive/40 bg-destructive/10 p-5 text-destructive outline-none"
         >
-          {error ?? externalError}
+          {visibleError}
         </p>
       ) : null}
       {step === "identity" ? (
@@ -186,7 +273,7 @@ export function SetupConnection({
             <Button type="button" variant="outline" onClick={onBack}>
               Back
             </Button>
-            <Button type="submit">Continue</Button>
+            <Button type="submit">Continue to browser password</Button>
           </div>
           <Button
             type="button"
@@ -204,6 +291,8 @@ export function SetupConnection({
           onContinue={() => setStep("request")}
           onBack={() => setStep("identity")}
           assessPassword={assessPassword}
+          generatePassword={generatePassword}
+          continueLabel="Continue to access request"
         />
       ) : null}
       {step === "request" ? (
@@ -219,6 +308,8 @@ export function SetupConnection({
                 <p className="break-all font-mono">{request.fingerprint}</p>
               </GuidancePanel>
               <TransferOutput
+                title="Access request"
+                headingLevel="h2"
                 description="Send this access request to your trusted browser."
                 metadata={`New device: ${request.deviceId}`}
                 pending={working}
@@ -334,19 +425,20 @@ export function SetupConnection({
               },
               approvalVerified
                 ? "Could not connect this device. Check its S3 access keys and allow browser storage access."
-                : "Could not verify this approval. Use the matching approval and the password chosen when this browser made the request.",
+                : "Could not verify this approval. Use the matching approval and the password for this browser.",
             );
           }}
         >
           <GuidancePanel title="Return to the browser that made the request">
             <p>
-              The request is protected by the password you chose on this
-              browser. An approval cannot connect a different browser or browser
-              profile.
+              The request is protected by the password for this browser. An
+              approval cannot connect a different browser or browser profile.
             </p>
           </GuidancePanel>
           <fieldset disabled={working} className="space-y-6">
             <TransferInput
+              label="Device approval"
+              fileLabel="Choose approval file"
               value={approval}
               onChange={(text) => {
                 setApproval(text);
@@ -364,7 +456,7 @@ export function SetupConnection({
               }
             />
             <PasswordField
-              label="Password chosen for this device"
+              label="Password for this browser"
               value={unlockPassword}
               onChange={(value) => {
                 setUnlockPassword(value);
@@ -426,6 +518,10 @@ export function SetupConnection({
                 </p>
                 <TextField
                   label="Access key ID"
+                  name="enrollment-s3-access-key-id"
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   value={credentials.accessKeyId}
                   required
                   onChange={(event) =>
@@ -437,6 +533,8 @@ export function SetupConnection({
                 />
                 <PasswordField
                   label="Secret access key"
+                  name="enrollment-s3-secret-access-key"
+                  autoComplete="off"
                   value={credentials.secretAccessKey}
                   onChange={(value) =>
                     setCredentials((current) => ({

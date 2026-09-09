@@ -30,9 +30,9 @@ export function ActionFeedback({
             : "Action needs attention"}
       </AlertTitle>
       <AlertDescription>
-        {message}
+        <p>{message}</p>
         {state === "error" && onRetry ? (
-          <Button variant="outline" onClick={onRetry}>
+          <Button className="mt-3" variant="outline" onClick={onRetry}>
             Try again
           </Button>
         ) : null}

@@ -13,7 +13,8 @@ const fs = require("node:fs"),
   let page;
   try {
     context = await chromium.launchPersistentContext(profile, {
-      executablePath: process.env.CHROMIUM_EXECUTABLE || "/usr/bin/google-chrome",
+      executablePath:
+        process.env.CHROMIUM_EXECUTABLE || "/usr/bin/google-chrome",
       headless: true,
       ignoreDefaultArgs: ["--disable-extensions"],
       args: ["--no-sandbox", "--enable-unsafe-extension-debugging"],
@@ -51,7 +52,9 @@ const fs = require("node:fs"),
     page = await context.newPage();
     page.setDefaultTimeout(20000);
     await page.goto(origin + "/options.html");
-    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Create a new vault", exact: true })
+      .click();
     await page
       .getByLabel("New password", { exact: true })
       .fill("orbit lantern velvet canyon river");
@@ -59,11 +62,18 @@ const fs = require("node:fs"),
       .getByLabel("Confirm password", { exact: true })
       .fill("orbit lantern velvet canyon river");
     await page.getByText("Strong", { exact: true }).waitFor();
-    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page
+      .getByRole("button", {
+        name: "Continue to device settings",
+        exact: true,
+      })
+      .click();
     await page
       .getByLabel("Device name", { exact: true })
       .fill("Disposable login check");
-    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Continue to organization", exact: true })
+      .click();
     await page
       .getByRole("button", { name: "Continue to recovery", exact: true })
       .click();
@@ -141,14 +151,20 @@ const fs = require("node:fs"),
     const site = await context.newPage();
     await site.goto("https://example.com/login");
     await site.getByLabel("Password").focus();
-    await site.locator("[data-lfspm-field-action]").waitFor({ state: "visible" });
+    await site
+      .locator("[data-lfspm-field-action]")
+      .waitFor({ state: "visible" });
     await site.evaluate(() => {
       document.body.style.minHeight = "3000px";
       window.scrollTo(0, 1500);
     });
-    await site.locator("[data-lfspm-field-action]").waitFor({ state: "hidden" });
+    await site
+      .locator("[data-lfspm-field-action]")
+      .waitFor({ state: "hidden" });
     await site.evaluate(() => window.scrollTo(0, 0));
-    await site.locator("[data-lfspm-field-action]").waitFor({ state: "visible" });
+    await site
+      .locator("[data-lfspm-field-action]")
+      .waitFor({ state: "visible" });
     await site.evaluate(() => {
       const container = document.createElement("div");
       document.body.replaceChildren(container);
@@ -163,13 +179,24 @@ const fs = require("node:fs"),
       });
     });
     await site.getByLabel("Shadow password").focus();
-    await site.locator("[data-lfspm-field-action]").waitFor({ state: "visible" });
+    await site
+      .locator("[data-lfspm-field-action]")
+      .waitFor({ state: "visible" });
     await site.evaluate(() => {
-      document.querySelector("div").shadowRoot.querySelector("button").style.display = "block";
+      document
+        .querySelector("div")
+        .shadowRoot.querySelector("button").style.display = "block";
     });
-    await site.getByRole("button", { name: "Shadow sign in", exact: true }).click({ timeout: 2000 });
-    assert.equal(await site.evaluate(() => document.body.dataset.shadowSignInClicked), "true");
-    console.log("Website sign-in control remains clickable beside a shadow-root field");
+    await site
+      .getByRole("button", { name: "Shadow sign in", exact: true })
+      .click({ timeout: 2000 });
+    assert.equal(
+      await site.evaluate(() => document.body.dataset.shadowSignInClicked),
+      "true",
+    );
+    console.log(
+      "Website sign-in control remains clickable beside a shadow-root field",
+    );
     for (const actionKind of ["shadow", "input"]) {
       await site.goto("https://example.com/login");
       await site.evaluate((actionKind) => {
@@ -182,21 +209,27 @@ const fs = require("node:fs"),
           host.setAttribute("role", "button");
           host.setAttribute("tabindex", "0");
           host.setAttribute("aria-label", "Create your account");
-          host.attachShadow({ mode: "open" }).innerHTML = '<span>→</span>';
+          host.attachShadow({ mode: "open" }).innerHTML = "<span>→</span>";
         } else {
-          host.innerHTML = '<input type="button" aria-label="Create your account" value="→">';
+          host.innerHTML =
+            '<input type="button" aria-label="Create your account" value="→">';
         }
       }, actionKind);
       await site.getByLabel("Email").fill("new-account@example.com");
-      await site.getByLabel("Password").fill("timber violet harbor granite meadow");
+      await site
+        .getByLabel("Password")
+        .fill("timber violet harbor granite meadow");
       if (actionKind === "shadow")
         await site.locator("#registration-action span").click();
       else
-        await site.getByRole("button", { name: "Create your account", exact: true }).click();
-      await page.waitForFunction(async () =>
-        Object.keys(await chrome.storage.session.get(null)).some((key) =>
-          key.startsWith("lfspm.captured-login."),
-        ),
+        await site
+          .getByRole("button", { name: "Create your account", exact: true })
+          .click();
+      await page.waitForFunction(
+        async () =>
+          Object.keys(await chrome.storage.session.get(null)).some((key) =>
+            key.startsWith("lfspm.captured-login."),
+          ),
         undefined,
         { timeout: 3000 },
       );
@@ -206,7 +239,9 @@ const fs = require("node:fs"),
       await registrationReview.click("Dismiss");
       await registrationReview.wait("No login waiting to be saved");
       await registrationReview.close();
-      console.log("Non-submit registration action captured credentials for review");
+      console.log(
+        "Non-submit registration action captured credentials for review",
+      );
     }
     await site.goto("https://example.com/login");
     await site.getByLabel("Username").fill("alex@example.com");
@@ -305,6 +340,53 @@ const fs = require("node:fs"),
             (await evaluate("document.body.innerText")),
         );
       };
+      await wait("Vault");
+      const dimensions = await evaluate(`(() => {
+        const rect = (selector) => {
+          const bounds = document.querySelector(selector)?.getBoundingClientRect();
+          return bounds
+            ? {
+                width: bounds.width,
+                height: bounds.height,
+                top: bounds.top,
+                bottom: bounds.bottom,
+              }
+            : null;
+        };
+        return {
+          viewport: { width: window.innerWidth, height: window.innerHeight },
+          body: rect('body.extension-popup'),
+          popup: rect('#popup'),
+          main: rect('#popup > main'),
+          navigation: rect('#popup > main > nav'),
+        };
+      })()`);
+      assert.deepEqual(
+        {
+          body: {
+            width: dimensions.body.width,
+            height: dimensions.body.height,
+          },
+          popup: {
+            width: dimensions.popup.width,
+            height: dimensions.popup.height,
+          },
+        },
+        {
+          body: { width: 480, height: 600 },
+          popup: { width: 480, height: 600 },
+        },
+      );
+      assert.equal(dimensions.main.width, 480);
+      assert.equal(
+        dimensions.main.height,
+        Math.min(600, dimensions.viewport.height),
+      );
+      assert(dimensions.navigation, "Popup navigation is missing");
+      assert(
+        dimensions.navigation.bottom <= dimensions.main.bottom,
+        "Popup navigation is outside the visible workspace",
+      );
       const click = async (name) => {
         await wait(name);
         for (let i = 0; i < 100; i++) {

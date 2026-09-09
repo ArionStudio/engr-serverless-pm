@@ -72,6 +72,10 @@ export function composeWorkspace(): WorkspaceCapabilities {
         (await getApplication()).generatePassword.execute(params),
       username: async (params) =>
         (await getApplication()).generateUsername.execute(params),
+      copy: async (value) =>
+        (await getApplication()).copyGeneratedValue.execute({
+          value,
+        }),
     },
     subscribe: subscribeWorkspaceChanges,
   };

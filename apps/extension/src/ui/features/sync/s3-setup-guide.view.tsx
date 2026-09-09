@@ -143,9 +143,12 @@ export function S3SetupGuide({
   const storageAccess = useStorageAccess(location, validLocation, access);
   const allowed = validLocation && storageAccess.state === "allowed";
   const accessPending = storageAccess.state === "requesting";
+  const PermissionHeading = existingStorage ? "h3" : "h4";
   const permission = (
-    <div className="space-y-4 rounded-lg border bg-muted/20 p-5">
-      <h4 className="text-lg font-semibold">Browser storage access</h4>
+    <div className="space-y-4">
+      <PermissionHeading className="text-lg font-semibold">
+        Browser storage access
+      </PermissionHeading>
       <p className="text-base leading-7">
         Allow this extension to connect to your S3 bucket.
       </p>
@@ -742,6 +745,7 @@ function SetupLocation({
     <div className="grid gap-4 @lg:grid-cols-2">
       <TextField
         label="S3 bucket name"
+        name="s3-bucket"
         value={location.bucket}
         onChange={(e) => onChange({ ...location, bucket: e.target.value })}
         description={
@@ -750,16 +754,24 @@ function SetupLocation({
             : "3–63 lowercase letters, numbers, dots or hyphens. Avoid consecutive dots and IP addresses."
         }
         error={errors.bucket}
+        autoComplete="off"
+        autoCapitalize="none"
+        spellCheck={false}
       />
       <TextField
         label="S3 region"
+        name="s3-region"
         value={location.region}
         onChange={(e) => onChange({ ...location, region: e.target.value })}
         description="The bucket's region code, for example eu-central-1."
         error={errors.region}
+        autoComplete="off"
+        autoCapitalize="none"
+        spellCheck={false}
       />
       <TextField
         label="Vault object prefix"
+        name="s3-prefix"
         value={location.prefix}
         onChange={(e) => onChange({ ...location, prefix: e.target.value })}
         description={
@@ -768,6 +780,9 @@ function SetupLocation({
             : "Use letters, numbers, single / separators, _ or -. End with /; do not use wildcards."
         }
         error={errors.prefix}
+        autoComplete="off"
+        autoCapitalize="none"
+        spellCheck={false}
       />
     </div>
   );

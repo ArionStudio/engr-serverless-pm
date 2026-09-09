@@ -97,6 +97,24 @@ export function composeVaultSetup(): SetupCapabilities {
   }
   return {
     readOrganizationLibrary: () => organizationLibrary.read(),
+    generatePassword: async () => {
+      const app = await getApplication();
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        const result = await app.generatePassword.execute({
+          length: 24,
+          uppercase: true,
+          lowercase: true,
+          numbers: true,
+          special: true,
+          minNumbers: 1,
+          minSpecial: 1,
+          avoidAmbiguousCharacters: false,
+        });
+        const assessment = await app.checkPasswordStrength.execute(result);
+        if (assessment.score === 4) return result;
+      }
+      throw new Error("Could not generate a strong vault password");
+    },
     inspect,
     clear,
     enroll: async (params) =>

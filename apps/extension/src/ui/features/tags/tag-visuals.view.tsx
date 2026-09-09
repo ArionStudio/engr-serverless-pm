@@ -154,7 +154,10 @@ export function TagVisualPicker({
             return (
               <label
                 key={group.id}
-                className="flex cursor-pointer items-start gap-3 rounded-md border bg-background p-3 has-data-checked:border-primary has-data-checked:bg-accent disabled:cursor-not-allowed"
+                className={cn(
+                  "flex items-start gap-3 rounded-md border bg-background p-3 has-data-checked:border-primary has-data-checked:bg-accent",
+                  disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer",
+                )}
               >
                 <RadioGroupItem
                   value={group.id}
@@ -200,7 +203,10 @@ export function TagVisualPicker({
             return (
               <label
                 key={tagColor}
-                className="flex min-w-32 flex-1 cursor-pointer items-center gap-2 rounded-md border bg-background px-3 py-2 has-data-checked:border-primary has-data-checked:bg-accent"
+                className={cn(
+                  "flex min-w-32 flex-1 items-center gap-2 rounded-md border bg-background px-3 py-2 has-data-checked:border-primary has-data-checked:bg-accent",
+                  disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer",
+                )}
               >
                 <RadioGroupItem
                   value={tagColor}
@@ -236,7 +242,10 @@ export function TagVisualPicker({
             return (
               <label
                 key={tagShade.value}
-                className="flex min-w-32 flex-1 cursor-pointer items-center gap-2 rounded-md border bg-background px-3 py-2 has-data-checked:border-primary has-data-checked:bg-accent"
+                className={cn(
+                  "flex min-w-32 flex-1 items-center gap-2 rounded-md border bg-background px-3 py-2 has-data-checked:border-primary has-data-checked:bg-accent",
+                  disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer",
+                )}
               >
                 <RadioGroupItem
                   value={String(tagShade.value)}

@@ -55,6 +55,7 @@ import { TagPill } from "@/ui/features/tags";
 import { getFolderIcon } from "@/ui/features/folders";
 import type { TagOption } from "./tag-selection.view";
 import type { EntryFolderPresentation } from "./entries.view";
+import { getEntryAccessibleName } from "./entry-label";
 const features = tableFeatures({
   columnVisibilityFeature,
   rowPaginationFeature,
@@ -121,7 +122,7 @@ function createColumns(
         ),
       cell: ({ row }) => (
         <SelectionCheckbox
-          label={`Select ${row.original.login}`}
+          label={`Select ${getEntryAccessibleName(row.original)}`}
           checked={row.getIsSelected()}
           onChange={(value) => row.toggleSelected(value)}
         />
@@ -512,9 +513,15 @@ export function EntryTable({
                       data-column={cell.column.id}
                       className="max-w-64 px-3 py-4 whitespace-normal break-words [overflow-wrap:anywhere]"
                     >
-                      {["tags", "sanitizedUrl"].includes(cell.column.id) ? (
+                      {["tags", "folder", "sanitizedUrl"].includes(
+                        cell.column.id,
+                      ) ? (
                         <span className="entry-table-mobile-label">
-                          {cell.column.id === "tags" ? "Tags" : "Website"}
+                          {cell.column.id === "tags"
+                            ? "Tags"
+                            : cell.column.id === "folder"
+                              ? "Folder"
+                              : "Website"}
                         </span>
                       ) : null}
                       <table.FlexRender cell={cell} />
@@ -529,7 +536,7 @@ export function EntryTable({
                       <Button
                         size="sm"
                         variant="ghost"
-                        aria-label={`Open ${row.original.login}`}
+                        aria-label={`Open ${getEntryAccessibleName(row.original)}`}
                         onClick={() => onOpen(row.id)}
                       >
                         Open
@@ -541,7 +548,7 @@ export function EntryTable({
                               <Button
                                 variant="ghost"
                                 size="icon-sm"
-                                aria-label={`Actions for ${row.original.login}`}
+                                aria-label={`Actions for ${getEntryAccessibleName(row.original)}`}
                               />
                             }
                           >

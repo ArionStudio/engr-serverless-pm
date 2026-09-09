@@ -3,7 +3,12 @@ import { PasswordField } from "@/ui/components/forms/fields.view";
 import { Button } from "@/ui/components/primitives/button";
 import { SafetyHelp } from "@/ui/components/layout/sections.view";
 import { RecoverVaultAccess } from "./recover-vault-access.view";
-import type { AssessPassword, SetupVault } from "./setup.type";
+import type {
+  AssessPassword,
+  GenerateVaultPassword,
+  SetupVault,
+} from "./setup.type";
+import { useOperationErrorFocus } from "./use-operation-error-focus";
 
 export function SetupVaultAccess({
   vault,
@@ -15,6 +20,7 @@ export function SetupVaultAccess({
   onRecover,
   onDismissError,
   assessPassword,
+  generatePassword,
   onOpenRecovery,
   initiallyRecovering = false,
   onExitRecovery,
@@ -32,6 +38,7 @@ export function SetupVaultAccess({
       onRecover: (words: readonly string[], password: string) => void;
       onDismissError: () => void;
       assessPassword: AssessPassword;
+      generatePassword: GenerateVaultPassword;
       onOpenRecovery?: never;
     }
   | {
@@ -39,11 +46,13 @@ export function SetupVaultAccess({
       onRecover?: never;
       onDismissError?: never;
       assessPassword?: never;
+      generatePassword?: never;
     }
 )) {
   const [recovering, setRecovering] = useState(initiallyRecovering);
   const [revealed, setRevealed] = useState(false);
   const [password, setPassword] = useState("");
+  const errorRef = useOperationErrorFocus(error);
   if (recovering && !vault.unlocked && onRecover && assessPassword)
     return (
       <RecoverVaultAccess
@@ -51,6 +60,7 @@ export function SetupVaultAccess({
         pending={pending}
         error={error}
         assessPassword={assessPassword}
+        generatePassword={generatePassword}
         onRecover={onRecover}
         onBack={() => {
           if (!pending) {
@@ -64,15 +74,17 @@ export function SetupVaultAccess({
   return (
     <section className="space-y-6">
       <h1 className="text-2xl font-semibold tracking-tight">
-        {!vault.unlocked
-          ? "Unlock vault"
-          : vault.complete
-            ? "Vault ready"
-            : "Finish saving recovery words"}
+        {vault.unlocked ? "Finish saving recovery words" : "Unlock vault"}
       </h1>
       <p className="font-medium">{vault.name}</p>
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p
+          ref={errorRef}
+          role="alert"
+          tabIndex={-1}
+          data-focus-target
+          className="text-sm text-destructive outline-none"
+        >
           {error}
         </p>
       ) : null}
@@ -88,7 +100,7 @@ export function SetupVaultAccess({
           }}
         >
           <PasswordField
-            label="Vault password"
+            label="Password for this browser"
             value={password}
             onChange={setPassword}
             revealed={revealed}
@@ -116,21 +128,13 @@ export function SetupVaultAccess({
         </form>
       ) : (
         <>
-          {!vault.complete ? (
-            <>
-              <SafetyHelp
-                title="Save replacement recovery words"
-                essential="Recovery verification was not completed. Generate a replacement set and save all 24 words. The previous words will no longer match this browser’s current recovery data. Retained older backups can still work with their original words."
-              />
-              <Button disabled={pending} onClick={onReplace}>
-                {pending ? "Generating…" : "Generate replacement words"}
-              </Button>
-            </>
-          ) : (
-            <p role="status">
-              Recovery words verified. Your vault is saved in this browser.
-            </p>
-          )}
+          <SafetyHelp
+            title="Save replacement recovery words"
+            essential="Recovery verification was not completed. Generate a replacement set and save all 24 words. The previous words will no longer match this browser’s current recovery data. Retained older backups can still work with their original words."
+          />
+          <Button disabled={pending} onClick={onReplace}>
+            {pending ? "Generating…" : "Generate replacement words"}
+          </Button>
           <Button variant="outline" disabled={pending} onClick={onLock}>
             Lock vault
           </Button>

@@ -28,6 +28,7 @@ export function CredentialForm({
   testing = false,
   mode = "setup",
   onEditLocation,
+  headingLevel = "h3",
   feedback,
   ...form
 }: FormPresentation<CredentialDraft> & {
@@ -35,8 +36,10 @@ export function CredentialForm({
   testing?: boolean;
   mode?: "setup" | "repair" | "connect-existing";
   onEditLocation?: () => void;
+  headingLevel?: "h2" | "h3" | "h4";
   feedback?: ReactNode;
 }) {
+  const SectionHeading = headingLevel;
   const [attempted, setAttempted] = useState(false);
   const missing = (key: keyof CredentialDraft) =>
     key !== "prefix" && !value[key].trim();
@@ -92,7 +95,9 @@ export function CredentialForm({
             className="min-w-0 space-y-4 rounded-lg border bg-muted/20 p-5"
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h4 className="text-base font-semibold">Storage location</h4>
+              <SectionHeading className="text-base font-semibold">
+                Storage location
+              </SectionHeading>
               {onEditLocation ? (
                 <Button variant="ghost" type="button" onClick={onEditLocation}>
                   Edit storage
@@ -125,14 +130,18 @@ export function CredentialForm({
                     onChange({ ...value, [key]: e.target.value })
                   }
                   error={error(key)}
+                  name={`s3-${key}`}
                   autoComplete="off"
+                  autoCapitalize="none"
                   spellCheck={false}
                 />
               ))
             )}
           </section>
           <section aria-label="Access keys" className="min-w-0 space-y-5">
-            <h4 className="text-lg font-semibold">Access keys</h4>
+            <SectionHeading className="text-lg font-semibold">
+              Access keys
+            </SectionHeading>
             <TextField
               label="Access key ID"
               required
@@ -141,11 +150,14 @@ export function CredentialForm({
                 onChange({ ...value, accessKeyId: e.target.value })
               }
               error={error("accessKeyId")}
+              name="s3-access-key-id"
               autoComplete="off"
+              autoCapitalize="none"
               spellCheck={false}
             />
             <FormPassword
               label="Secret access key"
+              name="s3-secret-access-key"
               autoComplete="off"
               value={value.secretAccessKey}
               onChange={(secretAccessKey) =>

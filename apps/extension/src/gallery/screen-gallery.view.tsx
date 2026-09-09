@@ -5,23 +5,28 @@ import { PopupView } from "@/ui/entrypoints/popup/popup.view";
 import { Button } from "@/ui/components/primitives/button";
 import {
   NativeSelect,
+  NativeSelectOptGroup,
   NativeSelectOption,
 } from "@/ui/components/primitives/native-select";
 import { ReviewPageNavigation } from "./review-page-navigation.view";
+import { cn } from "@/ui/lib/cn.util";
 
 const screens: readonly {
   id: string;
   name: string;
+  group: "Popup" | "Daily use" | "Sync and devices" | "Setup and recovery";
   states: readonly { id: OptionsScenario; label: string }[];
 }[] = [
   {
     id: "application",
     name: "Application",
+    group: "Daily use",
     states: [{ id: "application", label: "Full navigation" }],
   },
   {
     id: "tools",
     name: "Password tools",
+    group: "Daily use",
     states: [
       { id: "tools", label: "Ready" },
       { id: "tools-pending", label: "Generation pending" },
@@ -31,6 +36,7 @@ const screens: readonly {
   {
     id: "devices",
     name: "Devices",
+    group: "Sync and devices",
     states: [
       { id: "devices-sync-required", label: "Devices: sync required" },
       { id: "devices", label: "Manage and approve" },
@@ -53,6 +59,7 @@ const screens: readonly {
   {
     id: "tags",
     name: "Tags",
+    group: "Daily use",
     states: [
       { id: "tags", label: "Manage tags" },
       { id: "tags-empty", label: "Empty vault" },
@@ -67,6 +74,7 @@ const screens: readonly {
   {
     id: "vault-settings",
     name: "Vault settings",
+    group: "Daily use",
     states: [
       { id: "settings-ready", label: "Ready" },
       { id: "settings-save-pending", label: "Save pending" },
@@ -78,6 +86,7 @@ const screens: readonly {
   {
     id: "trust",
     name: "Device sync",
+    group: "Sync and devices",
     states: [
       { id: "trust-enrollment", label: "Check added device" },
       { id: "trust-revocation", label: "Replacement keys" },
@@ -90,6 +99,7 @@ const screens: readonly {
   {
     id: "workspace",
     name: "Entries",
+    group: "Daily use",
     states: [
       { id: "workspace", label: "Ready" },
       { id: "workspace-empty", label: "Empty vault" },
@@ -109,6 +119,7 @@ const screens: readonly {
   {
     id: "s3-setup",
     name: "Set up S3",
+    group: "Sync and devices",
     states: [
       { id: "s3-guide", label: "Instructions" },
       { id: "s3-copy-error", label: "Copy error" },
@@ -123,6 +134,7 @@ const screens: readonly {
   {
     id: "sync",
     name: "Sync",
+    group: "Sync and devices",
     states: [
       { id: "sync-setup", label: "Set up" },
       { id: "sync-access-pending", label: "Pending access check" },
@@ -156,8 +168,9 @@ const screens: readonly {
     ],
   },
   {
-    id: "popup",
-    name: "Popup",
+    id: "popup-vault",
+    name: "Popup · Vault",
+    group: "Popup",
     states: [
       { id: "popup-ready", label: "Entries" },
       { id: "popup-empty", label: "Empty vault" },
@@ -165,20 +178,74 @@ const screens: readonly {
       { id: "popup-multiple", label: "Choose vault" },
       { id: "popup-incomplete", label: "Finish setup" },
       { id: "popup-error", label: "Read error" },
+    ],
+  },
+  {
+    id: "popup-generator",
+    name: "Popup · Generator",
+    group: "Popup",
+    states: [{ id: "popup-generator", label: "Ready" }],
+  },
+  {
+    id: "popup-detected",
+    name: "Popup · Detected",
+    group: "Popup",
+    states: [{ id: "popup-detected", label: "Detected login" }],
+  },
+  {
+    id: "popup-settings",
+    name: "Popup · Settings",
+    group: "Popup",
+    states: [{ id: "popup-settings", label: "Ready" }],
+  },
+  {
+    id: "popup-sync",
+    name: "Popup · Sync",
+    group: "Popup",
+    states: [
+      { id: "popup-sync-current", label: "Up to date" },
+      {
+        id: "popup-sync-changed-during-check",
+        label: "Changed while checking",
+      },
+      { id: "popup-sync-review", label: "Review remote changes" },
+      { id: "popup-sync-review-read-error", label: "Review refresh error" },
+      { id: "popup-sync-off", label: "Disabled" },
+      { id: "popup-sync-permission", label: "Permission required" },
+      { id: "popup-sync-error", label: "Check error" },
+      { id: "popup-sync-upload", label: "Upload available" },
+      { id: "popup-sync-pending", label: "Upload pending" },
+      { id: "popup-sync-checking", label: "Checking" },
+      { id: "popup-sync-upload-refresh-error", label: "Upload refresh error" },
+      { id: "popup-sync-apply-refresh-error", label: "Apply refresh error" },
+      {
+        id: "popup-sync-pending-refresh-error",
+        label: "Pending refresh error",
+      },
+    ],
+  },
+  {
+    id: "popup-launch",
+    name: "Popup · Vault access",
+    group: "Popup",
+    states: [
       { id: "welcome", label: "No vault" },
       { id: "existing", label: "Existing vault" },
       { id: "loading", label: "Loading" },
       { id: "error", label: "Error" },
+      { id: "launch-open-error", label: "Options opening failed" },
     ],
   },
   {
     id: "welcome",
     name: "Setup choices",
+    group: "Setup and recovery",
     states: [{ id: "welcome", label: "Default" }],
   },
   {
     id: "password",
     name: "Password",
+    group: "Setup and recovery",
     states: [
       { id: "password", label: "Default" },
       { id: "password-pending", label: "Checking" },
@@ -188,6 +255,7 @@ const screens: readonly {
   {
     id: "device",
     name: "Device settings",
+    group: "Setup and recovery",
     states: [
       { id: "device", label: "Default" },
       { id: "creation-pending", label: "Creating" },
@@ -197,6 +265,7 @@ const screens: readonly {
   {
     id: "organization",
     name: "Organization template",
+    group: "Setup and recovery",
     states: [
       { id: "organization", label: "Default" },
       { id: "organization-pending", label: "Creating" },
@@ -207,6 +276,7 @@ const screens: readonly {
   {
     id: "recover-access",
     name: "Recover access",
+    group: "Setup and recovery",
     states: [
       { id: "recover-access", label: "Default" },
       { id: "recover-access-pending", label: "Setting password" },
@@ -216,6 +286,7 @@ const screens: readonly {
   {
     id: "recovery",
     name: "Save recovery words",
+    group: "Setup and recovery",
     states: [
       { id: "recovery", label: "First setup" },
       { id: "recovery-upload-pending", label: "Enrollment upload pending" },
@@ -226,6 +297,7 @@ const screens: readonly {
   {
     id: "verification",
     name: "Verify recovery words",
+    group: "Setup and recovery",
     states: [
       { id: "verification", label: "First setup" },
       { id: "recovered-verification", label: "After password recovery" },
@@ -236,11 +308,20 @@ const screens: readonly {
   {
     id: "connect",
     name: "Connect a vault",
-    states: [{ id: "connect", label: "Request, verify approval and connect" }],
+    group: "Setup and recovery",
+    states: [
+      { id: "connect", label: "Vault identity" },
+      { id: "connect-password", label: "Browser password" },
+      { id: "connect-request", label: "Access request" },
+      { id: "connect-approval", label: "Device approval" },
+      { id: "connect-request-error", label: "Request error" },
+      { id: "connect-approval-error", label: "Approval error" },
+    ],
   },
   {
     id: "unlock",
     name: "Unlock vault",
+    group: "Setup and recovery",
     states: [
       { id: "locked", label: "Default" },
       { id: "multiple-vaults", label: "Multiple local vaults" },
@@ -251,6 +332,7 @@ const screens: readonly {
   {
     id: "interrupted",
     name: "Interrupted recovery",
+    group: "Setup and recovery",
     states: [
       { id: "backup-incomplete", label: "Default" },
       { id: "replacement-pending", label: "Generating" },
@@ -258,24 +340,23 @@ const screens: readonly {
   },
   {
     id: "complete",
-    name: "Vault ready",
-    states: [{ id: "complete", label: "Default" }],
-  },
-  {
-    id: "settings",
-    name: "Lock settings",
-    states: [
-      { id: "lock-settings", label: "Default" },
-      { id: "lock-settings-pending", label: "Saving" },
-      { id: "lock-settings-error", label: "Error" },
-    ],
+    name: "Entries after setup",
+    group: "Setup and recovery",
+    states: [{ id: "complete", label: "Ready workspace" }],
   },
   {
     id: "appearance",
     name: "Appearance",
+    group: "Daily use",
     states: [{ id: "appearance", label: "Default" }],
   },
 ];
+const screenGroups = [
+  "Popup",
+  "Daily use",
+  "Sync and devices",
+  "Setup and recovery",
+] as const;
 function subscribeHash(callback: () => void) {
   window.addEventListener("hashchange", callback);
   return () => window.removeEventListener("hashchange", callback);
@@ -283,10 +364,13 @@ function subscribeHash(callback: () => void) {
 function selectedScreen() {
   return window.location.hash.slice(1);
 }
+function screenGroupId(group: (typeof screenGroups)[number]) {
+  return `screen-group-${group.toLowerCase().replaceAll(" ", "-")}`;
+}
 
 export function ScreenGallery() {
   const selected = useSyncExternalStore(subscribeHash, selectedScreen);
-  const screen = screens.find((item) => item.id === selected) ?? screens[1];
+  const screen = screens.find((item) => item.id === selected) ?? screens[0];
   const [variant, setVariant] = useState<OptionsScenario>();
   const state =
     screen.states.find((item) => item.id === variant)?.id ??
@@ -295,8 +379,9 @@ export function ScreenGallery() {
   const [width, setWidth] = useState("fluid");
   const [reset, setReset] = useState(0);
   const [notice, setNotice] = useState("");
+  const popupScreen = screen.group === "Popup";
   return (
-    <div className="min-h-svh bg-background text-foreground">
+    <div className="min-h-svh bg-background text-foreground lg:fixed lg:inset-0 lg:flex lg:h-auto lg:min-h-0 lg:w-full lg:flex-col lg:overflow-hidden">
       <a
         href="#screen-presentation"
         onClick={(event) => {
@@ -331,37 +416,74 @@ export function ScreenGallery() {
           </NativeSelect>
         </label>
       </header>
-      <div className="grid min-w-0 lg:grid-cols-[15rem_minmax(0,1fr)]">
-        <aside className="border-b p-4 lg:min-h-[calc(100svh-5rem)] lg:border-r lg:border-b-0">
+      <div className="grid min-w-0 lg:min-h-0 lg:flex-1 lg:grid-cols-[15rem_minmax(0,1fr)]">
+        <aside className="border-b p-4 lg:min-h-0 lg:overflow-y-auto lg:border-r lg:border-b-0">
+          <label className="flex items-center gap-3 text-sm lg:hidden">
+            Screen
+            <NativeSelect
+              aria-label="Application screen"
+              className="min-w-0 flex-1"
+              value={screen.id}
+              onChange={(event) => {
+                window.location.hash = event.target.value;
+                setVariant(undefined);
+                setNotice("");
+                setWidth("fluid");
+              }}
+            >
+              {screenGroups.map((group) => (
+                <NativeSelectOptGroup key={group} label={group}>
+                  {screens
+                    .filter((item) => item.group === group)
+                    .map((item) => (
+                      <NativeSelectOption key={item.id} value={item.id}>
+                        {item.name}
+                      </NativeSelectOption>
+                    ))}
+                </NativeSelectOptGroup>
+              ))}
+            </NativeSelect>
+          </label>
           <nav
             aria-label="Application screens"
-            className="grid grid-cols-2 gap-1 sm:grid-cols-3 lg:sticky lg:top-4 lg:grid-cols-1"
+            className="hidden space-y-5 lg:block"
           >
-            {screens.map((item, index) => (
-              <a
-                key={item.id}
-                href={`#${item.id}`}
-                aria-current={screen.id === item.id ? "page" : undefined}
-                onClick={() => {
-                  setVariant(undefined);
-                  setNotice("");
-                }}
-                className={`flex items-center gap-3 rounded-md border px-3 py-3 text-sm ${screen.id === item.id ? "border-primary bg-accent font-semibold" : "border-transparent hover:bg-accent"}`}
-              >
-                <span
-                  aria-hidden="true"
-                  className="text-xs text-muted-foreground tabular-nums"
+            {screenGroups.map((group) => (
+              <section key={group} aria-labelledby={screenGroupId(group)}>
+                <h2
+                  id={screenGroupId(group)}
+                  className="mb-2 px-3 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
                 >
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-                {item.name}
-              </a>
+                  {group}
+                </h2>
+                <div className="grid grid-cols-2 gap-1 sm:grid-cols-3 lg:grid-cols-1">
+                  {screens
+                    .filter((item) => item.group === group)
+                    .map((item) => (
+                      <a
+                        key={item.id}
+                        href={`#${item.id}`}
+                        aria-current={
+                          screen.id === item.id ? "page" : undefined
+                        }
+                        onClick={() => {
+                          setVariant(undefined);
+                          setNotice("");
+                          setWidth("fluid");
+                        }}
+                        className={`rounded-md border px-3 py-2.5 text-sm ${screen.id === item.id ? "border-primary bg-accent font-semibold" : "border-transparent hover:bg-accent"}`}
+                      >
+                        {item.name}
+                      </a>
+                    ))}
+                </div>
+              </section>
             ))}
           </nav>
         </aside>
         <main
           id="screen-presentation"
-          className="min-w-0 p-4 sm:p-6"
+          className="min-w-0 p-4 sm:p-6 lg:min-h-0 lg:overflow-y-auto"
           tabIndex={-1}
           data-focus-target
         >
@@ -402,11 +524,19 @@ export function ScreenGallery() {
               aria-label="Screen width"
               className="flex flex-wrap gap-2"
             >
-              {[
-                { id: "fluid", label: "Fit window" },
-                { id: "400", label: "400 px" },
-                { id: "768", label: "768 px" },
-              ].map((item) => (
+              {(popupScreen
+                ? [
+                    { id: "fluid", label: "Native 480 px" },
+                    { id: "320", label: "320 px" },
+                    { id: "400", label: "400 px" },
+                  ]
+                : [
+                    { id: "fluid", label: "Fit window" },
+                    { id: "320", label: "320 px" },
+                    { id: "400", label: "400 px" },
+                    { id: "768", label: "768 px" },
+                  ]
+              ).map((item) => (
                 <Button
                   key={item.id}
                   size="sm"
@@ -424,49 +554,51 @@ export function ScreenGallery() {
             className="review-canvas mx-auto min-h-96 max-w-full rounded-lg border bg-background"
             style={{
               width:
-                screen.id === "popup"
-                  ? "var(--extension-popup-width)"
-                  : width === "fluid"
-                    ? "100%"
-                    : `${width}px`,
+                width === "fluid"
+                  ? popupScreen
+                    ? "var(--extension-popup-width)"
+                    : "100%"
+                  : `${width}px`,
             }}
           >
             <div
               key={`${screen.id}:${state}:${reset}`}
-              className={
-                [
-                  "application",
-                  "popup",
-                  "welcome",
-                  "password",
-                  "device",
-                  "organization",
-                  "connect",
-                ].includes(screen.id) &&
-                ![
-                  "creation-pending",
-                  "creation-error",
-                  "organization-pending",
-                  "organization-error",
-                  "organization-name-conflicts",
-                ].includes(state)
+              className={cn(
+                !popupScreen && "options-surface",
+                popupScreen
                   ? ""
-                  : screen.id === "workspace"
-                    ? "mx-auto max-w-6xl px-5 py-8"
-                    : [
-                          "s3-setup",
-                          "sync",
-                          "devices",
-                          "tags",
-                          "tools",
-                          "trust",
-                          "vault-settings",
-                        ].includes(screen.id)
-                      ? "mx-auto max-w-6xl px-5 py-8 @lg:py-12"
-                      : "mx-auto max-w-xl px-5 py-8 @lg:py-12"
-              }
+                  : [
+                        "application",
+                        "welcome",
+                        "password",
+                        "device",
+                        "organization",
+                        "connect",
+                      ].includes(screen.id) &&
+                      ![
+                        "creation-pending",
+                        "creation-error",
+                        "organization-pending",
+                        "organization-error",
+                        "organization-name-conflicts",
+                      ].includes(state)
+                    ? ""
+                    : screen.id === "workspace"
+                      ? "mx-auto max-w-6xl px-5 py-8"
+                      : [
+                            "s3-setup",
+                            "sync",
+                            "devices",
+                            "tags",
+                            "tools",
+                            "trust",
+                            "vault-settings",
+                          ].includes(screen.id)
+                        ? "mx-auto max-w-6xl px-5 py-8 @lg:py-12"
+                        : "mx-auto max-w-xl px-5 py-8 @lg:py-12",
+              )}
             >
-              {screen.id === "popup" && !state.startsWith("popup-") ? (
+              {popupScreen && !state.startsWith("popup-") ? (
                 <PopupView
                   availability={
                     state === "existing" ||
@@ -475,6 +607,7 @@ export function ScreenGallery() {
                       ? state
                       : "empty"
                   }
+                  initialOpenFailed={state === "launch-open-error"}
                   onRetry={() => setNotice("Retry requested")}
                   onOpenOptions={async () => {
                     window.location.hash = "welcome";
