@@ -1,5 +1,3 @@
 packages:
   - apps/extension
   - packages/*
-  - docs/research
-  - docs/thesis

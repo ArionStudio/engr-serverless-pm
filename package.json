@@ -21,11 +21,7 @@
     "ext:build:all": "pnpm --filter @lfspm/extension run build:all",
     "ext:test": "pnpm --filter @lfspm/extension run test",
     "ext:lint": "pnpm --filter @lfspm/extension run lint",
-    "ext:format": "pnpm --filter @lfspm/extension run format",
-    "the:dev": "pnpm --filter @lfspm/thesis run dev",
-    "the:build": "pnpm --filter @lfspm/thesis run build",
-    "the:format": "pnpm --filter @lfspm/thesis run format",
-    "the:clean": "pnpm --filter @lfspm/thesis run clean"
+    "ext:format": "pnpm --filter @lfspm/extension run format"
   },
   "devDependencies": {
     "@commitlint/cli": "^20.3.1",

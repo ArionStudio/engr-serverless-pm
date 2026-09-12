@@ -157,10 +157,6 @@ importers:
         specifier: ^4.0.17
         version: 4.0.17(@types/node@25.0.8)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(msw@2.12.7(@types/node@25.0.8)(typescript@5.9.3))(yaml@2.8.2)
 
-  docs/research: {}
-
-  docs/thesis: {}
-
   packages/core:
     dependencies:
       zod:

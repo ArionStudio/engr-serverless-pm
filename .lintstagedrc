@@ -1,6 +1,5 @@
 {
   "*.{js,ts,jsx,tsx}": ["pnpm ext:lint", "pnpm ext:format"],
   "*.{json,md,yml,yaml}": ["pnpm ext:format"],
-  "extension/**/*.{js,ts,jsx,tsx}": ["pnpm ext:build"],
-  "research/*.tex": ["pnpm res:build"]
+  "extension/**/*.{js,ts,jsx,tsx}": ["pnpm ext:build"]
 }
